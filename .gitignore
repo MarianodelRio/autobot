@@ -12,9 +12,9 @@ __pycache__/
 .coverage
 *.sqlite3
 
-# Infraestructura
-cdk.out/
-.aws/
+# Generados
+revision/
+backups/
 
 # Claves y credenciales
 *.pem

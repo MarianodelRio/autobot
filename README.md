@@ -1,11 +1,13 @@
 # FlowPilot
 
-Plataforma de automatización para pequeños negocios: atiende a sus clientes por WhatsApp y otros canales, gestiona reservas (peluquerías, autobuses, gimnasios) y avisa al dueño por Telegram.
+Plataforma de automatización para pequeños negocios: atiende a sus clientes por WhatsApp, gestiona reservas sobre la agenda que ya usan (peluquerías) o responde consultas de horarios (autobuses) y avisa al dueño por Telegram.
+
+Sustituye a los bots independientes `Peluqueria` y `buscaBus` por una sola plataforma para 5–15 negocios, en una VPS con Docker Compose.
 
 **Estado:** en diseño. Todavía no hay código de la aplicación.
 
 ## Cómo empezar
 
-1. Lee la idea del producto en [IDEA.md](IDEA.md).
-2. Lee el diseño técnico completo en [design.md](design.md).
-3. Las reglas para trabajar en el repo están en [CLAUDE.md](CLAUDE.md) y [docs/WORKFLOWS.md](docs/WORKFLOWS.md).
+1. La idea del producto: [IDEA.md](IDEA.md).
+2. El diseño técnico completo: [design.md](design.md).
+3. Las reglas para trabajar en el repo: [CLAUDE.md](CLAUDE.md).

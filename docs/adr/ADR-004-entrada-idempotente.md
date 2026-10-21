@@ -1,30 +1,31 @@
 # ADR-004 — Entrada idempotente y "al menos una vez"
 
-**Estado:** aceptada · **Relacionado:** `design.md` §0, §2.2, §17, §18
+**Estado:** aceptada (revisada el 2026-10-21) · **Relacionado:** `design.md` §5.3, §7, §9.5
 
 ## Contexto
 
-Meta y Telegram reintentan los webhooks si no reciben 200 a tiempo, y a veces los repiten igualmente. Los procesos se reinician a mitad de un trabajo. No se puede perder un mensaje ni duplicar una cita o un envío.
+Meta reintenta los webhooks si no recibe 200 a tiempo, y a veces los repite igualmente. Los procesos se reinician a mitad de un trabajo (por ejemplo, en cada despliegue). No se puede perder un mensaje ni duplicar una cita o un envío.
 
 ## Decisión
 
-- **Guardar primero, contestar 200, procesar después**: el webhook verifica, inserta `inbound_event` con `UNIQUE(tenant_id, source, provider_event_id)` y encola en la misma transacción.
-- Procesamiento con garantía **"al menos una vez"** + **idempotencia** en todo efecto externo: clave estable por evento (`ctx.idem`), tabla `side_effect` con `started` guardado y confirmado **antes** de llamar al sistema externo, y `done` en otra transacción.
+- **Guardar primero, contestar 200, procesar después**: el webhook verifica la firma, inserta `inbound_event` con `UNIQUE(tenant_id, provider_event_id)` y encola en la misma transacción.
+- Procesamiento **"al menos una vez"** + **idempotencia** en todo efecto externo:
+  - Mensajes salientes: `outbound_message` con `UNIQUE(tenant_id, idem_key)`, guardado antes de enviar; estados explícitos; un envío ambiguo pasa a `unknown` y **no se reintenta a ciegas**.
+  - Barridos (recordatorios, confirmaciones): clave estable por entidad en la misma tabla.
+  - Citas: **id de evento de Calendar determinista** derivado de la clave idempotente + advisory lock por calendario y día. No hace falta una tabla de efectos.
 - **Transacciones cortas**: nunca una transacción abierta durante llamadas externas.
-- Envíos con estados explícitos; un envío ambiguo (timeout) pasa a `unknown` y **no se reintenta a ciegas**.
-- Candado por conversación (hash sin teléfono) para todo escritor de la conversación + `conversation.version`, y advisory lock por calendario y día (con id de evento determinista) para evitar dobles reservas.
-- Lo interno también entra por `inbound_event` (`source=system` para periódicas y tareas); los avisos de Google Calendar solo encolan una sincronización, que crea un evento por cambio.
+- Candado por contacto (hash sin teléfono) + `conversation.version` para que dos mensajes del mismo contacto nunca se procesen a la vez.
 
 ## Alternativas consideradas
 
-- **Procesar dentro del webhook**: riesgo de timeouts y reintentos del proveedor; se pierde trabajo si el proceso cae.
-- **"Exactamente una vez"**: imposible de garantizar con sistemas externos; daría una falsa sensación de seguridad.
+- **Procesar dentro del webhook** (como los bots actuales con `BackgroundTasks` y estado en memoria): se pierde trabajo si el proceso cae.
+- **Tabla genérica `side_effect`** (diseño anterior): innecesaria con ids deterministas en Calendar y claves únicas en los envíos.
 
 ## Consecuencias
 
-- Todo adaptador que escribe debe ser idempotente o consultable (p. ej. id de evento determinista en Calendar).
-- Más estado que gestionar (`side_effect`, `send_intent`, estados `unknown`) y una pantalla de trabajos fallidos.
+- Todo sistema externo que escribe debe ser idempotente o consultable.
+- Hay estados `unknown` que revisar en el Admin.
 
 ## Cuándo revisarla
 
-- Se cambia la cola a SQS u otro sistema externo a la BD → patrón *outbox* para mantener la atomicidad.
+- Se añade un sistema externo sin forma de escritura idempotente → tabla de efectos para ese caso.
