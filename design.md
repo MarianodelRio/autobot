@@ -713,6 +713,10 @@ UpdateContact(display_name: str | None = None, opt_out: bool | None = None)
 
 - Un pack **nunca** toca la BD, los canales ni las APIs directamente: todo lo externo le llega por `ctx`. Tampoco elige calendario ni sabe si la conversación es de pruebas.
 - Los handlers periódicos (`Periodic.handler: (ctx) -> list[Action]`) reciben `ctx` con `contact=None` y `state={}`, y solo devuelven acciones.
+- **`build_context`** (`flowpilot/runtime/context.py`): `build_context(tenant, channel, *, contact, state, event_id, calendars)`. `event_id=None` en las periódicas, y entonces `ctx.idem.event()` falla. `calendars` es una fábrica `calendar_id → CalendarPort` inyectable; hasta T-5.1 la de por defecto falla con `CalendarUnavailable`.
+  - **Calendario:** solo si `pack.needs_calendar`. En `main` se liga a `config.calendar_id`; en `test`, a `config.test_calendar_id`. Si falta el de pruebas, o es igual al real (sin distinguir mayúsculas ni espacios), lanza `CalendarUnavailable` sin llamar a la fábrica: en el canal `test` es imposible obtener el calendario real.
+  - **`ctx.lock(key)`:** la clave real es `<tenant_id>:<calendar_id ligado o ->:<key>`, y a PostgreSQL solo llega su hash de 64 bits. `pg_try_advisory_lock` cada 100 ms durante 10 s como máximo, en la conexión `default` sin transacción abierta (dentro de una, falla), y `pg_advisory_unlock` en `finally`; si el desbloqueo falla, se cierra la conexión, y con ella el candado.
+  - **`ctx.log`:** un `LoggerAdapter` de `packs.<pack>` con `tenant`, `channel` y `event_id`. El enmascarado de teléfonos es el filtro de logs de §13.
 - `SendProactive` lo resuelve el runtime: busca contacto y canal (§6.5), descarta contactos con `opt_out` o `unreachable`, y crea un `outbound_message` de tipo `proactive` con su `idem_key`.
 
 #### 8.3 Utilidades comunes (`core/`)

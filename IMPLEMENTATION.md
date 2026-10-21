@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 3 | in_progress |
+| F3 | Canales y runtime | 10 | 4 | in_progress |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **17** | |
+| **Total** | | **52** | **18** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -488,7 +488,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests:** `tests/integration/test_webhooks.py` (cada rama de §7.1, duplicados, lotes, RLS al guardar, estados `ignored`, `GET`, 503, `/health`, URLs y que no haya llamadas externas) y `tests/contract/test_ratelimit.py`. Comprobado en local: `/health` responde en el contenedor `web`.
 
 ### T-3.4 · `ctx`: candados, claves idempotentes y calendario por canal 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-2.3 · **Diseño:** §8.2, §9.5, §6.5
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-2.3 · **Diseño:** §8.2, §9.5, §6.5
 - **Hacer:**
   - `build_context`.
   - `ctx.lock`: advisory lock de sesión con espera máxima de 10 s, sin transacción abierta y con la clave prefijada por tenant y calendario.
@@ -496,7 +496,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - El enlace de `ctx.calendar` al `calendar_id` en el canal `main` y al `test_calendar_id` en el canal `test`, a través de una fábrica de `CalendarPort` inyectable (la implementación real llega en T-5.1).
 - **Acepta:** en el canal `test` es imposible obtener un `ctx.calendar` ligado a `calendar_id`; sin lock en 10 s se lanza `TransientError`.
 - **Tests:** unitarios e integración del lock (dos procesos que compiten) y del enlace de calendario por canal.
-- **Notas:** —
+- **Notas:**
+  - **`flowpilot/runtime/context.py`:** `build_context(tenant, channel, *, contact, state, event_id, calendars)` devuelve el `PackContext`, con `SystemClock` en la zona del tenant, `IdemKeys(event_id)` (`None` en las periódicas) y un `LoggerAdapter` con `tenant`, `channel` y `event_id`.
+  - **Calendario por canal:** `bound_calendar_id` lee `calendar_id` y `test_calendar_id` de la config del pack (los nombres de §9.2) y solo si `needs_calendar`. En `test` sin `test_calendar_id`, o con uno igual al real, lanza `CalendarUnavailable` antes de llamar a la fábrica. La fábrica (`CalendarFactory`: `calendar_id → CalendarPort`) es un parámetro; la de por defecto falla hasta T-5.1, que pondrá la real.
+  - **`advisory_lock(key)`:** `pg_try_advisory_lock` cada 100 ms durante `LOCK_TIMEOUT_S` (10 s), en la conexión `default` y fuera de cualquier transacción (dentro de una lanza `RuntimeError`); si no lo consigue, `TransientError`. Se libera en `finally` y, si el desbloqueo falla, se cierra la conexión. La clave lleva el tenant y el calendario ligado, pero a la BD solo llega un hash de 64 bits.
+  - **`ctx.log`:** el enmascarado de teléfonos de §8.2 lo hará el filtro de logs de §13, que llega en T-6.2.
+  - **Tests** (`tests/integration/test_context.py`, transaccionales): contexto de mensaje y de periódica, calendario real en `main` y de pruebas en `test`, imposibilidad del real en `test` (tres casos, sin llamar a la fábrica), prefijo de la clave, espera y `TransientError` con otra sesión de PostgreSQL que tiene el candado, liberación tras un error, dos hilos con sesiones propias que nunca se solapan y rechazo dentro de una transacción.
+  - **De la revisión:** se avisa si al liberar el candado ya no estaba retenido; un fallo al cerrar la conexión no oculta la excepción del bloque; el calendario de pruebas se compara con el real sin mayúsculas ni espacios; un tenant `degraded` da `RuntimeError` en lugar de un `assert`; tests del desbloqueo fallido y de que el segundo hilo espera de verdad.
+  - **Diseño:** §8.2 ampliado.
 
 ### T-3.5 · `process_event` y `apply_status` 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.3, T-3.4, T-1.4 · **Diseño:** §7.2, §7.3, §6.6, §8.2
