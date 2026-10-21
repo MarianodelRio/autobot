@@ -83,7 +83,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | Fase | Contenido | Tareas 🤖 | Hechas | Estado |
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
-| F1 | Núcleo puro (`core`) | 5 | 5 | done (validación pendiente de confirmación) |
+| F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
@@ -222,7 +222,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **`paginate`:** no existe en el origen; sale de `paginar` de buscaBus (que trocea la lista) y del patrón de `build_lineas`. `per_page` tiene que ser positivo. Devuelve las filas de la página, la fila "más" si quedan páginas y siempre la de "volver" (8 + 2 = 10). Quien llama codifica la página siguiente en `more_id`. Una página fuera de rango vuelve a la primera, como en `flujo.py`.
   - **Tests:** portados `TestTrunc`, `TestNorm`, `TestStripHtml`, `TestGetNextDays`, `TestFormatDateEs` y `test_paginar`, adaptados.
   - **Para T-4.x y T-5.x:** los constructores propios de cada bot (`build_*`, `_fila_localidad`, `_titulo_usar`) se quedan en su pack.
-  - **Pendiente de consultar:** hoy un solo pack usa `strip_html`, `next_days` y `format_date_es` (salon) y `paginate` (bus), aunque §8.3 los pone en `core` y la regla dice que a `core` solo sube lo que usan los dos. Se dejan donde dice §8.3 hasta que decida la persona.
+  - **Decidido por la persona:** `strip_html`, `next_days`, `format_date_es` y `paginate` se quedan en `core` aunque hoy los use un solo pack; §8.3 admite utilidades genéricas sin lógica de negocio.
 
 ### T-1.4 · Reglas comunes de conversación 🤖
 - **Estado:** done · **Revisión:** aprobada · **Depende de:** T-1.1 · **Diseño:** §7.2, §7.3
@@ -265,8 +265,8 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Diseño:** §17.2 ampliado.
 
 ### ✅ Validación F1
-- [ ] El pack de juguete pasa sus escenarios con el arnés.
-- [ ] `make check` en verde.
+- [x] El pack de juguete pasa sus escenarios con el arnés.
+- [x] `make check` en verde.
 
 ---
 

@@ -694,7 +694,7 @@ UpdateContact(display_name: str | None = None, opt_out: bool | None = None)
 | `core/limits.py` | Límites comunes y `plan_sends` | — |
 | `core/testing/` | Arnés de conversación (§17.2) y reloj fijo | `conftest.py` de los dos bots |
 
-A `core` solo entra lo que usan los dos packs.
+A `core` solo entra lo que usan los dos packs o, si es una utilidad genérica sin lógica de negocio (texto, fechas, paginación), lo que pueda usar cualquier pack.
 
 #### 8.4 Requisitos de un pack
 
