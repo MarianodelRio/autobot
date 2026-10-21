@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+secrets.yaml
+google_sa.json
 
 # Python
 __pycache__/
@@ -13,6 +15,7 @@ __pycache__/
 *.sqlite3
 
 # Generados
+staticfiles/
 revision/
 backups/
 

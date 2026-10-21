@@ -1,0 +1,60 @@
+[project]
+name = "flowpilot"
+version = "0.1.0"
+description = "Multi-tenant platform that serves small businesses' customers over WhatsApp or Telegram."
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+# Versions verified in design.md §18.
+dependencies = [
+    "django>=5.2,<5.3",
+    "procrastinate[django]>=3.10,<4",
+    "psycopg[binary]>=3.3,<3.4",
+    "pydantic>=2.14,<3",
+    "google-api-python-client>=2,<3",
+    "httpx>=0.28,<0.29",
+    "gunicorn>=23,<27",
+    "django-otp>=1.7,<2",
+    "dj-database-url>=3",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14",
+    "mypy>=1.18",
+    "django-stubs[compatible-mypy]>=5.2,<5.3",
+    "pytest>=8.4",
+    "pytest-django>=4.11",
+    "weasyprint>=66",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src", "tests"]
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "DJ"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "integrations", "packs", "flowpilot", "config"]
+
+[tool.mypy]
+python_version = "3.14"
+mypy_path = "src"
+strict = true
+plugins = ["mypy_django_plugin.main"]
+explicit_package_bases = true
+files = ["src", "tests", "manage.py"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+pythonpath = ["src"]
+testpaths = ["tests", "src"]
+addopts = "--strict-markers"

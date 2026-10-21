@@ -4,7 +4,7 @@ Plataforma de automatización para pequeños negocios: atiende a sus clientes po
 
 Sustituye a los bots independientes `Peluqueria` y `buscaBus` por una sola plataforma para 5–15 negocios, en una VPS con Docker Compose.
 
-**Estado:** diseño cerrado; implementación sin empezar. El repositorio solo contiene la documentación.
+**Estado:** implementación en curso; el avance está en [IMPLEMENTATION.md](IMPLEMENTATION.md).
 
 ## Cómo empezar
 
@@ -12,3 +12,12 @@ Sustituye a los bots independientes `Peluqueria` y `buscaBus` por una sola plata
 2. El diseño técnico completo: [design.md](design.md).
 3. El plan de implementación y su estado: [IMPLEMENTATION.md](IMPLEMENTATION.md).
 4. Las reglas para trabajar en el repo: [CLAUDE.md](CLAUDE.md).
+
+## Desarrollo local
+
+Requisitos: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta).
+
+```bash
+uv sync          # dependencias, incluidas las de desarrollo
+make check       # ruff, mypy y pytest (lo mismo que CI)
+```

@@ -82,7 +82,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 
 | Fase | Contenido | Tareas 🤖 | Hechas | Estado |
 |---|---|---:|---:|---|
-| F0 | Base del proyecto | 4 | 0 | pending |
+| F0 | Base del proyecto | 4 | 1 | in_progress |
 | F1 | Núcleo puro (`core`) | 5 | 0 | pending |
 | F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
 | F3 | Canales y runtime | 10 | 0 | pending |
@@ -91,7 +91,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **0** | |
+| **Total** | | **52** | **1** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -128,7 +128,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** el proyecto arranca en local con Docker Compose y CI pasa en GitHub.
 
 ### T-0.1 · Esqueleto del proyecto 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** — · **Diseño:** §0, §4.4, §4.5
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** — · **Diseño:** §0, §4.4, §4.5
 - **Hacer:**
   - `pyproject.toml` con `uv`, Python 3.14 y las dependencias de §18 fijadas en `uv.lock`. `weasyprint` va como dependencia de desarrollo.
   - Estructura `src/` (`core`, `integrations`, `packs`, `flowpilot`, `config`) y settings de Django por variables de entorno (`.env.example`).
@@ -139,7 +139,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - `make check` pasa con un test trivial.
   - `manage.py check` funciona sin BD real.
 - **Tests:** un test de humo de settings.
-- **Notas:** —
+- **Notas:** `uv` con `package = false` y `src/` en `sys.path` (`manage.py`, `pythonpath` de pytest, `mypy_path`). Dependencias de §18 más `dj-database-url` (leer `DB_APP_URL`); `whitenoise`, `pyyaml` y `sentry-sdk` se añaden en las tareas que los usan. `ENVIRONMENT=local` (por defecto) da valores de desarrollo; `prod` exige cada variable. `mypy --strict` en todo el repo. Ruff excluye `*.md` (la 0.17 formatea los bloques de código de la documentación). `make up/down/shell` usan Compose, que llega en T-0.2.
 
 ### T-0.2 · Contenedores locales 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-0.1 · **Diseño:** §4.2, §14.2, §14.6
