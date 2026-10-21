@@ -1010,12 +1010,18 @@ test_session        telegram_user_id PK, tenant_id, selected_at
 - Además están las tablas de Procrastinate (sin `tenant_id` ni RLS; por eso los trabajos solo llevan ids) y las de Django (usuarios del Admin, sesiones, caché, `LogEntry`).
 - No hay tablas de citas ni de horarios: las citas viven en Google Calendar y los horarios en git y en memoria.
 - `payload` de `outbound_message` guarda la respuesta común (`Reply` o `ProactiveMessage` serializados), no el formato del proveedor: el adaptador la renderiza al enviar.
+- **Implementación** (`flowpilot/tenancy/models.py`, `flowpilot/runtime/models.py`; migraciones `0001_initial` y `0002_tenant_isolation`):
+  - Django no tiene claves foráneas compuestas: la relación es un `ForeignKey(db_constraint=False)` para el ORM y la restricción `(tenant_id, x_id) → x(tenant_id, id)` se crea en SQL.
+  - Al borrar un contacto se borran en cascada su conversación y sus mensajes. Al borrar un `inbound_event` (90 días) solo se anula `outbound_message.inbound_event_id` (`ON DELETE SET NULL (inbound_event_id)`).
+  - `outbound_message` tiene un índice `(tenant_id, provider_message_id)` para `apply_status`.
+  - El `__str__` de los modelos nunca muestra datos personales.
+  - `fp_app` solo puede leer `tenant`: el reflejo lo escribe `sync_tenants` como `fp_owner`.
 
 #### 12.2 Aislamiento (RLS)
 
 | Rol | Lo usan | `BYPASSRLS` | Permisos |
 |---|---|---|---|
-| `fp_app` | `web` (webhooks) y `worker` | No | SELECT, INSERT, UPDATE y DELETE sobre las tablas de la aplicación y de Procrastinate |
+| `fp_app` | `web` (webhooks) y `worker` | No | SELECT, INSERT, UPDATE y DELETE sobre las tablas de la aplicación y de Procrastinate, salvo `tenant`, donde solo tiene SELECT (lo escribe `sync_tenants` como `fp_owner`) |
 | `fp_owner` | Migraciones, Django Admin y comandos de operación entre tenants (`purge_tenant`, `export_tenant`) | Sí | Dueño de las tablas |
 
 ```sql
@@ -1029,7 +1035,7 @@ CREATE POLICY tenant_isolation ON contact
 - **El tenant solo se fija con `tenant_tx(tenant_id)`:** abre una transacción corta y ejecuta `set_config('app.tenant_id', …, true)` (equivale a `SET LOCAL`). Nunca se anida (`assert not connection.in_atomic_block`). Sin tenant fijado se leen 0 filas, de modo que un olvido falla de forma segura.
 - `NULLIF(…, '')` es necesario: con conexiones persistentes, tras un `SET LOCAL` las transacciones siguientes ven `''` en lugar de NULL.
 - Django tiene dos alias: `default` (`fp_app`) y `owner` (`fp_owner`). El Admin usa `owner` mediante una clase base de `ModelAdmin` (`using = "owner"`). Las URL `/admin/` solo se montan en `web` y Caddy no las expone (§13).
-- **Roles:** los crea `deploy/postgres/init-roles.sh` (idempotente) al inicializar el volumen de `db`. `fp_app` tiene `CONNECT`, `USAGE` sobre `public` y `SELECT/INSERT/UPDATE/DELETE` (y secuencias) sobre las tablas de `fp_owner` mediante `ALTER DEFAULT PRIVILEGES`; no tiene `TEMP`, `TRUNCATE` ni `CREATE`, ni puede conectarse a `postgres` ni a `template1`. El script lee las contraseñas con `\getenv`; no se activa `log_statement` para DDL, porque las registraría. `manage.py migrate` usa `owner` por defecto.
+- **Roles:** los crea `deploy/postgres/init-roles.sh` (idempotente) al inicializar el volumen de `db`. `fp_app` tiene `CONNECT`, `USAGE` sobre `public` y `SELECT/INSERT/UPDATE/DELETE` (y secuencias) sobre las tablas de `fp_owner` mediante `ALTER DEFAULT PRIVILEGES` (sobre `tenant`, solo `SELECT`; migración `0002`); no tiene `TEMP`, `TRUNCATE` ni `CREATE`, ni puede conectarse a `postgres` ni a `template1`. El script lee las contraseñas con `\getenv`; no se activa `log_statement` para DDL, porque las registraría. `manage.py migrate` usa `owner` por defecto.
 - **Tests:** la base `test_flowpilot` existe de antemano (el mismo script con `POSTGRES_TEST_DB`, solo en local y CI); el `conftest.py` raíz apunta los dos alias a ella y migra como `fp_owner`, así que los tests consultan como `fp_app`, bajo RLS.
 - Los trabajos que recorren tenants (repartos, retención, `ops_check`) obtienen la lista del registro en memoria y abren un `tenant_tx` por tenant.
 - Las dos tablas del bot de pruebas no tienen RLS: `test_session` solo relaciona un usuario de Telegram con un tenant y `test_bot_event` solo la lee el selector, que no consulta datos de ningún tenant.

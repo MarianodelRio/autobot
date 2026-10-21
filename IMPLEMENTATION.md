@@ -84,14 +84,14 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
-| F2 | Datos, tenants y aislamiento | 5 | 1 | in_progress |
+| F2 | Datos, tenants y aislamiento | 5 | 2 | in_progress |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **10** | |
+| **Total** | | **52** | **11** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -296,14 +296,28 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Verificado:** CI simulado en local con un PostgreSQL 18 limpio: script por TCP, `pytest`, `makemigrations --check` y `lintmigrations`.
 
 ### T-2.2 · Modelos y políticas RLS ⚠️ 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-2.1 · **Diseño:** §12.1, §12.2
+- **Estado:** done · **Revisión:** aprobada (y aprobación ⚠️ de la persona, 2026-10-21) · **Depende de:** T-2.1 · **Diseño:** §12.1, §12.2
 - **Hacer:**
   - Modelos `Tenant`, `Contact`, `Conversation`, `InboundEvent`, `OutboundMessage`, `Notification`, `TestBotEvent` y `TestSession`.
   - UUIDv7, `UNIQUE(tenant_id, id)`, claves foráneas compuestas y restricciones únicas del diseño.
   - Migración con `ENABLE`/`FORCE ROW LEVEL SECURITY` y la política `tenant_isolation` en cada tabla con `tenant_id`.
 - **Acepta:** el esquema coincide con §12.1; `makemigrations --check` limpio; el linter de migraciones pasa.
 - **Tests:** test de restricciones únicas (eventos duplicados, `idem_key` duplicada).
-- **Notas:** —
+- **Notas:**
+  - **Dónde viven:** una sola app de Django (`flowpilot`). `Tenant` está en `tenancy/models.py` y el resto en `runtime/models.py`; `flowpilot/models.py` los reexporta.
+  - **Tipos:** UUIDv7 con `uuid.uuid7` (Python 3.14); `tenant.id` viene del YAML. `UNIQUE(tenant, id)` en los padres (`contact` e `inbound_event`) y las únicas de §12.1.
+  - **`0001_initial`:** reordenada a mano (`Tenant` primero, y el FK dentro del `CreateModel` de `Contact`) para que el linter no diera un falso positivo de `NOT NULL`.
+  - **`0002_tenant_isolation` (RunSQL, con su reversa):**
+    - Claves compuestas: `conversation` y `outbound_message` hacia `contact` (`CASCADE`), y `outbound_message` hacia `inbound_event` (`SET NULL (inbound_event_id)`, PostgreSQL 15 o superior).
+    - `ENABLE` y `FORCE ROW LEVEL SECURITY` con la política `tenant_isolation` en las 5 tablas con `tenant_id` y en `tenant`, esta sobre su propio `id`.
+    - `test_bot_event` y `test_session` quedan sin RLS.
+    - `REVOKE INSERT, UPDATE, DELETE ON tenant FROM fp_app`: solo `sync_tenants`, como `owner`, escribe en el reflejo.
+  - **Permisos:** `fp_app` recibe acceso a las tablas nuevas por los permisos por defecto de T-2.1.
+  - **Nulos y valores por defecto:** `phone_e164`, `provider_message_id` y `pricing_category` son `NULL` como dice §12.1 (con `noqa: DJ001`). El resto del texto opcional es `""`. Los valores por defecto están también en la base (`db_default`), así que un `INSERT` en SQL no tiene que dar todas las columnas. `idem_key` es `TextField`, porque una clave estable puede llevar un `gcal_id` de hasta 1.024 caracteres. `tenant_id` y `conversation.contact_id` no tienen índice propio, porque ya los cubren las únicas.
+  - **`__str__`:** nunca muestra datos personales: el id, el `slug` del tenant o el `update_id`. `TestBotEvent` y `TestSession` llevan `__test__ = False` para que pytest no los recoja como tests.
+  - **Tests:** únicas (evento duplicado, `idem_key` duplicada en mensajes y avisos, contacto, conversación, `update_id`), claves compuestas entre tenants, borrados en SQL y RLS activada y forzada justo en las tablas de tenant. Escriben con `owner`; el aislamiento entre tenants llega en T-2.3.
+  - **Para T-6.3:** índices de retención por antigüedad (`inbound_event`, `outbound_message`, `contact`, `test_bot_event`) y uno parcial de `outbound_message` con `status = 'unknown'` para §15.3.
+  - **Diseño:** §12.1 y §12.2 ampliados con los detalles de implementación.
 
 ### T-2.3 · `tenant_tx` y test de aislamiento 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-2.2 · **Diseño:** §12.2
@@ -687,7 +701,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Hacer:** `retention_cleanup` nocturno por lotes y los comandos `export_contact`, `forget_contact`, `export_tenant` y `purge_tenant` (este último pide escribir el slug para confirmar).
 - **Acepta:** cada plazo de §12.3 se aplica; `purge_tenant` no toca otros tenants.
 - **Tests:** integración con fechas simuladas.
-- **Notas:** —
+- **Notas:** añadir los índices de retención anotados en T-2.2.
 
 ### T-6.4 · Django Admin 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-6.2 · **Diseño:** §12.2, §13, §15.4, §7.4
