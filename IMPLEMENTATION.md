@@ -83,7 +83,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | Fase | Contenido | Tareas 🤖 | Hechas | Estado |
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
-| F1 | Núcleo puro (`core`) | 5 | 2 | in_progress |
+| F1 | Núcleo puro (`core`) | 5 | 3 | in_progress |
 | F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
@@ -91,7 +91,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **6** | |
+| **Total** | | **52** | **7** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -208,14 +208,21 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** `check(reply)` devuelve las infracciones separadas en `fatal` y truncables, como descripciones sin contenido, así que se pueden registrar; el arnés de T-1.5 lo reutilizará. `plan_sends(replies, strict=False) -> list[Reply]` es puro: fusiona textos (separador `\n\n`, sin pasar de 4.096), mete el texto previo en el cuerpo del interactivo si caben en 1.024 y aplica los límites. `seq` e `idem_key` se asignan en T-3.6. Las infracciones `fatal` fallan siempre, porque truncarlas rompería los botones. Son ids de más de 64 bytes, vacíos o repetidos; títulos de botón repetidos; mensajes o secciones sin botones o filas; varias secciones sin título; y cuerpo vacío. Se comprueban antes de fusionar y otra vez después de truncar. Las longitudes se cuentan en caracteres; el adaptador de Telegram (T-3.2) tendrá en cuenta que Telegram cuenta en UTF-16. Añadidos a §6.1 los límites reales de WhatsApp que faltaban (cabecera y pie ≤ 60, etiqueta del botón de lista ≤ 20, título de sección ≤ 24, títulos de botón únicos, secciones con filas y con título si hay varias) y precisado §7.4.
 
 ### T-1.3 · Utilidades de interfaz, texto y fechas 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-1.1 · **Diseño:** §8.3
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-1.1 · **Diseño:** §8.3
 - **Hacer:** portar a `core/ui.py`, `core/text.py` y `core/dates.py`:
   - `interactive.py` de ambos bots: helpers y `paginate`.
   - `_norm` y `_strip_html` de Peluquería.
   - `format_date_es` y `next_days` con `zoneinfo`.
 - **Acepta:** las funciones portadas se comportan como en el origen (sus tests portados pasan); sin `pytz`.
 - **Tests:** portados y adaptados de los dos repos.
-- **Notas:** —
+- **Notas:**
+  - **`core/text`:** `fold` es exactamente `_norm` de Peluquería (minúsculas, sin tildes, recortado, conservando la puntuación) y sus tests están portados. El parser del salón (T-5.2) la necesita, porque busca `[cfg]`, `HH:MM-HH:MM` y `corte+barba`. `normalize` es `fold` con la puntuación pasada a espacio y los espacios colapsados (§8.3): es `normalizar` de buscaBus sin las palabras vacías, que se quedan en el pack `bus` (T-4.1). `strip_html` es el original. Añadido `fold` a §8.3.
+  - **`core/dates`:** `weekday_es`, `format_date_es` y `next_days(now, n_calendar_days, skip_weekdays=())`. El origen excluía siempre el domingo (su docstring decía lunes a viernes, pero el código quitaba solo el domingo); aquí lo decide quien llama, que pasa `skip_weekdays={6}`. Toma "hoy" en la zona de `now` y rechaza fechas sin zona. Sin `pytz`.
+  - **`core/ui`:** `trunc`, `button`, `row`, `section`, `buttons_msg` y `list_msg` construyen `core.replies`. Los títulos y la etiqueta de la lista se truncan como en el origen; cualquier otra infracción lanza `LimitError` (con `core.limits.check`).
+  - **`paginate`:** no existe en el origen; sale de `paginar` de buscaBus (que trocea la lista) y del patrón de `build_lineas`. `per_page` tiene que ser positivo. Devuelve las filas de la página, la fila "más" si quedan páginas y siempre la de "volver" (8 + 2 = 10). Quien llama codifica la página siguiente en `more_id`. Una página fuera de rango vuelve a la primera, como en `flujo.py`.
+  - **Tests:** portados `TestTrunc`, `TestNorm`, `TestStripHtml`, `TestGetNextDays`, `TestFormatDateEs` y `test_paginar`, adaptados.
+  - **Para T-4.x y T-5.x:** los constructores propios de cada bot (`build_*`, `_fila_localidad`, `_titulo_usar`) se quedan en su pack.
+  - **Pendiente de consultar:** hoy un solo pack usa `strip_html`, `next_days` y `format_date_es` (salon) y `paginate` (bus), aunque §8.3 los pone en `core` y la regla dice que a `core` solo sube lo que usan los dos. Se dejan donde dice §8.3 hasta que decida la persona.
 
 ### T-1.4 · Reglas comunes de conversación 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-1.1 · **Diseño:** §7.2, §7.3
@@ -532,7 +539,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - La partición mañana/tarde.
 - **Acepta:** los tests portados de `slots`, `parser` y `calendar` de Peluquería pasan.
 - **Tests:** unitarios portados y casos de §9.4 (presencia larga cerca del cierre, antelación mínima).
-- **Notas:** —
+- **Notas:** el parser usa `core.text.fold` (conserva la puntuación), no `normalize`.
 
 ### T-5.3 · Config del pack 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-1.1 · **Diseño:** §9.2

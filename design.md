@@ -687,8 +687,8 @@ UpdateContact(display_name: str | None = None, opt_out: bool | None = None)
 | Módulo | Contenido | Origen |
 |---|---|---|
 | `core/ui.py` | `trunc`, `button`, `row`, `section`, `buttons_msg`, `list_msg` (validan límites); `paginate(items, page, per_page=8, more_id, back_id)` | `interactive.py` de los dos bots |
-| `core/text.py` | `normalize` (minúsculas, sin tildes, sin puntuación, espacios colapsados), `strip_html` | `parser.py` de Peluquería y `formato.py` de buscaBus |
-| `core/dates.py` | `format_date_es`, `weekday_es`, `next_days`; zonas con `zoneinfo` | `slots.py` de Peluquería y `fechas.py` de buscaBus |
+| `core/text.py` | `fold` (minúsculas, sin tildes, recortado; conserva la puntuación, para el parser de `salon`), `normalize` (`fold` sin puntuación y con espacios colapsados), `strip_html` | `parser.py` de Peluquería y `formato.py` de buscaBus |
+| `core/dates.py` | `format_date_es`, `weekday_es`, `next_days`; zonas con `zoneinfo` | `slots.py` de Peluquería y `messages.py` de buscaBus |
 | `core/limits.py` | Límites comunes y `plan_sends` | — |
 | `core/testing/` | Arnés de conversación (§17.2) y reloj fijo | `conftest.py` de los dos bots |
 
