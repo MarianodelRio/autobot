@@ -84,14 +84,14 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
-| F2 | Datos, tenants y aislamiento | 5 | 2 | in_progress |
+| F2 | Datos, tenants y aislamiento | 5 | 3 | in_progress |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **11** | |
+| **Total** | | **52** | **12** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -320,7 +320,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Diseño:** §12.1 y §12.2 ampliados con los detalles de implementación.
 
 ### T-2.3 · `tenant_tx` y test de aislamiento 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-2.2 · **Diseño:** §12.2
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-2.2 · **Diseño:** §12.2
 - **Hacer:** `tenant_tx(tenant_id)` (`set_config` local, prohibido anidar) y un test genérico que recorra **todos** los modelos con `tenant_id`.
 - **Acepta:**
   - El tenant A no lee, modifica, borra ni inserta filas de B.
@@ -329,7 +329,29 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - Anidar `tenant_tx` falla.
   - Un modelo nuevo sin política hace fallar el test (comprobado con un modelo temporal).
 - **Tests:** `tests/isolation/`.
-- **Notas:** —
+- **Notas:**
+  - **`tenant_tx(tenant_id)`** (`flowpilot/tenancy/tx.py`): `transaction.atomic(using="default", durable=True)` más `set_config('app.tenant_id', …, true)`.
+    - **Anidar falla**, con el `RuntimeError` de Django; un bloque durable sí se permite dentro de la transacción de un test.
+    - **Al salir bien** vacía el ajuste, así que dentro de un test no queda un tenant colgado. **Ante un error, o con el bloque marcado para rollback** (`needs_rollback`), no hace falta: el rollback, aunque sea a un savepoint, ya lo deshace, e intentarlo daría error u ocultaría el original.
+  - **Tests (`tests/isolation/test_isolation.py`):** son transaccionales, porque los tenants los crea `owner` y `fp_app` tiene que verlos commiteados. `conftest.py` hace que el `flush` entre tests se ejecute como `fp_owner`, porque `fp_app` no tiene `TRUNCATE`; es solo para tests y los roles no cambian. Cada modelo con `tenant_id` necesita una factoría en `FACTORIES` o estar en `PLATFORM_MODELS` (`TestSession`, sin RLS por diseño). Para cada modelo se prueba que:
+    - A no lee filas de B;
+    - `UPDATE`, `DELETE` y `.update()` sobre filas de B afectan a 0 filas;
+    - no se insertan filas de B, con los padres de B ya creados para que solo RLS pueda impedirlo;
+    - no se mueve una fila a B;
+    - no se apunta a filas de B (por cada clave foránea; el error tiene que venir de la clave compuesta `*_fk`);
+    - sin tenant se leen 0 filas, `UPDATE` y `DELETE` afectan a 0 y un `INSERT` falla;
+    - en la tabla `tenant`, cada uno solo ve el suyo.
+
+    Además:
+    - cada tabla con columna `tenant_id`, vista desde `information_schema` para incluir tablas sin modelo, tiene RLS activada y forzada y `tenant_isolation` como única política, con `USING` y `WITH CHECK` exactos;
+    - se detectan una tabla sin política y una política permisiva de más;
+    - anidar falla, también dentro de otro `atomic`;
+    - tres tests no transaccionales, porque ahí `tenant_tx` es un savepoint, comprueban que no queda tenant tras salir bien, tras un error y tras `set_rollback(True)`.
+  - **Mutaciones:** comprobadas y revertidas.
+    - Un modelo temporal con `tenant_id`, sin política ni factoría, hace fallar el test de cobertura y el de la política.
+    - Una política `FOR INSERT WITH CHECK (true)` en `conversation` y `outbound_message` hace fallar las comprobaciones de política y la inserción en `conversation`. En `outbound_message`, el `INSERT ... RETURNING` de Django ya choca con la política de lectura.
+  - **Para T-2.5:** este `flush` como `owner` resuelve también los tests transaccionales de Procrastinate.
+  - **Diseño:** §12.2 ampliado.
 
 ### T-2.4 · Registro de tenants y secretos 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-2.2, T-1.1 · **Diseño:** §5.2, §5.3, §5.4

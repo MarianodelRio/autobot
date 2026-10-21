@@ -11,6 +11,7 @@ from collections.abc import Iterator
 import pytest
 from django.conf import settings
 from django.core.management import call_command
+from django.core.management.commands import flush
 from django.db import connections
 from pytest_django import DjangoDbBlocker
 
@@ -26,3 +27,19 @@ def django_db_setup(django_db_blocker: DjangoDbBlocker) -> Iterator[None]:
     with django_db_blocker.unblock():
         call_command("migrate", database="owner", verbosity=0, interactive=False)
     yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _flush_as_owner() -> Iterator[None]:
+    """Transactional tests empty every table with TRUNCATE after each test, once per alias.
+    fp_app may not TRUNCATE (it ignores RLS, design.md §12.2), so the flush always runs as
+    fp_owner. Test-only: the roles keep their privileges."""
+    original = flush.Command.handle
+
+    def handle(self: flush.Command, *args: object, **options: object) -> None:
+        options["database"] = "owner"
+        original(self, *args, **options)
+
+    flush.Command.handle = handle  # type: ignore[method-assign]
+    yield
+    flush.Command.handle = original  # type: ignore[method-assign]
