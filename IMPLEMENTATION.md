@@ -82,7 +82,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 
 | Fase | Contenido | Tareas 🤖 | Hechas | Estado |
 |---|---|---:|---:|---|
-| F0 | Base del proyecto | 4 | 3 | in_progress (T-0.3 espera push y M-0.1; validación pendiente de confirmación) |
+| F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 0 | pending |
 | F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
 | F3 | Canales y runtime | 10 | 0 | pending |
@@ -91,7 +91,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **3** | |
+| **Total** | | **52** | **4** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -101,7 +101,7 @@ Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier ord
 
 | Id | Acción | Necesaria antes de | Estado |
 |---|---|---|---|
-| M-0.1 | Repositorio GitHub listo para CI y GHCR | T-0.3 | pending |
+| M-0.1 | Repositorio GitHub listo para CI y GHCR | T-0.3 | done |
 | M-3.1 | Bot de pruebas de **desarrollo** y tu id de Telegram | Validación F3 | pending |
 | M-4.1 | Autocares San Sebastián: personas de prueba y verificación de empresa en Meta | Validación F4 (personas de prueba) y M-8.3 (verificación) | pending |
 | M-5.1 | Proyecto de Google Cloud de la plataforma y cuenta de servicio | Validación F5 | pending |
@@ -151,7 +151,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** Imagen `python:3.14-slim` con el venv de `uv` en `/opt/venv` y usuario `app` (uid 10001); el código queda de root y de solo lectura para `app`. Verificado: `make up` levanta `db`, `web` y `worker`, `manage.py check` pasa en `web`, `id` da `app` y la imagen arranca gunicorn con `--read-only` sin errores gracias a `--no-control-socket` (gunicorn 26 intenta crear su socket de control en `$HOME`; añadido también en §4.2 y §14.2 de `design.md`). `db` no publica puerto (el 5432 del host suele estar ocupado y el diseño no lo expone). Hasta T-2.1, `compose.yaml` conecta con el superusuario local de `db`, porque `runserver` comprueba las migraciones y `fp_app` aún no existe; T-2.1 lo cambia a `fp_app`. El worker usa `sleep infinity` con `init: true` hasta T-2.5. La contraseña de `db` en local es fija (`postgres`), sin interpolar desde `.env`, para que copiar `.env.example` no rompa un volumen ya creado.
 
 ### T-0.3 · Integración continua 🤖
-- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-0.2, M-0.1 · **Diseño:** §17.3, §14.6
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-0.2, M-0.1 · **Diseño:** §17.3, §14.6
 - **Hacer:** `.github/workflows/ci.yml` con las puertas de §17.3:
   - `ruff`, `mypy`, `import-linter` y `pytest` con PostgreSQL 18 como servicio.
   - `makemigrations --check`, `django-migration-linter` y `pip-audit`.
@@ -160,7 +160,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - Además, `dependabot.yml`.
 - **Acepta:** un push a `main` deja CI en verde y la imagen publicada en GHCR.
 - **Tests:** —
-- **Notas:** Dos jobs. `check` ejecuta, con PostgreSQL 18 como servicio, `ruff`, `mypy`, `import-linter`, `pytest`, `makemigrations --check`, `lintmigrations` y `pip-audit`. `image` depende de `check`, construye siempre con Buildx (con caché `gha`) y solo publica `ghcr.io/marianodelrio/flowpilot:<sha>` en un push a `main`; tiene `packages: write`, así que basta con que Actions esté activo (lo está: permisos por defecto de solo lectura). `pip-audit` audita todo `uv.lock` (`uv export --all-groups`, con hashes). `django-migration-linter` va como dependencia de desarrollo y se añade a `INSTALLED_APPS` solo si está instalado, así que no entra en la imagen. Hasta T-2.1, CI conecta con el superusuario de la BD de servicio. Comprobado en local: el workflow pasa `actionlint`; con un PostgreSQL 18 temporal, `makemigrations --check` detecta una migración que falta y `lintmigrations` detecta un `NOT NULL` añadido (ficheros temporales, ya borrados); y `pip-audit` no encuentra vulnerabilidades. `dependabot.yml` vigila cada semana `uv`, `github-actions`, `docker` y `docker-compose`; por eso el `Dockerfile` usa la imagen base literal y no un `ARG`. `setup-uv` usa un tag completo, porque desde la v8 no publica tags de versión mayor, y fija la misma versión de uv que el `Dockerfile`. En `main` no se cancelan runs, pero un run en cola se sustituye por el siguiente; un SHA intermedio puede quedarse sin imagen, cosa que no importa para desplegar por SHA. **Bloqueada** hasta verificarlo en GitHub, con el push a `main` aprobado por la persona y M-0.1. Si CI queda en verde y la imagen aparece en GHCR, se marca `done` en un commit aparte, porque el workflow tiene que estar en `main` antes de poder verificarlo.
+- **Notas:** Dos jobs. `check` ejecuta, con PostgreSQL 18 como servicio, `ruff`, `mypy`, `import-linter`, `pytest`, `makemigrations --check`, `lintmigrations` y `pip-audit`. `image` depende de `check`, construye siempre con Buildx (con caché `gha`) y solo publica `ghcr.io/marianodelrio/flowpilot:<sha>` en un push a `main`; tiene `packages: write`, así que basta con que Actions esté activo (lo está: permisos por defecto de solo lectura). `pip-audit` audita todo `uv.lock` (`uv export --all-groups`, con hashes). `django-migration-linter` va como dependencia de desarrollo y se añade a `INSTALLED_APPS` solo si está instalado, así que no entra en la imagen. Hasta T-2.1, CI conecta con el superusuario de la BD de servicio. Comprobado en local: el workflow pasa `actionlint`; con un PostgreSQL 18 temporal, `makemigrations --check` detecta una migración que falta y `lintmigrations` detecta un `NOT NULL` añadido (ficheros temporales, ya borrados); y `pip-audit` no encuentra vulnerabilidades. `dependabot.yml` vigila cada semana `uv`, `github-actions`, `docker` y `docker-compose`; por eso el `Dockerfile` usa la imagen base literal y no un `ARG`. `setup-uv` usa un tag completo, porque desde la v8 no publica tags de versión mayor, y fija la misma versión de uv que el `Dockerfile`. En `main` no se cancelan runs, pero un run en cola se sustituye por el siguiente; un SHA intermedio puede quedarse sin imagen, cosa que no importa para desplegar por SHA. Verificado en GitHub: el run 39597647010 sobre `769204e` deja `check` e `image` en verde y publica `ghcr.io/marianodelrio/flowpilot:769204e748edba282323b165b7c8f7a549a7742b`. Se cierra en un commit aparte del workflow porque había que tenerlo en `main` para verificarlo.
 
 ### T-0.4 · Reglas de dependencias 🤖
 - **Estado:** done · **Revisión:** aprobada · **Depende de:** T-0.1 · **Diseño:** §4.4
@@ -179,8 +179,8 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Verificar:** el primer CI de T-0.3 publica la imagen en la pestaña Packages.
 
 ### ✅ Validación F0
-- [ ] `make up` + `make check` en verde en local.
-- [ ] CI en verde en `main` y la imagen visible en GHCR.
+- [x] `make up` + `make check` en verde en local.
+- [x] CI en verde en `main` y la imagen visible en GHCR.
 
 ---
 
