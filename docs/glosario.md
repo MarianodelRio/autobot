@@ -4,12 +4,14 @@
 
 | Término | Qué es (en llano) |
 |---|---|
+| **Adaptador de canal** | Código que traduce entre un servicio de mensajería (WhatsApp, Telegram) y el formato común que entienden los packs |
 | **Advisory lock** | Candado de PostgreSQL que la aplicación toma por un nombre (p. ej. "calendario X, día Y") para que dos procesos no hagan lo mismo a la vez |
 | **API** | La forma en que un programa le pide cosas a otro (p. ej. "envía este mensaje" a Meta) |
 | **Backoff exponencial** | Reintentar esperando cada vez más (2 s, 4 s, 8 s…) para no saturar |
-| **Adaptador de canal** | Código que traduce entre un servicio de mensajería (WhatsApp, Telegram) y el formato común que entienden los packs |
+| **Bot de pruebas** | Bot de Telegram de la plataforma con el que se elige un negocio y se prueba su conversación real sin usar WhatsApp |
 | **BSUID** | Identificador de un usuario de WhatsApp propio de cada negocio (`ES.xxxx`); Meta lo envía en lugar del teléfono cuando el usuario usa nombre de usuario |
 | **Caddy** | Servidor web que hace de puerta de entrada y consigue y renueva solo los certificados HTTPS |
+| **Canal `main` / `test`** | `main` es el canal de producción de un negocio (su WhatsApp o su bot de Telegram); `test` es el bot de pruebas compartido |
 | **CI** | Integración continua: tests automáticos en cada cambio, antes de aceptarlo |
 | **Contenedor / imagen** | La imagen es el programa empaquetado con todo lo que necesita; un contenedor es esa imagen ejecutándose |
 | **Dataset** | Datos estructurados de un negocio (p. ej. horarios de autobús) en ficheros, con un validador estricto |
@@ -17,9 +19,9 @@
 | **Expand/contract** | Cambiar la BD en dos pasos para que la versión vieja y la nueva del código funcionen a la vez |
 | **GHCR** | Registro de imágenes de contenedor de GitHub |
 | **healthchecks.io** | Servicio externo que avisa si deja de recibir un "latido" periódico; detecta que algo se ha caído aunque no pueda avisar por sí mismo |
-| **Long polling** | Forma de recibir mensajes de Telegram preguntando continuamente al servidor, sin necesidad de una URL pública; se usa en desarrollo local |
 | **HMAC / firma** | Un código que demuestra que un mensaje viene de quien dice (Meta) y no ha sido modificado |
 | **Idempotente** | Que hacerlo dos veces tiene el mismo efecto que hacerlo una |
+| **Long polling** | Forma de recibir mensajes de Telegram preguntando continuamente al servidor, sin necesidad de una URL pública; se usa en desarrollo local |
 | **Migración** | Script que cambia la estructura de la base de datos |
 | **Monolito modular** | Un solo programa organizado en módulos bien separados (lo contrario de microservicios) |
 | **Procrastinate** | Librería que usa PostgreSQL como cola de trabajos pendientes |

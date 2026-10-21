@@ -1,8 +1,8 @@
 # CLAUDE.md — FlowPilot
 
-Plataforma multi-negocio que atiende por WhatsApp (y Telegram, sobre todo para pruebas) a los clientes de pequeños negocios. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). El diseño completo está en [`design.md`](design.md); este fichero resume las reglas para trabajar en el repo.
+Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de Telegram compartido para probar cualquier negocio. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). El diseño completo está en [`design.md`](design.md); este fichero resume las reglas para trabajar en el repo.
 
-**Estado:** en diseño. Todavía no hay código de la aplicación.
+**Estado:** en fase de diseño. Todavía no existe implementación; `design.md` es la especificación.
 
 ## Idioma
 
@@ -20,7 +20,7 @@ Plataforma multi-negocio que atiende por WhatsApp (y Telegram, sobre todo para p
 
 - Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `worker`, `db`).
 - `core/` e `integrations/` no importan Django; `packs/*` solo importan `core` (nunca Django, `integrations` ni otro pack). Lo comprueba `import-linter`.
-- Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores. A `core/` solo sube lo que usan los dos packs.
+- Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de pruebas solo en `channels/test_bot/`. A `core/` solo sube lo que usan los dos packs.
 - Config y datasets de cada negocio en `tenants/<slug>/` (YAML validado en CI). Secretos en `.env` y `secrets.yaml` del servidor; nunca en git.
 
 ## Reglas obligatorias

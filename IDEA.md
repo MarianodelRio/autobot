@@ -8,7 +8,7 @@ FlowPilot automatiza esas tareas repetitivas: atiende a los clientes por WhatsAp
 
 ## ¿Quién lo usa?
 
-- **Dueños de pequeños negocios** (1–15 empleados) y **su clientela**, que escribe por WhatsApp (otros canales, más adelante).
+- **Dueños de pequeños negocios** (1–15 empleados) y **su clientela**, que escribe por el canal del negocio: WhatsApp o Telegram.
 - **El desarrollador** (Mariano), como operador de la plataforma: da de alta negocios, configura packs y vigila que todo funcione.
 
 ## ¿Cómo funciona a alto nivel?
@@ -24,12 +24,13 @@ FlowPilot automatiza esas tareas repetitivas: atiende a los clientes por WhatsAp
 - **Lenguaje y framework:** Python + Django.
 - **Base de datos:** PostgreSQL.
 - **Colas de trabajo:** en Postgres, con Procrastinate.
-- **Infraestructura:** una VPS en la UE con Docker Compose (web, worker, PostgreSQL y Caddy), unos 20 €/mes para 5–10 negocios.
+- **Infraestructura:** una VPS en la UE con Docker Compose (Caddy, web, worker y PostgreSQL), como máximo unos 20 €/mes para 5–15 negocios.
+- **Canales:** un canal por negocio (WhatsApp o Telegram) y un bot de Telegram compartido para probar cualquier negocio.
 - **Aislamiento:** los datos de cada negocio están separados del resto (tenant) y la base de datos lo refuerza con RLS.
 
 ## ¿Qué NO es parte de esto?
 
-- **No es un chatbot de IA de propósito general.** La IA solo responde preguntas sobre el negocio; no decide nada.
+- **No es un chatbot de IA de propósito general.** La primera versión no usa IA: las respuestas son deterministas. Si algún día se añade, solo responderá preguntas sobre el negocio y no decidirá nada.
 - **No es un software de reservas que compita con Booksy.** FlowPilot se conecta a la agenda que el negocio ya usa.
 - **No es un CRM.**
 - **No incluye facturación propia.**

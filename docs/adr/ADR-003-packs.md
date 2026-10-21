@@ -4,7 +4,7 @@
 
 ## Contexto
 
-Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar (peluquería) y consulta de horarios con datos estructurados (autobuses). Los dos bots de origen resuelven su conversación con una máquina de estados explícita y funcionan bien. Las conversaciones deben funcionar igual por WhatsApp y por Telegram.
+Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar (peluquería) y consulta de horarios con datos estructurados (autobuses). Los dos bots de origen resuelven su conversación con una máquina de estados explícita y funcionan bien. Cada negocio tiene un canal de producción (WhatsApp o Telegram) y todos se prueban desde un bot de Telegram compartido; las conversaciones deben funcionar igual en todos ellos.
 
 ## Decisión
 

@@ -2,6 +2,8 @@
 
 > **Qué es este documento.** La única fuente de verdad sobre el diseño de FlowPilot: alcance, componentes, responsabilidades, interfaces, datos, flujos, integraciones, configuración, despliegue y comportamiento ante errores.
 >
+> **Estado.** En fase de diseño: todavía no existe implementación. Todo lo descrito aquí es la especificación que se implementará.
+>
 > **Código de partida.** Los packs se construyen portando dos bots que ya funcionan, cada uno en su repositorio: `Peluqueria` (reservas por WhatsApp sobre Google Calendar) y `buscaBus` (horarios de autobús por WhatsApp). Cada sección indica qué se porta y de dónde.
 >
 > **Documentos relacionados.** `IDEA.md` (el problema), `docs/adr/` (decisiones principales), `docs/glosario.md` (términos en lenguaje llano).
@@ -44,9 +46,9 @@
 | Multitenant | Una base de datos; `tenant_id` en cada fila de cliente; **RLS** con dos roles (`fp_app`, `fp_owner`) ([ADR-002](docs/adr/ADR-002-multitenancy-rls.md)) |
 | Lógica de negocio | **Packs** `salon` y `bus`, cada uno con su máquina de estados y su esquema de config ([ADR-003](docs/adr/ADR-003-packs.md)) |
 | Entrada | Guardar primero, contestar 200, procesar después; "al menos una vez" + idempotencia ([ADR-004](docs/adr/ADR-004-entrada-idempotente.md)) |
-| Canales | **WhatsApp** (producción) y **Telegram** (desarrollo, pruebas y opcionalmente producción), con un adaptador pequeño cada uno; los packs no saben por qué canal hablan |
+| Canales | **Un canal de producción por negocio**: WhatsApp (su número) o Telegram (su bot). Además, **un bot de Telegram de pruebas** de la plataforma con selector de negocio. Un adaptador pequeño por tipo de canal; los packs no saben por qué canal hablan |
 | Config | `tenants/<slug>/tenant.yaml` en git, validado con pydantic en CI y al arrancar |
-| Secretos | Plataforma en `.env`; negocios en `secrets.yaml` en el servidor; nunca en git |
+| Secretos | Plataforma en `.env`; canal de cada negocio en `secrets.yaml`; los dos en el servidor, nunca en git |
 | Integraciones | Google Calendar (pack `salon`), con una cuenta de servicio de la plataforma |
 | Infraestructura | **Una VPS en la UE con Docker Compose**: `caddy`, `web`, `worker`, `db`. ~10–15 €/mes ([ADR-005](docs/adr/ADR-005-vps-docker-compose.md)) |
 | Backups | `pg_dump` cada 6 h → restic → almacenamiento S3 de otro proveedor |
@@ -59,7 +61,7 @@
 #### 1.1 Dentro
 
 - Plataforma para **5–10 negocios**, ampliable a **15** sin cambios de diseño.
-- **Canales de conversación:** WhatsApp Cloud API (canal de producción; la app de Meta es del negocio) y bots de Telegram (uno o varios por negocio, normalmente de pruebas). La misma lógica de pack sirve para los dos.
+- **Canales de conversación:** cada negocio tiene **un canal de producción**, WhatsApp Cloud API (la app de Meta es del negocio) o un bot de Telegram propio. Además, **un bot de Telegram de pruebas** de la plataforma permite probar cualquier negocio, eligiéndolo al empezar (§6.5). La misma lógica de pack sirve para todos.
 - **Pack `salon`** (§9): reservar, ver, mover y cancelar citas sobre el Google Calendar del negocio; citas manuales del dueño con confirmación al cliente; recordatorios 24 h antes con confirmar o cancelar; cierres y horarios especiales con eventos `[CFG]`; evento especial con días propios; límite de citas por cliente.
 - **Pack `bus`** (§10): consulta origen → destino → día con salidas directas; motor de horarios en memoria; matcher de pueblos que nunca adivina; fechas en formato cerrado; "ver pueblos por línea"; validador estricto de horarios y vista de revisión HTML/PDF para la empresa.
 - **Avisos al dueño** por Telegram, opcionales por negocio (§11).
@@ -67,7 +69,7 @@
 
 #### 1.2 Fuera de alcance
 
-IA o lenguaje natural · otros canales (email, Instagram, SMS) · formularios públicos · derivación a una persona dentro de la conversación (la opción "Contacto" muestra el teléfono del negocio) · panel de autoservicio para negocios · varios profesionales por peluquería, lista de espera, pagos · precios, incidencias y GTFS en `bus` · alta disponibilidad, autoescalado y entorno de staging.
+IA o lenguaje natural · más de un canal de producción por negocio · otros canales (email, Instagram, SMS) · formularios públicos · derivación a una persona dentro de la conversación (la opción "Contacto" muestra el teléfono del negocio) · panel de autoservicio para negocios · varios profesionales por peluquería, lista de espera, pagos · precios, incidencias y GTFS en `bus` · alta disponibilidad, autoescalado y entorno de staging.
 
 #### 1.3 Requisitos no funcionales
 
@@ -89,9 +91,10 @@ IA o lenguaje natural · otros canales (email, Instagram, SMS) · formularios p�
 |---|---|
 | **Tenant** (negocio) | Un negocio de la plataforma. Todo dato pertenece a uno |
 | **Pack** | El programa de un tipo de negocio: conversación, reglas, esquema de config, periódicas y tests (`salon`, `bus`) |
-| **Canal** | Una vía concreta de un tenant para hablar con sus contactos: un número de WhatsApp o un bot de Telegram. Se identifica por su `key` dentro del tenant (`wa-main`, `tg-test`) |
+| **Canal** | Vía por la que un contacto habla con un tenant. Cada tenant tiene su canal **`main`** (su número de WhatsApp o su bot de Telegram) y es accesible por el canal **`test`** (el bot de pruebas compartido) |
+| **Bot de pruebas** | Bot de Telegram de la plataforma con el que el operador y las personas autorizadas de cada negocio eligen un negocio y prueban su pack |
 | **Adaptador de canal** | Código que traduce entre un proveedor (Meta, Telegram) y los tipos comunes. Uno por tipo de canal |
-| **Contacto** | Persona que escribe a un tenant por un tipo de canal (nunca "cliente": cliente = tenant) |
+| **Contacto** | Persona que escribe a un tenant por uno de sus canales (nunca "cliente": cliente = tenant) |
 | **Conversación** | El estado de la charla de un contacto con un tenant (en qué paso está) |
 | **Evento entrante** (`inbound_event`) | Un aviso de un proveedor ya guardado y pendiente de procesar: un mensaje, una pulsación de botón o un estado de entrega |
 | **Mensaje saliente** (`outbound_message`) | Un mensaje que hay que enviar, guardado antes de enviarlo, con clave idempotente |
@@ -123,7 +126,7 @@ IA o lenguaje natural · otros canales (email, Instagram, SMS) · formularios p�
 ```
                     ┌──────────────────────────── VPS (UE) ──────────────────────────────┐
  Meta (WhatsApp) ──►│ caddy :443 ─ /webhooks/*, /health ─► web (gunicorn) ──┐            │
- Telegram ─────────►│  (HTTPS automático)                                    ▼            │
+ Telegram (bots) ──►│  (HTTPS automático)                                    ▼            │
                     │                                            ┌───────────────────┐    │
  Operador ─ SSH ───►│ 127.0.0.1:8000 ─► web /admin ─────────────►│ db: PostgreSQL 18 │    │
    (túnel)          │                                            │ datos + cola      │    │
@@ -151,8 +154,8 @@ Las migraciones se ejecutan con `docker compose run --rm web manage.py migrate` 
 
 #### 4.3 La vida de un mensaje
 
-1. El contacto escribe por WhatsApp o Telegram. El proveedor envía `POST /webhooks/<tipo>/<channel_public_id>`.
-2. **web** resuelve el canal por la URL (registro en memoria, §5.4), verifica la autenticidad con el adaptador del canal, convierte el aviso en elementos (`parse`) y, por cada uno, **guarda** `inbound_event` (si ya existía, nada) y **encola** `process_event` con el candado de esa conversación. Contesta 200.
+1. El contacto escribe al canal `main` del negocio. El proveedor envía `POST /webhooks/<tipo>/<public_id>` (los mensajes del bot de pruebas pasan antes por su selector, §6.5).
+2. **web** resuelve el tenant por la URL (registro en memoria, §5.4), verifica la autenticidad con el adaptador del canal, convierte el aviso en elementos (`parse`) y, por cada uno, **guarda** `inbound_event` (si ya existía, nada) y **encola** `process_event` con el candado de esa conversación. Contesta 200.
 3. **worker** coge el trabajo. El candado garantiza que los mensajes de un mismo contacto se procesan de uno en uno y en orden de llegada.
 4. **tx1** (transacción corta): carga evento, contacto y conversación.
 5. **Sin transacción:** pasa el mensaje al pack con un `PackContext`. El pack devuelve respuestas, estado nuevo y acciones; si necesita Calendar, lo llama aquí.
@@ -170,9 +173,11 @@ src/
   integrations/    Clientes de sistemas externos de negocio, sin Django: google_calendar/
   packs/           salon/, bus/ y registry.py (diccionario explícito de packs)
   flowpilot/       Django:
-    tenancy/         registro de tenants y canales (YAML → memoria), modelo Tenant, tenant_tx, secretos
+    tenancy/         registro de tenants (YAML → memoria), modelo Tenant, tenant_tx, secretos
     channels/        contrato de adaptador + whatsapp/ y telegram/ (verificación, parseo, render, envío)
-    runtime/         modelos (InboundEvent, Contact, Conversation, OutboundMessage, Notification),
+                     + test_bot/ (selector de negocio del bot de pruebas)
+    runtime/         modelos (InboundEvent, Contact, Conversation, OutboundMessage, Notification,
+                     TestBotEvent, TestSession),
                      process_event, envíos, periódicas
     notify/          bot de avisos de Telegram (dueños y operador)
     ops/             /health, comprobación de operación, latido, retención, comandos de operación
@@ -218,9 +223,9 @@ flowpilot/
 | Dónde | Qué | Cómo se cambia |
 |---|---|---|
 | `src/` | Código, packs, plantillas declaradas, migraciones | Commit + CI + despliegue |
-| `tenants/<slug>/` (git) | Identidad del tenant, canales (ids no secretos), pack, config de negocio, datasets | Commit + CI (valida todo) + despliegue |
+| `tenants/<slug>/` (git) | Identidad del tenant, canal `main` (ids no secretos), personas autorizadas para pruebas, pack, config de negocio, datasets | Commit + CI (valida todo) + despliegue |
 | Google Calendar del negocio | Citas, bloqueos, cierres `[CFG]` (pack `salon`) | Lo gestiona el dueño; efecto inmediato |
-| `secrets.yaml` (servidor) | Tokens y secretos de los canales de cada tenant | SSH + reinicio de `web` y `worker` |
+| `secrets.yaml` (servidor) | Tokens y secretos del canal `main` de cada tenant | SSH + reinicio de `web` y `worker` |
 | `.env` (servidor) | Secretos de plataforma y lo que cambia entre local y producción | SSH + reinicio |
 | Base de datos | Contactos, conversaciones, eventos, mensajes y avisos | La aplicación |
 
@@ -237,21 +242,19 @@ status: active                 # onboarding | active | paused | offboarded
 timezone: Europe/Madrid
 pack: salon
 
-channels:
-  - key: wa-main               # estable: no se renombra nunca
-    type: whatsapp
-    public_id: k3v9w2q8         # aleatorio; va en la URL del webhook
-    primary: true              # canal para avisos a contactos identificados solo por teléfono (§9.6)
-    app_id: "1234567890"
-    waba_id: "9876543210"
-    phone_number_id: "1122334455"
-    display_phone: "+34 682 21 44 69"
-    monthly_alert_threshold: 2000     # mensajes facturables/mes que disparan aviso (§15.3)
-  - key: tg-test
-    type: telegram
-    public_id: p5m1z7c4
-    bot_username: dmbarber_test_bot
-    allowed_users: [123456789]  # opcional: si existe, solo responde a estos ids
+channel:                       # canal de producción (main): exactamente uno
+  type: whatsapp               # whatsapp | telegram
+  public_id: k3v9w2q8           # aleatorio; va en la URL del webhook
+  app_id: "1234567890"          # solo whatsapp
+  waba_id: "9876543210"         # solo whatsapp
+  phone_number_id: "1122334455" # solo whatsapp
+  display_phone: "+34 682 21 44 69"
+  monthly_alert_threshold: 2000 # solo whatsapp: mensajes facturables/mes que disparan aviso (§15.3)
+  # bot_username: dmbarber_bot  # solo telegram
+
+testers:                        # opcional
+  telegram: [123456789]         # ids de Telegram que pueden elegir este negocio en el bot de pruebas
+  main: ["34600000001"]         # en onboarding, únicos ids que reciben respuesta por el canal main
 
 owner:                          # opcional (§11)
   telegram_chat_id: 987654321
@@ -266,7 +269,7 @@ config:                         # validado con el esquema del pack (SalonConfig,
   # …
 ```
 
-Validaciones comunes: slugs, ids y `public_id` únicos en todo el repositorio; `key` única dentro del tenant; como máximo un canal `primary` por tipo; `phone_number_id` único entre tenants; `allowed_users` con ids del tipo de canal (BSUID o teléfono en WhatsApp, entero en Telegram).
+Validaciones comunes: slugs, ids y `public_id` únicos en todo el repositorio; campos obligatorios según `channel.type`; `phone_number_id` único entre tenants; `testers.telegram` con enteros y `testers.main` con ids del tipo del canal `main` (BSUID o teléfono en WhatsApp, entero en Telegram).
 
 #### 5.3 Secretos
 
@@ -281,33 +284,34 @@ DB_OWNER_URL                               (rol fp_owner: migraciones y admin; s
 GOOGLE_SERVICE_ACCOUNT_FILE=/run/secrets/google_sa.json
 SECRETS_FILE=/run/secrets/secrets.yaml
 WHATSAPP_GRAPH_VERSION=v23.0
+TEST_BOT_TOKEN, TEST_BOT_WEBHOOK_SECRET    (bot de pruebas, §6.5; en local, un bot de desarrollo distinto)
+TEST_BOT_OPERATORS                         (ids de Telegram del operador: ven todos los negocios)
 NOTIFY_BOT_TOKEN, OPS_TELEGRAM_CHAT_ID     (bot de avisos, §11)
 SENTRY_DSN, HEALTHCHECKS_PING_URL, LOG_LEVEL
 ```
 
-**`secrets.yaml`** (servidor, `chmod 600`, montado de solo lectura en `web` y `worker`):
+**`secrets.yaml`** (servidor, `chmod 600`, montado de solo lectura en `web` y `worker`), con los secretos del canal `main` de cada tenant:
 
 ```yaml
-dm-barber:
-  wa-main:
-    app_secret: "…"            # verifica la firma de los webhooks
-    access_token: "…"          # token permanente de System User
-    verify_token: "…"          # verificación inicial del webhook de Meta
-  tg-test:
-    bot_token: "…"
-    webhook_secret: "…"        # secret_token de setWebhook (aleatorio, 32+ caracteres)
+dm-barber:                     # canal whatsapp
+  app_secret: "…"              # verifica la firma de los webhooks
+  access_token: "…"            # token permanente de System User
+  verify_token: "…"            # verificación inicial del webhook de Meta
+autocares-ss:                  # canal telegram
+  bot_token: "…"
+  webhook_secret: "…"          # secret_token de setWebhook (aleatorio, 32+ caracteres)
 ```
 
-- Al arrancar, el registro (§5.4) comprueba que cada canal tiene sus secretos; un canal sin secretos queda deshabilitado con alerta.
+- Al arrancar, el registro (§5.4) comprueba que cada tenant tiene los secretos de su tipo de canal; si faltan, su canal `main` queda deshabilitado con alerta (el bot de pruebas sigue funcionando para ese tenant).
 - El fichero de la cuenta de servicio de Google, `.env` y `secrets.yaml` entran en el backup cifrado de restic (§14.4) y tienen copia en el gestor de contraseñas del operador.
 - **Google Calendar usa una cuenta de servicio de la plataforma**; cada negocio comparte su calendario con su email ("Hacer cambios en los eventos"). Alcance `calendar.events`.
-- En local, `secrets.yaml` y `.env` viven en la raíz (ignorados por git) y apuntan a bots de Telegram de desarrollo.
+- En local, `secrets.yaml` y `.env` viven en la raíz (ignorados por git); el bot de pruebas es un bot de desarrollo propio del operador.
 
 #### 5.4 Registro de tenants
 
-- Al arrancar, `web` y `worker` leen `tenants/*/tenant.yaml`, validan la parte común, la `config` con el esquema del pack y los secretos, cargan los datasets (`pack.load_data`) y construyen índices en memoria: `(tipo, public_id) → canal`, `phone_number_id → canal`, `slug → tenant`, tenants activos por pack.
+- Al arrancar, `web` y `worker` leen `tenants/*/tenant.yaml`, validan la parte común, la `config` con el esquema del pack y los secretos, cargan los datasets (`pack.load_data`) y construyen índices en memoria: `(tipo, public_id) → tenant`, `phone_number_id → tenant`, `slug → tenant`, tenants activos por pack y tenants visibles por cada id de Telegram en el bot de pruebas.
 - **Un tenant inválido no afecta a los demás.** CI lo habría bloqueado (§17.3); si aun así falla al arrancar, queda `degraded`: sus eventos se guardan como `ignored`, los contactos reciben un texto genérico de plataforma ("Ahora mismo no puedo atenderte; inténtalo más tarde") y salta una alerta 🔴.
-- **Estados:** `onboarding` (solo responde a `allowed_users` de cada canal), `active`, `paused` (guarda y no responde), `offboarded` (contesta 200 sin guardar).
+- **Estados:** `onboarding` (el canal `main` solo responde a `testers.main`), `active`, `paused` (el canal `main` guarda y no responde), `offboarded` (contesta 200 sin guardar). El bot de pruebas funciona en `onboarding`, `active` y `paused`.
 - **`sync_tenants`** (tras `migrate`, §14.6) hace *upsert* de la tabla `tenant` (id, slug, name, pack, status, timezone) para las claves foráneas y RLS. Esa tabla es un reflejo y nunca se edita a mano.
 
 ---
@@ -363,6 +367,7 @@ class ChannelAdapter(Protocol):
         # SendOutcome = Sent(provider_message_id) | Rejected(reason, kind) | RetryLater(after_s) | Ambiguous(reason)
 ```
 
+- `Channel` describe el canal concreto (tipo, bot o número, credenciales); para el canal `test` es el bot de pruebas.
 - `ProactiveMessage(template: TemplateSpec, params: list[str], button_payloads: list[str])`: un aviso que el bot inicia (§6.3, §6.4).
 - `TemplateSpec(name, language, text, buttons)` lo declara el pack: `name` y `language` sirven en WhatsApp; `text` (con `{1}`, `{2}`…) y los títulos de `buttons` sirven en Telegram. El texto debe coincidir con el de la plantilla aprobada en Meta.
 - `Rejected.kind`: `auth` (token inválido o revocado), `recipient` (el contacto no puede recibir: bloqueó el bot, número inválido) u `other`.
@@ -372,11 +377,11 @@ class ChannelAdapter(Protocol):
 
 Se porta de `webhook.py` y `whatsapp.py` de Peluquería.
 
-- **Conexión:** la app de Meta, la WABA y el número están en el Business Portfolio del negocio (el operador es administrador). El webhook se configura en la app con la URL `https://api.<dominio>/webhooks/whatsapp/<public_id>`. Un canal = una app y un número.
+- **Conexión:** la app de Meta, la WABA y el número están en el Business Portfolio del negocio (el operador es administrador). El webhook se configura en la app con la URL `https://api.<dominio>/webhooks/whatsapp/<public_id>`. Una app y un número por negocio.
 - **`GET` de verificación:** compara `hub.verify_token` con el del canal en tiempo constante y devuelve `hub.challenge`.
 - **`verify`:** `X-Hub-Signature-256` = HMAC-SHA256 del cuerpo con `app_secret`, en tiempo constante.
 - **`parse`:**
-  - `value.metadata.phone_number_id` debe ser el del canal; si no, el elemento se descarta y se registra.
+  - `value.metadata.phone_number_id` debe ser el del tenant; si no, el elemento se descarta y se registra.
   - Mensajes: `text`, `interactive.button_reply`, `interactive.list_reply` y `button` (botón de plantilla, con `button.payload`) → `IncomingMessage`; audio, imagen, documento, sticker, ubicación… → `unsupported`. Texto truncado a 4.096; ids de más de 64 bytes se descartan.
   - `external_id` = `user_id` (BSUID, `^[A-Z]{2}\.[A-Za-z0-9]{1,128}$`) si viene; si no, `from` (teléfono, 7–15 dígitos). `phone` solo si `from` es un teléfono. `display_name` de `contacts[].profile.name`.
   - Estados (`sent`, `delivered`, `read`, `failed`) → `StatusItem` con `biz_opaque_callback_data` como `outbound_ref` y su `pricing`.
@@ -400,19 +405,18 @@ Se porta de `webhook.py` y `whatsapp.py` de Peluquería.
 
 #### 6.4 Telegram (`flowpilot/channels/telegram/`)
 
-Se apoya en `tools/telegram_pruebas.py` de buscaBus (mapeo de listas y botones).
+Se apoya en `tools/telegram_pruebas.py` de buscaBus (mapeo de listas y botones). El mismo adaptador sirve para el bot propio de un negocio (canal `main`) y para el bot de pruebas (§6.5); solo cambian el token y el enrutado.
 
-- **Un bot por canal**, creado con @BotFather. Normalmente cada negocio tiene un bot de pruebas en producción y el operador uno o varios de desarrollo en local. Un mismo bot nunca se usa a la vez en local y en producción: Telegram no permite webhook y `getUpdates` simultáneos.
-- **Entrada en producción:** webhook en `https://api.<dominio>/webhooks/telegram/<public_id>`, registrado con `manage.py telegram_set_webhook <slug> <key>` (`setWebhook` con `secret_token = webhook_secret` y `allowed_updates = [message, callback_query]`).
-- **Entrada en local:** `manage.py telegram_poll <slug> <key>` hace *long polling* con `getUpdates` y pasa cada update **por el mismo camino que el webhook** (`parse` → `inbound_event` → `process_event`). No hace falta túnel ni dominio.
-- **`verify`:** cabecera `X-Telegram-Bot-Api-Secret-Token` comparada en tiempo constante con `webhook_secret`.
-- **`parse`:** solo chats privados (grupos y canales se ignoran). `message.text` → `text` (`/start` se trata como el texto `menu`); `callback_query.data` → `button` con ese `payload`; resto de tipos → `unsupported`. `external_id` = `from.id`; `display_name` = `first_name`; sin teléfono. `provider_event_id` = `update_id` (único por bot). Sin estados de entrega.
+- **Entrada en el servidor:** webhook registrado con `manage.py telegram_set_webhook <slug|test>` (`setWebhook` con `secret_token` y `allowed_updates = [message, callback_query]`). URL: `https://api.<dominio>/webhooks/telegram/<public_id>` para un bot de negocio y `https://api.<dominio>/webhooks/telegram-test` para el bot de pruebas.
+- **Entrada en local:** `manage.py telegram_poll [<slug>]` hace *long polling* con `getUpdates` (por defecto, del bot de pruebas de desarrollo) y pasa cada update **por el mismo camino que el webhook**. No hace falta túnel ni dominio. Un mismo bot nunca se usa a la vez en local y en el servidor: Telegram no admite webhook y `getUpdates` simultáneos.
+- **`verify`:** cabecera `X-Telegram-Bot-Api-Secret-Token` comparada en tiempo constante con el `webhook_secret` del bot.
+- **`parse`:** solo chats privados (grupos y canales se ignoran). `message.text` → `text`; `callback_query.data` → `button` con ese `payload`; resto de tipos → `unsupported`. `external_id` = `from.id`; `display_name` = `first_name`; sin teléfono. `provider_event_id` = `update_id` (único por bot). Sin estados de entrega. `/start` llega como texto y el runtime lo trata como `menu` (§7.3).
 - **`acknowledge`:** `answerCallbackQuery` del `callback_query`, para que el cliente deje de mostrar el botón "cargando". Lo llama el worker al empezar el evento; si falla, se registra y se sigue.
 - **`render`:**
   - `Text` → `sendMessage`.
   - `Buttons` → `sendMessage` con `InlineKeyboardMarkup`, un botón por fila.
   - `List` → `sendMessage` con un botón inline por fila. La cabecera va como primera línea en negrita y el pie se descarta. Las descripciones de las filas se añaden al texto como `título: descripción`, porque los botones de Telegram no tienen descripción.
-  - `ProactiveMessage` → `sendMessage` con `TemplateSpec.text` y sus parámetros, más los botones con sus `payload`. Telegram no tiene ventana ni plantillas.
+  - `ProactiveMessage` → `sendMessage` con `TemplateSpec.text` y sus parámetros, más los botones con sus `payload`. Telegram no tiene ventana de 24 h ni plantillas.
   - `*negrita*` se convierte a `<b>…</b>` con `parse_mode=HTML`, escapando el resto del texto.
 - **`send`:** `POST https://api.telegram.org/bot<token>/sendMessage`, timeout 10 s.
 
@@ -425,11 +429,29 @@ Se apoya en `tools/telegram_pruebas.py` de buscaBus (mapeo de listas y botones).
 | 429 (con `retry_after`) o 5xx | `RetryLater` |
 | Timeout o error de red | `Ambiguous` |
 
-#### 6.5 Contactos por canal
+#### 6.5 Bot de pruebas
 
-- Un contacto se identifica por `(tenant, tipo de canal, external_id)`. La misma persona en WhatsApp y en Telegram son dos contactos distintos, con conversaciones distintas.
-- Las respuestas salen siempre por el canal del evento que contestan.
-- Los avisos proactivos a un contacto conocido salen por `contact.last_channel_key` (el último canal por el que escribió). Los avisos a un teléfono sin contacto previo salen por el canal WhatsApp `primary` del tenant (§9.6).
+Un único bot de Telegram de la plataforma (`TEST_BOT_TOKEN`) para probar cualquier negocio con su lógica real, sin WhatsApp. Lo usan el operador (`TEST_BOT_OPERATORS`, ve todos los negocios) y las personas de cada negocio listadas en `testers.telegram` (solo ven los suyos). Para un tenant, el bot de pruebas es su canal `test`: tiene contactos, conversaciones y mensajes propios, separados de los del canal `main`.
+
+**Selector (`flowpilot/channels/test_bot/`):**
+
+1. `web` recibe el update en `/webhooks/telegram-test`, lo verifica y lo guarda en `test_bot_event` (único por `update_id`). Encola `route_test_update(event_id)` con candado `tg:<hash del usuario>`. Contesta 200. Como no sabe aún el tenant, no escribe en tablas con RLS.
+2. El worker decide:
+   - Usuario sin permiso para ningún negocio → "No tienes acceso al bot de pruebas" y nada más.
+   - `/start`, `/negocio`, o usuario sin negocio elegido → lista de los negocios que puede ver (nombre y pack), paginada con `core/ui.paginate`.
+   - Botón `fp_select:<slug>` (con permiso comprobado) → guarda la elección en `test_session` y crea en ese tenant un `inbound_event` sintético (`channel='test'`, `provider_event_id = select:<update_id>`, payload con el usuario de Telegram y el texto `menu`) + `process_event`; el runtime lo procesa como siempre y el pack responde con su menú.
+   - Cualquier otro update con negocio elegido → `inbound_event` en ese tenant (canal `test`, `provider_event_id = update_id`) + `process_event`, exactamente como un mensaje del canal `main`.
+3. Las respuestas salen por el bot de pruebas porque el contacto pertenece al canal `test`. Los avisos proactivos (recordatorios de citas hechas desde el bot de pruebas) también.
+
+- El primer mensaje tras elegir negocio indica cuál es ("🧪 Pruebas · DM Barber Shop. Escribe /negocio para cambiar").
+- Un tenant `degraded` u `offboarded` no aparece en la lista; si estaba elegido, se responde que no está disponible y se vuelve a mostrar la lista.
+- `test_session` guarda solo `(telegram_user_id, tenant_id, selected_at)`; `test_bot_event` guarda el update entrante y se borra a los 7 días.
+
+#### 6.6 Contactos y canales
+
+- Un contacto se identifica por `(tenant, canal, external_id)`, con canal `main` o `test`. La misma persona en el canal `main` y en el bot de pruebas son dos contactos distintos, con conversaciones distintas.
+- Las respuestas y los avisos proactivos a un contacto salen siempre por su canal.
+- Los avisos a un teléfono sin contacto previo (confirmación de citas manuales, §9.6) solo son posibles si el canal `main` del tenant es WhatsApp; si es Telegram, se registran y no se envían.
 
 ---
 
@@ -438,17 +460,17 @@ Se apoya en `tools/telegram_pruebas.py` de buscaBus (mapeo de listas y botones).
 #### 7.1 Entrada
 
 ```
-POST /webhooks/<tipo>/<public_id>
-  1. canal = registro[(tipo, public_id)]          no existe o deshabilitado → 404
+POST /webhooks/<tipo>/<public_id>                  (canal main de un tenant)
+  1. tenant = registro[(tipo, public_id)]         no existe o canal deshabilitado → 404
   2. cuerpo ≤ 64 KB y JSON válido                  si no → 400
   3. adaptador.verify(...)                         falla → 401 sin guardar; cuenta para el límite por IP
   4. tenant offboarded                             → 200 sin guardar
   5. por cada elemento de adaptador.parse(...):
-       status = ignored si tenant paused/degraded, o si el canal tiene allowed_users
-                (o el tenant está en onboarding) y external_id no está en la lista
+       status = ignored si el tenant está paused o degraded,
+                o en onboarding y external_id no está en testers.main
        tenant_tx(tenant.id):
-         INSERT inbound_event (channel_key, kind, provider_event_id, payload, status)
-           ON CONFLICT (tenant_id, channel_key, provider_event_id) DO NOTHING
+         INSERT inbound_event (channel='main', kind, provider_event_id, payload, status)
+           ON CONFLICT (tenant_id, channel, provider_event_id) DO NOTHING
          si se insertó y status = pending:
            kind=message → defer process_event(tenant_id, event_id)  cola inbound, lock conv:<h>
            kind=status  → defer apply_status(tenant_id, event_id)   cola inbound, sin candado
@@ -456,7 +478,8 @@ POST /webhooks/<tipo>/<public_id>
   6. 200 OK
 ```
 
-- `h` = primeros 16 caracteres hex de `sha256(tenant_id, tipo de canal, external_id)`. **Los candados nunca llevan teléfonos ni ids de usuario en claro**, porque la tabla de trabajos de Procrastinate no tiene RLS.
+- El bot de pruebas entra por `POST /webhooks/telegram-test` y pasa por el selector (§6.5), que acaba creando el mismo `inbound_event` con `channel='test'` y encolando el mismo `process_event`.
+- `h` = primeros 16 caracteres hex de `sha256(tenant_id, canal, external_id)`. **Los candados nunca llevan teléfonos ni ids de usuario en claro**, porque la tabla de trabajos de Procrastinate no tiene RLS.
 - Los webhooks no hacen ninguna llamada externa: solo leen el registro en memoria y escriben en la BD.
 
 #### 7.2 `process_event`
@@ -468,9 +491,9 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
         event = InboundEvent.get(event_id)
         if event.status != "pending":
             return                                          # ya procesado (reintento tras COMMIT)
-        channel = tenant.channel(event.channel_key)
+        channel = tenant.channel(event.channel)             # main del tenant, o el bot de pruebas
         item = channel.adapter.parse_one(event.payload)     # InboundItem
-        contact = upsert_contact(channel, item)             # actualiza last_channel_key, nombre, teléfono
+        contact = upsert_contact(tenant, event.channel, item)   # actualiza nombre y teléfono
         conv = load_or_create_conversation(contact)
         state = effective_state(conv, tenant.pack, now)     # caducidad y versión (§7.3)
 
@@ -548,7 +571,7 @@ outcome = adaptador.send(adaptador.render(payload), ...)
 
 | Cola | Trabajos | Candado | Reintentos |
 |---|---|---|---|
-| `inbound` | `process_event`, `apply_status` | `conv:<h>` en `process_event` | 3, backoff exponencial 2 s → 30 s, solo para `TransientError` |
+| `inbound` | `process_event`, `apply_status`, `route_test_update` | `conv:<h>` en `process_event`; `tg:<h>` en `route_test_update` | 3, backoff exponencial 2 s → 30 s, solo para `TransientError` |
 | `outbound` | `send_message`, `send_notification` | `out:<h>` y `owner:<tenant>` | Según `SendOutcome` |
 | `periodic` | `run_periodic`, `ops_check`, `retention_cleanup` | `queueing_lock` por nombre y tenant (nunca dos iguales pendientes) | 2 |
 
@@ -794,7 +817,7 @@ Una lectura de `[now, now + booking_window_days + 1]` con dos pasadas:
 | **Recordatorios** (si `reminders_enabled`) | Cita del bot o manual que empieza dentro de `reminder_window_hours` | `SendProactive(TEMPLATE_REMINDER, [fecha, hora], [reminder_confirm:<id>, reminder_cancel:<id>])` con clave `reminder:<gcal_id>:<start>` |
 | **Confirmaciones de citas manuales** (si `manual_confirmations_enabled`) | Cita manual con `created ≥ manual_confirmations_since` que empieza en el futuro | `SendProactive(TEMPLATE_CONFIRMATION, [nombre, fecha, hora], [booking_cancel:<id>])` con clave `confirm:<gcal_id>`. Después escribe `Estado: pendiente` en la descripción si no lo tenía |
 
-- **Destinatario:** en citas del bot, el contacto de `fp_contact` por su `last_channel_key` (WhatsApp o Telegram). En citas manuales, el teléfono de la descripción por el canal WhatsApp `primary` del tenant, creando el contacto si no existe; si el tenant no tiene WhatsApp, se registra y no se envía.
+- **Destinatario:** en citas del bot, el contacto de `fp_contact` por su canal (§6.6). En citas manuales, el teléfono de la descripción por el canal `main` si es WhatsApp, creando el contacto si no existe; si el canal `main` es Telegram, se registra y no se envía.
 - Las claves estables son únicas en `outbound_message`: aunque el barrido corra muchas veces, cada aviso sale una sola vez.
 
 #### 9.7 Plantillas
@@ -808,7 +831,7 @@ El operador crea las plantillas en el WhatsApp Manager de cada negocio. `pack.he
 
 #### 9.8 Escenarios obligatorios
 
-Reserva completa · día sin huecos · mañana/tarde · `SlotTaken` · límite de citas · Calendar caído al pedir cita (falla en abierto) y al crear (texto de recuperación) · reintento de una reserva ya creada · `[CFG] CERRADO`, `VACACIONES` y `HORARIO` · servicio con presencia larga cerca del cierre · mover y cancelar · evento especial activo e inactivo · recordatorio una sola vez en dos barridos · confirmación de una cita manual (y ninguna para las anteriores a `manual_confirmations_since`) · botón de recordatorio sobre una cita ajena · `baja` → sin recordatorios · cita antigua con `WaId:` · la misma reserva completa por un canal Telegram.
+Reserva completa · día sin huecos · mañana/tarde · `SlotTaken` · límite de citas · Calendar caído al pedir cita (falla en abierto) y al crear (texto de recuperación) · reintento de una reserva ya creada · `[CFG] CERRADO`, `VACACIONES` y `HORARIO` · servicio con presencia larga cerca del cierre · mover y cancelar · evento especial activo e inactivo · recordatorio una sola vez en dos barridos · confirmación de una cita manual (y ninguna para las anteriores a `manual_confirmations_since`) · botón de recordatorio sobre una cita ajena · `baja` → sin recordatorios · cita antigua con `WaId:` · la misma reserva completa por Telegram (canal `main` de tipo Telegram y bot de pruebas).
 
 ---
 
@@ -912,7 +935,7 @@ class BusConfig(BaseModel):
 
 Se portan las de buscaBus (`test_formato`, `test_diff`, `test_formatear`, `test_revision`, `test_loader`, `test_query` con sus pruebas doradas, `test_calendario`, `test_matcher`, `test_fechas`, `test_conversation`, `test_interactive`).
 
-Escenarios de conversación: consulta completa · Ver la vuelta · Otro día · día sin servicio con siguiente día · `sin_datos` · no vendible · sin trayecto · origen = destino · Villafranca (también con errata) · errata confirmada y rechazada · pueblos por línea con paginación · localidad pendiente · fecha pasada · 25/12 · hoy sin salidas restantes · fecha escrita inválida · resultado de más de 4.096 caracteres · consulta completa por Telegram.
+Escenarios de conversación: consulta completa · Ver la vuelta · Otro día · día sin servicio con siguiente día · `sin_datos` · no vendible · sin trayecto · origen = destino · Villafranca (también con errata) · errata confirmada y rechazada · pueblos por línea con paginación · localidad pendiente · fecha pasada · 25/12 · hoy sin salidas restantes · fecha escrita inválida · resultado de más de 4.096 caracteres · consulta completa por Telegram (canal `main` de tipo Telegram y bot de pruebas).
 
 ---
 
@@ -935,16 +958,16 @@ Las tablas con 🔒 llevan `tenant_id` y RLS. Claves primarias UUIDv7 (`uuid.uui
 ```text
 tenant 🔒*          id, slug, name, pack, status, timezone, synced_at       (reflejo de tenants/*.yaml)
 
-contact 🔒          id, tenant_id, channel_type[whatsapp|telegram], external_id, phone_e164 NULL,
-                    display_name, last_channel_key, opt_out, opt_out_at, unreachable,
-                    last_activity_at, created_at              UNIQUE(tenant_id, channel_type, external_id)
+contact 🔒          id, tenant_id, channel[main|test], external_id, phone_e164 NULL,
+                    display_name, opt_out, opt_out_at, unreachable,
+                    last_activity_at, created_at              UNIQUE(tenant_id, channel, external_id)
 conversation 🔒     id, tenant_id, contact_id, state jsonb, state_version, last_inbound_at, updated_at
                                                               UNIQUE(tenant_id, contact_id)
 
-inbound_event 🔒    id, tenant_id, channel_key, kind[message|status], provider_event_id, payload jsonb,
+inbound_event 🔒    id, tenant_id, channel[main|test], kind[message|status], provider_event_id, payload jsonb,
                     status[pending|done|failed|ignored], error, received_at, processed_at
-                                                              UNIQUE(tenant_id, channel_key, provider_event_id)
-outbound_message 🔒 id, tenant_id, contact_id, channel_key, idem_key, seq, kind[reply|proactive],
+                                                              UNIQUE(tenant_id, channel, provider_event_id)
+outbound_message 🔒 id, tenant_id, contact_id, channel[main|test], idem_key, seq, kind[reply|proactive],
                     payload jsonb, status[pending|sending|sent|failed|unknown], attempts,
                     provider_message_id, pricing_category, billable, last_error,
                     inbound_event_id NULL, created_at, sent_at
@@ -954,6 +977,13 @@ notification 🔒     id, tenant_id, idem_key, kind, text, status[pending|sent|f
 ```
 
 \* `tenant` tiene RLS sobre su propio `id`.
+
+**Tablas del bot de pruebas** (de plataforma, sin `tenant_id` ni RLS, porque se escriben antes de saber el negocio; solo las usa el selector, §6.5):
+
+```text
+test_bot_event      id, update_id UNIQUE, payload jsonb, status[pending|done|failed], received_at
+test_session        telegram_user_id PK, tenant_id, selected_at
+```
 
 - Además están las tablas de Procrastinate (sin `tenant_id` ni RLS; por eso los trabajos solo llevan ids) y las de Django (usuarios del Admin, sesiones, caché, `LogEntry`).
 - No hay tablas de citas ni de horarios: las citas viven en Google Calendar y los horarios en git y en memoria.
@@ -978,6 +1008,7 @@ CREATE POLICY tenant_isolation ON contact
 - `NULLIF(…, '')` es necesario: con conexiones persistentes, tras un `SET LOCAL` las transacciones siguientes ven `''` en lugar de NULL.
 - Django tiene dos alias: `default` (`fp_app`) y `owner` (`fp_owner`). El Admin usa `owner` mediante una clase base de `ModelAdmin` (`using = "owner"`). Las URL `/admin/` solo se montan en `web` y Caddy no las expone (§13).
 - Los trabajos que recorren tenants (repartos, retención, `ops_check`) obtienen la lista del registro en memoria y abren un `tenant_tx` por tenant.
+- Las dos tablas del bot de pruebas no tienen RLS: `test_session` solo relaciona un usuario de Telegram con un tenant y `test_bot_event` solo la lee el selector, que no consulta datos de ningún tenant.
 - **Test genérico de aislamiento** (obligatorio en CI): para cada modelo con `tenant_id` comprueba, con los tenants A y B, que A no lee, modifica, borra ni inserta filas de B, que no crea claves foráneas hacia B y que sin tenant fijado se leen 0 filas. Una tabla nueva sin política hace fallar el test.
 
 #### 12.3 Retención
@@ -986,6 +1017,8 @@ CREATE POLICY tenant_isolation ON contact
 |---|---|---|
 | `inbound_event.payload`, `outbound_message.payload` | 30 días | `retention_cleanup` nocturno, por lotes de 1.000: vacía el payload y conserva los metadatos |
 | Filas de `inbound_event` | 90 días | Borrado |
+| `test_bot_event` | 7 días | Borrado |
+| `test_session` | 30 días sin uso | Borrado |
 | Filas de `outbound_message` y `notification` | 12 meses | Borrado |
 | `conversation.state` caducado | Inmediato | Se vacía en el siguiente mensaje o en la limpieza nocturna |
 | `contact` sin actividad | 12 meses | Borrado junto con su conversación y sus mensajes |
@@ -1007,9 +1040,9 @@ Derechos RGPD: `manage.py export_contact <slug> <external_id>` y `manage.py forg
 | Punto | Protección |
 |---|---|
 | Webhooks | Autenticidad comprobada **antes de nada** y en tiempo constante (HMAC de Meta, `secret_token` de Telegram); cuerpo ≤ 64 KB; URL con `public_id` aleatorio; límite por IP solo de peticiones con firma inválida; validación de formatos de identificador |
-| Superficie pública | Caddy solo enruta `/webhooks/whatsapp/*`, `/webhooks/telegram/*` y `/health`; todo lo demás, 404 |
+| Superficie pública | Caddy solo enruta `/webhooks/whatsapp/*`, `/webhooks/telegram/*`, `/webhooks/telegram-test` y `/health`; todo lo demás, 404 |
 | Admin | No se publica: `web` también escucha en `127.0.0.1:8000` y el operador entra con `ssh -L` (`make admin-tunnel`). Login de Django con 2FA (`django-otp`); cada cambio queda en `LogEntry` |
-| Canales de prueba | `allowed_users` limita quién recibe respuesta de un bot de pruebas |
+| Pruebas | El bot de pruebas solo atiende a `TEST_BOT_OPERATORS` y a los `testers.telegram` de cada negocio, y cada uno solo ve sus negocios. En `onboarding`, el canal `main` solo responde a `testers.main` |
 | Servidor | SSH solo con clave, sin root; cortafuegos que solo abre 22, 80 y 443; `unattended-upgrades`; `fail2ban` en SSH |
 | Base de datos | Sin puerto publicado; RLS con dos roles (§12.2) |
 | Contenedores | Usuario no root; sistema de ficheros de solo lectura salvo `/tmp`; secretos montados de solo lectura |
@@ -1052,14 +1085,14 @@ services:
           (shared_buffers 512MB, max_connections 100, log_min_duration_statement 1s)
 ```
 
-`compose.yaml` (local): los mismos `web`, `worker` y `db`, con la imagen construida en local, código montado, `runserver` y recarga automática del worker; sin Caddy. Telegram funciona en local con `telegram_poll`.
+`compose.yaml` (local): los mismos `web`, `worker` y `db`, con la imagen construida en local, código montado, `runserver` y recarga automática del worker; sin Caddy. En local se conversa con los packs mediante el bot de pruebas de desarrollo y `telegram_poll` (§6.4).
 
 #### 14.3 Caddy
 
 ```
 api.<dominio> {
     request_body { max_size 64KB }
-    @public path /webhooks/whatsapp/* /webhooks/telegram/* /health
+    @public path /webhooks/whatsapp/* /webhooks/telegram/* /webhooks/telegram-test /health
     handle @public { reverse_proxy web:8000 }
     handle { respond 404 }
 }
@@ -1165,13 +1198,15 @@ Una vista "Estado" en el Admin muestra:
 
 1. `manage.py new_tenant <slug> --pack salon|bus` crea `tenants/<slug>/tenant.yaml` con `id`, `status: onboarding` y la config por defecto del pack.
 2. Completar la config. En `bus`, añadir el dataset y pasar `make bus-validar`.
-3. **Canal de pruebas:** crear un bot con @BotFather, declararlo en `channels` con `allowed_users` y añadir sus secretos a `secrets.yaml`.
-4. **WhatsApp:** seguir el checklist de §6.3, declarar el canal (`primary: true`) y añadir sus secretos.
-5. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de servicio y se pone el `calendar_id` en la config. Crear las plantillas del pack en el WhatsApp Manager.
+3. **Pruebas:** añadir a `testers.telegram` los ids de Telegram de las personas del negocio que vayan a probar.
+4. **Canal `main`:**
+   - WhatsApp: seguir el checklist de §6.3, declarar `channel` y añadir sus secretos a `secrets.yaml`.
+   - Telegram: crear el bot con @BotFather a nombre del negocio, declarar `channel` y añadir `bot_token` y `webhook_secret` a `secrets.yaml`.
+5. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de servicio y se pone el `calendar_id` en la config. Si el canal es WhatsApp, crear las plantillas del pack en el WhatsApp Manager.
 6. **Avisos al dueño** (opcional): `manage.py notify_link <slug>`.
-7. Commit y despliegue. Después, `manage.py telegram_set_webhook <slug> <key>` para cada bot.
+7. Commit y despliegue. Si el canal `main` es Telegram, `manage.py telegram_set_webhook <slug>`.
 8. `manage.py tenant_health <slug>` en verde.
-9. Pruebas por el bot de Telegram con el negocio y por WhatsApp con los `allowed_users`.
+9. Pruebas con el negocio por el bot de pruebas y, por el canal `main`, con los ids de `testers.main`.
 10. `status: active`, commit y despliegue. `tools/qr.py <slug>` genera el QR de `wa.me` para el local.
 
 #### 16.2 Baja de un negocio
@@ -1179,13 +1214,13 @@ Una vista "Estado" en el Admin muestra:
 1. `status: offboarded` y despliegue: los webhooks se contestan con 200 sin guardar nada.
 2. `manage.py export_tenant <slug>`, si se acordó con el negocio.
 3. `manage.py purge_tenant <slug>` borra contactos, conversaciones, eventos, mensajes y avisos. Pide escribir el slug para confirmar.
-4. Quitar sus entradas de `secrets.yaml` y `deleteWebhook` de sus bots.
+4. Quitar su entrada de `secrets.yaml` y, si su canal es Telegram, `deleteWebhook` de su bot.
 5. El negocio revoca el acceso del operador a su portfolio de Meta y deja de compartir el calendario.
 6. Borrar `tenants/<slug>/`.
 
 #### 16.3 Comandos (`Makefile`)
 
-`make deploy SHA=…` · `make status` · `make logs SERVICE=…` · `make admin-tunnel` · `make backup-now` · `make restore-test` · `make shell` · `make tenant-health SLUG=…` · `make telegram-poll SLUG=… KEY=…` · `make bus-validar | bus-formatear | bus-revision | bus-publicar TENANT=…`.
+`make deploy SHA=…` · `make status` · `make logs SERVICE=…` · `make admin-tunnel` · `make backup-now` · `make restore-test` · `make shell` · `make tenant-health SLUG=…` · `make telegram-poll [SLUG=…]` · `make bus-validar | bus-formatear | bus-revision | bus-publicar TENANT=…`.
 
 #### 16.4 Runbooks (`docs/runbooks/`)
 
@@ -1213,14 +1248,14 @@ Una vista "Estado" en el Admin muestra:
 | **Escenarios** | Conversaciones completas de un pack | Nada (`FakeCalendar`, datasets de ejemplo, reloj fijo) | §9.8, §10.5 |
 | **Adaptadores** | `parse`, `render` y clasificación de errores de cada canal contra **payloads reales grabados** | Fixtures JSON | Mensaje con BSUID, botón de plantilla, estado `failed`, `callback_query`, 403 de Telegram, 429 con `retry_after` |
 | **Datos de tenants** | Todos los `tenant.yaml` y datasets validan | Ficheros del repositorio | Un precio mal escrito deja CI en rojo |
-| **Integración** | Webhook → cola → worker → envío, con BD real | PostgreSQL | Aviso duplicado procesado una vez; dos mensajes del mismo contacto en orden; dos reservas del mismo hueco → un `SlotTaken`; reintento de una reserva creada → sin duplicado; barrido dos veces → un aviso; `unknown` no se reenvía; tenant `degraded` no afecta a otro |
+| **Integración** | Webhook → cola → worker → envío, con BD real | PostgreSQL | Aviso duplicado procesado una vez; dos mensajes del mismo contacto en orden; dos reservas del mismo hueco → un `SlotTaken`; reintento de una reserva creada → sin duplicado; barrido dos veces → un aviso; `unknown` no se reenvía; tenant `degraded` no afecta a otro; selector del bot de pruebas (usuario sin permiso, elegir negocio, cambiar con `/negocio`, negocio que deja de estar disponible) |
 | **Aislamiento** | RLS en todas las tablas con `tenant_id` | PostgreSQL | §12.2 |
 | **Contrato de Calendar** | Cliente contra respuestas grabadas | Fixtures | 409, paginación, eventos de día completo |
 | **Migraciones** | No faltan y no son peligrosas | PostgreSQL | — |
 
 #### 17.2 Arnés de conversación
 
-Los escenarios se escriben en pytest. El arnés ejecuta el pack con el mismo runtime de conversación (comandos globales, caducidad y `plan_sends`) sin BD ni red, y puede simular cualquiera de los dos canales:
+Los escenarios se escriben en pytest. El arnés ejecuta el pack con el mismo runtime de conversación (comandos globales, caducidad y `plan_sends`) sin BD ni red, y puede simular cualquiera de los dos tipos de canal:
 
 ```python
 def test_reserva_completa(salon):                     # tenant de ejemplo + FakeCalendar + reloj fijo

@@ -8,7 +8,7 @@ Meta y Telegram reintentan los webhooks si no reciben 200 a tiempo, y a veces lo
 
 ## Decisión
 
-- **Guardar primero, contestar 200, procesar después**: el webhook verifica la firma, inserta `inbound_event` con `UNIQUE(tenant_id, channel_key, provider_event_id)` y encola en la misma transacción.
+- **Guardar primero, contestar 200, procesar después**: el webhook verifica la firma, inserta `inbound_event` con `UNIQUE(tenant_id, channel, provider_event_id)` y encola en la misma transacción.
 - Procesamiento **"al menos una vez"** + **idempotencia** en todo efecto externo:
   - Mensajes salientes: `outbound_message` con `UNIQUE(tenant_id, idem_key)`, guardado antes de enviar; estados explícitos; un envío ambiguo pasa a `unknown` y **no se reintenta a ciegas**.
   - Barridos (recordatorios, confirmaciones): clave estable por entidad en la misma tabla.
