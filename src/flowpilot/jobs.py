@@ -2,13 +2,21 @@
 
 `procrastinate.contrib.django` builds the app on the `default` alias (fp_app) and imports
 this module (PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"), so every job is declared
-here: `process_event`, `send_message`, `run_periodic`… arrive with T-3.x.
+here (`process_event` and `apply_status` from T-3.5; `send_message`, `run_periodic`…
+with later tasks). The work itself lives in `flowpilot.runtime`, imported inside each job
+because the runtime defers jobs through this module.
 
 Rules for every job (CLAUDE.md): arguments, locks and logs carry only ids, never phone
 numbers, user ids or personal data; every job is idempotent.
 """
 
-from procrastinate.contrib.django import app
+from uuid import UUID
+
+from django.db import close_old_connections
+from procrastinate import JobContext, RetryStrategy
+from procrastinate.contrib.django import app as app
+
+from core.errors import TransientError
 
 # One worker serves the three queues (§7.5); separate queues show what gets stuck.
 INBOUND = "inbound"  # process_event, apply_status, route_test_update
@@ -16,8 +24,48 @@ OUTBOUND = "outbound"  # send_message, send_notification
 PERIODIC = "periodic"  # run_periodic, ops_check, retention_cleanup
 QUEUES = (INBOUND, OUTBOUND, PERIODIC)
 
-# Job names, so they can be deferred before their task is declared here (T-3.5).
+# Job names: a job is deferred by name, so modules that defer it do not import its task.
 PROCESS_EVENT = "process_event"  # (tenant_id, event_id), lock conv:<h>
 APPLY_STATUS = "apply_status"  # (tenant_id, event_id), no lock
+SEND_MESSAGE = "send_message"  # (tenant_id, outbound_id), lock out:<h> (T-3.6)
+SEND_NOTIFICATION = "send_notification"  # (tenant_id, notification_id), lock owner:<tenant> (T-6.1)
 
-__all__ = ["APPLY_STATUS", "INBOUND", "OUTBOUND", "PERIODIC", "PROCESS_EVENT", "QUEUES", "app"]
+# `inbound` jobs are retried 3 times, only on TransientError, after 2, 4 and 8 s (§7.5).
+INBOUND_RETRIES = 3
+INBOUND_RETRY = RetryStrategy(
+    max_attempts=INBOUND_RETRIES, exponential_wait=2, retry_exceptions={TransientError}
+)
+
+
+@app.task(queue=INBOUND, name=PROCESS_EVENT, pass_context=True, retry=INBOUND_RETRY)
+def process_event(context: JobContext, tenant_id: str, event_id: str) -> None:
+    from flowpilot.runtime import process
+
+    # Sync jobs run in worker threads: drop stale connections so they stay within §4.2.
+    close_old_connections()
+    try:
+        process.process_event(
+            UUID(tenant_id),
+            UUID(event_id),
+            last_attempt=is_last_attempt(context),
+            first_attempt=context.job.attempts == 0,
+        )
+    finally:
+        close_old_connections()
+
+
+@app.task(queue=INBOUND, name=APPLY_STATUS, retry=INBOUND_RETRY)
+def apply_status(tenant_id: str, event_id: str) -> None:
+    from flowpilot.runtime import process
+
+    close_old_connections()
+    try:
+        process.apply_status(UUID(tenant_id), UUID(event_id))
+    finally:
+        close_old_connections()
+
+
+def is_last_attempt(context: JobContext) -> bool:
+    """`job.attempts` counts the runs that already failed: with 3 retries, the fourth run
+    is the last one."""
+    return context.job.attempts >= INBOUND_RETRIES

@@ -7,8 +7,8 @@ the others:
 - unreadable file, invalid YAML or an invalid common part: the tenant cannot be
   identified, so it is left out and reported in `Registry.errors`;
 - unknown pack, invalid config, failing `load_data` or a repeated id/public_id/
-  phone_number_id: the tenant is `degraded` (its events are ignored, §7.1); a repeated key
-  also makes it `ambiguous`: it is never routed nor synced;
+  phone_number_id: the tenant is `degraded` (its contacts get the generic text, §5.4);
+  a repeated key also makes it `ambiguous`: it is never routed nor synced;
 - missing secrets or channel ids: only its `main` channel is disabled (the test bot keeps
   working).
 

@@ -1,7 +1,8 @@
-"""Limit per IP of webhook requests with an invalid signature (design.md §13).
+"""Sliding-window limits kept in memory, per process (design.md §13, §7.2):
 
-In memory, per process: enough to slow down someone probing secrets (each `web` worker
-counts on its own). Valid requests are never counted.
+- per IP, of webhook requests with an invalid signature (each `web` worker counts on its
+  own; valid requests are never counted): enough to slow down someone probing secrets;
+- per contact, of messages processed by the worker (one process).
 """
 
 import threading
@@ -14,7 +15,9 @@ from django.http import HttpRequest
 MAX_IPS = 10_000  # bound on memory: past it, the oldest entries are forgotten
 
 
-class InvalidSignatureLimiter:
+class WindowLimiter:
+    """At most `limit` hits per key within `window_s` seconds."""
+
     def __init__(
         self, limit: int = 20, window_s: float = 60.0, clock: Callable[[], float] = time.monotonic
     ) -> None:
@@ -25,7 +28,7 @@ class InvalidSignatureLimiter:
         self._lock = threading.Lock()
 
     def blocked(self, ip: str) -> bool:
-        """Has this IP sent `limit` invalid requests within the window?"""
+        """Has this key reached `limit` hits within the window?"""
         with self._lock:
             failures = self._failures.get(ip)
             if failures is None:
@@ -34,6 +37,12 @@ class InvalidSignatureLimiter:
             if not failures:
                 del self._failures[ip]
             return len(failures) >= self.limit
+
+    def hit(self, key: str) -> bool:
+        """Record one hit; True if it goes over the limit."""
+        self.record(key)
+        with self._lock:
+            return len(self._failures[key]) > self.limit
 
     def record(self, ip: str) -> None:
         with self._lock:

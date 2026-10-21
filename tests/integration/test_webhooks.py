@@ -2,85 +2,37 @@
 against the real database. Transactional, because the tenant rows are written by
 fp_owner and the webhook reads them as fp_app."""
 
-import hashlib
-import hmac
-import json
-from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
-from django.core.management import call_command
-from django.db import OperationalError, connections
+from django.db import OperationalError
 from django.test import Client
 from procrastinate.exceptions import ProcrastinateException
 from procrastinate.jobs import JobDeferrer
-from pytest_django import Settings
 
 from flowpilot.channels import views
-from flowpilot.channels.ratelimit import InvalidSignatureLimiter
 from flowpilot.runtime.locks import conversation_lock
 from flowpilot.runtime.models import InboundEvent
 from flowpilot.tenancy.registry import get_registry
 from flowpilot.tenancy.tx import tenant_tx
-from tests.tenancy.helpers import (
-    PACKS,
-    TG_SECRETS,
-    WA_SECRETS,
-    tenant_yaml,
-    write_secrets,
-    write_tenants,
+from tests.integration.helpers import (
+    BSUID,
+    WA_URL,
+    events,
+    fixture,
+    jobs,
+    post_tg,
+    post_wa,
+    tg_tenant,
+    wa_tenant,
 )
+from tests.tenancy.helpers import WA_SECRETS
 
-pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
-
-FIXTURES = Path(__file__).parent.parent / "fixtures"
-PHONE_NUMBER_ID = "1122334455"  # the one in tests/fixtures/whatsapp
-BSUID = "ES.13491208655302741918"
-WA_URL = "/webhooks/whatsapp/pubwa0000"
-TG_URL = "/webhooks/telegram/pubtg0000"
-
-
-def wa_tenant(slug: str = "wa", **changes: Any) -> dict[str, Any]:
-    doc = tenant_yaml(slug, **changes)
-    doc["channel"] = {
-        "type": "whatsapp",
-        "public_id": f"pub{slug}0000",
-        "app_id": "1",
-        "waba_id": "2",
-        "phone_number_id": PHONE_NUMBER_ID if slug == "wa" else str(len(slug) * 111),
-    }
-    return doc
-
-
-def tg_tenant(slug: str = "tg", **changes: Any) -> dict[str, Any]:
-    doc = tenant_yaml(slug, **changes)
-    doc["channel"] = {"type": "telegram", "public_id": f"pub{slug}0000", "bot_username": "toy_bot"}
-    doc["testers"] = {"main": ["100000001"]}
-    return doc
-
-
-@pytest.fixture
-def tenants(tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
-    """Write tenants and secrets, load the registry and sync the tenant rows."""
-    settings.TENANTS_DIR = tmp_path / "tenants"
-    settings.SECRETS_FILE = tmp_path / "secrets.yaml"
-    monkeypatch.setattr("packs.registry.PACKS", PACKS)
-    monkeypatch.setattr(views, "limiter", InvalidSignatureLimiter())
-
-    def setup(*docs: dict[str, Any], secrets: dict[str, Any] | None = None) -> None:
-        write_tenants(tmp_path, *docs)
-        default = {
-            d["slug"]: WA_SECRETS if d["channel"]["type"] == "whatsapp" else TG_SECRETS
-            for d in docs
-        }
-        write_secrets(tmp_path, default if secrets is None else secrets)
-        get_registry.cache_clear()
-        call_command("sync_tenants", stdout=None)
-
-    yield setup
-    get_registry.cache_clear()
+pytestmark = [
+    pytest.mark.django_db(transaction=True, databases=["default", "owner"]),
+    pytest.mark.usefixtures("clean_jobs"),
+]
 
 
 @pytest.fixture(autouse=True)
@@ -91,54 +43,6 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("the webhook made an external call")
 
     monkeypatch.setattr(httpx.Client, "send", refuse)
-
-
-@pytest.fixture(autouse=True)
-def clean_jobs() -> Iterator[None]:
-    yield
-    with connections["owner"].cursor() as cursor:
-        cursor.execute("DELETE FROM procrastinate_jobs")
-
-
-def fixture(path: str) -> bytes:
-    return (FIXTURES / path).read_bytes()
-
-
-def post_wa(body: bytes, secret: str = WA_SECRETS["app_secret"], ip: str = "203.0.113.1") -> int:
-    signature = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    response = Client().post(
-        WA_URL,
-        data=body,
-        content_type="application/json",
-        headers={"X-Hub-Signature-256": signature},
-        REMOTE_ADDR=ip,
-    )
-    return response.status_code
-
-
-def post_tg(body: bytes, secret: str = TG_SECRETS["webhook_secret"], url: str = TG_URL) -> int:
-    response = Client().post(
-        url,
-        data=body,
-        content_type="application/json",
-        headers={"X-Telegram-Bot-Api-Secret-Token": secret},
-    )
-    return response.status_code
-
-
-def events() -> list[InboundEvent]:
-    return list(InboundEvent.objects.using("owner").order_by("received_at"))
-
-
-def jobs() -> list[tuple[str, str | None, dict[str, Any], str]]:
-    with connections["owner"].cursor() as cursor:
-        cursor.execute(
-            "SELECT task_name, lock, args, queue_name FROM procrastinate_jobs ORDER BY id"
-        )
-        return [
-            (n, lock, a if isinstance(a, dict) else json.loads(a), q)
-            for n, lock, a, q in cursor.fetchall()
-        ]
 
 
 # ── 1. Tenant ─────────────────────────────────────────────────────────────
@@ -294,7 +198,7 @@ def test_rows_are_written_under_the_tenant(tenants: Any) -> None:
     ("changes", "status"),
     [
         ({"status": "paused"}, "ignored"),
-        ({"config": {"colors": "not a list"}}, "ignored"),  # degraded
+        ({"config": {"colors": "not a list"}}, "pending"),  # degraded: the generic text
         ({"status": "onboarding", "testers": {"main": ["34999999999"]}}, "ignored"),
         ({"status": "onboarding", "testers": {"main": [BSUID]}}, "pending"),
         ({"status": "onboarding", "testers": {"main": ["34600000001"]}}, "pending"),  # by phone

@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 4 | in_progress |
+| F3 | Canales y runtime | 10 | 5 | in_progress |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **18** | |
+| **Total** | | **52** | **19** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -506,7 +506,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Diseño:** §8.2 ampliado.
 
 ### T-3.5 · `process_event` y `apply_status` 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-3.3, T-3.4, T-1.4 · **Diseño:** §7.2, §7.3, §6.6, §8.2
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-3.3, T-3.4, T-1.4 · **Diseño:** §7.2, §7.3, §6.6, §8.2
 - **Hacer:**
   - tx1, pack sin transacción y tx2 según §7.2.
   - *Upsert* de contacto por `(tenant, canal, external_id)`.
@@ -516,7 +516,19 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - `apply_status`.
 - **Acepta:** reprocesar un evento no duplica respuestas; un evento que no está `pending` termina sin hacer nada; caducidad y versión aplicadas.
 - **Tests:** integración (duplicado, reintento entre tx1 y tx2, excepción del pack que lleva al texto de recuperación, límite por contacto, `baja`/`alta`, estado de WhatsApp que actualiza el mensaje).
-- **Notas:** (de la revisión de T-2.5) las tareas síncronas que usan el ORM se ejecutan en hilos del worker: cerrar las conexiones viejas (`close_old_connections`) para no pasar de las ~6 de §4.2. `job.is_last_attempt` necesita `pass_context=True`.
+- **Notas:**
+  - (De la revisión de T-2.5) las tareas síncronas que usan el ORM se ejecutan en hilos del worker: cerrar las conexiones viejas (`close_old_connections`) para no pasar de las ~6 de §4.2. `job.is_last_attempt` necesita `pass_context=True`.
+  - **Decidido por la persona (2026-10-21):** un tenant `degraded` guarda sus mensajes como `pending` (antes `ignored`) y `process_event` le responde el texto genérico sin llamar al pack. Así se resuelve la contradicción entre §5.4 y §7.1. `inbound.initial_status` cambiado; §5.4 y §7.1 actualizados.
+  - **Trabajos** (`flowpilot/jobs.py`): `process_event` (con `pass_context`) y `apply_status`, con `RetryStrategy(max_attempts=3, exponential_wait=2, retry_exceptions={TransientError})`; esperas de 2, 4 y 8 s (§7.5 decía "2 s → 30 s"; corregido). Procrastinate 3.10 no tiene `is_last_attempt`: `is_last_attempt(context)` = `job.attempts >= 3`. Importan `flowpilot.runtime.process` dentro de la función, porque el runtime encola a través de `jobs`. `app` se reexporta explícitamente para mypy. Nuevos nombres: `SEND_MESSAGE` (T-3.6) y `SEND_NOTIFICATION` (T-6.1).
+  - **`flowpilot/runtime/process.py`:** `process_event`, `apply_actions` y `apply_status`, como en §7.2 (ampliado con los detalles). tx2 relee el evento con `FOR UPDATE` y no hace nada si ya no está `pending`.
+  - **`flowpilot/runtime/outbound.py`:** `create_replies` (`idem_key = reply:<event_id>:<seq>`), `create_proactive` (con la `idem_key` del pack; `None` si ya existía) y `defer_sends` (candado `out:<h>`). `plan_sends` ya se aplica aquí, porque sin él no hay respuestas que no duplicar; T-3.6 añade `send_message`.
+  - **`flowpilot/channels/adapters.py`:** `endpoint(tenant, channel)` da adaptador, canal y secretos del canal `main`; el canal `test` llega en T-3.8 (hoy lanza `NotImplementedError`). Las vistas usan sus adaptadores.
+  - **Límite por contacto:** `WindowLimiter` (el limitador de T-3.3 generalizado, con `hit`) en memoria del worker: 20 mensajes en 60 s.
+  - **Sentry:** `sentry-sdk` aún no está instalado; la excepción se registra con `log.exception` y T-6.2 la enviará.
+  - **De la revisión:** el pack recibe una copia del estado (como en el arnés); un aviso a un teléfono no se envía si cualquier contacto con ese teléfono tiene `opt_out` o `unreachable` (antes podía ganar el contacto creado desde el teléfono, sin `last_activity_at`); el límite por contacto va antes que `degraded`, no envía el texto de reinicio y un reintento no cuenta dos veces (`first_attempt`); un tenant `degraded` y un contacto por encima del límite no tocan la conversación; `menu` usa `received_at` del evento. Tests nuevos: sin transacción durante el pack, el texto de reinicio con `baja`, el estado mutado, el aviso a otro canal, la baja por BSUID con el mismo teléfono y el reintento con el límite.
+  - **Pendiente para T-3.8:** `endpoint` del canal `test`, y `NotifyOwner` del canal `test` hacia ops (hoy solo se registra, así que nunca llega al dueño).
+  - **Pendiente sin tarea:** un `failed` asíncrono de Meta con código de destinatario (131026) no marca el contacto `unreachable`; solo lo hace `Rejected(kind=recipient)` al enviar (T-3.6).
+  - **Tests:** los helpers de integración pasan a `tests/integration/helpers.py` y `conftest.py`. `tests/integration/test_process.py` (28): camino feliz, `plan_sends` y orden de los envíos, evento no `pending`, reintento entre tx1 y tx2, duplicado, `TransientError` reintentado y luego recuperación, excepción del pack, caducidad, versión, `menu`, `baja`/`alta`, límite por contacto, tenant `degraded`, `SendProactive` (con `opt_out`, `unreachable` y a un teléfono sin contacto), `NotifyOwner` con y sin dueño, `apply_status` (por `outbound_ref` y por `wamid`, `unknown` → `sent`, `failed`, estado tardío) y el trabajo ejecutado por el worker. Comprobado en local que el worker arranca con los trabajos nuevos.
 
 ### T-3.6 · Envío de mensajes 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.5 · **Diseño:** §7.4, §7.5

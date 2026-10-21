@@ -1,0 +1,48 @@
+"""Fixtures of the runtime integration tests (tests/integration/helpers.py has the rest)."""
+
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from django.core.management import call_command
+from django.db import connections
+from pytest_django import Settings
+
+from flowpilot.channels import views
+from flowpilot.channels.ratelimit import WindowLimiter
+from flowpilot.runtime import process
+from flowpilot.tenancy.registry import get_registry
+from tests.tenancy.helpers import PACKS, TG_SECRETS, WA_SECRETS, write_secrets, write_tenants
+
+
+@pytest.fixture
+def tenants(tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
+    """Write tenants and secrets, load the registry and sync the tenant rows. The
+    in-memory limits start empty."""
+    settings.TENANTS_DIR = tmp_path / "tenants"
+    settings.SECRETS_FILE = tmp_path / "secrets.yaml"
+    monkeypatch.setattr("packs.registry.PACKS", PACKS)
+    monkeypatch.setattr(views, "limiter", WindowLimiter())
+    monkeypatch.setattr(process, "contact_limiter", WindowLimiter(limit=20, window_s=60))
+
+    def setup(*docs: dict[str, Any], secrets: dict[str, Any] | None = None) -> None:
+        write_tenants(tmp_path, *docs)
+        default = {
+            d["slug"]: WA_SECRETS if d["channel"]["type"] == "whatsapp" else TG_SECRETS
+            for d in docs
+        }
+        write_secrets(tmp_path, default if secrets is None else secrets)
+        get_registry.cache_clear()
+        call_command("sync_tenants", stdout=None)
+
+    yield setup
+    get_registry.cache_clear()
+
+
+@pytest.fixture
+def clean_jobs() -> Iterator[None]:
+    """The flush does not reach Procrastinate's tables (unmanaged models)."""
+    yield
+    with connections["owner"].cursor() as cursor:
+        cursor.execute("DELETE FROM procrastinate_jobs")

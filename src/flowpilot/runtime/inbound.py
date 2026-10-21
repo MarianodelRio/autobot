@@ -30,10 +30,11 @@ INSERT_EVENT = """
 
 def initial_status(tenant: LoadedTenant, item: ParsedItem) -> InboundEvent.Status:
     """`ignored` (saved, never processed) when the main channel must not answer: the
-    tenant is paused or degraded, or in onboarding and the sender is not in
-    testers.main (matched by its id or, in WhatsApp, its phone: since BSUIDs the id is
-    not the phone). Delivery statuses of our own messages are not subject to testers."""
-    if tenant.is_degraded or tenant.file.status == "paused":
+    tenant is paused, or in onboarding and the sender is not in testers.main (matched by
+    its id or, in WhatsApp, its phone: since BSUIDs the id is not the phone). Delivery
+    statuses of our own messages are not subject to testers. A degraded tenant's events
+    stay pending: process_event answers them with the generic text (§5.4)."""
+    if tenant.file.status == "paused":
         return Status.IGNORED
     if tenant.file.status == "onboarding" and isinstance(item, InboundItem):
         testers = tenant.file.testers.main

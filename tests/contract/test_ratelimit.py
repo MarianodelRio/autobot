@@ -7,7 +7,7 @@ import pytest
 from django.test import RequestFactory
 
 from flowpilot.channels import ratelimit
-from flowpilot.channels.ratelimit import InvalidSignatureLimiter, client_ip
+from flowpilot.channels.ratelimit import WindowLimiter, client_ip
 from flowpilot.runtime.locks import contact_hash, conversation_lock
 
 
@@ -21,7 +21,7 @@ class Clock:
 
 def test_an_ip_is_blocked_after_the_limit_within_the_window() -> None:
     clock = Clock()
-    limiter = InvalidSignatureLimiter(limit=3, window_s=60, clock=clock)
+    limiter = WindowLimiter(limit=3, window_s=60, clock=clock)
     for _ in range(2):
         limiter.record("a")
     assert not limiter.blocked("a")
@@ -33,7 +33,7 @@ def test_an_ip_is_blocked_after_the_limit_within_the_window() -> None:
 
 def test_memory_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ratelimit, "MAX_IPS", 2)
-    limiter = InvalidSignatureLimiter(limit=1)
+    limiter = WindowLimiter(limit=1)
     for ip in ("a", "b", "c"):
         limiter.record(ip)
     assert not limiter.blocked("a")  # forgotten, the oldest
@@ -54,3 +54,8 @@ def test_lock_hash_has_no_identifier_and_depends_on_tenant_and_channel() -> None
     assert contact_hash(tenant, "main", "1") != contact_hash(tenant, "test", "1")
     assert contact_hash(tenant, "main", "1") != contact_hash(uuid.uuid7(), "main", "1")
     assert lock == conversation_lock(tenant, "main", "34600000001")
+
+
+def test_hit_counts_and_reports_going_over() -> None:
+    limiter = WindowLimiter(limit=2, clock=Clock())
+    assert [limiter.hit("c") for _ in range(3)] == [False, False, True]

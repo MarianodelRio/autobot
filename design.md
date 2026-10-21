@@ -312,7 +312,7 @@ autocares-ss:                  # canal telegram
 #### 5.4 Registro de tenants
 
 - Al arrancar, `web` y `worker` leen `tenants/*/tenant.yaml`, validan la parte común, la `config` con el esquema del pack y los secretos, cargan los datasets (`pack.load_data`) y construyen índices en memoria: `(tipo, public_id) → tenant`, `phone_number_id → tenant`, `slug → tenant`, tenants activos por pack y tenants visibles por cada id de Telegram en el bot de pruebas.
-- **Un tenant inválido no afecta a los demás.** CI lo habría bloqueado (§17.3); si aun así falla al arrancar, queda `degraded`: sus eventos se guardan como `ignored`, los contactos reciben un texto genérico de plataforma ("Ahora mismo no puedo atenderte; inténtalo más tarde") y salta una alerta 🔴.
+- **Un tenant inválido no afecta a los demás.** CI lo habría bloqueado (§17.3); si aun así falla al arrancar, queda `degraded`: sus mensajes se guardan como siempre y `process_event`, sin llamar al pack (ni resolver comandos globales), responde a cada uno con un texto genérico de plataforma ("Ahora mismo no puedo atenderte; inténtalo más tarde"), y salta una alerta 🔴.
 - **Estados:** `onboarding` (el canal `main` solo responde a `testers.main`), `active`, `paused` (el canal `main` guarda y no responde), `offboarded` (contesta 200 sin guardar). El bot de pruebas funciona en `onboarding`, `active` y `paused`.
 - **`sync_tenants`** (tras `migrate`, §14.6) hace *upsert* de la tabla `tenant` (id, slug, name, pack, status, timezone) para las claves foráneas y RLS. Esa tabla es un reflejo y nunca se edita a mano.
 - **Implementación** (`flowpilot/tenancy/schema.py` y `registry.py`):
@@ -507,8 +507,9 @@ POST /webhooks/<tipo>/<public_id>                  (canal main de un tenant)
   3b. JSON válido (un objeto)                      si no → 400 (se analiza después de verificar la firma)
   4. tenant offboarded                             → 200 sin guardar
   5. por cada elemento de adaptador.parse(...):
-       status = ignored si el tenant está paused o degraded,
+       status = ignored si el tenant está paused,
                 o en onboarding, es un mensaje y ni su external_id ni su teléfono están en testers.main
+                (un tenant degraded guarda sus eventos como pending: process_event responde el texto genérico, §5.4)
        tenant_tx(tenant.id):
          INSERT inbound_event (channel='main', kind, provider_event_id, payload, status)
            ON CONFLICT (tenant_id, channel, provider_event_id) DO NOTHING
@@ -573,6 +574,14 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
 - **Texto de recuperación** (heredado de Peluquería): "Uy, ha habido un problema de conexión y puede que tu última acción no se completara. Escríbeme de nuevo y seguimos." El estado se reinicia y el evento queda `failed` con el error.
 - **Reprocesar un evento es seguro:** si el worker muere entre tx1 y tx2, el reintento repite el pack; las escrituras en Calendar son idempotentes (§9.5) y las respuestas, como se crean en tx2, no se habían creado.
 - `apply_status(tenant_id, event_id)`: busca el `outbound_message` por `outbound_ref` (o por `provider_message_id`) y actualiza estado, `pricing_category` y `billable`. Un `failed` de Meta sobre un mensaje `sent` lo pasa a `failed` con el código de error.
+- **Implementación** (`flowpilot/runtime/process.py`; trabajos en `flowpilot/jobs.py`):
+  - **Reintentos:** `RetryStrategy(max_attempts=3, exponential_wait=2, retry_exceptions={TransientError})`. `job.attempts` cuenta las ejecuciones que ya fallaron, así que la última es la que empieza con `attempts == 3` (`is_last_attempt`; Procrastinate 3.10 no lo trae). Cada trabajo cierra las conexiones viejas al empezar y al terminar (`close_old_connections`), porque los trabajos síncronos se ejecutan en hilos del worker.
+  - **tx1:** el contacto se crea o actualiza por `(tenant, canal, external_id)`: el teléfono se refresca si el proveedor lo da, y el nombre del proveedor solo rellena uno vacío, para no pisar el que fijó el pack con `UpdateContact`. El pack recibe el mensaje con `received_at = inbound_event.received_at`.
+  - **Orden de decisión** (sin transacción): contacto por encima de su límite (más de 20 mensajes en 60 s, en memoria del worker, que es un solo proceso; un reintento no vuelve a contar) → nada, ni siquiera el texto de reinicio; tenant `degraded` → texto genérico; `baja`/`alta`; `menu` (estado `{}` y el pack recibe el mensaje vacío); el pack, con una copia del estado. `acknowledge` va antes y, si falla, se registra y se sigue. En los dos primeros casos la conversación no se toca, así que al arreglarse el tenant sigue donde estaba.
+  - **Errores del pack:** `TransientError` se relanza para que Procrastinate reintente; en el último intento, y ante cualquier otra excepción, texto de recuperación, estado `{}` y evento `failed` con el error (solo el tipo). La excepción se registra con su traza, de donde la tomará Sentry (T-6.2).
+  - **tx2** relee el evento con `SELECT … FOR UPDATE` y no hace nada si ya no está `pending`, así que dos ejecuciones del mismo evento nunca responden dos veces.
+  - **`apply_actions(tenant, channel, actions, contact, event, now)`:** `UpdateContact` actualiza nombre u `opt_out` (y `opt_out_at`). `SendProactive` solo se crea si el contacto existe, es del mismo canal que la acción, y no tiene `opt_out` ni `unreachable`; con `ContactRef(phone=…)` solo en un canal `main` de WhatsApp, buscando el contacto por teléfono (el de actividad más reciente) o creándolo con el teléfono como `external_id`, y sin enviar si cualquier contacto con ese teléfono tiene `opt_out` o `unreachable` (la misma persona puede tener un contacto con BSUID y otro creado desde el teléfono); la `idem_key` del pack es única, así que repetirla no crea otro aviso. `NotifyOwner` crea la `notification` (única por `idem_key`) y encola `send_notification` (candado `owner:<tenant>`) solo si el dueño tiene chat y quiere ese `kind`; si no, solo se registra. Las del canal `test` no se encolan hasta T-3.8.
+  - **`apply_status`:** `sent`, `delivered` o `read` pasan a `sent` cualquier mensaje que no esté `failed` (incluido un `unknown`, o un `sending` al que el estado adelantó) y fijan `sent_at` y el `provider_message_id` si faltan; `failed` pasa a `failed` un mensaje `sent`, `unknown` o `sending`, con `last_error = "status failed: <códigos>"`. Un estado de un mensaje desconocido deja el evento `done`.
 
 #### 7.3 Conversación
 
@@ -619,7 +628,7 @@ outcome = adaptador.send(adaptador.render(payload), ...)
 
 | Cola | Trabajos | Candado | Reintentos |
 |---|---|---|---|
-| `inbound` | `process_event`, `apply_status`, `route_test_update` | `conv:<h>` en `process_event`; `tg:<h>` en `route_test_update` | 3, backoff exponencial 2 s → 30 s, solo para `TransientError` |
+| `inbound` | `process_event`, `apply_status`, `route_test_update` | `conv:<h>` en `process_event`; `tg:<h>` en `route_test_update` | 3, con espera exponencial (2, 4 y 8 s), solo para `TransientError` |
 | `outbound` | `send_message`, `send_notification` | `out:<h>` y `owner:<tenant>` | Según `SendOutcome` |
 | `periodic` | `run_periodic`, `ops_check`, `retention_cleanup` | `queueing_lock` por nombre y tenant (nunca dos iguales pendientes) | 2 |
 

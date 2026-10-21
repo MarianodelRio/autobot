@@ -17,10 +17,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 from procrastinate.exceptions import ProcrastinateException
 
+from flowpilot.channels.adapters import TELEGRAM, WHATSAPP
 from flowpilot.channels.base import ParsedItem
-from flowpilot.channels.ratelimit import InvalidSignatureLimiter, client_ip
-from flowpilot.channels.telegram import TelegramAdapter
-from flowpilot.channels.whatsapp import WhatsAppAdapter
+from flowpilot.channels.ratelimit import WindowLimiter, client_ip
 from flowpilot.runtime.inbound import store
 from flowpilot.tenancy.registry import LoadedTenant, get_registry
 from flowpilot.tenancy.schema import (
@@ -34,9 +33,7 @@ log = logging.getLogger(__name__)
 
 MAX_BODY = 64 * 1024
 
-WHATSAPP = WhatsAppAdapter()
-TELEGRAM = TelegramAdapter()
-limiter = InvalidSignatureLimiter()
+limiter = WindowLimiter()  # invalid signatures per IP
 
 
 @csrf_exempt
