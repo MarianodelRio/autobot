@@ -26,6 +26,7 @@ dev = [
     "pytest-django>=4.11",
     "weasyprint>=66",
     "import-linter>=2.15,<3",
+    "django-migration-linter>=6,<7",
 ]
 
 [tool.uv]

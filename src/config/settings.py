@@ -4,6 +4,7 @@
 requires every secret to be set explicitly.
 """
 
+import importlib.util
 import os
 from pathlib import Path
 
@@ -42,6 +43,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "flowpilot",
 ]
+# Development-only: provides `lintmigrations` for CI (design.md §17.3); absent from the image.
+if importlib.util.find_spec("django_migration_linter"):
+    INSTALLED_APPS.append("django_migration_linter")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

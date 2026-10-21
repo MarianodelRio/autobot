@@ -1,10 +1,8 @@
 # syntax=docker/dockerfile:1
 # Multi-stage image (design.md §14.6): dependencies with uv, then a minimal non-root runtime.
-ARG PYTHON_IMAGE=python:3.14-slim
-
 FROM ghcr.io/astral-sh/uv:0.13.1 AS uv
 
-FROM ${PYTHON_IMAGE} AS build
+FROM python:3.14-slim AS build
 COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -14,7 +12,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev
 
-FROM ${PYTHON_IMAGE} AS runtime
+FROM python:3.14-slim AS runtime
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY --from=build /opt/venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH \
