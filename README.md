@@ -19,7 +19,7 @@ Requisitos: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta)
 
 ```bash
 uv sync          # dependencias, incluidas las de desarrollo
-make check       # ruff, mypy, import-linter y pytest (CI añade migraciones, pip-audit e imagen)
+make check       # ruff, mypy, import-linter y pytest; los tests de BD necesitan `make up` (db en 127.0.0.1:5433)
 ```
 
 Con Docker Compose (`db`, `web` y `worker`, con el código montado):
@@ -30,3 +30,5 @@ make up                # construye la imagen y levanta los servicios; web en htt
 make shell             # shell de Django dentro de web
 make down
 ```
+
+La primera vez que arranca, `db` crea los roles `fp_owner` y `fp_app` y la base de pruebas (`deploy/postgres/init-roles.sh`). Ese script solo se ejecuta con un volumen vacío; para empezar de cero: `docker compose down -v` (borra los datos locales). La base de pruebas se reutiliza entre ejecuciones y solo aplica migraciones nuevas: si editas una migración ya aplicada, reinicia el volumen igual.

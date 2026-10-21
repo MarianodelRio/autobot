@@ -7,6 +7,7 @@ requires every secret to be set explicitly.
 import importlib.util
 import os
 from pathlib import Path
+from typing import Any
 
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
@@ -75,14 +76,24 @@ TEMPLATES = [
     },
 ]
 
-# Role fp_app (design.md §12.2). The `owner` alias arrives with T-2.1.
+
+# Two aliases (design.md §12.2): `default` is fp_app (no BYPASSRLS, no DDL), used by web
+# and worker; `owner` is fp_owner (owns the tables, BYPASSRLS), used only by migrations,
+# the Admin and operation commands. The worker runs without DB_OWNER_URL, so without the
+# alias. Local defaults match compose.yaml, whose db is published on port 5433.
+def _database(url: str) -> dict[str, Any]:
+    return dict(dj_database_url.parse(url, conn_max_age=60, conn_health_checks=True))
+
+
 DATABASES = {
-    "default": dj_database_url.parse(
-        env("DB_APP_URL", "postgres://fp_app:fp_app@localhost:5432/flowpilot"),
-        conn_max_age=60,
-        conn_health_checks=True,
-    ),
+    "default": _database(env("DB_APP_URL", "postgres://fp_app:fp_app@localhost:5433/flowpilot")),
 }
+# Unset → local default; set but empty (the worker) → no `owner` alias.
+_owner_url = os.environ.get(
+    "DB_OWNER_URL", "postgres://fp_owner:fp_owner@localhost:5433/flowpilot" if IS_LOCAL else ""
+)
+if _owner_url:
+    DATABASES["owner"] = _database(_owner_url)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

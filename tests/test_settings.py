@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:
-    base = {k: v for k, v in os.environ.items() if k not in ("ENVIRONMENT", "DJANGO_SECRET_KEY")}
+    base = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("ENVIRONMENT", "DJANGO_SECRET_KEY", "DB_OWNER_URL")
+    }
     return subprocess.run(
         [sys.executable, *args],
         cwd=ROOT,
@@ -56,3 +60,12 @@ def test_unknown_environment_is_rejected() -> None:
     result = run("manage.py", "check", ENVIRONMENT="staging")
     assert result.returncode != 0
     assert "ENVIRONMENT" in result.stderr
+
+
+def test_owner_alias_only_when_configured() -> None:
+    code = (
+        "import sys; sys.path.insert(0, 'src'); import config.settings as s;"
+        "print(sorted(s.DATABASES))"
+    )
+    assert run("-c", code).stdout.strip() == "['default', 'owner']"
+    assert run("-c", code, DB_OWNER_URL="").stdout.strip() == "['default']"

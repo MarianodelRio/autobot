@@ -28,14 +28,25 @@ jobs:
           POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U postgres -d flowpilot"
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d flowpilot"
           --health-interval 5s --health-timeout 3s --health-retries 10
     env:
       ENVIRONMENT: local
-      # Superuser until T-2.1 creates the fp_app and fp_owner roles.
-      DB_APP_URL: postgres://postgres:postgres@localhost:5432/flowpilot
+      DB_APP_URL: postgres://fp_app:fp_app@localhost:5432/flowpilot
+      DB_OWNER_URL: postgres://fp_owner:fp_owner@localhost:5432/flowpilot
     steps:
       - uses: actions/checkout@v7
+      - name: Database roles
+        # Same script as the db container; the service cannot mount repo files.
+        run: bash deploy/postgres/init-roles.sh
+        env:
+          PGHOST: localhost
+          PGPASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: flowpilot
+          POSTGRES_TEST_DB: test_flowpilot
+          FP_OWNER_PASSWORD: fp_owner
+          FP_APP_PASSWORD: fp_app
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           version: "0.13.1"

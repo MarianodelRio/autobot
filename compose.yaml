@@ -1,4 +1,5 @@
 # Local development (design.md §14.2): same image as production, code mounted, no Caddy.
+# Local-only passwords; production takes them from .env (T-7.1).
 x-app: &app
   build: .
   image: flowpilot:local
@@ -6,8 +7,8 @@ x-app: &app
     - path: .env
       required: false
   environment:
-    # Local superuser until T-2.1 creates the fp_app and fp_owner roles.
-    DB_APP_URL: postgres://postgres:postgres@db:5432/flowpilot
+    DB_APP_URL: postgres://fp_app:fp_app@db:5432/flowpilot
+    DB_OWNER_URL: postgres://fp_owner:fp_owner@db:5432/flowpilot
   volumes:
     - ./src:/app/src
     - ./tenants:/app/tenants
@@ -25,6 +26,10 @@ services:
 
   worker:
     <<: *app
+    # Replaces the whole environment of x-app (it is not merged): repeat what it needs.
+    environment:
+      DB_APP_URL: postgres://fp_app:fp_app@db:5432/flowpilot
+      DB_OWNER_URL: ""  # the worker never uses fp_owner (design.md §14.2)
     # Placeholder until the Procrastinate worker arrives (T-2.5).
     command: sleep infinity
     init: true
@@ -33,12 +38,19 @@ services:
     image: postgres:18
     environment:
       POSTGRES_DB: flowpilot
-      # Fixed local-only password; production takes it from .env (T-7.1).
       POSTGRES_PASSWORD: postgres
+      FP_OWNER_PASSWORD: fp_owner
+      FP_APP_PASSWORD: fp_app
+      POSTGRES_TEST_DB: test_flowpilot  # for the tests run from the host (make check)
     volumes:
       - pgdata:/var/lib/postgresql
+      # Runs once, on an empty volume: creates fp_owner and fp_app (design.md §12.2).
+      - ./deploy/postgres:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5433:5432"  # 5433 so it does not clash with a PostgreSQL on the host
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d flowpilot"]
+      # Over TCP: during the first init the server only listens on the socket.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d flowpilot"]
       interval: 5s
       timeout: 3s
       retries: 10

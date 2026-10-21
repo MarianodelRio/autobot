@@ -84,14 +84,14 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
-| F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
+| F2 | Datos, tenants y aislamiento | 5 | 1 | in_progress |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **9** | |
+| **Total** | | **52** | **10** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -275,14 +275,25 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** modelos con RLS probada, registro de tenants que valida `tenants/*` y cola Procrastinate operativa.
 
 ### T-2.1 · Roles de BD y alias ⚠️ 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-0.2 · **Diseño:** §12.2, §5.3
+- **Estado:** done · **Revisión:** aprobada (y aprobación ⚠️ de la persona, 2026-10-21) · **Depende de:** T-0.2 · **Diseño:** §12.2, §5.3
 - **Hacer:**
   - Script de inicialización de PostgreSQL (local y prod) que crea `fp_owner` (dueño de las tablas, `BYPASSRLS`) y `fp_app`.
   - Alias de Django `default` (`DB_APP_URL`) y `owner` (`DB_OWNER_URL`); las migraciones usan `owner`.
   - Permisos de `fp_app` sobre las tablas de la aplicación y de Procrastinate.
 - **Acepta:** las migraciones se ejecutan como `fp_owner`; `fp_app` no puede hacer DDL.
 - **Tests:** test de que `fp_app` no tiene `BYPASSRLS` ni puede crear tablas.
-- **Notas:** quitar de `compose.yaml` el `DB_APP_URL` con el superusuario local puesto en T-0.2 y usar `fp_app` (y `fp_owner` para migraciones).
+- **Notas:**
+  - **Script de roles:** `deploy/postgres/init-roles.sh` es idempotente; probado dos veces y con `shellcheck`.
+    - Crea `fp_owner` (`BYPASSRLS`, sin superusuario, `CREATEDB`, `CREATEROLE` ni `REPLICATION`) y `fp_app` (sin `BYPASSRLS`). Las contraseñas vienen de `FP_OWNER_PASSWORD` y `FP_APP_PASSWORD` (añadidas a §5.3) y se leen con `\getenv`, así que no aparecen en `ps`. Se probó con comillas, `;` y `\` en las contraseñas, sin inyección. Necesita psql 15 o superior.
+    - Pone `fp_owner` como dueño de la base y de `public`. Quita a `PUBLIC` todos los permisos de la base y del esquema (así nadie más tiene `TEMP` ni `CREATE`), y también `CONNECT` y `TEMP` sobre `postgres` y `template1`.
+    - Da a `fp_app` `CONNECT`, `USAGE` y, con `ALTER DEFAULT PRIVILEGES FOR ROLE fp_owner`, `SELECT/INSERT/UPDATE/DELETE` sobre tablas y `USAGE/SELECT` sobre secuencias. Eso cubre las tablas de Procrastinate que llegan en T-2.5.
+    - Con `POSTGRES_TEST_DB` hace lo mismo con la base de pruebas.
+  - **Dónde se ejecuta:** en local, el contenedor `db` lo lanza al inicializar el volumen. En CI hay un paso que lo ejecuta contra el servicio. En producción lo montará `compose.prod.yaml` (T-7.1).
+  - **Alias de Django:** `default` (`DB_APP_URL`) y `owner` (`DB_OWNER_URL`). Si la variable no está definida, en local se usa el valor por defecto; si está vacía, como en el worker, no hay alias `owner`. `manage.py migrate` usa `owner` por defecto; no hay *router*, porque uno que negara `default` haría que `migrate --database default` marcara migraciones como aplicadas sin ejecutarlas.
+  - **Tests:** como `fp_app` no puede crear bases ni tablas, el `conftest.py` raíz sustituye `django_db_setup`. Usa la base `test_flowpilot` ya creada, apunta los dos alias a ella y migra como `fp_owner`. Los tests consultan como `fp_app`. `make check` necesita `make up`. La base de pruebas se reutiliza; si se edita una migración ya aplicada, se reinicia con `docker compose down -v` (lo dice el README).
+  - **`compose.yaml`:** usa `fp_app` y `fp_owner` (el worker, sin `DB_OWNER_URL`), publica `db` en `127.0.0.1:5433` para los tests desde el host (el 5432 suele estar ocupado) y comprueba la salud por TCP (también en CI), porque durante la inicialización `pg_isready` por socket da OK antes de tiempo. El `environment` del worker sustituye entero al del ancla. Hace falta `docker compose down -v` la primera vez.
+  - **Pendiente para T-2.5:** los tests transaccionales (`transactional_db`) vacían las tablas con `TRUNCATE` desde cada alias, y `fp_app` no tiene `TRUNCATE`, a propósito, porque ignora RLS. Habrá que vaciar solo con `owner`.
+  - **Verificado:** CI simulado en local con un PostgreSQL 18 limpio: script por TCP, `pytest`, `makemigrations --check` y `lintmigrations`.
 
 ### T-2.2 · Modelos y políticas RLS ⚠️ 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-2.1 · **Diseño:** §12.1, §12.2

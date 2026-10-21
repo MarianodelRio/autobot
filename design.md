@@ -280,8 +280,9 @@ Validaciones comunes: slugs, ids y `public_id` únicos en todo el repositorio; c
 ENVIRONMENT=local|prod
 DJANGO_SECRET_KEY, DJANGO_ALLOWED_HOSTS=api.<dominio>,localhost
 POSTGRES_PASSWORD                          (superusuario; solo el servicio db)
-DB_APP_URL                                 (rol fp_app: web y worker)
-DB_OWNER_URL                               (rol fp_owner: migraciones y admin; solo web)
+FP_OWNER_PASSWORD, FP_APP_PASSWORD         (solo el servicio db: deploy/postgres/init-roles.sh crea los roles con ellas)
+DB_APP_URL                                 (rol fp_app: web y worker; misma contraseña que FP_APP_PASSWORD, codificada como URL)
+DB_OWNER_URL                               (rol fp_owner: migraciones y admin; solo web; misma contraseña que FP_OWNER_PASSWORD, codificada como URL)
 GOOGLE_SERVICE_ACCOUNT_FILE=/run/secrets/google_sa.json
 SECRETS_FILE=/run/secrets/secrets.yaml
 WHATSAPP_GRAPH_VERSION=v23.0
@@ -1028,6 +1029,8 @@ CREATE POLICY tenant_isolation ON contact
 - **El tenant solo se fija con `tenant_tx(tenant_id)`:** abre una transacción corta y ejecuta `set_config('app.tenant_id', …, true)` (equivale a `SET LOCAL`). Nunca se anida (`assert not connection.in_atomic_block`). Sin tenant fijado se leen 0 filas, de modo que un olvido falla de forma segura.
 - `NULLIF(…, '')` es necesario: con conexiones persistentes, tras un `SET LOCAL` las transacciones siguientes ven `''` en lugar de NULL.
 - Django tiene dos alias: `default` (`fp_app`) y `owner` (`fp_owner`). El Admin usa `owner` mediante una clase base de `ModelAdmin` (`using = "owner"`). Las URL `/admin/` solo se montan en `web` y Caddy no las expone (§13).
+- **Roles:** los crea `deploy/postgres/init-roles.sh` (idempotente) al inicializar el volumen de `db`. `fp_app` tiene `CONNECT`, `USAGE` sobre `public` y `SELECT/INSERT/UPDATE/DELETE` (y secuencias) sobre las tablas de `fp_owner` mediante `ALTER DEFAULT PRIVILEGES`; no tiene `TEMP`, `TRUNCATE` ni `CREATE`, ni puede conectarse a `postgres` ni a `template1`. El script lee las contraseñas con `\getenv`; no se activa `log_statement` para DDL, porque las registraría. `manage.py migrate` usa `owner` por defecto.
+- **Tests:** la base `test_flowpilot` existe de antemano (el mismo script con `POSTGRES_TEST_DB`, solo en local y CI); el `conftest.py` raíz apunta los dos alias a ella y migra como `fp_owner`, así que los tests consultan como `fp_app`, bajo RLS.
 - Los trabajos que recorren tenants (repartos, retención, `ops_check`) obtienen la lista del registro en memoria y abren un `tenant_tx` por tenant.
 - Las dos tablas del bot de pruebas no tienen RLS: `test_session` solo relaciona un usuario de Telegram con un tenant y `test_bot_event` solo la lee el selector, que no consulta datos de ningún tenant.
 - **Test genérico de aislamiento** (obligatorio en CI): para cada modelo con `tenant_id` comprueba, con los tenants A y B, que A no lee, modifica, borra ni inserta filas de B, que no crea claves foráneas hacia B y que sin tenant fijado se leen 0 filas. Una tabla nueva sin política hace fallar el test.
