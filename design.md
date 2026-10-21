@@ -346,9 +346,13 @@ Row(id: str, title: str, description: str | None = None)
 | Filas de lista | ≤ 10 en total, título ≤ 24, descripción ≤ 72 | WhatsApp |
 | Cuerpo de un interactivo | ≤ 1.024 caracteres | WhatsApp |
 | Texto | ≤ 4.096 caracteres | Ambos |
-| `id` de botón o fila | ≤ 64 **bytes** | Telegram (`callback_data`) |
+| `id` de botón o fila | ≤ 64 **bytes**, no vacío y sin repetir dentro del mensaje | Telegram (`callback_data`) |
+| Títulos de botón | Sin repetir dentro del mensaje | WhatsApp |
+| Secciones de una lista | Con al menos una fila; con título si hay más de una | WhatsApp |
+| Cabecera y pie de un interactivo | ≤ 60 caracteres | WhatsApp |
+| Etiqueta del botón de una lista y título de sección | ≤ 20 y ≤ 24 caracteres | WhatsApp |
 
-Formato de texto: texto plano con emojis y `*negrita*` (sintaxis de WhatsApp). El adaptador de Telegram la convierte (§6.4).
+Las longitudes se cuentan en caracteres (puntos de código). Formato de texto: texto plano con emojis y `*negrita*` (sintaxis de WhatsApp). El adaptador de Telegram la convierte (§6.4).
 
 #### 6.2 Contrato de adaptador (`flowpilot/channels/base.py`)
 
@@ -556,8 +560,8 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
 
 1. Fusiona los textos consecutivos de un turno en un solo mensaje.
 2. Si un texto va seguido de botones o lista, lo mete en el cuerpo del interactivo, salvo que juntos superen 1.024 caracteres.
-3. Comprueba los límites comunes (§6.1). Superarlos es un error de programación: en tests falla y en producción se trunca y se registra.
-4. Crea un `outbound_message` por mensaje final, en orden (`seq`), con `idem_key = reply:<event_id>:<seq>`.
+3. Comprueba los límites comunes (§6.1). Superarlos es un error de programación: en tests falla (`strict=True`) y en producción se trunca y se registra sin contenido. Lo que truncar no arregla (ids de más de 64 bytes, vacíos o repetidos; títulos de botón repetidos; mensajes o secciones sin botones o filas; varias secciones sin título; cuerpo vacío) falla siempre, y se comprueba antes de fusionar.
+4. Crea un `outbound_message` por mensaje final, en orden (`seq`), con `idem_key = reply:<event_id>:<seq>`. Este paso lo hace el runtime (T-3.6); la función pura de `core` devuelve la lista final de respuestas.
 
 Fusionar reduce el coste en WhatsApp y el ruido en los dos canales.
 
