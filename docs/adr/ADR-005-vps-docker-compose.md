@@ -1,34 +1,33 @@
 # ADR-005 — Una VPS con Docker Compose
 
-**Estado:** aceptada (sustituye a "AWS ECS Fargate + CDK", el 2026-10-21) · **Relacionado:** `design.md` §0, §15, §16
+**Estado:** aceptada · **Relacionado:** `design.md` §0, §5.3, §14
 
 ## Contexto
 
-La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de pocos mensajes por segundo. La opera una persona. El diseño anterior en AWS (ECS Fargate, RDS, ALB, KMS, SSM, EventBridge, CloudWatch, CDK, dos cuentas) costaba ~100 €/mes en producción y añadía muchas piezas que operar. Los bots actuales corren en una VM pequeña sin problemas de capacidad.
+La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de pocos mensajes por segundo, y la opera una persona. El objetivo de coste de infraestructura es de unos 20 €/mes, sin contar las APIs.
 
 ## Decisión
 
-- **Una VPS en la UE** (Hetzner Cloud, 2 vCPU / 4 GB) con Ubuntu 24.04 y **Docker Compose**: `caddy`, `web`, `worker`, `admin` y `db` (PostgreSQL 18). Misma imagen para los procesos de la aplicación.
-- **Caddy** con HTTPS automático; solo expone `/webhooks/whatsapp/*` y `/health`. El Admin escucha en `127.0.0.1` y se usa por túnel SSH.
-- **Backups**: `pg_dump` cada 6 h cifrado con restic a almacenamiento de **otro proveedor**; instantáneas diarias de la VM; simulacro de restauración trimestral. RPO ≤ 6 h, RTO ≤ 2 h.
-- **Secretos**: `.env` en el servidor; credenciales de negocios cifradas con Fernet en la BD.
-- **Despliegue**: imagen en GHCR desde GitHub Actions; despliegue manual por SSH con migraciones antes, comprobación de salud, smoke y vuelta atrás automática.
+- **Una VPS en la UE** (Hetzner Cloud, 2 vCPU / 4 GB) con Ubuntu 24.04 y **Docker Compose**: `caddy`, `web`, `worker` y `db` (PostgreSQL 18). `web` y `worker` usan la misma imagen.
+- **Caddy** con HTTPS automático; solo expone los webhooks de WhatsApp y Telegram y `/health`. El Admin lo sirve `web`, pero solo es accesible por túnel SSH.
+- **Secretos**: `.env` (plataforma) y `secrets.yaml` (canales de cada negocio) en el servidor, montados de solo lectura; nunca en git ni en la imagen.
+- **Backups**: `pg_dump` cada 6 h y los ficheros de secretos, cifrados con restic, a almacenamiento de **otro proveedor**; simulacro de restauración trimestral. RPO ≤ 6 h, RTO ≤ 2 h.
+- **Despliegue**: imagen en GHCR desde GitHub Actions; despliegue manual por SSH con migraciones primero, comprobación de salud y vuelta atrás automática.
 - **Vigilancia que no depende de la VPS**: latido a healthchecks.io y uptime externo.
 
 ## Alternativas consideradas
 
-- **AWS ECS + RDS** (diseño anterior): gestionado y escalable, pero ~5–10× más caro y mucho más complejo para esta escala.
-- **PaaS (Render, Fly, Railway)**: menos operación, pero coste por servicio (web, worker, BD) que supera el objetivo y menos control de la región.
+- **Nube gestionada (contenedores gestionados + base de datos gestionada + balanceador)**: escalable y con alta disponibilidad, pero varias veces más cara y con muchas más piezas que operar para esta escala.
+- **PaaS (Render, Fly, Railway)**: menos operación, pero el coste por servicio (web, worker, BD) supera el objetivo.
 - **Kubernetes**: sin sentido a esta escala.
 
 ## Consecuencias
 
-- Coste de infraestructura ~10–20 €/mes.
-- Sin alta disponibilidad: un fallo de la VPS supone una caída hasta restaurar (Meta reintenta los webhooks durante horas). Aceptado (`design.md` §1.3).
-- Parches del sistema, cortafuegos y backups son responsabilidad nuestra: automatizados (`unattended-upgrades`, timer de backup) y vigilados.
+- Coste de infraestructura de ~6–11 €/mes.
+- Sin alta disponibilidad: un fallo de la VPS supone una caída hasta restaurar (los proveedores reintentan los webhooks). Aceptado (`design.md` §1.3).
+- Parches del sistema, cortafuegos y backups son responsabilidad nuestra: automatizados y vigilados.
 - Nada depende del proveedor: cambiar de VPS es una restauración.
 
 ## Cuándo revisarla
 
-- Más de 15–20 negocios, o un negocio que dependa del servicio en horas críticas → PostgreSQL gestionado + varias VPS de aplicación.
-- Un cliente exige datos en España → proveedor con centro de datos en España.
+- Más de 15 negocios, o un negocio que dependa del servicio en horas críticas → PostgreSQL gestionado y varias VPS de aplicación.

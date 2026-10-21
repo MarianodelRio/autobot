@@ -1,383 +1,261 @@
 # design.md — Diseño técnico de FlowPilot
 
-> **Qué es este documento.** El diseño técnico completo de la plataforma: alcance, piezas, contratos entre módulos, los dos packs iniciales, datos, infraestructura, despliegue, operación y pruebas. Con él delante solo deberían quedar dudas de implementación (cómo escribir una función), no de diseño (dónde va, quién la llama, cómo se despliega).
+> **Qué es este documento.** La única fuente de verdad sobre el diseño de FlowPilot: alcance, componentes, responsabilidades, interfaces, datos, flujos, integraciones, configuración, despliegue y comportamiento ante errores.
 >
-> **Punto de partida.** No partimos de cero: hay dos bots en producción o casi, cada uno en su repositorio, que FlowPilot sustituye:
-> - **`Peluqueria`** (DM Barber Shop): reservas por WhatsApp sobre Google Calendar. FastAPI + APScheduler, sin base de datos, en una VM de GCP.
-> - **`buscaBus`** (Autocares San Sebastián): consulta de horarios de autobús por WhatsApp. Mismo esqueleto que Peluquería, horarios en YAML cargados en memoria.
+> **Código de partida.** Los packs se construyen portando dos bots que ya funcionan, cada uno en su repositorio: `Peluqueria` (reservas por WhatsApp sobre Google Calendar) y `buscaBus` (horarios de autobús por WhatsApp). Cada sección indica qué se porta y de dónde.
 >
-> Este diseño parte de lo que esos dos bots **ya resuelven** (§4) y lleva a la parte común solo lo que de verdad se repite. Ningún requisito funcional de los dos bots se pierde sin estar listado como descartado o pospuesto (§4.4, §1.2).
+> **Documentos relacionados.** `IDEA.md` (el problema), `docs/adr/` (decisiones principales), `docs/glosario.md` (términos en lenguaje llano).
 >
-> **Relación con otros documentos.** `IDEA.md` (el problema), `docs/adr/` (una página por decisión, enlazadas desde §0), `CLAUDE.md` (reglas de trabajo en el repo), `docs/glosario.md` (términos en lenguaje llano).
->
-> **Convenciones.** **[DECIDIDO]**: no se discute salvo evidencia nueva. **[VERIFICAR]**: dato externo que hay que confirmar antes de usarlo. **[FUTURO]**: no se construye todavía; se indica cómo encajará.
+> **Convención.** **[VERIFICAR]** marca un dato externo que hay que confirmar antes de usarlo.
 
 ---
 
 ## Índice
 
-0. [Resumen de decisiones](#0-resumen-de-decisiones)
-1. [Alcance](#1-alcance)
-2. [Conceptos clave](#2-conceptos-clave)
+0. [Resumen](#0-resumen)
+1. [Alcance y requisitos](#1-alcance-y-requisitos)
+2. [Conceptos](#2-conceptos)
 3. [Principios](#3-principios)
-4. [Qué aportan los bots existentes: común frente a específico](#4-qué-aportan-los-bots-existentes-común-frente-a-específico)
-5. [Arquitectura](#5-arquitectura)
-6. [Tenants, configuración y secretos](#6-tenants-configuración-y-secretos)
+4. [Arquitectura](#4-arquitectura)
+5. [Configuración y secretos](#5-configuración-y-secretos)
+6. [Canales](#6-canales)
 7. [Runtime de mensajes](#7-runtime-de-mensajes)
 8. [Contrato de un pack](#8-contrato-de-un-pack)
 9. [Pack `salon` (peluquería)](#9-pack-salon-peluquería)
 10. [Pack `bus` (horarios de autobús)](#10-pack-bus-horarios-de-autobús)
-11. [WhatsApp](#11-whatsapp)
-12. [Avisos al dueño y alertas de operación](#12-avisos-al-dueño-y-alertas-de-operación)
-13. [Datos](#13-datos)
-14. [Seguridad](#14-seguridad)
-15. [Infraestructura: una VPS con Docker Compose](#15-infraestructura-una-vps-con-docker-compose)
-16. [Construcción y despliegue](#16-construcción-y-despliegue)
-17. [Observabilidad y alertas](#17-observabilidad-y-alertas)
-18. [Operación](#18-operación)
-19. [Pruebas](#19-pruebas)
-20. [Forma de trabajo](#20-forma-de-trabajo)
-21. [Plan de implementación y migración](#21-plan-de-implementación-y-migración)
-22. [Pendiente de verificar y decisiones abiertas](#22-pendiente-de-verificar-y-decisiones-abiertas)
-23. [Documentación](#23-documentación)
+11. [Avisos al dueño y alertas de operación](#11-avisos-al-dueño-y-alertas-de-operación)
+12. [Datos](#12-datos)
+13. [Seguridad](#13-seguridad)
+14. [Infraestructura y despliegue](#14-infraestructura-y-despliegue)
+15. [Observabilidad](#15-observabilidad)
+16. [Operación](#16-operación)
+17. [Pruebas](#17-pruebas)
+18. [Pendiente de verificar](#18-pendiente-de-verificar)
+19. [Documentación](#19-documentación)
 
 ---
 
-### 0. Resumen de decisiones
+### 0. Resumen
 
-| # | Tema | Decisión | ADR |
-|---|---|---|---|
-| 1 | Lenguaje y framework | **Python 3.14 + Django 5.2 LTS** (soporte hasta abril de 2028) | [ADR-001](docs/adr/ADR-001-monolito-modular.md) |
-| 2 | Forma de la aplicación | **Monolito modular**: una imagen, procesos `web`, `worker` y `admin` | [ADR-001](docs/adr/ADR-001-monolito-modular.md) |
-| 3 | Cola | **Procrastinate 3.x** sobre el propio PostgreSQL; 3 colas (`inbound`, `outbound`, `periodic`) | [ADR-001](docs/adr/ADR-001-monolito-modular.md) |
-| 4 | Multitenant | **Una base de datos PostgreSQL 18**, `tenant_id` en cada fila de cliente, **Row-Level Security** | [ADR-002](docs/adr/ADR-002-multitenancy-rls.md) |
-| 5 | Lógica de negocio | **Packs en Python** (`salon`, `bus`), cada uno con su **máquina de estados** y su esquema de config; la plataforma no sabe qué es una peluquería | [ADR-003](docs/adr/ADR-003-packs.md) |
-| 6 | Entrada | **Guardar primero, contestar 200, procesar después**; "al menos una vez" + idempotencia | [ADR-004](docs/adr/ADR-004-entrada-idempotente.md) |
-| 7 | Config de tenant | **Ficheros YAML en el repositorio** (`tenants/<slug>/`), validados en CI y al arrancar. Datasets (horarios) igual | §6 |
-| 8 | Secretos | Plataforma: `.env` en el servidor. Tenants: tabla `credential` **cifrada con Fernet** (clave en `.env`) | §6.4 |
-| 9 | Canales | **Solo WhatsApp** (Cloud API, app de Meta del cliente). Telegram solo para avisos al dueño y alertas | §11, §12 |
-| 10 | Integraciones | **Google Calendar** (cuenta de servicio de la plataforma). Sin registro genérico de conectores | §9.3 |
-| 11 | IA | **Ninguna en la v1.** Todo determinista | §1.2 |
-| 12 | Infraestructura | **Una VPS en la UE con Docker Compose**: `web`, `worker`, `admin`, `db` (PostgreSQL 18), `caddy`. ~15–20 €/mes | [ADR-005](docs/adr/ADR-005-vps-docker-compose.md) |
-| 13 | Backups | `pg_dump` cada 6 h → **restic** → almacenamiento externo (otro proveedor), cifrado; simulacro trimestral | §15.4 |
-| 14 | Despliegue | GitHub Actions: CI en cada PR; imagen en GHCR; **despliegue a prod manual** por SSH | §16 |
-| 15 | Observabilidad | Logs JSON + Sentry + comprobación de operación cada 5 min → Telegram + latido externo (healthchecks.io) + uptime externo | §17 |
-| 16 | Forma de trabajo | **Un solo agente** + revisión humana en cada PR. Sin framework de agentes | §20 |
-
-**Qué cambia respecto al diseño anterior** (versión con AWS y tres packs):
-
-| Antes | Ahora | Por qué |
-|---|---|---|
-| AWS: ECS Fargate, RDS, ALB, KMS, SSM, EventBridge, CloudWatch, CDK, dos cuentas | Una VPS con Docker Compose y Caddy | ~100 €/mes → ~15–20 €/mes; una persona opera menos piezas. La escala (≤15 negocios) no necesita autoescalado ni alta disponibilidad |
-| Packs `salon`, `bus`, `gym` | `salon` y `bus` | `gym` no existe como negocio real; se lleva con él formularios públicos, email y SES |
-| Motor genérico de recorridos (`Journeys`, `Step`, bloques versionados con `Params`) | Una máquina de estados por pack + utilidades comunes de interfaz | Los dos negocios reales tienen flujos muy distintos; los dos bots existentes ya usan máquina de estados y funcionan. La abstracción se añade cuando un tercer pack repita algo |
-| Registro de conectores con categorías, manifests, bindings y circuit breaker | Un cliente de Google Calendar detrás de un `Protocol` del pack | Solo un pack usa un sistema externo |
-| Config y datasets en BD, consola con subida de ficheros, `config_history`, `dataset_version` | YAML en git (`tenants/<slug>/`) | Es lo que ya hacen los dos bots; git da historial, diff, revisión y vuelta atrás gratis |
-| Watch de Google Calendar (push, `syncToken`, renovación) | Barrido periódico cada 15 min | Peluquería ya funciona con barrido; sin endpoint público, sin renovaciones, sin 410 |
-| `side_effect`, `send_intent`, `message`, `usage_daily`, `audit_event`, `console_action`… | `inbound_event`, `outbound_message`, `conversation`, `contact`, `credential`, `notification` | Menos tablas; la idempotencia de reservas la da el id de evento determinista de Calendar |
-| Bedrock (FAQ con IA) | Pospuesto | Ningún bot existente usa IA; evita coste, proveedor y obligaciones del AI Act |
-| Telegram como canal de clientes, bot del dueño con respuesta a derivaciones | Telegram solo de salida (avisos al dueño y a ops) | Canales adicionales y derivación a humano, pospuestos |
-| Consola HTMX con simulador y alta guiada | Django Admin (solo por túnel SSH) + comandos `manage.py` | Un operador; nada de interfaz que mantener |
-| dev-team (agentes, tareas, steering) | Un agente, ramas y PR | Pedido explícito |
+| Tema | Decisión |
+|---|---|
+| Plataforma | **Python 3.14 + Django 5.2 LTS + PostgreSQL 18 + Procrastinate 3.x** ([ADR-001](docs/adr/ADR-001-monolito-modular.md)) |
+| Forma | Monolito modular; una imagen; procesos `web` y `worker` |
+| Multitenant | Una base de datos; `tenant_id` en cada fila de cliente; **RLS** con dos roles (`fp_app`, `fp_owner`) ([ADR-002](docs/adr/ADR-002-multitenancy-rls.md)) |
+| Lógica de negocio | **Packs** `salon` y `bus`, cada uno con su máquina de estados y su esquema de config ([ADR-003](docs/adr/ADR-003-packs.md)) |
+| Entrada | Guardar primero, contestar 200, procesar después; "al menos una vez" + idempotencia ([ADR-004](docs/adr/ADR-004-entrada-idempotente.md)) |
+| Canales | **WhatsApp** (producción) y **Telegram** (desarrollo, pruebas y opcionalmente producción), con un adaptador pequeño cada uno; los packs no saben por qué canal hablan |
+| Config | `tenants/<slug>/tenant.yaml` en git, validado con pydantic en CI y al arrancar |
+| Secretos | Plataforma en `.env`; negocios en `secrets.yaml` en el servidor; nunca en git |
+| Integraciones | Google Calendar (pack `salon`), con una cuenta de servicio de la plataforma |
+| Infraestructura | **Una VPS en la UE con Docker Compose**: `caddy`, `web`, `worker`, `db`. ~10–15 €/mes ([ADR-005](docs/adr/ADR-005-vps-docker-compose.md)) |
+| Backups | `pg_dump` cada 6 h → restic → almacenamiento S3 de otro proveedor |
+| Vigilancia | Logs JSON, Sentry, comprobación de operación cada 5 min → Telegram, latido externo y uptime externo |
 
 ---
 
-### 1. Alcance
+### 1. Alcance y requisitos
 
-#### 1.1 Dentro de la v1
+#### 1.1 Dentro
 
-- **Plataforma multi-negocio** para **5–10 negocios** al empezar, ampliable a **15** sin cambios de diseño (§15.6).
-- **Canal de clientes:** WhatsApp Cloud API, un número por negocio, con la app de Meta en el portfolio del propio negocio.
-- **Pack `salon`**: todo lo que hace hoy el bot de Peluquería (§9): reservar, ver, mover y cancelar citas sobre el Google Calendar del negocio; citas manuales del dueño con confirmación por WhatsApp; recordatorios 24 h antes con confirmar/cancelar; cierres y horarios especiales con eventos `[CFG]`; evento especial con días propios; límite de citas por cliente.
-- **Pack `bus`**: todo lo que hace hoy buscaBus (§10): consulta origen → destino → día con salidas directas, motor de horarios en memoria, matcher de pueblos que nunca adivina, fechas en formato cerrado, "ver pueblos por línea", validador estricto de horarios y vista de revisión HTML/PDF para la empresa.
-- **Avisos al dueño** por Telegram, opcionales por negocio (§12).
-- **Operación para una persona**: alta y baja de negocios con comandos, alertas a Telegram, backups externos probados.
+- Plataforma para **5–10 negocios**, ampliable a **15** sin cambios de diseño.
+- **Canales de conversación:** WhatsApp Cloud API (canal de producción; la app de Meta es del negocio) y bots de Telegram (uno o varios por negocio, normalmente de pruebas). La misma lógica de pack sirve para los dos.
+- **Pack `salon`** (§9): reservar, ver, mover y cancelar citas sobre el Google Calendar del negocio; citas manuales del dueño con confirmación al cliente; recordatorios 24 h antes con confirmar o cancelar; cierres y horarios especiales con eventos `[CFG]`; evento especial con días propios; límite de citas por cliente.
+- **Pack `bus`** (§10): consulta origen → destino → día con salidas directas; motor de horarios en memoria; matcher de pueblos que nunca adivina; fechas en formato cerrado; "ver pueblos por línea"; validador estricto de horarios y vista de revisión HTML/PDF para la empresa.
+- **Avisos al dueño** por Telegram, opcionales por negocio (§11).
+- **Operación para una persona:** alta y baja con comandos, alertas a Telegram, backups externos con restauración probada.
 
-#### 1.2 Fuera o pospuesto
+#### 1.2 Fuera de alcance
 
-| Pospuesto | Cuándo se revisa | Cómo encajará |
-|---|---|---|
-| Pack de gimnasio, formularios públicos, email (SES) | Un negocio real lo pida | Nuevo pack; formularios como una entrada más que crea `inbound_event` |
-| IA (FAQ con knowledge) | Se mida que >10–15 % de los textos no se entienden, o un negocio lo pida | Interfaz `LLMPort` en `core`, proveedor UE; aviso de IA obligatorio (AI Act art. 50) en ese momento |
-| Telegram, Instagram, email como canal de clientes | Un negocio lo pida | Un adaptador más con el contrato de §11; la conversación del pack no cambia |
-| Derivación a humano con respuesta desde Telegram | Un negocio tenga a alguien atendiendo | Modo `human` en `conversation`; hoy "Contacto" muestra el teléfono del negocio |
-| Portal o panel de autoservicio para negocios | El negocio necesite cambiar algo sin el operador más de una vez al mes | Config pasaría a BD con historial; hoy el dueño gestiona su agenda en Google Calendar |
-| Varios profesionales por peluquería, lista de espera, pagos o señal | Un negocio lo pida | `staff_id` en `CalendarPort` (un calendario por profesional) |
-| Precios, incidencias por línea, exportación GTFS en `bus` | Lleguen los datos de la empresa | Campos nuevos en el dataset y en el resultado |
-| Escalado horizontal, alta disponibilidad, staging en la nube | >15 negocios o un negocio que dependa del servicio en horas críticas | §15.6 |
-| WhatsApp Flows, Tech Provider / Embedded Signup | Volumen de altas que lo justifique | Modo `platform_app` (§11.1) |
+IA o lenguaje natural · otros canales (email, Instagram, SMS) · formularios públicos · derivación a una persona dentro de la conversación (la opción "Contacto" muestra el teléfono del negocio) · panel de autoservicio para negocios · varios profesionales por peluquería, lista de espera, pagos · precios, incidencias y GTFS en `bus` · alta disponibilidad, autoescalado y entorno de staging.
 
 #### 1.3 Requisitos no funcionales
 
-| Requisito | Valor | Implicación |
+| Requisito | Valor | Cómo se cumple |
 |---|---|---|
-| Escala | 5–10 negocios (15 sin cambios); ~1.000–5.000 mensajes/mes por negocio; picos de unos pocos mensajes por segundo en total | Un proceso `worker` con concurrencia 4 sobra con margen de >100×; sin autoescalado |
-| Latencia | Respuesta al contacto en 1–3 s | Webhook guarda y encola en <100 ms; Procrastinate usa `LISTEN/NOTIFY` (sin sondeo) |
-| Disponibilidad | Caídas de minutos ocasionales aceptables; no se promete 24/7 | Meta reintenta los webhooks durante horas: un corte corto no pierde mensajes |
-| Durabilidad | RPO ≤ 6 h, RTO ≤ 2 h | Backups cada 6 h fuera de la VPS (§15.4). La agenda vive en Google Calendar y los horarios en git: lo que se perdería son conversaciones en curso |
-| Coste de infraestructura | ~20 €/mes como objetivo, sin contar APIs (Meta lo paga cada negocio) | §15.5 |
-| Datos | Personales (teléfonos, nombres, citas); sin pagos; sin datos de salud | RLS, cifrado de secretos, retención (§13.3), datos en la UE |
+| Escala | ≤ 15 negocios; ~1.000–5.000 mensajes/mes por negocio; picos de pocos mensajes por segundo en total | Un `worker` con concurrencia 4 |
+| Latencia | Respuesta en 1–3 s | El webhook guarda y encola en < 100 ms; Procrastinate usa `LISTEN/NOTIFY` |
+| Orden | Los mensajes de un contacto se procesan y se responden en orden | Candados por conversación en la cola (§7.5) |
+| Disponibilidad | Se aceptan caídas ocasionales de minutos | Meta y Telegram reintentan los webhooks: un corte corto no pierde mensajes |
+| Durabilidad | RPO ≤ 6 h, RTO ≤ 2 h | §14.4. La agenda vive en Google Calendar y los horarios en git |
+| Coste | ~20 €/mes como máximo, sin contar APIs (Meta lo paga cada negocio en su cuenta) | §14.5 |
+| Datos | Personales (teléfonos, nombres, citas); sin pagos ni datos de salud; en la UE | RLS, secretos fuera de la BD y de git, retención (§12.3) |
 
 ---
 
-### 2. Conceptos clave
+### 2. Conceptos
 
-| Concepto | Qué es | Ejemplo |
-|---|---|---|
-| **Tenant** (negocio) | Un negocio que usa la plataforma. Todo dato pertenece a un tenant | DM Barber Shop |
-| **Pack** | El programa para un tipo de negocio: conversación, reglas, esquema de config y tests | `salon`, `bus` |
-| **Config** | Los datos de un tenant que usa su pack, validados con el esquema del pack | Servicios, precios, horario, textos, pueblos del menú |
-| **Dataset** | Datos estructurados grandes de un tenant, en ficheros con validador estricto | Los horarios de una empresa de autobuses |
-| **Contacto** | Persona que escribe al negocio por WhatsApp (nunca "cliente": cliente = tenant) | Lucía |
-| **Conversación** | El estado de la charla de un contacto con un negocio (en qué paso está) | "Reservando: ha elegido corte, falta el día" |
-| **Evento entrante** (`inbound_event`) | Un aviso de Meta ya guardado y pendiente de procesar: un mensaje o un cambio de estado de un envío | El mensaje "hola" de las 10:12 |
-| **Evento de calendario** | Una cita o bloqueo en el Google Calendar del negocio (`gcal_id`); no confundir con evento entrante | La cita de Lucía del jueves a las 17:00 |
-| **Mensaje saliente** (`outbound_message`) | Un mensaje que hay que enviar, guardado **antes** de enviarlo, con su clave idempotente | La lista de horas libres |
-| **Respuesta** (reply) | Lo que el pack quiere decir al contacto en este turno | Texto, botones, lista |
-| **Acción** | Lo que el pack quiere que ocurra además de responder | Enviar una plantilla, avisar al dueño, marcar baja |
-| **Barrido** | Tarea periódica por tenant que revisa datos externos y actúa sobre lo que encuentra, con una clave estable por entidad | Recordatorios de citas cada 15 min |
-| **Plantilla** | Mensaje aprobado por Meta, el único que se puede enviar fuera de la ventana de 24 h | `recordatorio_cita` |
+| Concepto | Qué es |
+|---|---|
+| **Tenant** (negocio) | Un negocio de la plataforma. Todo dato pertenece a uno |
+| **Pack** | El programa de un tipo de negocio: conversación, reglas, esquema de config, periódicas y tests (`salon`, `bus`) |
+| **Canal** | Una vía concreta de un tenant para hablar con sus contactos: un número de WhatsApp o un bot de Telegram. Se identifica por su `key` dentro del tenant (`wa-main`, `tg-test`) |
+| **Adaptador de canal** | Código que traduce entre un proveedor (Meta, Telegram) y los tipos comunes. Uno por tipo de canal |
+| **Contacto** | Persona que escribe a un tenant por un tipo de canal (nunca "cliente": cliente = tenant) |
+| **Conversación** | El estado de la charla de un contacto con un tenant (en qué paso está) |
+| **Evento entrante** (`inbound_event`) | Un aviso de un proveedor ya guardado y pendiente de procesar: un mensaje, una pulsación de botón o un estado de entrega |
+| **Mensaje saliente** (`outbound_message`) | Un mensaje que hay que enviar, guardado antes de enviarlo, con clave idempotente |
+| **Respuesta** (reply) | Lo que el pack quiere decir en este turno: texto, botones o lista |
+| **Acción** | Lo que el pack quiere que ocurra además de responder: enviar un aviso proactivo, avisar al dueño, marcar una baja |
+| **Aviso proactivo** | Mensaje que el bot inicia sin que el contacto haya escrito (recordatorio, confirmación). En WhatsApp es una **plantilla** aprobada por Meta |
+| **Evento de calendario** | Una cita o bloqueo en el Google Calendar del negocio (`gcal_id`) |
+| **Barrido** | Tarea periódica por tenant que revisa datos externos y actúa con una clave estable por entidad |
+| **Dataset** | Datos estructurados grandes de un tenant en ficheros con validador estricto (horarios de `bus`) |
 
 ---
 
 ### 3. Principios
 
-1. **Simple antes que flexible.** Una máquina, una base de datos, una imagen. Se añade complejidad con un problema real delante, no antes.
-2. **Lo genérico en la plataforma, lo específico en los packs.** La plataforma no sabe qué es una cita ni un autobús. Pero solo sube a la parte común lo que **ya se repite** en los dos packs (§4.3).
-3. **Lógica en código; datos de negocio en ficheros validados.** Precios, horarios, textos y datasets se cambian sin programar, con revisión en git y validación en CI.
-4. **Nada se pierde y nada se duplica.** Todo evento se guarda antes de procesarse y todo efecto externo es idempotente. Nunca se reintenta a ciegas un envío ambiguo.
-5. **Determinista.** Horarios, disponibilidad y precios salen de datos. El bot nunca adivina en silencio: o hay una respuesta única, o pregunta.
-6. **Aislamiento entre negocios garantizado por la base de datos** (RLS), no solo por el código.
-7. **Diseñado para una persona.** Lo que no se puede operar fácilmente con un comando, no se hace.
-8. **Portable.** Nada depende de un proveedor de nube: contenedores estándar, PostgreSQL estándar, backups en formato abierto.
+1. **Simple antes que flexible.** Una máquina, una base de datos, una imagen, dos procesos de aplicación.
+2. **Lo genérico en la plataforma, lo específico en los packs.** La plataforma no sabe qué es una cita ni un autobús; los packs no saben qué es WhatsApp ni Telegram. A `core/` solo sube lo que usan los dos packs.
+3. **Lógica en código; datos de negocio en ficheros validados.** Precios, horarios, textos y datasets se cambian sin programar, con historial en git y validación en CI.
+4. **Nada se pierde y nada se duplica.** Todo evento se guarda antes de procesarse; todo efecto externo es idempotente; nunca se reintenta a ciegas un envío ambiguo.
+5. **Determinista.** El bot nunca adivina en silencio: o hay una respuesta única, o pregunta.
+6. **Aislamiento entre negocios garantizado por la base de datos**, no solo por el código.
+7. **Operable por una persona.** Lo que no se resuelve con un comando o una alerta clara, no se hace.
 
 ---
 
-### 4. Qué aportan los bots existentes: común frente a específico
+### 4. Arquitectura
 
-#### 4.1 Peluquería (`~/Desktop/Peluqueria`)
-
-FastAPI + APScheduler; Google Calendar es la única fuente de verdad; estado de conversación en memoria (30 min); 4.600 líneas con tests completos.
-
-Funcionalidad que hay que conservar (detalle en §9):
-
-- Menú: **Pedir cita · Ver mis citas · Mover cita · Cancelar cita** (+ **Cita {evento}** si hay evento especial activo).
-- Reserva: servicio (≤ 9, con precio) → día (solo días con huecos, ventana de 21 días) → mañana/tarde si no caben las horas → hora → nombre → confirmación.
-- Servicios con **dos duraciones**: `duracion_min` (ocupación del peluquero, colisiones) y `presencia_cliente_min` (última hora ofrecible antes del cierre).
-- **Límite de 5 citas futuras** por cliente (falla en abierto si Calendar no responde).
-- **Mover cita** = elegir cita → servicio → día → hora; **cancelar** = elegir cita → cancelada.
-- **Citas manuales** del peluquero: título `<Servicio> - <Nombre>`, `Telefono: +34…` en la descripción → plantilla `confirmacion_cita` con botón Cancelar. Eventos sin teléfono solo bloquean horas.
-- **Recordatorios** 23–25 h antes (plantilla `recordatorio_cita`, botones Confirmar/Cancelar); al confirmar se marca la cita como confirmada en Calendar.
-- Eventos **`[CFG] CERRADO`**, **`[CFG] VACACIONES`**, **`[CFG] HORARIO HH:MM-HH:MM`**.
-- **Evento especial** (`evento:` en config): nombre y días con franjas propias, opción extra en el menú.
-- Interruptores `envios.recordatorios` y `envios.confirmaciones`.
-- Defensas: HMAC de Meta, cuerpo ≤ 64 KB, validación del identificador, deduplicación, límite por IP y por teléfono, candado por teléfono, candado por hueco + "¿sigue libre?" antes de crear, limpieza de HTML en descripciones, verificación de que la cita de un botón de recordatorio pertenece a quien lo pulsa, enmascarado de teléfonos en logs, mensaje de recuperación si una respuesta no se entrega.
-- **Identificador de contacto**: `user_id` (BSUID, `ES.xxxx`) si Meta lo envía; si no, `from` (teléfono). El teléfono puede no estar disponible.
-- Operación: comandos de admin por WhatsApp (`/status`, `/help`, `/logs`, `/restart`), watchdog por cron (salud, RAM, disco, dominio, certificado, pico de errores), reinicio nocturno, generador de QR `wa.me`.
-
-#### 4.2 Autobuses (`~/Desktop/buscaBus`)
-
-FastAPI; horarios en YAML editados a mano en `horarios/`, validados y cargados en memoria; sin escrituras ni APIs externas por consulta; fases 1–4 implementadas, falta infraestructura y alta en Meta.
-
-Funcionalidad que hay que conservar (detalle en §10):
-
-- Menú **Ver horarios · Información**; flujo **origen → destino → día → resultado** con botones **Otro día · Ver la vuelta · Otra consulta**.
-- Origen: 8 pueblos de la config + "Otro pueblo"; destino: solo los alcanzables (lista completa si son ≤ 9), sin pares no vendibles.
-- Día: 7 días con **número de salidas** de ese trayecto y "Otra fecha" en **formato cerrado** `día/mes[/año]`.
-- Resultado: salidas directas, **fusión del mismo autobús**, salidas ya pasadas si es hoy, notas con marcas numéricas, `sin_datos` ≠ `sin_servicio`, siguiente día con salidas, nunca trasbordos inventados, corte a 4.096 caracteres.
-- **Matcher**: exacto → prefijo → errata (Damerau-Levenshtein), mínimo 3 letras, nunca adivina (Villafranca siempre pregunta), "Ver pueblos por línea" paginado, localidades pendientes con "Usar Y".
-- **Validador estricto** con ~30 reglas (fichero, tabla, fila, motivo), herramientas `validar`, `formatear`, `revision` (HTML + PDF con cambios desde la versión publicada, en lenguaje de negocio).
-- Calendario: festivos generales y locales por línea, periodo escolar, temporadas por línea, días sin servicio en ninguna línea.
-- Textos no entendidos registrados **sin teléfono**.
-
-#### 4.3 Matriz: qué es común y qué es de cada pack
-
-| Pieza | Peluquería | Autobuses | Dónde va en FlowPilot |
-|---|---|---|---|
-| Webhook de Meta (HMAC, 64 KB, identificador, BSUID) | ✔ | copia | **Común** `flowpilot/whatsapp` |
-| Envío a Meta (reintentos, 429, plantillas, errores) | ✔ | copia | **Común** `flowpilot/whatsapp` |
-| Deduplicación de mensajes | memoria | memoria | **Común**, en BD (`UNIQUE`) |
-| Candado por contacto y estado con caducidad de 30 min | memoria | memoria | **Común**, en BD + candado de Procrastinate (§7) |
-| Límite por contacto e IP | ✔ | ✔ | **Común** |
-| Enmascarado de teléfonos en logs | ✔ | ✔ | **Común** |
-| Mensaje de recuperación ante error | ✔ | ✔ | **Común** (runtime) |
-| Constructores de listas y botones con los límites de WhatsApp (`_trunc`, `_row`, listas ≤ 10 filas) | ✔ | copia + propios | **Común** `core/ui` (helpers); los constructores concretos, en cada pack |
-| Listas paginadas (8 + "Más" + "Volver") | ✔ (horas) | ✔ (líneas, pueblos) | **Común** `core/ui.paginate` |
-| Normalización de texto (minúsculas, sin tildes) | ✔ | ✔ (+ artículos) | **Común** `core/text.normalize`; el bus añade su capa (artículos, relleno) |
-| Fechas en español ("jueves 9 de octubre") | ✔ | ✔ | **Común** `core/dates` |
-| Config YAML validada al arrancar | ✔ | ✔ | **Común**: `tenants/<slug>/tenant.yaml` + esquema pydantic del pack |
-| Máquina de estados de la conversación | ✔ | ✔ | **Cada pack** (son flujos distintos) |
-| Textos al contacto | `messages.py` | `messages.py` | **Cada pack**, con textos sobrescribibles por config donde haga falta |
-| Google Calendar, huecos, `[CFG]`, citas manuales | ✔ | — | Cliente común `integrations/google_calendar`; reglas en `packs/salon` |
-| Barridos periódicos | 2 jobs | — | **Común** el mecanismo (§7.6); el barrido, en `packs/salon` |
-| Horarios, motor, matcher, fechas cerradas, revisión | — | ✔ | `packs/bus` (se porta casi tal cual) |
-| Salud | Calendar | datos cargados | **Común** `/health` + `pack.health()` por tenant |
-| QR de `wa.me` | ✔ | — | **Común** `tools/qr.py` (cualquier tenant) |
-
-Regla aplicada: **sube a común lo que está en los dos bots**. Lo que está en uno solo se queda en su pack aunque "podría servir a otros"; se mueve cuando aparezca el segundo uso.
-
-#### 4.4 Qué se sustituye o se descarta
-
-| De los bots actuales | En FlowPilot | Motivo |
-|---|---|---|
-| Estado en memoria, candados en memoria, dedup en memoria | PostgreSQL + candados de Procrastinate | Sobrevive a reinicios; varios procesos |
-| APScheduler | Tareas periódicas de Procrastinate | Una sola pieza; sin trabajos duplicados |
-| nginx + certbot + DuckDNS | Caddy (HTTPS automático) + dominio propio | Menos piezas; renovación sin scripts |
-| systemd por bot, VM de GCP free tier | Docker Compose en una VPS | Un despliegue para todos los negocios |
-| Comandos de admin por WhatsApp (`/status`, `/logs`, `/restart`) | Alertas en Telegram + `make status`/`make logs` por SSH + Django Admin | Ya no hay un número "del operador" por negocio |
-| `watchdog.py` por cron, métricas en memoria, `/metrics` | Comprobación de operación cada 5 min + latido externo + uptime externo + Sentry (§17) | Funciona aunque la aplicación esté caída |
-| Reinicio nocturno | — | No hay estado en memoria que limpiar |
-| Estado en la descripción de Calendar (`Recordatorio: sí`, `Estado: confirmada` como marca de idempotencia) | Idempotencia en BD; Calendar solo guarda lo que el dueño debe ver (`Estado: confirmada`) | No depender de que el dueño no edite esos campos |
-| Caché de huecos de 180 s | Una lectura por rango para la lista de días; sin caché entre peticiones | El volumen lo permite y evita huecos obsoletos |
-| `tools/telegram_pruebas.py` (pruebas con negocio por Telegram) | Número de prueba de Meta (hasta 5 destinatarios) + `manage.py chat` | Sin canal extra que mantener |
-| `pytz` (Peluquería) | `zoneinfo` | Ya decidido en buscaBus |
-
----
-
-### 5. Arquitectura
-
-#### 5.1 Vista general
+#### 4.1 Vista general
 
 ```
-                     ┌──────────────────────────── VPS (UE) ─────────────────────────────┐
-  Meta (WhatsApp) ──►│ caddy :443  ── /webhooks/whatsapp/*, /health ──► web (gunicorn)   │
-                     │  (HTTPS auto)                                       │             │
-                     │                                                     ▼             │
-                     │                                           ┌─────────────────┐     │
-  Operador ── SSH ──►│ admin (Django Admin, 127.0.0.1) ─────────►│ db: PostgreSQL 18│    │
-   (túnel)           │                                           │ datos + cola     │    │
-                     │ worker (Procrastinate) ◄──────────────────┴─────────────────┘     │
-                     │   ├─► Meta Graph API (envíos)                                     │
-                     │   ├─► Google Calendar API (pack salon)                            │
-                     │   ├─► Telegram Bot API (avisos al dueño, alertas)                 │
-                     │   └─► healthchecks.io (latido)                                    │
-                     │ backup (timer del host) ── restic ──► almacenamiento externo      │
-                     └───────────────────────────────────────────────────────────────────┘
+                    ┌──────────────────────────── VPS (UE) ──────────────────────────────┐
+ Meta (WhatsApp) ──►│ caddy :443 ─ /webhooks/*, /health ─► web (gunicorn) ──┐            │
+ Telegram ─────────►│  (HTTPS automático)                                    ▼            │
+                    │                                            ┌───────────────────┐    │
+ Operador ─ SSH ───►│ 127.0.0.1:8000 ─► web /admin ─────────────►│ db: PostgreSQL 18 │    │
+   (túnel)          │                                            │ datos + cola      │    │
+                    │ worker (Procrastinate) ◄───────────────────┴───────────────────┘    │
+                    │   ├─► Meta Graph API · Telegram Bot API (respuestas y avisos)       │
+                    │   ├─► Google Calendar API (pack salon)                              │
+                    │   ├─► Bot de avisos de Telegram (dueños y operador)                 │
+                    │   └─► healthchecks.io (latido)                                      │
+                    │ timer del host: backup ── restic ──► almacenamiento externo         │
+                    └─────────────────────────────────────────────────────────────────────┘
 ```
 
-#### 5.2 Procesos
+#### 4.2 Procesos
 
-Todos usan **la misma imagen**; cambia el comando.
+Una sola imagen; cambia el comando.
 
-| Servicio | Comando | Responsabilidad | Lo que NO hace |
+| Servicio | Comando | Hace | No hace |
 |---|---|---|---|
-| `web` | `gunicorn config.wsgi --workers 2 --threads 4` | Webhooks de WhatsApp y `/health`. Verifica, guarda, encola y contesta 200 | Llamar a APIs externas, ejecutar packs, servir el admin (no tiene sus URLs ni las credenciales de BD con `BYPASSRLS`) |
-| `worker` | `manage.py procrastinate worker --concurrency 4` | Procesar eventos, ejecutar packs, enviar mensajes, periódicas y barridos | Atender HTTP |
-| `admin` | `gunicorn config.wsgi_admin` en `127.0.0.1:8081` | Django Admin para el operador (vía túnel SSH) | Exponerse a internet |
-| `migrate` | `manage.py migrate && manage.py sync_tenants` | Tarea puntual en cada despliegue (§16) | — |
+| `web` | `gunicorn config.wsgi --workers 2 --threads 4` | Webhooks de WhatsApp y Telegram, `/health`, Django Admin (solo accesible por túnel SSH) | Llamar a APIs externas ni ejecutar packs |
+| `worker` | `manage.py procrastinate worker --concurrency 4` | Procesar eventos, ejecutar packs, enviar mensajes, periódicas, barridos, comprobaciones de operación | Atender HTTP |
 | `db` | `postgres:18` | Datos y cola | Exponerse fuera de la red de Compose |
-| `caddy` | `caddy:2` | TLS automático (Let's Encrypt), proxy a `web`, solo rutas públicas | — |
+| `caddy` | `caddy:2` | TLS automático y proxy a `web` solo para las rutas públicas | — |
 
-**Conexiones a la BD:** `web` 8 (2 × 4 hilos) + `worker` ~6 (concurrencia 4 + escucha + periódicas) + `admin` 2 → **~16** de las 100 por defecto.
+Las migraciones se ejecutan con `docker compose run --rm web manage.py migrate` antes de recrear los servicios (§14.6). Conexiones a la BD: ~8 de `web` + ~6 del `worker` de las 100 por defecto.
 
-#### 5.3 La vida de un mensaje
+#### 4.3 La vida de un mensaje
 
-1. El contacto escribe al WhatsApp del negocio. **Meta** envía `POST https://api.<dominio>/webhooks/whatsapp/<app_public_id>`.
-2. **web** identifica la app por la URL (registro en memoria, §6.3), comprueba la firma HMAC con su `app_secret`, separa los elementos del aviso y, por cada uno, resuelve el tenant por `phone_number_id`, **guarda** `inbound_event` (si ya existía, no hace nada) y **encola** `process_event` con candado por contacto. Contesta **200** en <100 ms.
-3. **worker** coge el trabajo. El candado `conv:<hash>` garantiza que dos mensajes del mismo contacto se procesan en orden, nunca a la vez.
+1. El contacto escribe por WhatsApp o Telegram. El proveedor envía `POST /webhooks/<tipo>/<channel_public_id>`.
+2. **web** resuelve el canal por la URL (registro en memoria, §5.4), verifica la autenticidad con el adaptador del canal, convierte el aviso en elementos (`parse`) y, por cada uno, **guarda** `inbound_event` (si ya existía, nada) y **encola** `process_event` con el candado de esa conversación. Contesta 200.
+3. **worker** coge el trabajo. El candado garantiza que los mensajes de un mismo contacto se procesan de uno en uno y en orden de llegada.
 4. **tx1** (transacción corta): carga evento, contacto y conversación.
-5. **Sin transacción**: pasa el mensaje al pack con un `PackContext`. El pack decide respuestas, nuevo estado y acciones; si necesita Calendar, lo llama aquí.
-6. **tx2**: guarda el estado nuevo (comprobando `conversation.version`), crea los `outbound_message` en orden y las acciones, marca el evento como hecho y encola los envíos (el trabajo solo existe si hay COMMIT).
-7. **worker** (cola `outbound`) envía cada mensaje a Meta, guarda el `wamid` y lo marca enviado.
-8. Más tarde llegan avisos de estado (entregado, leído, fallido, con precio): actualizan `outbound_message`.
+5. **Sin transacción:** pasa el mensaje al pack con un `PackContext`. El pack devuelve respuestas, estado nuevo y acciones; si necesita Calendar, lo llama aquí.
+6. **tx2:** guarda el estado, crea los `outbound_message` en orden y las acciones, marca el evento como hecho y encola los envíos (el trabajo solo existe si hay COMMIT).
+7. **worker** (cola `outbound`) renderiza cada mensaje con el adaptador de su canal y lo envía.
+8. En WhatsApp llegan después avisos de estado (entregado, leído, fallido, con precio) que actualizan `outbound_message`.
 
-Si algo falla a mitad, el trabajo se reintenta y la idempotencia (§7) evita duplicados.
-
-#### 5.4 Módulos y regla de dependencias
+#### 4.4 Módulos y regla de dependencias
 
 ```
 src/
-  core/            Python puro, SIN Django: tipos del contrato de pack, respuestas y acciones,
-                   límites de WhatsApp y plan de envío, utilidades de interfaz, texto y fechas,
-                   arnés de pruebas de conversación
-  integrations/    Clientes de sistemas externos, SIN Django: google_calendar/
-  packs/           salon/, bus/  + registry.py (diccionario explícito de packs)
+  core/            Python puro, sin Django: tipos comunes (mensaje entrante, respuestas, acciones,
+                   contrato de pack), límites comunes de mensajes, utilidades de interfaz, texto,
+                   fechas y arnés de pruebas de conversación
+  integrations/    Clientes de sistemas externos de negocio, sin Django: google_calendar/
+  packs/           salon/, bus/ y registry.py (diccionario explícito de packs)
   flowpilot/       Django:
-     tenancy/        Tenant, registro de tenants (YAML → memoria), tenant_tx, credenciales
-     whatsapp/       webhook, parser de avisos, cliente de envío
-     runtime/        InboundEvent, Conversation, Contact, OutboundMessage, process_event, envíos
-     notify/         Telegram (avisos al dueño y alertas de ops)
-     ops/            /health, comprobación de operación, latido, retención
-     admin_site/     Django Admin (solo en el servicio `admin`)
-     jobs.py         app de Procrastinate y tareas
-  config/          settings, urls (web), urls_admin (admin), wsgi
+    tenancy/         registro de tenants y canales (YAML → memoria), modelo Tenant, tenant_tx, secretos
+    channels/        contrato de adaptador + whatsapp/ y telegram/ (verificación, parseo, render, envío)
+    runtime/         modelos (InboundEvent, Contact, Conversation, OutboundMessage, Notification),
+                     process_event, envíos, periódicas
+    notify/          bot de avisos de Telegram (dueños y operador)
+    ops/             /health, comprobación de operación, latido, retención, comandos de operación
+    admin.py         Django Admin
+    jobs.py          app de Procrastinate y registro de tareas
+  config/          settings, urls, wsgi
 ```
 
-**Regla de dependencias [DECIDIDO]** (comprobada con `import-linter` en CI):
+Regla de dependencias (comprobada con `import-linter` en CI):
 
 ```
 core           ──►  nada del proyecto
 integrations   ──►  core
-packs/*        ──►  core              (nunca Django, nunca integrations, nunca otro pack)
+packs/*        ──►  core               (nunca Django, integrations, flowpilot ni otro pack)
 flowpilot      ──►  core, integrations, packs.registry
-packs/A        ──X  packs/B
 ```
 
-Los packs hablan con Calendar mediante un `Protocol` propio (`packs/salon/ports.py`); `flowpilot` le pasa la implementación de `integrations/google_calendar`. Así los tests de `core` y de los packs corren sin BD ni red.
+Los packs acceden a sistemas externos mediante un `Protocol` propio (p. ej. `packs/salon/ports.py`); `flowpilot` les pasa la implementación de `integrations/`. Los tests de `core` y de los packs corren sin BD ni red.
 
-#### 5.5 Estructura del repositorio
+#### 4.5 Repositorio
 
 ```
 flowpilot/
 ├── pyproject.toml · uv.lock · manage.py · Dockerfile · Makefile · .env.example
-├── compose.yaml                 servicios comunes (local y prod)
-├── compose.prod.yaml            imagen de GHCR, caddy, límites de logs, reinicio automático
-├── Caddyfile
+├── compose.yaml · compose.prod.yaml · Caddyfile
 ├── README.md · IDEA.md · design.md · CLAUDE.md
-├── src/                         §5.4
-├── tenants/
-│   └── <slug>/
-│       ├── tenant.yaml          identidad, canal, pack y config (§6.2)
-│       └── datasets/            solo packs con datasets (bus: timetable/)
-├── tools/                       qr.py, bus_validar.py, bus_formatear.py, bus_revision.py,
-│                                telegram_link.py, migrate_salon_events.py
-├── deploy/                      deploy.sh, backup.sh, restore.sh, systemd/ (timer de backup)
-├── tests/                       integration/ · isolation/ · contract/ · fixtures/
-│                                (unit y escenarios viven junto a cada pack: packs/*/tests/)
-├── docs/                        adr/ · packs/ · runbooks/ · glosario.md
-└── .github/workflows/           ci.yml · deploy.yml
+├── src/                      §4.4 (tests unitarios y escenarios dentro de cada pack: packs/*/tests/)
+├── tenants/<slug>/           tenant.yaml (§5.2) y datasets/ (solo bus)
+├── tools/                    qr.py · bus_validar.py · bus_formatear.py · bus_revision.py ·
+│                             migrate_salon_events.py
+├── deploy/                   deploy.sh · backup.sh · restore.sh · systemd/ (timer de backup)
+├── tests/                    integration/ · isolation/ · contract/ · fixtures/
+├── docs/                     adr/ · packs/ · runbooks/ · glosario.md
+└── .github/workflows/        ci.yml · deploy.yml
 ```
 
 ---
 
-### 6. Tenants, configuración y secretos
+### 5. Configuración y secretos
 
-#### 6.1 Qué vive dónde
+#### 5.1 Qué vive dónde
 
-| Dónde | Qué | Cómo se cambia | ¿Despliegue? |
-|---|---|---|---|
-| **Repositorio** (`src/`) | Código, packs, plantillas declaradas, migraciones | PR + CI + revisión | Sí |
-| **Repositorio** (`tenants/<slug>/`) | Alta del tenant, ids de WhatsApp (no secretos), pack, **config de negocio**, **datasets** | PR + CI (valida todo) + revisión | Sí (~1 min, sin corte perceptible) |
-| **Google Calendar del negocio** (pack `salon`) | Citas, bloqueos, cierres `[CFG]` | Lo hace el dueño | No |
-| **Base de datos** | Contactos, conversaciones, eventos, mensajes, avisos, **credenciales cifradas** | Runtime; credenciales con `manage.py set_secret` | No |
-| **`.env` del servidor** | Secretos de plataforma y lo que cambia entre local y prod | SSH (y copia en el gestor de contraseñas) | Reinicio |
+| Dónde | Qué | Cómo se cambia |
+|---|---|---|
+| `src/` | Código, packs, plantillas declaradas, migraciones | Commit + CI + despliegue |
+| `tenants/<slug>/` (git) | Identidad del tenant, canales (ids no secretos), pack, config de negocio, datasets | Commit + CI (valida todo) + despliegue |
+| Google Calendar del negocio | Citas, bloqueos, cierres `[CFG]` (pack `salon`) | Lo gestiona el dueño; efecto inmediato |
+| `secrets.yaml` (servidor) | Tokens y secretos de los canales de cada tenant | SSH + reinicio de `web` y `worker` |
+| `.env` (servidor) | Secretos de plataforma y lo que cambia entre local y producción | SSH + reinicio |
+| Base de datos | Contactos, conversaciones, eventos, mensajes y avisos | La aplicación |
 
-**[DECIDIDO] Config y datasets en git.** Es como trabajan hoy los dos bots (`config.yaml`, `horarios/`) y el operador es una sola persona. Git da historial, diff, revisión, vuelta atrás y validación en CI. El precio es que un cambio de precio o de horario requiere desplegar, que en una VPS es un comando. Lo que el dueño cambia a menudo (cierres, vacaciones, horarios especiales de un día) no pasa por aquí: lo hace en su Google Calendar. Si algún día los negocios editan su config ellos mismos, se pasa a BD (§1.2).
+Ningún fichero de `tenants/` contiene secretos ni datos personales de contactos. El repositorio es privado.
 
-Ningún fichero de `tenants/` contiene secretos ni datos personales de contactos. El repositorio es privado. Si más adelante colabora alguien que no deba ver datos de negocios, `tenants/` se mueve a un repositorio aparte montado en la imagen.
-
-#### 6.2 `tenant.yaml`
+#### 5.2 `tenant.yaml`
 
 ```yaml
 # tenants/dm-barber/tenant.yaml
-id: 01929a4e-6b1c-7d3e-9f00-1a2b3c4d5e6f   # UUIDv7 fijo, generado en el alta (§18.1)
+id: 01929a4e-6b1c-7d3e-9f00-1a2b3c4d5e6f   # UUIDv7 fijo, generado en el alta
 slug: dm-barber
 name: DM Barber Shop
-status: active                  # onboarding | active | paused | offboarded
+status: active                 # onboarding | active | paused | offboarded
 timezone: Europe/Madrid
 pack: salon
 
-whatsapp:
-  app_public_id: k3v9w2q8       # aleatorio; va en la URL del webhook
-  app_id: "1234567890"
-  waba_id: "9876543210"
-  phone_number_id: "1122334455"
-  display_phone: "+34 682 21 44 69"
-  graph_version: v23.0          # opcional; por defecto WHATSAPP_GRAPH_VERSION
+channels:
+  - key: wa-main               # estable: no se renombra nunca
+    type: whatsapp
+    public_id: k3v9w2q8         # aleatorio; va en la URL del webhook
+    primary: true              # canal para avisos a contactos identificados solo por teléfono (§9.6)
+    app_id: "1234567890"
+    waba_id: "9876543210"
+    phone_number_id: "1122334455"
+    display_phone: "+34 682 21 44 69"
+    monthly_alert_threshold: 2000     # mensajes facturables/mes que disparan aviso (§15.3)
+  - key: tg-test
+    type: telegram
+    public_id: p5m1z7c4
+    bot_username: dmbarber_test_bot
+    allowed_users: [123456789]  # opcional: si existe, solo responde a estos ids
 
-owner:                          # opcional (§12)
-  telegram_chat_id: 123456789
-  notify: [cancellation]        # tipos de aviso que quiere recibir
+owner:                          # opcional (§11)
+  telegram_chat_id: 987654321
+  notify: [booking_cancelled]
 
 config:                         # validado con el esquema del pack (SalonConfig, §9.2)
   business_name: DM Barber Shop
@@ -388,173 +266,322 @@ config:                         # validado con el esquema del pack (SalonConfig,
   # …
 ```
 
-#### 6.3 Carga y validación
+Validaciones comunes: slugs, ids y `public_id` únicos en todo el repositorio; `key` única dentro del tenant; como máximo un canal `primary` por tipo; `phone_number_id` único entre tenants; `allowed_users` con ids del tipo de canal (BSUID o teléfono en WhatsApp, entero en Telegram).
 
-- **Registro de tenants** (`flowpilot/tenancy/registry.py`): al arrancar, cada proceso lee `tenants/*/tenant.yaml`, valida la parte común y la `config` con el esquema del pack, carga los datasets con `pack.load_data` (§8.1) y construye índices en memoria: `app_public_id → app`, `phone_number_id → tenant`, `slug → tenant`.
-- **Un tenant inválido no tumba a los demás.** CI ya lo habría bloqueado (§19.3); si aun así falla al arrancar, ese tenant queda `degraded`: sus webhooks se guardan como `ignored`, se responde al contacto con un texto seguro de plataforma y salta una alerta 🔴 (§17.3).
-- **`sync_tenants`** (en `migrate`, §16): hace *upsert* de la tabla `tenant` (id, slug, name, pack, status, timezone) para que las claves foráneas y RLS funcionen. La tabla es un reflejo: nunca se edita a mano.
-- **Estados:** `onboarding` (solo el número de prueba del operador recibe respuesta), `active`, `paused` (se guarda y no se responde), `offboarded` (se contesta 200 sin guardar).
+#### 5.3 Secretos
 
-#### 6.4 Secretos
-
-**Plataforma** (`.env` del servidor, `chmod 600`, copia en el gestor de contraseñas; nunca en git ni en la imagen):
+**`.env`** (servidor, `chmod 600`):
 
 ```text
 ENVIRONMENT=local|prod
-DJANGO_SECRET_KEY, DJANGO_ALLOWED_HOSTS=api.<dominio>
-POSTGRES_PASSWORD (superusuario, solo en db)
-DB_OWNER_URL      (solo migrate)       DB_APP_URL (web, worker)      DB_ADMIN_URL (solo admin)
-CREDENTIALS_KEYS  (claves Fernet separadas por comas; la primera cifra, todas descifran)
+DJANGO_SECRET_KEY, DJANGO_ALLOWED_HOSTS=api.<dominio>,localhost
+POSTGRES_PASSWORD                          (superusuario; solo el servicio db)
+DB_APP_URL                                 (rol fp_app: web y worker)
+DB_OWNER_URL                               (rol fp_owner: migraciones y admin; solo web)
 GOOGLE_SERVICE_ACCOUNT_FILE=/run/secrets/google_sa.json
+SECRETS_FILE=/run/secrets/secrets.yaml
 WHATSAPP_GRAPH_VERSION=v23.0
-TELEGRAM_BOT_TOKEN, OPS_TELEGRAM_CHAT_ID
+NOTIFY_BOT_TOKEN, OPS_TELEGRAM_CHAT_ID     (bot de avisos, §11)
 SENTRY_DSN, HEALTHCHECKS_PING_URL, LOG_LEVEL
-OPERATOR_TEST_WA_IDS (números del operador que reciben respuesta de tenants en onboarding)
-RESTIC_REPOSITORY, RESTIC_PASSWORD, credenciales del almacenamiento de backups (solo en el host)
 ```
 
-**Tenants** (tabla `credential`, cifrada con **Fernet**; `MultiFernet` para rotar la clave sin cortar):
+**`secrets.yaml`** (servidor, `chmod 600`, montado de solo lectura en `web` y `worker`):
 
-| Nombre | Uso | Cómo se guarda |
+```yaml
+dm-barber:
+  wa-main:
+    app_secret: "…"            # verifica la firma de los webhooks
+    access_token: "…"          # token permanente de System User
+    verify_token: "…"          # verificación inicial del webhook de Meta
+  tg-test:
+    bot_token: "…"
+    webhook_secret: "…"        # secret_token de setWebhook (aleatorio, 32+ caracteres)
+```
+
+- Al arrancar, el registro (§5.4) comprueba que cada canal tiene sus secretos; un canal sin secretos queda deshabilitado con alerta.
+- El fichero de la cuenta de servicio de Google, `.env` y `secrets.yaml` entran en el backup cifrado de restic (§14.4) y tienen copia en el gestor de contraseñas del operador.
+- **Google Calendar usa una cuenta de servicio de la plataforma**; cada negocio comparte su calendario con su email ("Hacer cambios en los eventos"). Alcance `calendar.events`.
+- En local, `secrets.yaml` y `.env` viven en la raíz (ignorados por git) y apuntan a bots de Telegram de desarrollo.
+
+#### 5.4 Registro de tenants
+
+- Al arrancar, `web` y `worker` leen `tenants/*/tenant.yaml`, validan la parte común, la `config` con el esquema del pack y los secretos, cargan los datasets (`pack.load_data`) y construyen índices en memoria: `(tipo, public_id) → canal`, `phone_number_id → canal`, `slug → tenant`, tenants activos por pack.
+- **Un tenant inválido no afecta a los demás.** CI lo habría bloqueado (§17.3); si aun así falla al arrancar, queda `degraded`: sus eventos se guardan como `ignored`, los contactos reciben un texto genérico de plataforma ("Ahora mismo no puedo atenderte; inténtalo más tarde") y salta una alerta 🔴.
+- **Estados:** `onboarding` (solo responde a `allowed_users` de cada canal), `active`, `paused` (guarda y no responde), `offboarded` (contesta 200 sin guardar).
+- **`sync_tenants`** (tras `migrate`, §14.6) hace *upsert* de la tabla `tenant` (id, slug, name, pack, status, timezone) para las claves foráneas y RLS. Esa tabla es un reflejo y nunca se edita a mano.
+
+---
+
+### 6. Canales
+
+#### 6.1 Tipos comunes (`core/`)
+
+```python
+@dataclass(frozen=True)
+class IncomingMessage:                 # lo que recibe el pack
+    type: Literal["text", "button", "unsupported"]   # button = botón, fila de lista o botón de aviso
+    text: str | None
+    payload: str | None                # id del botón o fila pulsada
+    received_at: datetime
+
+# Respuestas (core/replies.py)
+Text(body: str)
+Buttons(body: str, buttons: list[Button], header: str | None = None, footer: str | None = None)
+List(body: str, button_label: str, sections: list[Section], header: str | None = None, footer: str | None = None)
+Button(id: str, title: str)
+Section(title: str | None, rows: list[Row])
+Row(id: str, title: str, description: str | None = None)
+```
+
+**Límites comunes** (`core/limits.py`): el pack construye respuestas que caben en **los dos** canales, así que se aplica el más estricto de cada límite:
+
+| Límite | Valor | Origen |
 |---|---|---|
-| `whatsapp.app_secret` | Verificar la firma HMAC de los webhooks | Cifrado |
-| `whatsapp.access_token` | Enviar mensajes (token permanente de System User) | Cifrado |
-| `whatsapp.verify_token` | Verificación inicial del webhook (`hub.verify_token`) | **Hash** (solo se compara, en tiempo constante) |
+| Botones por mensaje | ≤ 3, título ≤ 20 caracteres | WhatsApp |
+| Filas de lista | ≤ 10 en total, título ≤ 24, descripción ≤ 72 | WhatsApp |
+| Cuerpo de un interactivo | ≤ 1.024 caracteres | WhatsApp |
+| Texto | ≤ 4.096 caracteres | Ambos |
+| `id` de botón o fila | ≤ 64 **bytes** | Telegram (`callback_data`) |
 
-- Se escriben con `manage.py set_secret <slug> <nombre>` (lee de la entrada estándar, nunca de argumentos ni del historial del shell).
-- Se descifran en memoria y se cachean 5 min por proceso.
-- Los backups contienen solo texto cifrado; la clave Fernet no está en ellos.
-- **Google Calendar: una cuenta de servicio de la plataforma** [DECIDIDO]. Cada negocio comparte su calendario con su email ("Hacer cambios en los eventos"). Un solo fichero JSON que custodiar en lugar de uno por negocio. Su alcance es solo `calendar.events`.
+Formato de texto: texto plano con emojis y `*negrita*` (sintaxis de WhatsApp). El adaptador de Telegram la convierte (§6.4).
+
+#### 6.2 Contrato de adaptador (`flowpilot/channels/base.py`)
+
+```python
+class ChannelAdapter(Protocol):
+    type: Literal["whatsapp", "telegram"]
+
+    def verify(self, request: HttpRequest, channel: Channel, secrets: ChannelSecrets) -> bool
+    def parse(self, body: dict, channel: Channel) -> list[ParsedItem]
+        # ParsedItem = InboundItem(provider_event_id, external_id, display_name, phone, message: IncomingMessage)
+        #            | StatusItem(provider_event_id, outbound_ref, status, pricing_category, billable)
+    def acknowledge(self, payload: dict, channel: Channel, secrets: ChannelSecrets) -> None
+        # efectos inmediatos tras recibir (Telegram: answerCallbackQuery); en WhatsApp no hace nada
+    def render(self, out: Reply | ProactiveMessage, channel: Channel) -> dict
+    def send(self, rendered: dict, recipient: str, channel: Channel, secrets: ChannelSecrets,
+             outbound_id: UUID) -> SendOutcome
+        # SendOutcome = Sent(provider_message_id) | Rejected(reason, kind) | RetryLater(after_s) | Ambiguous(reason)
+```
+
+- `ProactiveMessage(template: TemplateSpec, params: list[str], button_payloads: list[str])`: un aviso que el bot inicia (§6.3, §6.4).
+- `TemplateSpec(name, language, text, buttons)` lo declara el pack: `name` y `language` sirven en WhatsApp; `text` (con `{1}`, `{2}`…) y los títulos de `buttons` sirven en Telegram. El texto debe coincidir con el de la plantilla aprobada en Meta.
+- `Rejected.kind`: `auth` (token inválido o revocado), `recipient` (el contacto no puede recibir: bloqueó el bot, número inválido) u `other`.
+- Las diferencias entre canales viven **solo** en los adaptadores. No hay más tipos de canal previstos.
+
+#### 6.3 WhatsApp (`flowpilot/channels/whatsapp/`)
+
+Se porta de `webhook.py` y `whatsapp.py` de Peluquería.
+
+- **Conexión:** la app de Meta, la WABA y el número están en el Business Portfolio del negocio (el operador es administrador). El webhook se configura en la app con la URL `https://api.<dominio>/webhooks/whatsapp/<public_id>`. Un canal = una app y un número.
+- **`GET` de verificación:** compara `hub.verify_token` con el del canal en tiempo constante y devuelve `hub.challenge`.
+- **`verify`:** `X-Hub-Signature-256` = HMAC-SHA256 del cuerpo con `app_secret`, en tiempo constante.
+- **`parse`:**
+  - `value.metadata.phone_number_id` debe ser el del canal; si no, el elemento se descarta y se registra.
+  - Mensajes: `text`, `interactive.button_reply`, `interactive.list_reply` y `button` (botón de plantilla, con `button.payload`) → `IncomingMessage`; audio, imagen, documento, sticker, ubicación… → `unsupported`. Texto truncado a 4.096; ids de más de 64 bytes se descartan.
+  - `external_id` = `user_id` (BSUID, `^[A-Z]{2}\.[A-Za-z0-9]{1,128}$`) si viene; si no, `from` (teléfono, 7–15 dígitos). `phone` solo si `from` es un teléfono. `display_name` de `contacts[].profile.name`.
+  - Estados (`sent`, `delivered`, `read`, `failed`) → `StatusItem` con `biz_opaque_callback_data` como `outbound_ref` y su `pricing`.
+  - `provider_event_id` = `wamid` en mensajes y `<wamid>:<status>` en estados.
+- **`render`:** `Text` → `text`; `Buttons` → `interactive.button`; `List` → `interactive.list`; un texto seguido de un interactivo va en su cuerpo si caben juntos (§7.4). `ProactiveMessage` → `template` con `body` (parámetros) y botones `quick_reply` con sus `payload`.
+- **`send`:** `POST https://graph.facebook.com/<versión>/<phone_number_id>/messages` con `biz_opaque_callback_data = outbound_id`, timeout 10 s, cliente `httpx` con *pool* de conexiones.
+
+| Respuesta de Meta | `SendOutcome` |
+|---|---|
+| 2xx | `Sent(wamid)` |
+| 401, o error OAuth 190 | `Rejected(kind=auth)` |
+| 400 con error de destinatario (número no válido o fuera de WhatsApp) | `Rejected(kind=recipient)` |
+| Otros 4xx salvo 429 | `Rejected(kind=other)` |
+| 429, o 5xx con cuerpo de error JSON | `RetryLater` |
+| Timeout, error de red, 502/504 sin cuerpo | `Ambiguous` |
+
+- Nunca se registra el cuerpo de una respuesta 4xx (puede llevar datos personales).
+- **Ventana de 24 h:** las respuestas siempre van dentro, porque contestan a un mensaje del contacto. Los avisos proactivos usan plantilla.
+- **Costes:** desde el 1/10/2026 Meta cobra también los mensajes de servicio (respuestas dentro de la ventana) al precio *utility* del país ([página oficial](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)); no se cuenta con ningún tramo gratuito. Tarifa de España [VERIFICAR en la cuenta de cada negocio]. Por eso se fusionan mensajes (§7.4) y `outbound_message` guarda `pricing_category` y `billable`.
+- **Alta de un número:** SIM sin WhatsApp activo; Gmail y Business Portfolio del negocio; verificación de empresa (2–5 días hábiles, necesaria para el nombre visible); app tipo Business con WhatsApp; número registrado; app suscrita a la WABA (`POST /<WABA_ID>/subscribed_apps`); campo `messages` suscrito; System User con token permanente (`whatsapp_business_messaging`, `whatsapp_business_management`); plantillas del pack creadas (aprobación de 1 a 48 h).
+
+#### 6.4 Telegram (`flowpilot/channels/telegram/`)
+
+Se apoya en `tools/telegram_pruebas.py` de buscaBus (mapeo de listas y botones).
+
+- **Un bot por canal**, creado con @BotFather. Normalmente cada negocio tiene un bot de pruebas en producción y el operador uno o varios de desarrollo en local. Un mismo bot nunca se usa a la vez en local y en producción: Telegram no permite webhook y `getUpdates` simultáneos.
+- **Entrada en producción:** webhook en `https://api.<dominio>/webhooks/telegram/<public_id>`, registrado con `manage.py telegram_set_webhook <slug> <key>` (`setWebhook` con `secret_token = webhook_secret` y `allowed_updates = [message, callback_query]`).
+- **Entrada en local:** `manage.py telegram_poll <slug> <key>` hace *long polling* con `getUpdates` y pasa cada update **por el mismo camino que el webhook** (`parse` → `inbound_event` → `process_event`). No hace falta túnel ni dominio.
+- **`verify`:** cabecera `X-Telegram-Bot-Api-Secret-Token` comparada en tiempo constante con `webhook_secret`.
+- **`parse`:** solo chats privados (grupos y canales se ignoran). `message.text` → `text` (`/start` se trata como el texto `menu`); `callback_query.data` → `button` con ese `payload`; resto de tipos → `unsupported`. `external_id` = `from.id`; `display_name` = `first_name`; sin teléfono. `provider_event_id` = `update_id` (único por bot). Sin estados de entrega.
+- **`acknowledge`:** `answerCallbackQuery` del `callback_query`, para que el cliente deje de mostrar el botón "cargando". Lo llama el worker al empezar el evento; si falla, se registra y se sigue.
+- **`render`:**
+  - `Text` → `sendMessage`.
+  - `Buttons` → `sendMessage` con `InlineKeyboardMarkup`, un botón por fila.
+  - `List` → `sendMessage` con un botón inline por fila. La cabecera va como primera línea en negrita y el pie se descarta. Las descripciones de las filas se añaden al texto como `título: descripción`, porque los botones de Telegram no tienen descripción.
+  - `ProactiveMessage` → `sendMessage` con `TemplateSpec.text` y sus parámetros, más los botones con sus `payload`. Telegram no tiene ventana ni plantillas.
+  - `*negrita*` se convierte a `<b>…</b>` con `parse_mode=HTML`, escapando el resto del texto.
+- **`send`:** `POST https://api.telegram.org/bot<token>/sendMessage`, timeout 10 s.
+
+| Respuesta de Telegram | `SendOutcome` |
+|---|---|
+| `ok: true` | `Sent(message_id)` |
+| 401 | `Rejected(kind=auth)` |
+| 403 (el usuario bloqueó el bot) | `Rejected(kind=recipient)` |
+| Otros 4xx salvo 429 | `Rejected(kind=other)` |
+| 429 (con `retry_after`) o 5xx | `RetryLater` |
+| Timeout o error de red | `Ambiguous` |
+
+#### 6.5 Contactos por canal
+
+- Un contacto se identifica por `(tenant, tipo de canal, external_id)`. La misma persona en WhatsApp y en Telegram son dos contactos distintos, con conversaciones distintas.
+- Las respuestas salen siempre por el canal del evento que contestan.
+- Los avisos proactivos a un contacto conocido salen por `contact.last_channel_key` (el último canal por el que escribió). Los avisos a un teléfono sin contacto previo salen por el canal WhatsApp `primary` del tenant (§9.6).
 
 ---
 
 ### 7. Runtime de mensajes
 
-#### 7.1 Entrada idempotente
+#### 7.1 Entrada
 
 ```
-POST /webhooks/whatsapp/<app_public_id>
-  1. app = registro[app_public_id]                       no existe → 404
-  2. cuerpo ≤ 64 KB y JSON                               si no → 400
-  3. verificar X-Hub-Signature-256 (HMAC-SHA256 con app_secret, tiempo constante)
-                                                         falla → 401, sin guardar; cuenta para el límite por IP
-  4. por cada elemento de entry[].changes[].value:
-       tenant = registro.por_phone_number_id(metadata.phone_number_id)
-                                                         desconocido o de otra app → se registra y se ignora
-       tenant offboarded → nada
-       tenant paused / degraded / onboarding (y no es el número de prueba) → guardar con status=ignored
+POST /webhooks/<tipo>/<public_id>
+  1. canal = registro[(tipo, public_id)]          no existe o deshabilitado → 404
+  2. cuerpo ≤ 64 KB y JSON válido                  si no → 400
+  3. adaptador.verify(...)                         falla → 401 sin guardar; cuenta para el límite por IP
+  4. tenant offboarded                             → 200 sin guardar
+  5. por cada elemento de adaptador.parse(...):
+       status = ignored si tenant paused/degraded, o si el canal tiene allowed_users
+                (o el tenant está en onboarding) y external_id no está en la lista
        tenant_tx(tenant.id):
-         INSERT inbound_event (kind=message|status, provider_event_id, payload)
-           ON CONFLICT (tenant_id, provider_event_id) DO NOTHING
-         si se insertó y kind=message → defer process_event(tenant_id, event_id), cola inbound, lock conv:<h>
-         si se insertó y kind=status  → defer apply_status(tenant_id, event_id), cola inbound, sin candado
+         INSERT inbound_event (channel_key, kind, provider_event_id, payload, status)
+           ON CONFLICT (tenant_id, channel_key, provider_event_id) DO NOTHING
+         si se insertó y status = pending:
+           kind=message → defer process_event(tenant_id, event_id)  cola inbound, lock conv:<h>
+           kind=status  → defer apply_status(tenant_id, event_id)   cola inbound, sin candado
        COMMIT
-  5. 200 OK
+  6. 200 OK
 ```
 
-- `provider_event_id`: `wamid` para mensajes; `<wamid>:<status>` para avisos de estado.
-- `h` = `sha256(tenant_id, wa_id)` truncado a 16 hex. **El candado nunca lleva el teléfono**: la tabla de trabajos de Procrastinate no tiene RLS.
-- `GET /webhooks/whatsapp/<app_public_id>`: verificación inicial de Meta (`hub.verify_token` contra su hash).
-- **Límite por contacto** (en `process_event`): más de 20 mensajes en 60 s de un mismo contacto → se guardan y no se responde, con un log. Evita bucles y coste.
+- `h` = primeros 16 caracteres hex de `sha256(tenant_id, tipo de canal, external_id)`. **Los candados nunca llevan teléfonos ni ids de usuario en claro**, porque la tabla de trabajos de Procrastinate no tiene RLS.
+- Los webhooks no hacen ninguna llamada externa: solo leen el registro en memoria y escriben en la BD.
 
 #### 7.2 `process_event`
 
 ```python
-# flowpilot/runtime/process.py  (pseudocódigo)
-def process_event(tenant_id, event_id):                    # el trabajo recibe solo ids
-    tenant = registry.get(tenant_id)
-    with tenant_tx(tenant_id):                             # tx1: cargar
+def process_event(tenant_id, event_id):                     # el trabajo recibe solo ids
+    tenant = registry.tenant(tenant_id)
+    with tenant_tx(tenant_id):                              # tx1: cargar
         event = InboundEvent.get(event_id)
         if event.status != "pending":
-            return                                         # ya procesado (reintento tras COMMIT)
-        msg = parse_message(event.payload)                 # → InboundMessage (core)
-        contact = upsert_contact(msg)                      # wa_id, teléfono si lo hay, nombre de perfil
+            return                                          # ya procesado (reintento tras COMMIT)
+        channel = tenant.channel(event.channel_key)
+        item = channel.adapter.parse_one(event.payload)     # InboundItem
+        contact = upsert_contact(channel, item)             # actualiza last_channel_key, nombre, teléfono
         conv = load_or_create_conversation(contact)
-        state = effective_state(conv, tenant.pack, now)    # caducidad y versión de estado (§7.3)
+        state = effective_state(conv, tenant.pack, now)     # caducidad y versión (§7.3)
 
-    if global_command(msg) is not None:                    # MENU, BAJA… (§7.3)
-        result = run_global_command(...)
+    channel.adapter.acknowledge(event.payload, ...)        # Telegram: answerCallbackQuery (sin transacción)
+
+    if rate_limited(contact):                               # > 20 mensajes en 60 s del mismo contacto
+        result = PackResult(replies=[])                     # se guarda y no se responde
+    elif (cmd := global_command(item.message)) is not None:
+        result = run_global_command(cmd, tenant, contact)   # menu, baja, alta (§7.3)
     else:
-        ctx = build_context(tenant, contact, state, event)     # sin transacción: aquí van las llamadas externas
+        ctx = build_context(tenant, contact, state, event)  # sin transacción: aquí van las llamadas externas
         try:
-            result = tenant.pack.handle_message(ctx, msg)
+            result = tenant.pack.handle_message(ctx, item.message)
         except TransientError:
-            raise                                          # Procrastinate reintenta (3 veces, 2 s → 30 s)
+            if job.is_last_attempt: result = recovery_result(tenant)    # texto de recuperación + estado {}
+            else: raise                                     # Procrastinate reintenta
         except Exception:
-            report_to_sentry(); result = recovery_result(tenant)   # texto seguro + estado reiniciado
+            report_to_sentry()
+            result = recovery_result(tenant)
 
-    with tenant_tx(tenant_id):                             # tx2: persistir
-        if not conv.save_state(result.state, expected_version=conv.version):
-            raise ConversationChanged                      # otro escritor se coló → reintento desde tx1
-        msgs = plan_sends(result.replies, contact, idem=f"reply:{event_id}")   # §7.4
-        apply_actions(result.actions)                      # SendTemplate, NotifyOwner, UpdateContact
+    with tenant_tx(tenant_id):                              # tx2: persistir
+        conv.save_state(result.state)
+        msgs = plan_sends(result.replies, contact, channel, idem_prefix=f"reply:{event_id}")
+        apply_actions(result.actions, tenant)               # SendProactive, NotifyOwner, UpdateContact
         event.mark_done()
-        defer_sends(msgs)                                  # el trabajo solo existe si hay COMMIT
+        defer_sends(msgs)                                   # el trabajo solo existe si hay COMMIT
 ```
 
-- **[DECIDIDO] Transacciones cortas.** Ninguna transacción queda abierta mientras se llama a Calendar o a Meta.
-- **Error tras el último reintento** de un `TransientError` (p. ej. Calendar caído): el runtime envía el texto de recuperación ("Uy, ha habido un problema de conexión…", heredado de Peluquería), reinicia el estado y marca el evento `failed`. El contacto nunca se queda sin respuesta.
-- `apply_status(tenant_id, event_id)`: busca el `outbound_message` por `wamid` (o por `biz_opaque_callback_data`) y actualiza estado, `pricing_category` y `billable`. No pasa por el pack.
+- **Transacciones cortas:** ninguna transacción queda abierta mientras se llama a Calendar, Meta o Telegram.
+- **Texto de recuperación** (heredado de Peluquería): "Uy, ha habido un problema de conexión y puede que tu última acción no se completara. Escríbeme de nuevo y seguimos." El estado se reinicia y el evento queda `failed` con el error.
+- **Reprocesar un evento es seguro:** si el worker muere entre tx1 y tx2, el reintento repite el pack; las escrituras en Calendar son idempotentes (§9.5) y las respuestas, como se crean en tx2, no se habían creado.
+- `apply_status(tenant_id, event_id)`: busca el `outbound_message` por `outbound_ref` (o por `provider_message_id`) y actualiza estado, `pricing_category` y `billable`. Un `failed` de Meta sobre un mensaje `sent` lo pasa a `failed` con el código de error.
 
 #### 7.3 Conversación
 
-- **Una fila por contacto** en `conversation` con `state` (JSON del pack), `state_version`, `version` (bloqueo optimista) y `last_inbound_at`.
-- **Caducidad [DECIDIDO]:** si han pasado más de `pack.conversation_timeout_min` (30 min, como hoy) desde el último mensaje, el estado vuelve a `{}` y el pack empieza por su menú.
-- **Versión del estado:** cada pack declara `state_version`. Si el estado guardado tiene otra (tras un despliegue que cambia su forma), se reinicia con amabilidad ("Perdona, he tenido que empezar de nuevo") y se registra. Sustituye al versionado por bloque del diseño anterior.
-- **Comandos globales** (los resuelve el runtime, antes que el pack; comparación tras normalizar):
-  - `menu`, `menú`, `inicio` → estado `{}` y el pack muestra su menú.
-  - `baja` → `contact.opt_out = true` (no recibe plantillas: recordatorios ni confirmaciones) y se le confirma. `alta` lo revierte.
-- **Mensajes no soportados** (audio, imagen, sticker, ubicación): el pack recibe `InboundMessage(type="unsupported")` y responde pidiendo texto o botones (como hoy).
+- Una fila de `conversation` por contacto, con `state` (JSON del pack), `state_version` y `last_inbound_at`.
+- **Un solo escritor:** solo `process_event` escribe una conversación, y siempre con el candado `conv:<h>`. No hace falta control de versiones optimista.
+- **Caducidad:** si han pasado más de `pack.conversation_timeout_min` (30) desde el último mensaje, el estado vuelve a `{}` y el pack empieza por su menú.
+- **Versión del estado:** si `state_version` no coincide con `pack.state_version` (un despliegue cambió la forma del estado), se reinicia con "Perdona, he tenido que empezar de nuevo" y se registra.
+- **Comandos globales** (los resuelve el runtime antes que el pack, sobre el texto normalizado):
+  - `menu`, `menú`, `inicio`, `/start` → estado `{}` y el pack responde a un mensaje vacío con su menú.
+  - `baja` → `contact.opt_out = true` (deja de recibir avisos proactivos) y confirmación. `alta` lo revierte.
+- **Mensajes no soportados:** el pack recibe `IncomingMessage(type="unsupported")` y pide texto o botones.
 
 #### 7.4 Salida
 
-**`plan_sends`** (en `core/whatsapp_limits.py`, función pura):
+**`plan_sends`** (función pura en `core/limits.py`):
 
-1. Fusionar los textos consecutivos de un turno en un mensaje.
-2. Si un texto va seguido de botones o lista, meterlo en el cuerpo del interactivo salvo que superen 1.024 caracteres juntos.
-3. Validar límites de WhatsApp: botones ≤ 3 (título ≤ 20), lista ≤ 10 filas en total (título ≤ 24, descripción ≤ 72), texto ≤ 4.096. **Un pack que los incumple es un error de programación**: en tests falla; en producción se trunca y se registra.
-4. **Ventana de 24 h:** las respuestas siempre van dentro (responden a un mensaje del contacto). Las plantillas son lo único que se envía fuera.
-5. Crear un `outbound_message` por mensaje final, en orden (`seq`), con `idem_key = reply:<event_id>:<seq>`.
+1. Fusiona los textos consecutivos de un turno en un solo mensaje.
+2. Si un texto va seguido de botones o lista, lo mete en el cuerpo del interactivo, salvo que juntos superen 1.024 caracteres.
+3. Comprueba los límites comunes (§6.1). Superarlos es un error de programación: en tests falla y en producción se trunca y se registra.
+4. Crea un `outbound_message` por mensaje final, en orden (`seq`), con `idem_key = reply:<event_id>:<seq>`.
 
-La fusión es obligatoria: desde el 1/10/2026 Meta cobra los mensajes de servicio (§11.5); menos mensajes, menos coste para el negocio.
+Fusionar reduce el coste en WhatsApp y el ruido en los dos canales.
 
-**`send_message(tenant_id, outbound_id)`** (cola `outbound`, candado `out:<h>` para mantener el orden por contacto):
+**`send_message(tenant_id, outbound_id)`** (cola `outbound`, candado `out:<h>` para respetar el orden por contacto):
 
 ```
-status == sent                     → terminar
-status == unknown                  → no reenviar (lo resuelve un aviso de estado o el operador)
-status == sending                  → el intento anterior se cortó a mitad → status = unknown
+status = sent                → terminar
+status = unknown | failed    → terminar (no se reenvía a ciegas)
+status = sending             → el intento anterior se cortó a mitad → status = unknown; terminar
 status = sending; attempts += 1; COMMIT
-POST /<phone_number_id>/messages  (con biz_opaque_callback_data = outbound_id)
-  2xx                              → sent, wamid
-  400–499 salvo 429                → failed, sin reintento; 401/190 → alerta "token caducado" (§17.3)
-  429, o 5xx con cuerpo de error   → pending; reintento con backoff (Meta no lo aceptó)
-  timeout, red, 502/504 sin cuerpo → unknown (no sabemos si se aceptó)
+outcome = adaptador.send(adaptador.render(payload), ...)
+  Sent        → sent, provider_message_id, sent_at
+  Rejected    → failed, last_error; kind=auth → alerta 🔴; kind=recipient → contacto marcado unreachable
+  RetryLater  → pending; reintento con backoff (máx. 5; después failed)
+  Ambiguous   → unknown
 ```
 
-- Un `unknown` **no bloquea** los siguientes envíos del mismo contacto.
-- Si después llega un aviso de estado con ese `biz_opaque_callback_data`, pasa solo a `sent`. Los que sigan en `unknown` tras 10 min aparecen en el Admin con "Marcar enviado" y "Reenviar".
-- Nunca se registra el cuerpo de una respuesta 4xx de Meta (puede contener datos personales).
+- Un `unknown` o `failed` **no bloquea** los siguientes mensajes del contacto.
+- WhatsApp: un estado posterior con ese `outbound_ref` pasa un `unknown` a `sent`. Los que siguen en `unknown` más de 10 min aparecen en el Admin con "Marcar enviado" y "Reenviar", y en la alerta de §15.3.
+- Telegram no envía estados: un `unknown` queda así hasta que lo revise el operador.
 
-#### 7.5 Colas y trabajos
+#### 7.5 Colas, candados y reintentos
 
 | Cola | Trabajos | Candado | Reintentos |
 |---|---|---|---|
-| `inbound` | `process_event`, `apply_status` | `conv:<h>` en `process_event`; ninguno en `apply_status` | 3, backoff exponencial 2 s → 30 s |
-| `outbound` | `send_message` (respuestas y plantillas), `send_notification` | `out:<h>` (mensajes a contactos); `owner:<tenant>` (avisos) | Según el error (§7.4) |
-| `periodic` | Barridos de packs, `ops_check`, `retention_cleanup` | `queueing_lock` con el nombre y el tenant (nunca dos iguales pendientes) | 2 |
+| `inbound` | `process_event`, `apply_status` | `conv:<h>` en `process_event` | 3, backoff exponencial 2 s → 30 s, solo para `TransientError` |
+| `outbound` | `send_message`, `send_notification` | `out:<h>` y `owner:<tenant>` | Según `SendOutcome` |
+| `periodic` | `run_periodic`, `ops_check`, `retention_cleanup` | `queueing_lock` por nombre y tenant (nunca dos iguales pendientes) | 2 |
 
-- **Un solo `worker` atiende las tres colas.** Las colas existen para ver de un vistazo qué se atasca y para poder separar un worker el día que haga falta, sin tocar código.
-- Los trabajos reciben **solo ids**, nunca datos personales en argumentos ni candados.
-- Trabajo que agota reintentos → `failed` en Procrastinate → visible en el Admin (integración de Procrastinate con Django) con "Reintentar" → alerta (§17.3).
-- **Parada ordenada:** al desplegar, el `worker` recibe SIGTERM, deja de coger trabajos y termina los suyos (`stop_grace_period: 60s`). Lo que se corte se reintenta: todos los trabajos son idempotentes.
+- El candado (`lock`) de Procrastinate garantiza que los trabajos con el mismo candado se ejecutan **de uno en uno y en orden de creación**. Así se ordenan los mensajes por conversación, sin candados propios.
+- Un solo `worker` atiende las tres colas, que permiten ver qué se atasca.
+- Los trabajos reciben solo ids: nunca datos personales en argumentos ni candados.
+- Un trabajo que agota sus reintentos queda `failed` en Procrastinate, aparece en el Admin con "Reintentar" y dispara una alerta (§15.3).
+- **Parada ordenada:** al desplegar, el `worker` recibe SIGTERM, deja de coger trabajos y termina los que tiene (`stop_grace_period: 60s`). Lo que se corta se reintenta, y todos los trabajos son idempotentes.
 
 #### 7.6 Tareas periódicas y barridos
 
-- Cada `Periodic` de un pack (§8.1) se registra como tarea periódica de Procrastinate de plataforma, que **reparte**: para cada tenant activo de ese pack (del registro en memoria), encola un trabajo `run_periodic(tenant_id, name, scheduled_at)` en `periodic`. Nunca un trabajo gigante para todos los tenants.
-- Las periódicas de Procrastinate ya garantizan que un instante programado se encola una sola vez aunque haya varios workers.
-- **Barridos [DECIDIDO]:** lo que depende de datos que cambia otra persona (citas que el dueño crea o mueve en Calendar) no se programa como una tarea por entidad. Un barrido periódico mira la ventana relevante y actúa sobre lo que encuentra con una **clave estable** por entidad (`ctx.idem.stable("reminder:<gcal_id>:<start>")`), guardada como `idem_key` única en `outbound_message`. Si la cita se mueve, cambia `start` y le toca otro recordatorio; si no, el barrido la vuelve a ver y no repite.
-- Un barrido que se retrasa más de su `max_delay_min` (por defecto 60) se descarta y se registra: un recordatorio con horas de retraso es peor que ninguno.
+- Cada `Periodic` de un pack se registra como tarea periódica de Procrastinate. Al dispararse **reparte**: para cada tenant activo de ese pack encola `run_periodic(tenant_id, name, scheduled_at)` en `periodic`. Procrastinate garantiza que cada instante programado se encola una sola vez.
+- `run_periodic` construye un `PackContext` sin contacto, ejecuta el handler sin transacción y, en una transacción, aplica sus acciones.
+- **Barridos:** lo que depende de datos que cambia otra persona (citas que el dueño crea o mueve) no se programa entidad a entidad. Un barrido revisa la ventana relevante y actúa con una **clave estable** por entidad (`ctx.idem.stable("reminder:<gcal_id>:<start>")`), que se guarda como `idem_key` única en `outbound_message`. Si la cita se mueve, cambia `start` y le corresponde otro aviso; si no, el barrido la vuelve a ver y no repite.
+- Un barrido con más retraso que su `max_delay_min` (60 por defecto) se descarta y se registra.
+
+#### 7.7 Comportamiento ante fallos
+
+| Fallo | Comportamiento |
+|---|---|
+| Aviso duplicado del proveedor | `ON CONFLICT DO NOTHING`; no se encola dos veces |
+| `web` caída unos minutos (despliegue, reinicio) | Meta y Telegram reintentan; nada se pierde |
+| `worker` muere a mitad de un evento | Procrastinate libera el trabajo y se reintenta desde tx1; idempotente |
+| Pack lanza una excepción no prevista | Texto de recuperación al contacto, estado reiniciado, evento `failed`, Sentry |
+| Calendar caído o lento en una conversación | 2 reintentos rápidos en el cliente → `TransientError` → reintento del trabajo (3) → texto de recuperación |
+| Calendar caído al comprobar el límite de citas | Falla en abierto: se deja reservar (§9.1) |
+| Calendar sin acceso (403/404) | `CalendarPermanentError` → texto "Ahora mismo no puedo consultar la agenda" + alerta 🔴 "revisar acceso al calendario" |
+| Calendar caído en un barrido | El barrido falla y se reintenta en la siguiente pasada; las claves estables evitan duplicados |
+| Envío con resultado ambiguo | `unknown`; no se reenvía; alerta si dura más de 10 min |
+| Token de WhatsApp o Telegram revocado | `failed` con `kind=auth` + alerta 🔴 |
+| Contacto que bloqueó el bot o número inválido | `failed`, contacto `unreachable` (no recibe avisos proactivos) |
+| Dataset o config inválidos al arrancar | Tenant `degraded`, texto genérico a sus contactos, alerta 🔴; los demás tenants siguen |
+| BD caída | `web` responde 503 (el proveedor reintenta); el `worker` se reconecta; latido externo → alerta |
 
 ---
 
@@ -564,307 +591,306 @@ POST /<phone_number_id>/messages  (con biz_opaque_callback_data = outbound_id)
 
 ```python
 # packs/salon/pack.py
-from core.packs import Pack, Periodic
-from .config import SalonConfig
-from . import conversation, sweep, health
-
 pack = Pack(
     name="salon",
     config_schema=SalonConfig,
     state_version=1,
     conversation_timeout_min=30,
-    handle_message=conversation.handle,          # (ctx, InboundMessage) -> PackResult
+    handle_message=conversation.handle,             # (ctx, IncomingMessage) -> PackResult
     periodic=[Periodic("calendar_sweep", every_min=15, handler=sweep.run, max_delay_min=60)],
-    needs_calendar=True,                          # el runtime le da ctx.calendar
-    load_data=None,                               # sin datasets
-    health=health.check,                          # (ctx) -> list[HealthIssue]
-    templates=[                                   # plantillas que el negocio debe tener aprobadas
-        TemplateSpec("confirmacion_cita", "es_ES", params=3, buttons=["payload"]),
-        TemplateSpec("recordatorio_cita", "es_ES", params=2, buttons=["payload", "payload"]),
-    ],
+    needs_calendar=True,                             # el runtime le da ctx.calendar
+    load_data=None,                                  # (tenant, config, path) -> objeto en memoria; bus lo usa
+    health=health.check,                             # (ctx) -> list[HealthIssue]
+    templates=[TEMPLATE_CONFIRMATION, TEMPLATE_REMINDER],   # TemplateSpec (§6.2)
 )
 ```
 
 ```python
 # packs/registry.py
-from packs.salon.pack import pack as salon
-from packs.bus.pack import pack as bus
-PACKS = {p.name: p for p in (salon, bus)}         # explícito: sin descubrimiento automático
+PACKS = {p.name: p for p in (salon.pack, bus.pack)}   # explícito, sin descubrimiento automático
 ```
 
-`load_data(tenant, config, path) -> object` (solo `bus`): lee `tenants/<slug>/datasets/`, **valida** y devuelve objetos inmutables en memoria. Lanza `DataError` con la lista de errores si algo no valida.
-
-#### 8.2 Lo que recibe y lo que devuelve
+#### 8.2 Contexto y resultado
 
 ```python
 @dataclass(frozen=True)
 class PackContext:
-    tenant: TenantInfo                 # id, slug, name, timezone
-    config: BaseModel                  # SalonConfig / BusConfig ya validada
-    data: object | None                # lo que devolvió load_data (bus: Horarios + Matcher)
-    contact: ContactInfo | None        # id, wa_id, phone (puede ser None), display_name, opt_out
-    state: Mapping[str, Any]           # estado actual (solo lectura); el nuevo va en el resultado
-    clock: Clock                       # now() con zona del tenant; inyectable en tests
-    calendar: CalendarPort | None      # solo si needs_calendar (salon)
+    tenant: TenantInfo                  # id, slug, name, timezone
+    config: BaseModel                   # config validada del pack
+    data: object | None                 # lo que devolvió load_data
+    contact: ContactInfo | None         # id, external_id, phone (puede ser None), display_name, opt_out
+    state: Mapping[str, Any]            # estado actual (solo lectura)
+    clock: Clock                        # now() en la zona del tenant; inyectable en tests
+    calendar: CalendarPort | None       # solo si needs_calendar
     lock: Callable[[str], ContextManager]   # advisory lock de PostgreSQL por clave (§9.5)
-    idem: IdemKeys                     # .event(name) ligada al evento; .stable(name) para barridos
-    log: Logger                        # con tenant y event_id; enmascara teléfonos
+    idem: IdemKeys                      # .event(name) ligada al evento actual; .stable(name) para barridos
+    log: Logger                         # con tenant y event_id; enmascara teléfonos
 
 @dataclass
 class PackResult:
-    replies: list[Reply] = []          # Text | Buttons | List   (core/replies.py)
-    state: dict | None = None          # None = sin cambios; {} = reiniciar
-    actions: list[Action] = []
+    replies: list[Reply] = field(default_factory=list)
+    state: dict | None = None           # None = sin cambios; {} = reiniciar
+    actions: list[Action] = field(default_factory=list)
 
 # Acciones (core/actions.py)
-SendTemplate(to: ContactRef, template: str, params: list[str], button_payloads: list[str], idem_key: str)
-NotifyOwner(kind: str, text: str, idem_key: str)        # §12
+SendProactive(to: ContactRef, template: TemplateSpec, params: list[str],
+              button_payloads: list[str], idem_key: str)       # ContactRef(contact_id=…) | ContactRef(phone=…)
+NotifyOwner(kind: str, text: str, idem_key: str)
 UpdateContact(display_name: str | None = None, opt_out: bool | None = None)
 ```
 
-- `InboundMessage`: `type` (`text` | `button` | `list` | `unsupported`), `text`, `payload` (id del botón o fila; también el `payload` de botones de plantilla), `received_at`.
-- Un pack **nunca toca la BD ni las APIs directamente**: todo lo externo le llega por `ctx`.
-- Los periódicos reciben `(ctx)` con `contact=None` y `state={}`, y solo devuelven `actions`.
+- Un pack **nunca** toca la BD, los canales ni las APIs directamente: todo lo externo le llega por `ctx`.
+- Los handlers periódicos reciben `ctx` con `contact=None` y `state={}`, y solo devuelven `actions`.
+- `SendProactive` lo resuelve el runtime: busca contacto y canal (§6.5), descarta contactos con `opt_out` o `unreachable`, y crea un `outbound_message` de tipo `proactive` con su `idem_key`.
 
 #### 8.3 Utilidades comunes (`core/`)
 
-| Módulo | Qué ofrece | Origen |
+| Módulo | Contenido | Origen |
 |---|---|---|
 | `core/ui.py` | `trunc`, `button`, `row`, `section`, `buttons_msg`, `list_msg` (validan límites); `paginate(items, page, per_page=8, more_id, back_id)` | `interactive.py` de los dos bots |
-| `core/text.py` | `normalize` (minúsculas, sin tildes, sin puntuación, espacios), `strip_html` | `parser._norm` / `_strip_html` de Peluquería; base de `formato.normalizar` de buscaBus |
-| `core/dates.py` | `format_date_es`, `weekday_es`, `next_days`, zona horaria con `zoneinfo` | `slots.format_date_es` de Peluquería, `fechas.py` de buscaBus |
-| `core/whatsapp_limits.py` | Constantes de límites y `plan_sends` | Nuevo (ambos bots aplicaban los límites a mano) |
-| `core/testing/` | Arnés de conversación (§19.2), reloj fijo, `FakeCalendar` | Nuevo, a partir de los `conftest.py` de los dos bots |
+| `core/text.py` | `normalize` (minúsculas, sin tildes, sin puntuación, espacios colapsados), `strip_html` | `parser.py` de Peluquería y `formato.py` de buscaBus |
+| `core/dates.py` | `format_date_es`, `weekday_es`, `next_days`; zonas con `zoneinfo` | `slots.py` de Peluquería y `fechas.py` de buscaBus |
+| `core/limits.py` | Límites comunes y `plan_sends` | — |
+| `core/testing/` | Arnés de conversación (§17.2), reloj fijo, `FakeCalendar` | `conftest.py` de los dos bots |
 
-**Regla:** una utilidad entra en `core` cuando la usan los dos packs. Lo que usa uno solo vive en su pack.
+A `core` solo entra lo que usan los dos packs.
 
-#### 8.4 Cómo se añade un pack
+#### 8.4 Requisitos de un pack
 
-1. `packs/<nombre>/`: `pack.py`, `config.py` (pydantic con valores por defecto), `conversation.py` (máquina de estados), `messages.py` (textos), `tests/` (unit + escenarios).
-2. Si usa un sistema externo: un `Protocol` en `ports.py` y su cliente en `integrations/`.
-3. Si usa datasets: `load_data` con validador estricto y datos de ejemplo en `tests/fixtures/`.
-4. Plantillas declaradas en `templates`.
-5. Entrada en `packs/registry.py` y `docs/packs/<nombre>.md`.
-6. **Escenarios obligatorios:** camino feliz de cada opción del menú + al menos 3 caminos de error.
+Esquema de config con valores por defecto · máquina de estados en `conversation.py` · textos en `messages.py` · `TemplateSpec` de cada aviso proactivo · escenarios de conversación (camino feliz de cada opción del menú y al menos tres caminos de error) · `docs/packs/<nombre>.md` · entrada en `packs/registry.py`.
 
 ---
 
 ### 9. Pack `salon` (peluquería)
 
+Se porta de `Peluqueria`: `handlers/conversation.py` (máquina de estados), `services/calendar/` (consultas, escrituras y motor de huecos), `utils/parser.py`, `utils/slots.py`, `utils/messages.py`, los constructores de `utils/interactive.py`, las validaciones de `config.py` y sus tests.
+
 #### 9.1 Conversación
 
-Estados (heredados de `conversation.py` de Peluquería): `MENU → BOOK_SERVICE → BOOK_DAY → BOOK_PERIOD → BOOK_HOUR → BOOK_NAME`, `VIEW`, `CANCEL_SELECT`, `MOVE_SELECT` (+ el mismo flujo de reserva en modo `move` o `event`).
+Estados: `MENU`, `BOOK_SERVICE`, `BOOK_DAY`, `BOOK_PERIOD`, `BOOK_HOUR`, `BOOK_NAME`, `VIEW`, `CANCEL_SELECT`, `MOVE_SELECT`. El estado guarda `mode` (`book`, `move` o `event`), la selección en curso y los ids de las citas listadas.
 
 | Opción del menú | Flujo |
 |---|---|
-| **Pedir cita** | Comprueba el límite de citas futuras (`max_active_bookings`, 5; si Calendar falla, **falla en abierto**) → servicio (lista ≤ 9 + volver) → día (lista de días **con huecos** en `booking_window_days`, una sola lectura de Calendar por rango) → si las horas del día no caben en una lista, **mañana / tarde** → hora → nombre (texto ≤ 100 caracteres; si ya se conoce, botón "Usar <nombre>") → crea la cita (§9.5) → confirmación con servicio, precio, día y hora |
-| **Ver mis citas** | Citas futuras del contacto (`list_contact_events`) |
-| **Mover cita** | Elegir cita → servicio → día → hora → **crea la nueva y después cancela la antigua** (si la cancelación falla, la nueva queda, se avisa al dueño y se registra) |
-| **Cancelar cita** | Elegir cita → cancelada al momento → aviso al dueño si lo tiene activado |
-| **Cita {evento}** (solo si `special_event.active`) | Igual que Pedir cita, pero los días y franjas salen de `special_event.days` en lugar del horario semanal |
-| **Contacto** (opcional, si `info_text` no está vacío) | Texto de la config (dirección, teléfono) |
+| **Pedir cita** | Comprueba el límite de citas futuras (`max_active_bookings`; si Calendar falla, deja continuar) → servicio (lista de hasta 9 + volver) → día (solo días **con huecos** en `booking_window_days`, calculados con una sola lectura de Calendar por rango) → **mañana / tarde** si las horas no caben en una lista → hora → nombre (texto de hasta 100 caracteres; si ya se conoce, botón "Usar <nombre>") → crea la cita (§9.5) → confirmación con servicio, precio, día y hora |
+| **Ver mis citas** | Citas futuras del contacto |
+| **Mover cita** | Elegir cita → servicio → día → hora → **crea la nueva y después cancela la antigua**. Si la cancelación falla, la nueva se queda, se avisa al dueño (`move_cancel_failed`) y se registra |
+| **Cancelar cita** | Elegir cita → cancelada al momento |
+| **Cita {evento}** (solo con `special_event.active`) | Como Pedir cita, pero días y franjas salen de `special_event.days` |
+| **Contacto** (solo si `info_text` no está vacío) | Texto de la config |
 
-- **Texto libre** fuera del paso de nombre → vuelve al menú (como hoy; pie de los interactivos: "Cualquier texto te llevará de vuelta al menú principal").
-- **Botones de plantillas** (en cualquier estado): `reminder_confirm:<gcal_id>`, `reminder_cancel:<gcal_id>`, `booking_cancel:<gcal_id>`. Antes de actuar se comprueba que **la cita pertenece al contacto** que pulsa (por `fp_contact` o, en citas manuales, por teléfono); si no, "No se encontró esa cita".
-  - Confirmar → `Estado: confirmada` en la descripción del evento (lo ve el dueño) → "¡Tu cita está confirmada!".
-  - Cancelar → cancela (idempotente) → mensaje de cancelación → aviso al dueño si procede.
-- Un hueco que se acaba de ocupar (`SlotTaken`, §9.5) → "Ese horario ya no está disponible" + **vuelve a ofrecer las horas libres de ese día**.
+- **Texto libre** fuera del paso de nombre → vuelve al menú. Los interactivos llevan el pie "Cualquier texto te llevará de vuelta al menú principal".
+- **Botones de avisos proactivos** (válidos en cualquier estado): `reminder_confirm:<gcal_id>`, `reminder_cancel:<gcal_id>`, `booking_cancel:<gcal_id>`. Antes de actuar se comprueba que **la cita es de ese contacto** (por `fp_contact`; en citas manuales, por teléfono). Si no lo es, se responde "No se encontró esa cita".
+  - Confirmar → escribe `Estado: confirmada` en la descripción del evento (lo ve el dueño) y responde "¡Tu cita está confirmada! ✅".
+  - Cancelar → cancela (idempotente), responde con el mensaje de cancelación y avisa al dueño si procede.
+- **Hueco recién ocupado** (`SlotTaken`): "Ese horario ya no está disponible" y vuelve a ofrecer las horas libres de ese día.
+- **Avisos al dueño** (`NotifyOwner`): `booking_created`, `booking_cancelled`, `booking_moved` y `move_cancel_failed`, con clave `ctx.idem.event("notify:<kind>")`.
 
 #### 9.2 Config
 
 ```python
-# packs/salon/config.py
 class Service(BaseModel):
-    name: str = Field(max_length=24)          # cabe en una fila de lista
+    name: str = Field(max_length=24)
     price_eur: Decimal | None = None
-    duration_min: int                         # ocupación del profesional: colisiones y duración del evento
-    client_presence_min: int                  # tiempo del cliente en el local: última hora ofrecible
+    duration_min: int                       # ocupación del profesional: colisiones y duración del evento
+    client_presence_min: int                # tiempo del cliente en el local: última hora ofrecible
 
 class SpecialEvent(BaseModel):
     active: bool = False
-    name: str = ""                            # "Navidad 2026" → opción "Cita Navidad 2026"
-    days: dict[date, list[TimeRange]] = {}    # franjas propias por día
+    name: str = ""                          # "Navidad 2026" → opción "Cita Navidad 2026"
+    days: dict[date, list[TimeRange]] = {}
 
 class SalonConfig(BaseModel):
     business_name: str
     contact_phone: str
     calendar_id: str
-    services: dict[str, Service]              # máx. 9 (lista de WhatsApp con "volver")
-    opening_hours: WeeklyHours                # {martes: ["10:00-14:00","16:00-21:00"], …}; día ausente = cerrado
+    services: dict[str, Service]            # 1–9
+    opening_hours: WeeklyHours              # {martes: ["10:00-14:00", "16:00-21:00"], …}; día ausente = cerrado
     slot_step_min: int = 30
     min_notice_min: int = 0
     booking_window_days: int = 21
     max_active_bookings: int = 5
-    reminders_enabled: bool = False           # envios.recordatorios
+    reminders_enabled: bool = False
     reminder_window_hours: tuple[int, int] = (23, 25)
-    manual_confirmations_enabled: bool = False   # envios.confirmaciones
-    manual_confirmations_since: datetime | None = None   # solo citas manuales creadas después (evita avisar del histórico)
+    manual_confirmations_enabled: bool = False
+    manual_confirmations_since: datetime | None = None    # solo citas manuales creadas después
     special_event: SpecialEvent = SpecialEvent()
     info_text: str = ""
-    texts: SalonTexts = SalonTexts()          # textos con valores por defecto (los de messages.py de hoy)
+    texts: SalonTexts = SalonTexts()        # textos sobrescribibles, con los de messages.py por defecto
 ```
 
-Validaciones (portadas de `config.py` de Peluquería): franjas sin solapes y con formato `HH:MM`, `duration_min ≤ client_presence_min`, ≤ 9 servicios, nombres ≤ 24 caracteres, días del evento especial con franjas válidas. La ventana de búsqueda de citas del contacto se deriva (`booking_window_days + 1`), así desaparece el `lookaheads_dias` que había que mantener a mano.
+Validaciones: franjas con formato `HH:MM` y sin solapes; `duration_min ≤ client_presence_min`; claves de servicio `^[a-z0-9_]+$` (van en `id` de botones); fechas del evento especial válidas; `manual_confirmations_since` obligatorio si `manual_confirmations_enabled`. La ventana de búsqueda de citas del contacto se deriva: `booking_window_days + 1`.
 
-#### 9.3 Google Calendar como fuente de verdad
+#### 9.3 Google Calendar
 
-`CalendarPort` (en `packs/salon/ports.py`; implementación en `integrations/google_calendar/`):
+`CalendarPort` (en `packs/salon/ports.py`; implementación en `integrations/google_calendar/` con `google-api-python-client`):
 
 ```python
 class CalendarPort(Protocol):
     def list_events(self, calendar_id, start: datetime, end: datetime) -> list[CalEvent]
     def get_event(self, calendar_id, gcal_id) -> CalEvent | None
-    def insert_event(self, calendar_id, event: NewEvent, gcal_id: str) -> CalEvent      # 409 → get_event
+    def insert_event(self, calendar_id, event: NewEvent, gcal_id: str) -> CalEvent     # 409 → get_event
     def patch_description(self, calendar_id, gcal_id, fields: dict[str, str]) -> CalEvent
-    def cancel_event(self, calendar_id, gcal_id) -> None                                # ya cancelado = ok
-    def list_contact_events(self, calendar_id, contact_id, start, end) -> list[CalEvent]
+    def cancel_event(self, calendar_id, gcal_id) -> None                               # ya cancelado = ok
+    def list_contact_events(self, calendar_id, contact_id, phone, start, end) -> list[CalEvent]
     def check_access(self, calendar_id) -> None
-# CalEvent: gcal_id, summary, description (texto limpio), start, end, all_day, created,
-#           status, private (extendedProperties.private)
+# CalEvent: gcal_id, summary, description (texto sin HTML), start, end, all_day, created, status, private
 ```
 
-- Errores: `CalendarTransientError` (red, timeout, 5xx, 429; el cliente hace 2 reintentos rápidos y después lo lanza para que reintente el trabajo) y `CalendarPermanentError` (403/404: calendario no compartido o borrado → alerta "revisar acceso al calendario").
-- Timeout 10 s por llamada.
+- **Errores:** `CalendarTransientError` (red, timeout, 5xx, 429; el cliente hace 2 reintentos rápidos antes de lanzarlo) y `CalendarPermanentError` (403/404). Timeout de 10 s por llamada.
+- **Lecturas por ventana:** `singleEvents=true`, `timeMin`/`timeMax`, paginación con tope de 10 páginas. Sin caché entre peticiones.
+- **Siempre se comprueba el resultado de una escritura.**
+- Zonas horarias: siempre `datetime` con zona (`tenant.timezone`). En eventos de día completo, `end.date` es exclusivo.
 
-**Formato de una cita creada por el bot:**
+**Cita creada por el bot:**
 
 ```
-summary:      Corte de pelo - Lucía García              (<Servicio> - <Nombre>, como hoy)
+summary:      Corte de pelo - Lucía García              (<Servicio> - <Nombre>)
 description:  Nombre: Lucía García
               Telefono: +34600000001                    (solo si se conoce)
               Servicio: corte
               Estado: pendiente | confirmada
-extendedProperties.private:
-              fp_contact = <contact.id>   fp_key = <clave idempotente>   fp_service = corte
+extendedProperties.private:  fp_contact=<contact.id>  fp_key=<clave idempotente>  fp_service=corte
 id:           determinista (§9.5)
 ```
 
-**Reglas de lectura** (portadas de `parser.py` y `queries.py`):
+**Cómo se interpretan los eventos del calendario:**
 
-- `[CFG] CERRADO` → día cerrado; `[CFG] VACACIONES` → todo el rango cerrado; `[CFG] HORARIO HH:MM-HH:MM` → horario de ese día. Prioridad: cerrado/vacaciones > horario especial > horario semanal.
-- Eventos sin teléfono ni `fp_contact` → **bloqueos**: ocupan tiempo, no generan avisos.
-- **Citas manuales**: sin `fp_key`, con `Telefono:` en la descripción. El servicio se deduce del título `<Servicio> - <Nombre>` (nombre o clave del servicio, sin tildes ni mayúsculas, el patrón más largo gana; alias heredados como "corte y barba").
-- Descripciones editadas a mano: limpiar HTML (`<br>`, `<p>`, entidades) antes de leer campos; tolerante a mayúsculas, tildes y espacios.
-- Días completos: `end.date` es exclusivo (iterar `d < end`).
-- Lecturas por ventana: `singleEvents=true`, `timeMin`/`timeMax`, paginación con tope.
-- **Siempre comprobar el resultado de una escritura.**
-- **Compatibilidad con citas existentes:** las citas que creó el bot actual llevan `WaId:` y `Telefono:` en la descripción pero no `extendedProperties`. `tools/migrate_salon_events.py` (una vez, en la migración, §21) les añade `fp_contact`/`fp_key`; mientras tanto, `list_contact_events` también acepta coincidencia por `WaId:` o `Telefono:` (como `_event_matches` hoy).
+- **`[CFG] CERRADO`** cierra el día; **`[CFG] VACACIONES`** cierra todo su rango; **`[CFG] HORARIO HH:MM-HH:MM`** fija el horario de ese día. Prioridad: cerrado o vacaciones, después horario especial, después horario semanal.
+- **Cita del bot:** tiene `fp_key`.
+- **Cita manual:** no tiene `fp_key` y lleva `Telefono:` en la descripción. El servicio sale del título `<Servicio> - <Nombre>`: se compara con el nombre o la clave de cada servicio (sin tildes ni mayúsculas) y gana el patrón más largo; se aceptan los alias heredados ("corte y barba" → `corte_barba`).
+- **Bloqueo:** cualquier otro evento. Ocupa tiempo y no genera avisos.
+- Las descripciones editadas a mano se limpian de HTML (`<br>`, `<p>`, entidades) antes de leer campos, de forma tolerante a mayúsculas, tildes y espacios.
+- **Citas creadas por la versión anterior del bot:** llevan `WaId:` y `Telefono:` en la descripción y no tienen `extendedProperties`. `list_contact_events` y la comprobación de propiedad también aceptan coincidencia por `WaId:` (= `external_id`) o `Telefono:`. `tools/migrate_salon_events.py` les añade `fp_contact`, `fp_key` y `fp_service`.
 
 #### 9.4 Huecos
 
-Función pura `compute_slots(day, service, rules, busy, closures, now) -> list[time]` en `packs/salon/slots.py` (de `utils/slots.py` y `services/calendar/engine.py`):
+`compute_slots(day, service, franjas, busy, now, rules) -> list[time]`, función pura en `packs/salon/slots.py`:
 
-- Franjas del día: horario semanal, sustituido por `[CFG] HORARIO` o por `special_event.days` en modo evento.
-- Candidatas cada `slot_step_min` dentro de cada franja, de modo que `inicio + client_presence_min ≤ fin de franja` (unas mechas de 60 min de profesional y 180 de presencia no se ofrecen a las 19:00 si se cierra a las 21:00).
-- Descarta las que solapan `[inicio, inicio + duration_min)` con un evento ocupado (tolerancia de ±1 min, como hoy).
-- Hoy: descarta las que empiezan antes de `now + min_notice_min`.
-- Mañana/tarde: si hay más de 8 horas, se parte por la pausa de mediodía de la franja (o a las 14:00 si no hay pausa).
+- Franjas del día: horario semanal, sustituido por `[CFG] HORARIO` o, en modo evento, por `special_event.days`. Un día con `[CFG] CERRADO` o dentro de unas `VACACIONES` no tiene franjas.
+- Horas candidatas cada `slot_step_min` dentro de cada franja, siempre que `inicio + client_presence_min ≤ fin de la franja`.
+- Se descartan las que solapan `[inicio, inicio + duration_min)` con un evento ocupado, con ±1 min de tolerancia.
+- Si el día es hoy, se descartan las anteriores a `now + min_notice_min`.
+- **Mañana / tarde:** si hay más de 8 horas, se parte por la pausa entre franjas (o a las 14:00 si es una franja continua).
 
 #### 9.5 Reservar sin dobles reservas
 
-El candado por conversación no impide que **dos contactos** cojan el mismo hueco a la vez, y Google Calendar no impide solapes. **[DECIDIDO]**:
+El candado por conversación no impide que **dos contactos** cojan el mismo hueco a la vez, y Google Calendar admite solapes. Por eso:
 
-1. `with ctx.lock(f"cal:{calendar_id}:{day}")`: advisory lock de sesión de PostgreSQL (`pg_try_advisory_lock` en bucle, máx. 10 s, en una conexión sin transacción abierta, liberado en `finally`). Sin lock en 10 s → `TransientError`.
-2. Dentro del lock: `get_event(id determinista)` → si existe y no está cancelado, **éxito** (es un reintento de una reserva ya hecha).
-3. Leer los eventos del día y comprobar que `[start, start + duration_min)` sigue libre → si no, `SlotTaken`.
-4. `insert_event` con el id determinista; un 409 → `get_event` y devolverlo.
+1. `with ctx.lock(f"cal:{calendar_id}:{day}")`: advisory lock de sesión de PostgreSQL (`pg_try_advisory_lock` en bucle durante 10 s como máximo, en una conexión sin transacción abierta, liberado en `finally`). Si no se consigue en 10 s → `TransientError`.
+2. `get_event(id determinista)`: si existe y no está cancelado → éxito (es un reintento de una reserva ya hecha).
+3. Lee los eventos del día y comprueba que `[start, start + duration_min)` sigue libre; si no, `SlotTaken`.
+4. `insert_event` con el id determinista. Un 409 → `get_event` y se devuelve esa cita.
 
-- **Id determinista:** `base32hex(sha256(f"{tenant_id}:{ctx.idem.event('booking')}"))[:32]` en minúsculas (Google exige base32hex, 5–1024 caracteres). El mismo evento entrante reprocesado produce el mismo id: **no hace falta tabla de efectos**.
-- No protege contra una cita que el dueño cree a mano en ese mismo segundo: aceptado (la ve y decide).
+**Id determinista:** `base32hex(sha256(f"{tenant_id}:{ctx.idem.event('booking')}"))[:32]`, en minúsculas (Google exige base32hex de 5 a 1.024 caracteres). Reprocesar el mismo evento produce el mismo id, así que la reserva nunca se duplica. Mover una cita usa `ctx.idem.event('move')` para la nueva; cancelar es idempotente.
+
+Una cita que el dueño cree a mano en ese mismo segundo puede solaparse: se acepta.
 
 #### 9.6 Barrido de Calendar (`calendar_sweep`, cada 15 min por tenant)
 
-Una lectura de `[now, now + booking_window_days + 1]` y dos pasadas:
+Una lectura de `[now, now + booking_window_days + 1]` con dos pasadas:
 
 | Pasada | Condición | Acción |
 |---|---|---|
-| **Recordatorios** (`reminders_enabled`) | Cita (del bot o manual con teléfono) que empieza dentro de `reminder_window_hours`; contacto sin `opt_out` | `SendTemplate("recordatorio_cita", [fecha, hora], payloads=[reminder_confirm:<id>, reminder_cancel:<id>])`, clave `reminder:<gcal_id>:<start>` |
-| **Confirmaciones de citas manuales** (`manual_confirmations_enabled`) | Cita manual con teléfono, `created ≥ manual_confirmations_since`, que empieza en el futuro | `SendTemplate("confirmacion_cita", [nombre, fecha, hora], payloads=[booking_cancel:<id>])`, clave `confirm:<gcal_id>` |
+| **Recordatorios** (si `reminders_enabled`) | Cita del bot o manual que empieza dentro de `reminder_window_hours` | `SendProactive(TEMPLATE_REMINDER, [fecha, hora], [reminder_confirm:<id>, reminder_cancel:<id>])` con clave `reminder:<gcal_id>:<start>` |
+| **Confirmaciones de citas manuales** (si `manual_confirmations_enabled`) | Cita manual con `created ≥ manual_confirmations_since` que empieza en el futuro | `SendProactive(TEMPLATE_CONFIRMATION, [nombre, fecha, hora], [booking_cancel:<id>])` con clave `confirm:<gcal_id>`. Después escribe `Estado: pendiente` en la descripción si no lo tenía |
 
-- **Destinatario:** en citas del bot, el contacto de `fp_contact` (su `wa_id`); en citas manuales, el teléfono de la descripción (se crea el contacto si no existe).
-- Las claves estables viven en `outbound_message.idem_key` (única por tenant): el barrido puede correr cien veces y cada aviso sale una vez.
-- Tras enviar una confirmación manual, el barrido escribe `Estado: pendiente` en la descripción si no lo tenía (para que el dueño vea que se avisó).
-- Contactos con `opt_out` no reciben plantillas.
+- **Destinatario:** en citas del bot, el contacto de `fp_contact` por su `last_channel_key` (WhatsApp o Telegram). En citas manuales, el teléfono de la descripción por el canal WhatsApp `primary` del tenant, creando el contacto si no existe; si el tenant no tiene WhatsApp, se registra y no se envía.
+- Las claves estables son únicas en `outbound_message`: aunque el barrido corra muchas veces, cada aviso sale una sola vez.
 
 #### 9.7 Plantillas
 
-Las crea el operador en el WhatsApp Manager del negocio durante el alta (tardan de 1 a 48 h en aprobarse). Textos actuales:
-
-| Nombre | Categoría | Cuerpo | Botones (respuesta rápida) |
+| `TemplateSpec` | Nombre en Meta | Texto | Botones |
 |---|---|---|---|
-| `confirmacion_cita` | Utility | "Hola {{1}}, tu cita ha sido confirmada para el {{2}} a las {{3}}. Si necesitas cancelarla, pulsa el botón." | Cancelar cita |
-| `recordatorio_cita` | Utility | "Recuerda que tienes cita el {{1}} a las {{2}}. ¿Confirmas tu asistencia?" | Confirmar · Cancelar |
+| `TEMPLATE_CONFIRMATION` | `confirmacion_cita` (Utility, `es_ES`) | "Hola {1}, tu cita ha sido confirmada para el {2} a las {3}. Si necesitas cancelarla, pulsa el botón." | Cancelar cita |
+| `TEMPLATE_REMINDER` | `recordatorio_cita` (Utility, `es_ES`) | "Recuerda que tienes cita el {1} a las {2}. ¿Confirmas tu asistencia?" | Confirmar · Cancelar |
 
-`pack.health()` comprueba en el arranque y cada día que las plantillas declaradas existen aprobadas en la WABA del negocio (llamada de lectura a la Graph API) y que el calendario es accesible.
+El operador crea las plantillas en el WhatsApp Manager de cada negocio. `pack.health` comprueba que están aprobadas y que el calendario es accesible.
 
 #### 9.8 Escenarios obligatorios
 
-Reserva completa · día sin huecos · mañana/tarde · `SlotTaken` (vuelve a ofrecer las horas del día) · límite de 5 citas · Calendar caído al pedir cita (falla en abierto) y al crear (mensaje de recuperación) · cierre `[CFG]` y vacaciones · horario especial · servicio con presencia larga cerca del cierre · mover cita · cancelar cita · evento especial activo e inactivo · recordatorio enviado una sola vez en dos barridos · confirmación de cita manual (y no de las anteriores a `manual_confirmations_since`) · botón de recordatorio sobre una cita ajena · `baja` → sin recordatorios · cita antigua con `WaId:` sin `extendedProperties`.
+Reserva completa · día sin huecos · mañana/tarde · `SlotTaken` · límite de citas · Calendar caído al pedir cita (falla en abierto) y al crear (texto de recuperación) · reintento de una reserva ya creada · `[CFG] CERRADO`, `VACACIONES` y `HORARIO` · servicio con presencia larga cerca del cierre · mover y cancelar · evento especial activo e inactivo · recordatorio una sola vez en dos barridos · confirmación de una cita manual (y ninguna para las anteriores a `manual_confirmations_since`) · botón de recordatorio sobre una cita ajena · `baja` → sin recordatorios · cita antigua con `WaId:` · la misma reserva completa por un canal Telegram.
 
 ---
 
 ### 10. Pack `bus` (horarios de autobús)
 
-Se porta el código de buscaBus casi tal cual: `services/horarios/` (modelo, formato, loader, query, calendario, diff, datos), `utils/matcher.py`, `utils/fechas.py`, `handlers/flujo.py`, `utils/messages.py`, sus constructores de `interactive.py`, `tools/` y sus tests. Cambia el pegamento: entra por `PackContext`, el estado se guarda en BD y los datos se cargan por tenant.
+Se porta de `buscaBus` casi tal cual: `services/horarios/` (modelo, formato, loader, query, calendario, diff, datos), `utils/matcher.py`, `utils/fechas.py`, `handlers/flujo.py`, `utils/messages.py`, sus constructores de listas, `tools/` y todos sus tests y fixtures. Cambia el pegamento: entra por `PackContext`, el estado se guarda en BD y los datos se cargan por tenant.
 
-#### 10.1 Dataset `timetable`
+#### 10.1 Dataset de horarios
 
 ```
 tenants/<slug>/datasets/timetable/
-  paradas.yaml          localidades (id, nombre, alias, pendientes) y paradas (código, nombre, localidad);
-                        pares no vendibles
-  observaciones.yaml    catálogo de observaciones (letra, tipo condición/aviso, ámbitos, texto exacto)
-  calendario.yaml       vigencia, festivos generales y locales, periodo escolar, días sin servicio en ninguna línea
-  lineas/<id>.yaml      temporadas (cubren el año sin huecos ni solapes), tablas por temporada y clase
-                        de día, viajes con horas (HH:MM o llegada>salida), observaciones y `bus:<id>`
+  paradas.yaml        localidades (id, nombre, alias, pendientes), paradas (código, nombre, localidad),
+                      pares no vendibles
+  observaciones.yaml  catálogo de observaciones (letra, tipo condición/aviso, ámbitos, texto exacto)
+  calendario.yaml     vigencia, festivos generales y locales, periodo escolar, días sin servicio
+  lineas/<id>.yaml    temporadas (cubren el año sin huecos ni solapes); tablas por temporada y clase
+                      de día; viajes con horas (HH:MM o llegada>salida), observaciones y bus:<id>
 ```
 
-El formato es **exactamente el de `buscaBus/horarios/`** (su `design.md` §2.3 se copia a `docs/packs/bus.md`). Lo existente se mueve sin conversión.
+El formato completo es el de `buscaBus/horarios/` y se documenta en `docs/packs/bus.md`.
 
-- **Validador estricto** (`packs/bus/formato.py`, único para herramientas, tests y carga): las ~30 reglas actuales (parada, letra u observación sin definir; horas que retroceden; temporadas que no cubren el año; `bus:` incoherente; alias vacíos o repetidos; ids de línea; pendientes mal formados…). **Nada ambiguo pasa**: cada error dice fichero, tabla, fila y motivo; los avisos (posible mismo autobús no declarado, clases de día sin datos, pendientes abiertos) se listan sin bloquear.
-- **`load_data`** convierte el dataset en objetos inmutables (`Localidad`, `Parada`, `Observacion`, `Linea`, `Temporada`, `Tabla`, `Viaje`, `Paso`) e índices (`localidad_paradas`, `localidad_viajes`, `festivos_por_linea`, `lineas_pueblos`) + el `Matcher`. Todo en memoria: unos MB por tenant.
-- **Ciclo de actualización** (como hoy, por tenant):
-  1. La empresa comunica un cambio → se edita la fila en `tenants/<slug>/datasets/timetable/lineas/…`.
+- **Validador estricto** (`packs/bus/formato.py`, el mismo para herramientas, tests y carga). Cada error dice fichero, tabla, fila y motivo. Detectan, entre otros: paradas, letras u observaciones sin definir; horas que retroceden; temporadas con huecos o solapes; `bus:` incoherente; alias vacíos o repetidos; ids de línea mal formados; pendientes mal formados. Los avisos (posible mismo autobús no declarado, clases de día sin datos, pendientes abiertos) se listan sin bloquear. **Nada ambiguo pasa.**
+- **`load_data`** convierte el dataset en objetos inmutables (`Localidad`, `Parada`, `Observacion`, `Linea`, `Temporada`, `Tabla`, `Viaje`, `Paso`), construye los índices (`localidad_paradas`, `localidad_viajes`, `festivos_por_linea`, `lineas_pueblos`) y el `Matcher`, y comprueba que existen los pueblos de `start_menu_towns`. Ocupa pocos MB por tenant.
+- **Ciclo de actualización:**
+  1. Se edita el fichero de la línea.
   2. `make bus-formatear TENANT=<slug>` y `make bus-validar TENANT=<slug>`.
-  3. `make bus-revision TENANT=<slug>` → `revision/<slug>/horarios.html` y `.pdf` (no se versionan) con **cambios desde la versión publicada** en lenguaje de negocio.
-  4. La empresa confirma el PDF → PR → CI valida → merge → despliegue → `make bus-publicar TENANT=<slug>` crea el tag `datos/<slug>/AAAA-MM-DD` (base del próximo diff).
-- Cambios con fecha futura no se modelan: se publican el día que entran en vigor.
+  3. `make bus-revision TENANT=<slug>` genera `revision/<slug>/horarios.html` y `.pdf` (no se versionan), con los **cambios desde la versión publicada** en lenguaje de negocio.
+  4. La empresa confirma.
+  5. Commit, despliegue y `make bus-publicar TENANT=<slug>`, que crea el tag `datos/<slug>/AAAA-MM-DD`, la base del siguiente diff.
+- Los cambios con fecha futura se publican el día que entran en vigor.
 
 #### 10.2 Motor de consulta
 
-Entrada `(origen, destino, fecha)`; salida ordenada de salidas con hora de salida (del `Paso` de origen), llegada (del `Paso` de destino), duración, parada y notas. Sin E/S.
+Entrada `(origen, destino, fecha)`. Salida: salidas ordenadas con hora de salida (del `Paso` de origen), llegada (del `Paso` de destino), duración, parada y notas. Sin E/S.
 
-0. Casos previos, en este orden: par **no vendible** → `no_vendible`; ninguna línea conecta el par → `sin_trayecto`; día sin servicio en ninguna línea → `sin_servicio`; fecha fuera de vigencia → `sin_datos`.
-1. Calendario de esa fecha **por línea**: temporada, clase de día (laborable / sábado / domingo y festivos, con festivos locales solo en las líneas que pasan por esa localidad), lectivo, mes.
-2. Filtrar viajes por línea, temporada, clase de día y condiciones (con ámbito de línea, viaje o parada de un viaje).
-3. Par válido: el viaje para en una parada del origen y, **más adelante en su orden**, en una del destino.
-4. **Fusión del mismo autobús**: mismas horas del par en líneas distintas → una sola salida con las notas de ambas.
-5. Orden por hora de salida; si es hoy, las ya pasadas no se listan y se cuentan ("hoy ya han salido N").
+0. Casos previos, en orden: par no vendible → `no_vendible`; ninguna línea conecta el par → `sin_trayecto`; día sin servicio en ninguna línea → `sin_servicio`; fecha fuera de vigencia → `sin_datos`.
+1. Calendario de la fecha **para cada línea**: temporada; clase de día (laborable, sábado, domingo y festivos; un festivo local solo afecta a las líneas que pasan por esa localidad); lectivo; mes.
+2. Filtra los viajes por línea, temporada, clase de día y condiciones (con ámbito de línea, de viaje o de una parada de un viaje).
+3. Un viaje sirve si para en una parada del origen y, **más adelante en su orden**, en una del destino.
+4. **Mismo autobús:** si dos líneas tienen las mismas horas para el par, se muestra una sola salida con las notas de ambas.
+5. Ordena por hora de salida. Si la fecha es hoy, las salidas pasadas no se listan y se cuentan.
 6. Si alguna línea implicada no tiene datos ese día, el resultado lo dice: **`sin_datos` nunca se presenta como "no hay servicio"**.
-7. **Nunca inventa trasbordos.**
+7. Nunca inventa trasbordos.
 
 #### 10.3 Conversación
 
 ```
-MENÚ [🚌 Ver horarios] [ℹ️ Información]
-  → ORIGEN    lista: pueblos_menu_inicio (8) + ✍️ Otro pueblo + ↩️ Volver al menú
-  → DESTINO   solo alcanzables desde el origen y vendibles; ≤ 9 → lista completa;
-              si no, 8 más relevantes (Córdoba primero) + ✍️ Otro destino + ↩️ Cambiar origen
-  → DÍA       7 días con "N salidas · de HH:MM a HH:MM" / "próxima HH:MM" / "sin servicio" /
-              "horario no disponible" (+ "festivo · " y "· puede haber más") + 📅 Otra fecha
-  → RESULTADO [📅 Otro día] [🔄 Ver la vuelta] [🔍 Otra consulta]
+MENÚ        [🚌 Ver horarios] [ℹ️ Información]
+ORIGEN      lista: start_menu_towns (8) + ✍️ Otro pueblo + ↩️ Volver al menú
+DESTINO     solo alcanzables y vendibles desde el origen; si son ≤ 9, la lista completa;
+            si no, los 8 más relevantes (Córdoba primero) + ✍️ Otro destino + ↩️ Cambiar origen
+DÍA         7 días con "N salidas · de HH:MM a HH:MM" / "N salidas · próxima HH:MM" /
+            "ya no quedan salidas hoy" / "sin servicio" / "horario no disponible"
+            (prefijo "festivo · ", sufijo "· puede haber más") + 📅 Otra fecha
+RESULTADO   [📅 Otro día] [🔄 Ver la vuelta] [🔍 Otra consulta]
 ```
 
-Estados: `MENU → SEL_ORIGEN → SEL_DESTINO → SEL_DIA → RESULTADO` + `ESCRIBIR_ORIGEN`, `ESCRIBIR_DESTINO`, `ESCRIBIR_FECHA`, `CONFIRMAR_PUEBLO`, más la navegación de líneas y pueblos.
+Estados: `MENU`, `SEL_ORIGEN`, `SEL_DESTINO`, `SEL_DIA`, `RESULTADO`, `ESCRIBIR_ORIGEN`, `ESCRIBIR_DESTINO`, `ESCRIBIR_FECHA`, `CONFIRMAR_PUEBLO` y la navegación de líneas y pueblos.
 
-- **Matcher** (normalización del bus: la común + sin artículos ni `de`/`del` + sin relleno inicial `desde`, `a`, `hacia`, `para`, `voy a`): exacto → prefijo del nombre entero (≥ 3 letras) → errata Damerau-Levenshtein (≤ 1 hasta 5 letras, ≤ 2 si es más larga). Única → continúa (una errata se **confirma** con Sí/No); 2–3 → botones; 4–9 → lista; >9 → "sé más concreto"; ninguna → "No conozco ese pueblo" + **Ver pueblos por línea**. Un alias compartido (`villafranca`) **siempre pregunta**. Se busca entre todas las localidades también en el destino (para responder "sin trayecto" y no "no conozco"). Dos pueblos en un mensaje no se interpretan.
-- **Ver pueblos por línea**: líneas (8 por página + "Más líneas" + volver) → pueblos de la línea (8 + "Ver más" + "Volver a líneas"); en el destino, solo líneas que salen del origen y pueblos alcanzables.
-- **Localidades pendientes**: "Algunos autobuses paran en X, a unos N minutos de Y, pero aún no tenemos su hora de paso." + `Usar Y` / `Otro pueblo`.
-- **Fechas en formato cerrado** `día/mes[/año]` (separadores `/ - . espacio`; año de 2 cifras = 20xx). Nada de lenguaje natural ("mañana", "el viernes"). Sin año: si esa fecha pasó hace ≤ 30 días → "Esa fecha ya ha pasado"; si no, la próxima vez que llega.
-- **Resultado**: cabecera con trayecto, día y temporada (solo si es una única temporada con nombre público) o festivo; salidas `HH:MM → HH:MM (1h 20)`; parada de salida; nota que afecta a todas como `⚠️` al final y las que afectan a algunas con marcas ¹ ² ³; corte a 4.096 caracteres con "…y N salidas más, llama al <teléfono>". Sin salidas → siguiente día con salidas en 45 días (con botón); 25/12 y 01/01 → "no hay servicio en ninguna línea" + teléfono y horario de oficina.
-- **Información**: teléfono, horario de oficina por días (solo se muestra; el bot nunca calcula si está abierta) y enlaces no vacíos.
-- Textos no reconocidos (pueblo o fecha) se registran con el **texto normalizado y el paso, nunca con el teléfono**.
-- Sin IA. Sin plantillas. Sin periódicas.
+- **Matcher:**
+  - Normalización: la común, más quitar artículos y `de`/`del`, más quitar el relleno inicial (`desde`, `a`, `hacia`, `para`, `voy a`).
+  - Orden de búsqueda: exacto, luego prefijo del nombre entero (≥ 3 letras), luego errata por Damerau-Levenshtein (≤ 1 hasta 5 letras, ≤ 2 si la palabra es más larga).
+  - Resultado: una coincidencia → continúa (una errata se confirma con Sí/No); 2–3 → botones; 4–9 → lista; más de 9 → "Sé más concreto"; ninguna → "No conozco ese pueblo" + **Ver pueblos por línea**.
+  - Un alias compartido (`villafranca`) **siempre pregunta**, aunque esté escrito con errata.
+  - En el destino se busca entre todas las localidades, para responder "sin trayecto directo" en vez de "no conozco".
+  - Dos pueblos en un mismo mensaje no se interpretan.
+- **Ver pueblos por línea:** líneas (8 por página + "Más líneas" + volver), después los pueblos de la línea (8 + "Ver más" + "Volver a líneas"). En el destino solo se muestran líneas que salen del origen y pueblos alcanzables desde él.
+- **Localidad pendiente:** "Algunos autobuses paran en X, a unos N minutos de Y, pero aún no tenemos su hora de paso." + `Usar Y` / `Otro pueblo`.
+- **Fechas en formato cerrado** `día/mes[/año]`:
+  - Separadores `/ - . espacio`; un año de 2 cifras es 20xx.
+  - Sin lenguaje natural.
+  - Sin año: si esa fecha ya pasó hace 30 días o menos → "Esa fecha ya ha pasado"; si no, se toma la próxima vez que llegue.
+- **Resultado:**
+  - Cabecera con trayecto, día y temporada (solo si todas las salidas son de una única temporada con nombre público) o festivo.
+  - Una línea por salida: `HH:MM → HH:MM (1h 20)`, más la parada de salida.
+  - Notas: la que afecta a todas las salidas va como `⚠️` al final; las que afectan solo a algunas llevan marcas ¹ ² ³.
+  - Si supera 4.096 caracteres se corta en la última salida completa y se añade "…y N salidas más, llama al <teléfono>".
+  - Día sin salidas → siguiente día con salidas en `next_day_search_days`, ofrecido en un botón.
+  - 25/12 y 01/01 → "no hay servicio en ninguna línea" + teléfono y horario de oficina.
+- **Información:** teléfono, horario de oficina por días (solo se muestra; el bot nunca calcula si está abierta) y los enlaces que no estén vacíos.
+- **Textos no reconocidos** (pueblo o fecha): se registran con el texto normalizado y el paso, nunca con el identificador del contacto.
+- Sin avisos proactivos ni periódicas.
 
 #### 10.4 Config
 
@@ -878,120 +904,67 @@ class BusConfig(BaseModel):
     contact_phone: str
     office_hours: list[OfficeHours] = []
     links: dict[Literal["web", "compra_online", "bonos", "pdf_horarios"], HttpUrl] = {}
-    start_menu_towns: list[str] = Field(max_length=8)     # nombres de localidades; deben existir en el dataset
+    start_menu_towns: list[str] = Field(max_length=8)    # nombres de localidades del dataset
     next_day_search_days: int = 45
 ```
 
-`load_data` comprueba además que cada pueblo de `start_menu_towns` existe en el dataset.
+#### 10.5 Pruebas obligatorias
 
-#### 10.5 Escenarios obligatorios
+Se portan las de buscaBus (`test_formato`, `test_diff`, `test_formatear`, `test_revision`, `test_loader`, `test_query` con sus pruebas doradas, `test_calendario`, `test_matcher`, `test_fechas`, `test_conversation`, `test_interactive`).
 
-Las pruebas actuales de buscaBus se portan (`test_formato`, `test_diff`, `test_formatear`, `test_revision`, `test_loader`, `test_query` con sus pruebas doradas, `test_calendario`, `test_matcher`, `test_fechas`, `test_conversation`, `test_interactive`) con sus fixtures. Escenarios de conversación: consulta completa · "Ver la vuelta" · "Otro día" · día sin servicio con siguiente día · `sin_datos` · no vendible · sin trayecto directo · origen = destino · Villafranca (también con errata) · errata confirmada y rechazada · ver pueblos por línea con paginación · localidad pendiente · fecha pasada · 25/12 · hoy sin salidas restantes · "Otra fecha" con texto inválido · resultado de más de 4.096 caracteres.
-
----
-
-### 11. WhatsApp
-
-#### 11.1 Modo de conexión
-
-**`client_app` [DECIDIDO]:** la app de Meta, la WABA y el número están **en el Business Portfolio del negocio**; el operador es administrador y hace el alta. El coste de Meta lo paga el negocio con su tarjeta. Así lo hacen hoy los dos bots.
-
-Meta configura el webhook **por app**: la URL lleva el `app_public_id` (para elegir el `app_secret`) y el tenant se resuelve por `metadata.phone_number_id`, comprobando que el número pertenece a esa app.
-
-[FUTURO] `platform_app` (Tech Provider + Embedded Signup): una app de plataforma, una URL para todos; cambia solo el enrutado.
-
-**Checklist de alta** (de los README de los dos bots):
-
-1. **SIM del negocio** con un número que no tenga WhatsApp activo (si lo tiene, darlo de baja antes).
-2. **Gmail del negocio** (a su nombre).
-3. **Business Portfolio** del negocio, con el operador como administrador. **Verificación de empresa** cuanto antes (2–5 días hábiles; necesaria para el nombre visible, que no se aprueba sin web activa).
-4. **App** de Meta tipo Business en ese portfolio, con el producto WhatsApp.
-5. Número registrado y verificado; app suscrita a la WABA (`POST /<WABA_ID>/subscribed_apps`); webhook `https://api.<dominio>/webhooks/whatsapp/<app_public_id>` con su `verify_token`; campo `messages` suscrito.
-6. **System User** con **token permanente** (`whatsapp_business_messaging` y `whatsapp_business_management`). El token temporal caduca en 24 h: nunca en producción.
-7. **Plantillas** del pack creadas pronto (1–48 h).
-
-#### 11.2 Entrada
-
-- Elementos de `value.messages[]`: `text`, `interactive.button_reply`, `interactive.list_reply`, `button` (respuesta a un botón de plantilla, con `button.payload`) y el resto (`audio`, `image`, `document`, `sticker`, `location`…) como `unsupported`.
-- Elementos de `value.statuses[]`: `sent`, `delivered`, `read`, `failed`, con `pricing` y `biz_opaque_callback_data`.
-- **Identidad del contacto:** `wa_id` = `user_id` (BSUID, formato `^[A-Z]{2}\.[A-Za-z0-9]{1,128}$`) si viene; si no, `from` (teléfono, 7–15 dígitos). `phone_e164` solo si `from` es un teléfono. Validación de formatos como en `webhook.py` de Peluquería.
-- Límites de entrada (de Peluquería): texto truncado a 4.096; id interactivo ≤ 256 (si no, se ignora).
-
-#### 11.3 Salida
-
-- `POST https://graph.facebook.com/<versión>/<phone_number_id>/messages`; la versión va en configuración, nunca en el código (hoy `v23.0`; [VERIFICAR] su fecha de caducidad, previsiblemente 2027).
-- Tipos: `text`, `interactive` (`button`, `list`), `template`.
-- Todo envío lleva `biz_opaque_callback_data = outbound_id`.
-- Cliente `httpx` con *pool* de conexiones, timeout 10 s; reintentos y estados según §7.4.
-
-#### 11.4 Límites de mensajes de Meta
-
-Los límites de Meta se aplican a contactos únicos **fuera de la ventana de atención** en 24 h. Las respuestas no cuentan; solo las plantillas (recordatorios y confirmaciones). Con los volúmenes de una peluquería, el límite inicial de una cuenta nueva no es un problema.
-
-#### 11.5 Costes
-
-Desde el **1/10/2026**, Meta cobra por mensaje también los **mensajes de servicio** (respuestas dentro de la ventana), al precio de la categoría *utility* del país ([página oficial](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)). El tramo gratuito de 1.000 mensajes al mes que citan algunos blogs **no aparece en la documentación oficial: no se cuenta con él**. La tarifa de España (~0,017 €/mensaje según proveedores) [VERIFICAR en la cuenta de cada negocio].
-
-Consecuencias de diseño:
-
-- Fusión de mensajes obligatoria (§7.4) y flujos con pocos turnos.
-- `outbound_message` guarda `pricing_category` y `billable` de los avisos de estado; el Admin muestra mensajes facturables por tenant y mes.
-- **Alerta 🟡** cuando un tenant supera el umbral mensual que tenga configurado (`whatsapp.monthly_alert_threshold`, por defecto 2.000), para avisar al negocio antes de la factura.
-- Palancas ya identificadas en buscaBus si el coste aprieta: fusionar el menú con la primera pregunta, recordar el último pueblo, aceptar "Pozoblanco a Córdoba" en un mensaje. Ninguna en la v1.
+Escenarios de conversación: consulta completa · Ver la vuelta · Otro día · día sin servicio con siguiente día · `sin_datos` · no vendible · sin trayecto · origen = destino · Villafranca (también con errata) · errata confirmada y rechazada · pueblos por línea con paginación · localidad pendiente · fecha pasada · 25/12 · hoy sin salidas restantes · fecha escrita inválida · resultado de más de 4.096 caracteres · consulta completa por Telegram.
 
 ---
 
-### 12. Avisos al dueño y alertas de operación
+### 11. Avisos al dueño y alertas de operación
 
-> **En pocas palabras.** Un único bot de Telegram de la plataforma, **solo de salida**. Lo usan los packs para avisar al dueño (opcional) y la plataforma para avisar al operador de problemas. No tiene webhook: no hay endpoint público que proteger.
+Un **bot de avisos de la plataforma** (`NOTIFY_BOT_TOKEN`), distinto de los bots de canal y **solo de salida**: no tiene webhook ni recibe mensajes en producción.
 
-- **`NotifyOwner(kind, text, idem_key)`**: si el tenant tiene `owner.telegram_chat_id` y `kind` está en `owner.notify`, se guarda en `notification` (único por `idem_key`) y se entrega por la cola `outbound`. Si no, se registra y no se envía.
-- Tipos que emite `salon`: `booking_created`, `booking_cancelled`, `booking_moved`, `move_cancel_failed`. `bus` no emite ninguno.
-- **Vinculación:** `manage.py telegram_link <slug>` genera un código; el dueño envía `/start <código>` al bot; el comando lee `getUpdates`, muestra su `chat_id` y el operador lo añade al `tenant.yaml`. (El bot no tiene webhook, así que `getUpdates` está disponible.)
-- **Alertas de operación**: mismo bot, al chat `OPS_TELEGRAM_CHAT_ID`, enviadas por `ops_check` (§17.3). No pasan por la tabla `notification` (pueden ser de plataforma, sin tenant); se deduplican con un enfriamiento de 30 min por tipo en la caché de Django (en BD).
-- [FUTURO] Comandos del dueño (`/vacaciones`, `/bloquear`), respuesta a derivaciones.
+- **`NotifyOwner(kind, text, idem_key)`:** si el tenant tiene `owner.telegram_chat_id` y `kind` está en `owner.notify`, se guarda en `notification` (única por `idem_key`) y se entrega con `send_notification` (cola `outbound`, candado `owner:<tenant>`, reintentos ante 429 y 5xx). Si no, solo se registra.
+- **Vinculación:** `manage.py notify_link <slug>` genera un código; el dueño envía `/start <código>` al bot de avisos; el comando lee `getUpdates`, muestra su `chat_id` y el operador lo añade al `tenant.yaml`.
+- **Alertas de operación:** las envía `ops_check` (§15.3) con el mismo bot al chat `OPS_TELEGRAM_CHAT_ID`. No pasan por `notification`: se deduplican con un enfriamiento de 30 min por tipo y tenant, guardado en la caché de Django en BD.
 
 ---
 
-### 13. Datos
+### 12. Datos
 
-#### 13.1 Modelo
+#### 12.1 Modelo
 
-Tablas con 🔒 llevan `tenant_id` y RLS. Claves primarias **UUIDv7** (`uuidv7()` de PostgreSQL 18). Fechas `timestamptz`. Las tablas padre tienen `UNIQUE(tenant_id, id)` y las hijas usan **claves foráneas compuestas** `(tenant_id, x_id)`: es imposible que un mensaje de A apunte a un contacto de B.
+Las tablas con 🔒 llevan `tenant_id` y RLS. Claves primarias UUIDv7 (`uuid.uuid7()` de Python 3.14). Fechas en `timestamptz`. Las tablas padre tienen `UNIQUE(tenant_id, id)` y las hijas usan claves foráneas compuestas `(tenant_id, x_id)`, de modo que una fila de un tenant no puede apuntar a otra de otro.
 
 ```text
-tenant 🔒*        id, slug, name, pack, status, timezone, synced_at          (reflejo de tenants/*.yaml)
-credential 🔒     id, tenant_id, name, ciphertext, created_at, rotated_at    UNIQUE(tenant_id, name)
+tenant 🔒*          id, slug, name, pack, status, timezone, synced_at       (reflejo de tenants/*.yaml)
 
-contact 🔒        id, tenant_id, wa_id, phone_e164 NULL, display_name, opt_out, opt_out_at,
-                  last_activity_at, created_at                               UNIQUE(tenant_id, wa_id)
-conversation 🔒   id, tenant_id, contact_id, state jsonb, state_version, version,
-                  last_inbound_at, updated_at                                UNIQUE(tenant_id, contact_id)
+contact 🔒          id, tenant_id, channel_type[whatsapp|telegram], external_id, phone_e164 NULL,
+                    display_name, last_channel_key, opt_out, opt_out_at, unreachable,
+                    last_activity_at, created_at              UNIQUE(tenant_id, channel_type, external_id)
+conversation 🔒     id, tenant_id, contact_id, state jsonb, state_version, last_inbound_at, updated_at
+                                                              UNIQUE(tenant_id, contact_id)
 
-inbound_event 🔒  id, tenant_id, provider_event_id, kind[message|status], payload jsonb,
-                  status[pending|done|failed|ignored], error, received_at, processed_at
-                                                                             UNIQUE(tenant_id, provider_event_id)
-outbound_message 🔒  id, tenant_id, contact_id, idem_key, seq, kind[text|interactive|template],
-                  payload jsonb, status[pending|sending|sent|failed|unknown], attempts, wamid,
-                  pricing_category, billable, last_error, inbound_event_id NULL, created_at, sent_at
-                                                                             UNIQUE(tenant_id, idem_key)
-notification 🔒   id, tenant_id, idem_key, kind, text, status[pending|sent|failed], created_at, sent_at
-                                                                             UNIQUE(tenant_id, idem_key)
+inbound_event 🔒    id, tenant_id, channel_key, kind[message|status], provider_event_id, payload jsonb,
+                    status[pending|done|failed|ignored], error, received_at, processed_at
+                                                              UNIQUE(tenant_id, channel_key, provider_event_id)
+outbound_message 🔒 id, tenant_id, contact_id, channel_key, idem_key, seq, kind[reply|proactive],
+                    payload jsonb, status[pending|sending|sent|failed|unknown], attempts,
+                    provider_message_id, pricing_category, billable, last_error,
+                    inbound_event_id NULL, created_at, sent_at
+                                                              UNIQUE(tenant_id, idem_key)
+notification 🔒     id, tenant_id, idem_key, kind, text, status[pending|sent|failed], created_at, sent_at
+                                                              UNIQUE(tenant_id, idem_key)
 ```
 
 \* `tenant` tiene RLS sobre su propio `id`.
 
-Más las tablas de Procrastinate (sin `tenant_id` ni RLS: por eso los trabajos solo llevan ids) y las de Django (usuarios del Admin, sesiones, caché, `LogEntry`).
+- Además están las tablas de Procrastinate (sin `tenant_id` ni RLS; por eso los trabajos solo llevan ids) y las de Django (usuarios del Admin, sesiones, caché, `LogEntry`).
+- No hay tablas de citas ni de horarios: las citas viven en Google Calendar y los horarios en git y en memoria.
+- `payload` de `outbound_message` guarda la respuesta común (`Reply` o `ProactiveMessage` serializados), no el formato del proveedor: el adaptador la renderiza al enviar.
 
-**No hay tablas de citas ni de horarios:** las citas viven en Google Calendar; los horarios, en git y en memoria. Si un pack necesita tablas propias algún día, irán en `flowpilot/` con `tenant_id`, RLS y acceso desde el pack por un `Protocol` en `ctx` (como `calendar`).
+#### 12.2 Aislamiento (RLS)
 
-#### 13.2 Aislamiento entre negocios (RLS)
-
-| Rol de PostgreSQL | Lo usa | `BYPASSRLS` | Permisos |
+| Rol | Lo usan | `BYPASSRLS` | Permisos |
 |---|---|---|---|
-| `fp_owner` | `migrate` | — (dueño de las tablas) | DDL |
-| `fp_app` | `web`, `worker` | **No** | SELECT/INSERT/UPDATE/DELETE |
-| `fp_admin` | `admin` (solo accesible por túnel SSH) | **Sí** | SELECT/INSERT/UPDATE/DELETE |
+| `fp_app` | `web` (webhooks) y `worker` | No | SELECT, INSERT, UPDATE y DELETE sobre las tablas de la aplicación y de Procrastinate |
+| `fp_owner` | Migraciones, Django Admin y comandos de operación entre tenants (`purge_tenant`, `export_tenant`) | Sí | Dueño de las tablas |
 
 ```sql
 ALTER TABLE contact ENABLE ROW LEVEL SECURITY;
@@ -1001,294 +974,256 @@ CREATE POLICY tenant_isolation ON contact
   WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 ```
 
-- `NULLIF(…, '')` es necesario: con conexiones persistentes, tras un `SET LOCAL` las transacciones siguientes ven `''` (no NULL), y `''::uuid` daría error en lugar de "0 filas".
-- **El tenant solo se fija con `tenant_tx(tenant_id)`**: abre una transacción corta y ejecuta `set_config('app.tenant_id', …, true)` (= `SET LOCAL`). Nunca se anida (`assert not connection.in_atomic_block`). Sin tenant fijado se ven 0 filas: si alguien lo olvida, falla de forma segura.
-- **Ya no hacen falta funciones `SECURITY DEFINER`**: el enrutado de webhooks y la lista de tenants salen del registro en memoria (§6.3), no de la BD.
-- El servicio `admin` usa `DB_ADMIN_URL` (`fp_admin`); `web` y `worker` no tienen esa URL. Es la única puerta para ver datos de varios tenants a la vez.
-- **Test genérico de aislamiento** (bloquea el merge): recorre todas las tablas con `tenant_id` y comprueba, con tenants A y B, que A no lee, modifica, borra ni inserta filas de B, ni crea FKs hacia B, y que sin tenant se leen 0 filas. Una tabla nueva sin política hace fallar el test.
+- **El tenant solo se fija con `tenant_tx(tenant_id)`:** abre una transacción corta y ejecuta `set_config('app.tenant_id', …, true)` (equivale a `SET LOCAL`). Nunca se anida (`assert not connection.in_atomic_block`). Sin tenant fijado se leen 0 filas, de modo que un olvido falla de forma segura.
+- `NULLIF(…, '')` es necesario: con conexiones persistentes, tras un `SET LOCAL` las transacciones siguientes ven `''` en lugar de NULL.
+- Django tiene dos alias: `default` (`fp_app`) y `owner` (`fp_owner`). El Admin usa `owner` mediante una clase base de `ModelAdmin` (`using = "owner"`). Las URL `/admin/` solo se montan en `web` y Caddy no las expone (§13).
+- Los trabajos que recorren tenants (repartos, retención, `ops_check`) obtienen la lista del registro en memoria y abren un `tenant_tx` por tenant.
+- **Test genérico de aislamiento** (obligatorio en CI): para cada modelo con `tenant_id` comprueba, con los tenants A y B, que A no lee, modifica, borra ni inserta filas de B, que no crea claves foráneas hacia B y que sin tenant fijado se leen 0 filas. Una tabla nueva sin política hace fallar el test.
 
-#### 13.3 Retención [DECIDIDO inicialmente; se ajusta en el contrato de encargo de cada negocio]
+#### 12.3 Retención
 
 | Dato | Retención | Cómo |
 |---|---|---|
-| `inbound_event.payload` | 30 días | `retention_cleanup` nocturno, por lotes de 1.000: vacía el payload, conserva metadatos |
+| `inbound_event.payload`, `outbound_message.payload` | 30 días | `retention_cleanup` nocturno, por lotes de 1.000: vacía el payload y conserva los metadatos |
 | Filas de `inbound_event` | 90 días | Borrado |
-| `outbound_message.payload` | 30 días | Se vacía |
-| Filas de `outbound_message`, `notification` | 12 meses | Borrado (las claves de barridos ya no sirven pasado ese plazo) |
-| `conversation.state` | Al caducar (30 min) | El estado caducado se vacía en el siguiente mensaje o en la limpieza nocturna |
-| `contact` | 12 meses sin actividad | Borrado (con su conversación y sus mensajes) |
-| Backups | 6 meses (copias mensuales) | Política de restic (§15.4); se informa en el contrato |
-| Tenant dado de baja | Exportación + borrado en ≤ 30 días | §18.2 |
+| Filas de `outbound_message` y `notification` | 12 meses | Borrado |
+| `conversation.state` caducado | Inmediato | Se vacía en el siguiente mensaje o en la limpieza nocturna |
+| `contact` sin actividad | 12 meses | Borrado junto con su conversación y sus mensajes |
+| Backups | 6 meses | Política de restic (§14.4) |
+| Tenant dado de baja | ≤ 30 días | §16.2 |
 
-Derechos RGPD: `manage.py export_contact <slug> <wa_id|teléfono>` y `forget_contact` (borra contacto, conversación, eventos y mensajes; las citas del calendario son del negocio).
+Derechos RGPD: `manage.py export_contact <slug> <external_id>` y `manage.py forget_contact <slug> <external_id>`, que borra contacto, conversación, eventos y mensajes. Las citas del calendario pertenecen al negocio. Estos plazos se recogen en el contrato de encargo con cada negocio.
 
-#### 13.4 Migraciones
+#### 12.4 Migraciones
 
-- Siempre **compatibles con la versión anterior** del código (expand → desplegar → contract en otro despliegue). Prohibido en un paso: renombrar o borrar columnas en uso, `NOT NULL` sin valor por defecto en tablas grandes, cambios de tipo que bloqueen la tabla.
-- CI: `makemigrations --check` + `django-migration-linter`.
-- **Las migraciones que tocan RLS, roles o borran datos requieren aprobación humana explícita.**
+- Siempre compatibles con la versión anterior del código (patrón *expand/contract*). Nunca en un solo paso: renombrar o borrar columnas en uso, añadir `NOT NULL` sin valor por defecto en tablas grandes, ni cambiar tipos de forma que se bloquee la tabla.
+- CI: `makemigrations --check` y `django-migration-linter`.
+- Las migraciones que tocan RLS, roles o borran datos requieren aprobación humana explícita.
 
 ---
 
-### 14. Seguridad
+### 13. Seguridad
 
 | Punto | Protección |
 |---|---|
-| Webhooks de WhatsApp | Firma HMAC-SHA256 **antes de nada**, en tiempo constante; cuerpo ≤ 64 KB; URL con `app_public_id` aleatorio (nunca ids internos); límite por IP solo de peticiones con firma inválida (Meta envía desde IPs compartidas); validación de formatos de identificador |
-| Superficie pública | Caddy solo enruta `/webhooks/whatsapp/*` y `/health`; todo lo demás, 404. El Admin no está publicado: escucha en `127.0.0.1` y se usa con `ssh -L` (`make admin-tunnel`) |
-| Admin | Login de Django con contraseña fuerte + 2FA (`django-otp`), aunque solo sea accesible por túnel; cada cambio queda en `LogEntry` |
-| Servidor | Acceso SSH solo con clave; sin contraseña ni root directo; cortafuegos que solo abre 22, 80 y 443; actualizaciones de seguridad automáticas (`unattended-upgrades`); `fail2ban` en SSH |
-| Base de datos | Sin puerto publicado (solo red interna de Compose); tres roles con mínimo privilegio (§13.2) |
-| Contenedores | Usuario no root; sistema de ficheros de solo lectura salvo `/tmp`; sin socket de Docker montado |
-| Secretos | §6.4. Nunca en git, logs, imágenes, argumentos de trabajos ni respuestas HTTP |
-| Logs | Filtro que enmascara tokens, cabecera `Authorization` y teléfonos (últimos 4 dígitos) |
-| Dependencias | `uv.lock`; Dependabot; `pip-audit` en CI; imagen base actualizada mensualmente |
-| Datos de salud | Fuera del alcance: no se piden en ninguna conversación |
-
-**Datos que cruzan cada frontera:**
-
-| Frontera | Qué cruza | Protección |
-|---|---|---|
-| Internet → `web` | Avisos de Meta (mensajes, estados) | Firma verificada antes de guardar; tenant por `phone_number_id` |
-| `web` → cola | Solo ids (`tenant_id`, `event_id`) y candados con hash | — |
-| Cola → `worker` → BD | Datos del tenant | `tenant_tx` + RLS |
-| `worker` → Meta / Google / Telegram | Solo lo necesario para el envío o la cita | Credenciales descifradas solo en memoria; HTTPS |
-| Operador → `admin` | Todo | Túnel SSH + login + 2FA |
-| VPS → backups | Volcado de la BD | Cifrado por restic antes de salir; credenciales solo en el host |
+| Webhooks | Autenticidad comprobada **antes de nada** y en tiempo constante (HMAC de Meta, `secret_token` de Telegram); cuerpo ≤ 64 KB; URL con `public_id` aleatorio; límite por IP solo de peticiones con firma inválida; validación de formatos de identificador |
+| Superficie pública | Caddy solo enruta `/webhooks/whatsapp/*`, `/webhooks/telegram/*` y `/health`; todo lo demás, 404 |
+| Admin | No se publica: `web` también escucha en `127.0.0.1:8000` y el operador entra con `ssh -L` (`make admin-tunnel`). Login de Django con 2FA (`django-otp`); cada cambio queda en `LogEntry` |
+| Canales de prueba | `allowed_users` limita quién recibe respuesta de un bot de pruebas |
+| Servidor | SSH solo con clave, sin root; cortafuegos que solo abre 22, 80 y 443; `unattended-upgrades`; `fail2ban` en SSH |
+| Base de datos | Sin puerto publicado; RLS con dos roles (§12.2) |
+| Contenedores | Usuario no root; sistema de ficheros de solo lectura salvo `/tmp`; secretos montados de solo lectura |
+| Secretos | Nunca en git, logs, imágenes, argumentos de trabajos ni respuestas HTTP (§5.3) |
+| Logs | Filtro que enmascara tokens, cabeceras `Authorization` y teléfonos (solo los 4 últimos dígitos) |
+| Dependencias | `uv.lock`, Dependabot, `pip-audit` en CI, imagen base actualizada cada mes |
 
 ---
 
-### 15. Infraestructura: una VPS con Docker Compose
+### 14. Infraestructura y despliegue
 
-> **En pocas palabras.** Una máquina virtual en un proveedor europeo ejecuta todo con Docker Compose: la web, el worker, el admin, PostgreSQL y Caddy (que pone el HTTPS solo). Copias de seguridad cifradas cada 6 horas a otro proveedor. Cuesta unos 15–20 € al mes y se recrea desde cero en menos de 2 horas con un script.
+#### 14.1 Máquina
 
-#### 15.1 Máquina
+- **VPS en la UE**: Hetzner Cloud (Núremberg, Falkenstein o Helsinki), 2 vCPU, 4 GB de RAM y 40 GB de disco [VERIFICAR plan y precio actuales].
+- Ubuntu 24.04 LTS con Docker Engine y el plugin de Compose.
+- Memoria estimada: PostgreSQL ~0,8 GB (`shared_buffers=512MB`), `web` ~0,3 GB, `worker` ~0,4 GB (datasets en memoria), Caddy ~0,05 GB.
+- Dominio propio: `api.<dominio>` apunta a la IP fija de la VPS.
 
-- **Proveedor [DECIDIDO, precio VERIFICAR]:** Hetzner Cloud, ubicación UE (Núremberg, Falkenstein o Helsinki). Plan con **2 vCPU, 4 GB de RAM y 40 GB de disco** (familia CX/CAX). Alternativas equivalentes: OVHcloud, IONOS (tiene centro de datos en España si un cliente exige datos en España), Scaleway.
-- **Sistema:** Ubuntu 24.04 LTS (soporte hasta 2029), Docker Engine + plugin Compose.
-- **Reparto de memoria estimado:** PostgreSQL ~0,8 GB (`shared_buffers=512MB`), `web` ~0,3 GB, `worker` ~0,4 GB (datasets en memoria), `admin` ~0,2 GB, Caddy ~0,05 GB. Sobra la mitad.
-- **Dominio propio** (~10–15 €/año): `api.<dominio>` apunta a la IP fija de la VPS. Sustituye a DuckDNS.
-- **Instantáneas del proveedor** (backup diario de la VM, +20 % del precio): segunda red de seguridad para recuperar la máquina entera; no sustituye a §15.4.
-
-#### 15.2 Servicios de Compose
+#### 14.2 Docker Compose
 
 ```yaml
 # compose.prod.yaml (resumen)
+x-app: &app
+  image: ghcr.io/marianodelrio/flowpilot:${SHA}
+  env_file: .env
+  volumes: ["./secrets.yaml:/run/secrets/secrets.yaml:ro", "./google_sa.json:/run/secrets/google_sa.json:ro"]
+  read_only: true
+  tmpfs: [/tmp]
+  restart: unless-stopped
+  logging: {driver: json-file, options: {max-size: 20m, max-file: "5"}}
+
 services:
-  caddy:   image: caddy:2 · ports 80, 443 · volúmenes caddy_data, caddy_config · Caddyfile
-  web:     image: ghcr.io/marianodelrio/flowpilot:<sha> · command: gunicorn … · env_file .env (sin DB_ADMIN_URL ni DB_OWNER_URL)
-           healthcheck: GET /health
-  worker:  misma imagen · command: manage.py procrastinate worker … · stop_grace_period: 60s
-  admin:   misma imagen · command: gunicorn config.wsgi_admin … · ports "127.0.0.1:8081:8081"
-  migrate: misma imagen · profiles: [deploy] · command: migrate + sync_tenants
-  db:      image: postgres:18 · volumen pgdata · sin ports · healthcheck pg_isready
-           config: shared_buffers 512MB, max_connections 100, log_min_duration_statement 1s
-x-common: restart: unless-stopped · logging json-file max-size 20m, max-file 5 · read_only + tmpfs /tmp
+  caddy:  image: caddy:2 · ports 80, 443 · volúmenes caddy_data, caddy_config · ./Caddyfile
+  web:    <<: *app · command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4
+          ports: ["127.0.0.1:8000:8000"]    (solo para el túnel del Admin)
+          healthcheck: GET /health
+  worker: <<: *app · command: manage.py procrastinate worker --concurrency 4 · stop_grace_period: 60s
+          environment: DB_OWNER_URL vacío (el worker no la necesita)
+  db:     image: postgres:18 · volumen pgdata · sin ports · healthcheck pg_isready
+          (shared_buffers 512MB, max_connections 100, log_min_duration_statement 1s)
 ```
 
-`compose.yaml` (local) usa los mismos servicios con la imagen construida en local, `runserver` y el worker con recarga automática, y sin Caddy.
+`compose.yaml` (local): los mismos `web`, `worker` y `db`, con la imagen construida en local, código montado, `runserver` y recarga automática del worker; sin Caddy. Telegram funciona en local con `telegram_poll`.
 
-#### 15.3 Caddy
+#### 14.3 Caddy
 
 ```
 api.<dominio> {
-    encode gzip
-    @public path /webhooks/whatsapp/* /health
+    request_body { max_size 64KB }
+    @public path /webhooks/whatsapp/* /webhooks/telegram/* /health
     handle @public { reverse_proxy web:8000 }
     handle { respond 404 }
-    request_body { max_size 64KB }
 }
 ```
 
-- Certificados de Let's Encrypt automáticos y renovados por Caddy.
-- `X-Forwarded-For` lo pone Caddy; Django confía solo en él (`TRUSTED_PROXIES` = red de Compose) para el límite por IP.
+Caddy obtiene y renueva los certificados de Let's Encrypt. Django solo confía en `X-Forwarded-For` cuando viene de la red de Compose.
 
-#### 15.4 Backups y restauración
+#### 14.4 Backups y restauración
 
 | Qué | Cómo | Cuándo | Retención |
 |---|---|---|---|
-| PostgreSQL | `pg_dump -Fc` (desde el contenedor `db`) → `restic backup` → **almacenamiento S3 compatible de otro proveedor** (Backblaze B2 o Cloudflare R2), cifrado por restic | Cada 6 h (timer de systemd en el host, `deploy/backup.sh`) | 7 diarias, 4 semanales, 6 mensuales (`restic forget --prune`) |
-| `.env` y JSON de Google | Copia en el gestor de contraseñas del operador | Al cambiar | — |
+| PostgreSQL | `pg_dump -Fc` → `restic backup` a almacenamiento S3 de **otro proveedor** (Backblaze B2 o Cloudflare R2), cifrado por restic | Cada 6 h (timer de systemd en el host, `deploy/backup.sh`) | 7 diarias, 4 semanales, 6 mensuales |
+| `.env`, `secrets.yaml`, `google_sa.json`, `Caddyfile` | En el mismo `restic backup` | Cada 6 h | Igual |
 | Config y datasets | Git (GitHub) | Siempre | Indefinida |
-| VM completa | Instantánea diaria del proveedor | Diaria | 7 |
+| Contraseña de restic y credenciales del almacenamiento | Gestor de contraseñas del operador (no van en el backup) | — | — |
 
-- El backup termina con un ping a healthchecks.io (`/backup`): si no llega en 7 h, alerta (un backup que falla en silencio no existe).
-- **`deploy/restore.sh <snapshot>`**: VPS nueva → Docker → clonar repo → `.env` → `restic restore` → `pg_restore` → `docker compose up` → cambiar DNS. Objetivo **RTO ≤ 2 h**.
-- **Simulacro trimestral** (runbook): restaurar el último backup en una VPS temporal (o en local), comprobar conteos por tenant, borrarla y anotar el resultado y el tiempo.
-- **RPO ≤ 6 h.** Lo que se puede perder son conversaciones en curso y registros: las citas están en Google Calendar y los horarios en git.
+- El backup termina con un ping a healthchecks.io: si no llega en 7 h, salta una alerta.
+- **`deploy/restore.sh`:** VPS nueva → Docker → clonar el repositorio → restaurar ficheros con restic → `pg_restore` → `docker compose up` → apuntar el DNS. Objetivo: menos de 2 h.
+- **Simulacro trimestral:** restaurar el último backup en una VPS temporal o en local, comprobar los conteos por tenant y anotar el resultado y el tiempo (runbook 6).
 
-#### 15.5 Costes [ESTIMACIÓN; VERIFICAR precios actuales]
+#### 14.5 Costes [estimación; VERIFICAR precios]
 
 | Pieza | €/mes |
 |---|---:|
-| VPS 2 vCPU / 4 GB / 40 GB (Hetzner) | ~5–9 |
-| Instantáneas del proveedor (+20 %) | ~1–2 |
-| Almacenamiento de backups (B2 o R2, pocos GB) | ~0–1 |
+| VPS 2 vCPU / 4 GB | ~5–9 |
+| Almacenamiento de backups (pocos GB) | ~0–1 |
 | Dominio | ~1 |
-| Sentry (plan gratuito), healthchecks.io (gratuito), UptimeRobot o Better Stack (gratuito), GitHub (GHCR y Actions en repo privado, cuota gratuita) | 0 |
-| **Total** | **~8–13 €/mes**; con una VPS de 8 GB, ~15–20 €/mes |
+| Sentry, healthchecks.io, UptimeRobot o Better Stack (planes gratuitos), GHCR y GitHub Actions (cuota gratuita) | 0 |
+| **Total** | **~6–11** |
 
-Fuera de la cifra: mensajes de WhatsApp (los paga cada negocio en su cuenta de Meta, §11.5); Google Calendar API (gratuita al volumen previsto, [VERIFICAR] anuncios de Google sobre cuotas).
+Quedan ~10 € de margen hasta el objetivo de 20 € para una VPS de 8 GB si hiciera falta. Fuera de la cifra: los mensajes de WhatsApp (los paga cada negocio en su cuenta de Meta). Telegram y la API de Google Calendar son gratuitos al volumen previsto.
 
-#### 15.6 Cómo evoluciona sin rediseñar
+#### 14.6 Despliegue
 
-| Señal | Acción | Esfuerzo |
-|---|---|---|
-| CPU o RAM > 70 % sostenido | Subir de plan la VPS (reinicio de minutos) | Bajo |
-| Cola `inbound` con trabajos esperando > 30 s | Subir la concurrencia del worker o añadir un segundo servicio `worker` | Config |
-| Barridos retrasan respuestas | `worker-periodic` aparte con `--queues periodic` | Config |
-| >15–20 tenants, o un negocio que dependa del servicio en horas críticas | PostgreSQL gestionado (con réplica y PITR) + 2 VPS de aplicación detrás de un balanceador. La aplicación no cambia: es la misma imagen | Proyecto acotado |
-| Datos obligatoriamente en España | Mover a IONOS (Logroño) u otro proveedor con centro en España: es una restauración (§15.4) | Bajo |
+- **Imagen:** `Dockerfile` multi-etapa (dependencias con `uv` → imagen mínima con Python 3.14 y usuario no root). Incluye `src/` y `tenants/`, de modo que cada imagen es un estado coherente de código y config. La etiqueta es el SHA del commit; se publica en GHCR. Los estáticos del Admin se sirven con WhiteNoise.
+- **CI** (`ci.yml`): en cada push a `main` ejecuta las puertas de §17.3 y, si pasan, construye y publica la imagen.
+- **Despliegue** (`deploy.yml`, lanzado a mano con `workflow_dispatch`): `ssh deploy@vps "deploy/deploy.sh <sha>"`, con una clave SSH limitada a ese script:
+  1. `docker compose pull`
+  2. `docker compose run --rm web manage.py migrate && manage.py sync_tenants`. Si falla, se para aquí y no cambia nada.
+  3. `docker compose up -d web worker`
+  4. Espera a que `/health` devuelva 200 (máximo 60 s). Si no llega, `deploy.sh` vuelve a desplegar el SHA anterior y avisa a ops.
+- Durante los segundos en que `web` se recrea, Caddy devuelve 502 y Meta y Telegram reintentan. El `worker` termina sus trabajos antes de parar.
+- **Vuelta atrás:** volver a desplegar el SHA anterior. Las migraciones no se revierten, porque son compatibles hacia atrás.
+- Se despliega preferiblemente fuera de las horas punta de los negocios (antes de las 9:00 o después de las 21:00).
 
----
+#### 14.7 Crecimiento
 
-### 16. Construcción y despliegue
-
-#### 16.1 La imagen
-
-- Un `Dockerfile` multi-etapa: dependencias con `uv` → imagen final mínima con Python 3.14, usuario no root.
-- Incluye `src/` y `tenants/` (la config va con el código: una versión de imagen = un estado coherente de código y datos).
-- Etiqueta = SHA del commit. Se publica en **GHCR** (registro de GitHub).
-- Estáticos del Admin con WhiteNoise.
-
-#### 16.2 Pipeline (GitHub Actions)
-
-```
-on: pull_request      → ci.yml: puertas de §19.3
-
-on: push a main       → ci.yml + build: imagen → GHCR (tag = sha)
-
-on: workflow_dispatch (environment "production" con aprobación) → deploy.yml:
-  1. ssh deploy@vps "deploy/deploy.sh <sha>"   (clave SSH de despliegue limitada a ese script)
-       a. docker compose pull
-       b. docker compose run --rm migrate          (migrate + sync_tenants; si falla, se para aquí)
-       c. docker compose up -d web worker admin    (recrea solo lo que cambia)
-       d. esperar /health = 200 (máx. 60 s)
-       e. smoke: manage.py smoke (una conversación por el tenant interno `smoke`, pack bus,
-          dataset de ejemplo, envío simulado); sale con 0/1
-  2. si d o e fallan → deploy.sh redespliega el SHA anterior y avisa a ops
-```
-
-#### 16.3 Corte durante el despliegue
-
-- `web` se recrea en unos segundos. Durante ese hueco Caddy devuelve 502 y **Meta reintenta** el webhook: no se pierde nada (§1.3). Si algún día molesta, dos réplicas de `web` con Caddy balanceando eliminan el hueco.
-- `worker` termina sus trabajos (§7.5).
-- **Migraciones antes** de recrear los servicios; como son compatibles hacia atrás (§13.4), el código viejo sigue funcionando mientras tanto.
-- **Preferiblemente fuera de horas punta** de los negocios (antes de las 9:00 o después de las 21:00).
-
-#### 16.4 Vuelta atrás
-
-- Automática si fallan `/health` o el smoke (§16.2).
-- Manual: `deploy.yml` con el SHA anterior. Las migraciones no se revierten (expand/contract).
-- Datos: restauración (§15.4), solo en caso de corrupción.
-
-**Tenant `smoke`:** `tenants/_smoke/tenant.yaml`, pack `bus`, dataset mínimo, número ficticio; excluido de periódicas, avisos y alertas; nunca envía nada a Meta (su `phone_number_id` está marcado como simulado y `send_message` lo detecta).
+| Señal | Acción |
+|---|---|
+| CPU o RAM > 70 % sostenido | Subir de plan la VPS (unos minutos de corte) |
+| Trabajos de `inbound` esperando > 30 s | Subir la concurrencia del `worker` o añadir un segundo servicio `worker` |
+| Los barridos retrasan las respuestas | Un servicio `worker` aparte con `--queues periodic` |
+| Más de 15 negocios, o uno que dependa del servicio en horas críticas | PostgreSQL gestionado y varias VPS de aplicación con la misma imagen |
 
 ---
 
-### 17. Observabilidad y alertas
+### 15. Observabilidad
 
-#### 17.1 Logs
+#### 15.1 Logs
 
-- **JSON a la salida estándar**, rotados por Docker (`json-file`, 5 × 20 MB por servicio). `make logs SERVICE=worker` y `docker compose logs` por SSH.
-- Campos: `ts`, `level`, `msg`, `service`, `tenant`, `event_id` (= `trace_id`: el evento que originó todo; se propaga a envíos y llamadas a Calendar), `job`.
-- Sin datos sensibles (§14).
+- JSON a la salida estándar, rotados por Docker. Se consultan con `make logs SERVICE=…`.
+- Campos: `ts`, `level`, `msg`, `service`, `tenant`, `channel`, `event_id` (hace de `trace_id`: se propaga a envíos y llamadas a Calendar) y `job`.
+- Sin datos sensibles (§13).
 
-#### 17.2 Errores
+#### 15.2 Errores
 
-**Sentry** (plan gratuito): excepciones de `web` y `worker` con `tenant` y `event_id`, versión = SHA desplegado.
+Sentry (plan gratuito): excepciones de `web` y `worker` con `tenant` y `event_id`; la versión es el SHA desplegado.
 
-#### 17.3 `ops_check` (cada 5 min, en el worker)
+#### 15.3 `ops_check` (cada 5 min, en el worker)
 
 | Comprobación | Umbral | Gravedad |
 |---|---|---|
 | Trabajo más antiguo listo en `inbound` | > 2 min | 🔴 |
 | Trabajos `failed` | ≥ 1 en 10 min | 🟠 |
-| `outbound_message` en `failed` o `unknown` (> 10 min) | ≥ 1 | 🟠 |
-| Token de WhatsApp rechazado (401/190) | 1 | 🔴 (el negocio no puede responder) |
-| Calendar sin acceso (`CalendarPermanentError`) o 3 errores seguidos | 1 | 🔴 |
-| Tenant `degraded` (config o dataset que no carga) | 1 | 🔴 |
+| `outbound_message` en `failed`, o en `unknown` desde hace > 10 min | ≥ 1 | 🟠 |
+| Envío rechazado por autenticación (token revocado) | 1 | 🔴 |
+| Calendar sin acceso, o 3 errores seguidos de un tenant | 1 | 🔴 |
+| Tenant `degraded`, o canal sin secretos | 1 | 🔴 |
 | Barrido de un tenant sin completarse en > 1 h | 1 | 🟠 |
-| Plantilla declarada no aprobada (comprobación diaria de `pack.health`) | 1 | 🟡 |
-| Mensajes facturables del mes > umbral del tenant | 1 | 🟡 |
-| Disco > 85 %, conexiones de BD > 80 | 1 | 🟠 |
+| `pack.health` y salud de canales (una vez al día): plantillas no aprobadas, token de WhatsApp inválido, `getWebhookInfo` de Telegram con errores | 1 | 🟡 / 🔴 |
+| Mensajes facturables de WhatsApp del mes > `monthly_alert_threshold` | 1 | 🟡 |
+| Disco > 85 % | 1 | 🟠 |
 
-- Las alertas van al chat de ops de Telegram con enfriamiento de 30 min por tipo y tenant (§12).
-- Al terminar, `ops_check` hace **ping a healthchecks.io** (latido). **Si el worker, la BD o la VPS caen, el latido deja de llegar y healthchecks.io avisa** (email y Telegram) sin depender de la plataforma.
-- **Uptime externo** (UptimeRobot o Better Stack) contra `https://api.<dominio>/health` cada 5 min: detecta caídas de Caddy o `web`, DNS y caducidad del certificado.
-- `/health`: 200 si el proceso responde y hay conexión a la BD; incluye el número de tenants cargados y `degraded`. No llama a servicios externos.
+- Las alertas van al chat de ops (§11) y se repiten como mucho cada 30 min por tipo y tenant.
+- Al terminar, `ops_check` envía un **latido a healthchecks.io**. Si el worker, la BD o la VPS caen, el latido deja de llegar y healthchecks.io avisa por email y Telegram, sin depender de la plataforma.
+- **Uptime externo** (UptimeRobot o Better Stack) comprueba `https://api.<dominio>/health` cada 5 min. Detecta caídas de Caddy o `web`, fallos de DNS y la caducidad del certificado.
+- **`/health`** devuelve 200 si hay conexión a la BD, junto con el número de tenants cargados y `degraded`. No llama a servicios externos.
 
-#### 17.4 Panel
+#### 15.4 Panel
 
-Una vista del Admin ("Estado") con: colas (pendientes y antigüedad), trabajos fallidos, envíos `unknown`/`failed`, por tenant: mensajes del mes (entrantes, salientes, facturables), último barrido, estado (`ok`/`degraded`) y resultado de `pack.health`. Sin Prometheus ni Grafana.
+Una vista "Estado" en el Admin muestra:
+
+- Colas: trabajos pendientes y antigüedad del más antiguo.
+- Trabajos fallidos.
+- Envíos en `unknown` o `failed`.
+- Por tenant y canal: mensajes del mes (entrantes, salientes y facturables), último barrido, estado del tenant y resultado de `pack.health`.
 
 ---
 
-### 18. Operación
+### 16. Operación
 
-#### 18.1 Alta de un tenant
+#### 16.1 Alta de un negocio
 
-1. `manage.py new_tenant <slug> --pack salon|bus` → crea `tenants/<slug>/tenant.yaml` con `id` UUIDv7, `app_public_id` aleatorio, `status: onboarding` y la config por defecto del pack.
-2. Rellenar la config (y, en `bus`, copiar o crear el dataset y pasar `make bus-validar`).
-3. **WhatsApp**: checklist §11.1 → ids en `tenant.yaml` → `manage.py set_secret <slug> whatsapp.app_secret`, `whatsapp.access_token`, `whatsapp.verify_token` → webhook configurado en Meta.
-4. **Google Calendar** (`salon`): el negocio comparte su calendario con el email de la cuenta de servicio ("Hacer cambios en los eventos") → `calendar_id` en la config.
-5. Plantillas del pack creadas en el WhatsApp Manager.
-6. **Avisos al dueño** (opcional): `manage.py telegram_link <slug>` → `chat_id` en `tenant.yaml`.
-7. PR → CI → merge → despliegue.
-8. `manage.py tenant_health <slug>` en verde (credenciales, plantillas, calendario, dataset).
-9. Prueba con `manage.py chat <slug>` y desde el número de prueba del operador (en `onboarding` solo él recibe respuesta) → prueba con el dueño.
-10. `status: active` → PR → despliegue. `tools/qr.py <slug>` genera el QR de `wa.me` para el local.
+1. `manage.py new_tenant <slug> --pack salon|bus` crea `tenants/<slug>/tenant.yaml` con `id`, `status: onboarding` y la config por defecto del pack.
+2. Completar la config. En `bus`, añadir el dataset y pasar `make bus-validar`.
+3. **Canal de pruebas:** crear un bot con @BotFather, declararlo en `channels` con `allowed_users` y añadir sus secretos a `secrets.yaml`.
+4. **WhatsApp:** seguir el checklist de §6.3, declarar el canal (`primary: true`) y añadir sus secretos.
+5. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de servicio y se pone el `calendar_id` en la config. Crear las plantillas del pack en el WhatsApp Manager.
+6. **Avisos al dueño** (opcional): `manage.py notify_link <slug>`.
+7. Commit y despliegue. Después, `manage.py telegram_set_webhook <slug> <key>` para cada bot.
+8. `manage.py tenant_health <slug>` en verde.
+9. Pruebas por el bot de Telegram con el negocio y por WhatsApp con los `allowed_users`.
+10. `status: active`, commit y despliegue. `tools/qr.py <slug>` genera el QR de `wa.me` para el local.
 
-#### 18.2 Baja de un tenant
+#### 16.2 Baja de un negocio
 
-1. `status: offboarded` → despliegue: los webhooks se contestan 200 sin guardar nada.
-2. `manage.py export_tenant <slug>` si se acordó con el negocio (zip local, entregado por canal seguro).
-3. `manage.py purge_tenant <slug>`: borra contactos, conversaciones, eventos, mensajes, avisos y credenciales (con confirmación escrita del slug).
-4. Checklist manual: el negocio revoca el acceso del operador a su portfolio de Meta y deja de compartir el calendario.
-5. Borrar `tenants/<slug>/` en un PR posterior (queda en el historial de git).
+1. `status: offboarded` y despliegue: los webhooks se contestan con 200 sin guardar nada.
+2. `manage.py export_tenant <slug>`, si se acordó con el negocio.
+3. `manage.py purge_tenant <slug>` borra contactos, conversaciones, eventos, mensajes y avisos. Pide escribir el slug para confirmar.
+4. Quitar sus entradas de `secrets.yaml` y `deleteWebhook` de sus bots.
+5. El negocio revoca el acceso del operador a su portfolio de Meta y deja de compartir el calendario.
+6. Borrar `tenants/<slug>/`.
 
-#### 18.3 Comandos de operación (`Makefile`)
+#### 16.3 Comandos (`Makefile`)
 
-`make deploy SHA=…` · `make status` (servicios y `/health`) · `make logs SERVICE=…` · `make admin-tunnel` · `make backup-now` · `make restore-test` · `make shell` · `make tenant-health SLUG=…` · `make bus-validar|bus-formatear|bus-revision|bus-publicar TENANT=…`.
+`make deploy SHA=…` · `make status` · `make logs SERVICE=…` · `make admin-tunnel` · `make backup-now` · `make restore-test` · `make shell` · `make tenant-health SLUG=…` · `make telegram-poll SLUG=… KEY=…` · `make bus-validar | bus-formatear | bus-revision | bus-publicar TENANT=…`.
 
-#### 18.4 Runbooks (`docs/runbooks/`)
+#### 16.4 Runbooks (`docs/runbooks/`)
 
-1. El bot no responde a nadie (Caddy, `web`, worker, BD).
-2. El bot no responde a un negocio (token caducado, webhook desconfigurado, tenant `degraded`, calidad del número).
+1. El bot no responde a nadie.
+2. El bot no responde a un negocio o a un canal.
 3. La cola se acumula o falta el latido.
 4. Google Calendar sin acceso o con errores.
 5. Envíos en `unknown` o `failed`.
 6. Restaurar la BD y simulacro trimestral.
-7. Vuelta atrás de un despliegue.
-8. Incidente de seguridad o fuga de datos (pasos y plazos de aviso al negocio).
-9. Rotar credenciales de un negocio o la clave Fernet.
-10. Actualización de horarios de `bus` (ciclo §10.1).
-11. Mantenimiento periódico: versión de la Graph API (cada 6 meses), dependencias y CVE (mensual), reinicio de la VPS para parches de kernel (mensual), calidad del número y plantillas (trimestral).
+7. Volver atrás un despliegue.
+8. Incidente de seguridad o fuga de datos.
+9. Rotar los secretos de un canal.
+10. Actualizar los horarios de `bus`.
+11. Mantenimiento periódico: versión de la Graph API (cada 6 meses), dependencias y CVE (mensual), reinicio de la VPS por parches del kernel (mensual), calidad del número y estado de las plantillas (trimestral).
 
 ---
 
-### 19. Pruebas
+### 17. Pruebas
 
-#### 19.1 Tipos
+#### 17.1 Tipos
 
 | Tipo | Qué prueba | Necesita | Ejemplos |
 |---|---|---|---|
-| **Unit** | Funciones puras | Nada | `compute_slots`, lector de `[CFG]` y descripciones, `plan_sends`, motor de horarios, matcher, fechas, validador |
-| **Escenarios** | Conversaciones completas de un pack, como caja negra | Nada (`FakeCalendar`, datasets de ejemplo, reloj fijo) | §9.8, §10.5 |
-| **Datos de tenants** | Todos los `tenants/*/tenant.yaml` y datasets validan | Ficheros del repo | Un precio mal escrito bloquea el merge |
-| **Integración** | Webhook → cola → worker → envío, con BD real | PostgreSQL | Evento duplicado no se procesa dos veces; dos reservas simultáneas del mismo hueco → una `SlotTaken`; reintento de una reserva ya creada → éxito sin duplicar; barrido dos veces → un recordatorio; conversación modificada entre tx1 y tx2 → reintento; `unknown` no se reenvía |
-| **Aislamiento** | RLS en todas las tablas con `tenant_id` | PostgreSQL | §13.2 |
-| **Contrato** | Parser de avisos de Meta y cliente de Calendar contra **respuestas reales grabadas** | Fixtures JSON | Mensaje con BSUID, botón de plantilla, aviso `failed`, 409 de Calendar, paginación |
-| **Migraciones** | No faltan ni son peligrosas | PostgreSQL | — |
-| **Smoke** | Tras desplegar | Entorno desplegado | §16.2 |
+| **Unitarias** | Funciones puras | Nada | `compute_slots`, lectura de `[CFG]` y de descripciones, `plan_sends`, motor de horarios, matcher, fechas, validador |
+| **Escenarios** | Conversaciones completas de un pack | Nada (`FakeCalendar`, datasets de ejemplo, reloj fijo) | §9.8, §10.5 |
+| **Adaptadores** | `parse`, `render` y clasificación de errores de cada canal contra **payloads reales grabados** | Fixtures JSON | Mensaje con BSUID, botón de plantilla, estado `failed`, `callback_query`, 403 de Telegram, 429 con `retry_after` |
+| **Datos de tenants** | Todos los `tenant.yaml` y datasets validan | Ficheros del repositorio | Un precio mal escrito deja CI en rojo |
+| **Integración** | Webhook → cola → worker → envío, con BD real | PostgreSQL | Aviso duplicado procesado una vez; dos mensajes del mismo contacto en orden; dos reservas del mismo hueco → un `SlotTaken`; reintento de una reserva creada → sin duplicado; barrido dos veces → un aviso; `unknown` no se reenvía; tenant `degraded` no afecta a otro |
+| **Aislamiento** | RLS en todas las tablas con `tenant_id` | PostgreSQL | §12.2 |
+| **Contrato de Calendar** | Cliente contra respuestas grabadas | Fixtures | 409, paginación, eventos de día completo |
+| **Migraciones** | No faltan y no son peligrosas | PostgreSQL | — |
 
-#### 19.2 Arnés de conversación
+#### 17.2 Arnés de conversación
 
-Los escenarios se escriben en **pytest**, no en un formato propio:
+Los escenarios se escriben en pytest. El arnés ejecuta el pack con el mismo runtime de conversación (comandos globales, caducidad y `plan_sends`) sin BD ni red, y puede simular cualquiera de los dos canales:
 
 ```python
-# packs/salon/tests/test_book.py
-def test_reserva_completa(salon):                       # fixture: tenant de ejemplo + FakeCalendar + reloj
+def test_reserva_completa(salon):                     # tenant de ejemplo + FakeCalendar + reloj fijo
     salon.now("2026-10-05T10:00:00+02:00")
     salon.calendar.busy("2026-10-09", ["10:00-12:00"])
     salon.send("hola").expect(buttons=["Pedir cita", "Ver mis citas", "Mover cita"])
@@ -1299,89 +1234,43 @@ def test_reserva_completa(salon):                       # fixture: tenant de eje
     salon.press("hour_17:00").expect(text_contains="nombre")
     salon.send("Lucía").expect(text_contains="¡Tu cita está confirmada!")
     assert salon.calendar.created == [("2026-10-09T17:00", "corte", "Lucía")]
-    assert salon.all_replies_within_whatsapp_limits()   # obligatorio en todo escenario
 ```
 
-El arnés ejecuta el pack con el mismo `plan_sends` que producción y comprueba los límites de WhatsApp en cada respuesta: la lista de destinos de `bus` o de horas de `salon` se genera dinámicamente y es el fallo más fácil de cometer.
+Cada respuesta se comprueba contra los límites comunes (§6.1) y se renderiza con los dos adaptadores, así que un pack que se sale de los límites falla en los tests.
 
-#### 19.3 Puertas de CI (bloquean el merge)
+#### 17.3 Puertas de CI (si fallan, no se publica imagen)
 
 1. `ruff` + `mypy`.
-2. `import-linter` (§5.4).
-3. Unit + escenarios + datos de tenants (sin BD; rápidos).
-4. Integración + aislamiento + contrato (PostgreSQL 18 como servicio de CI).
+2. `import-linter`.
+3. Unitarias, escenarios, adaptadores y datos de tenants (sin BD).
+4. Integración, aislamiento y contrato, con PostgreSQL 18 como servicio.
 5. `makemigrations --check` + linter de migraciones.
 6. `pip-audit`.
 7. Construcción de la imagen.
 
 ---
 
-### 20. Forma de trabajo
+### 18. Pendiente de verificar
 
-- **Un solo agente de programación** (Claude Code) con las reglas de `CLAUDE.md`; sin framework de agentes, tareas ni orquestación.
-- Todo cambio, en una rama (`feat/…`, `fix/…`, `data/<slug>-…` para config y datasets) → PR con descripción en español → CI en verde → **revisión humana** → merge a `main`. `main` puede protegerse (ya no hay herramientas que escriban en ella directamente).
-- El despliegue a producción lo lanza siempre una persona (§16.2).
-
-**Requieren aprobación humana explícita, aunque CI esté en verde:** migraciones que tocan RLS, roles o borran datos; cambios en cifrado, secretos o verificación de firmas de webhooks; cambios en la infraestructura del servidor (Compose, Caddy, cortafuegos, backups); cualquier acción sobre datos de producción; activar el canal real de un negocio. **Ningún agente despliega a producción ni ejecuta comandos contra el servidor de producción.**
-
----
-
-### 21. Plan de implementación y migración
-
-| Fase | Contenido | Termina cuando |
-|---|---|---|
-| **F0 · Esqueleto** | Proyecto Django, `compose.yaml` local, settings, roles de BD, RLS + test de aislamiento, `tenant_tx`, registro de tenants, CI | CI en verde con el test de aislamiento |
-| **F1 · Runtime** | Webhook, `inbound_event`, `process_event`, conversación, `plan_sends`, `send_message`, avisos de estado, comandos globales, arnés de pruebas, `manage.py chat` | Un pack de juguete conversa por el arnés y por el número de prueba de Meta |
-| **F2 · Pack `bus`** | Portar `horarios/`, matcher, fechas, flujo, tools y tests de buscaBus; tenant de Autocares San Sebastián | Pasan todas las pruebas portadas + escenarios |
-| **F3 · Pack `salon`** | Portar slots, parser, flujo, cliente de Calendar, barrido, plantillas; `FakeCalendar` | Escenarios de §9.8 en verde; prueba contra un calendario real de pruebas |
-| **F4 · Producción** | VPS, Caddy, `compose.prod.yaml`, despliegue, backups + primer simulacro de restauración, `ops_check`, latido, uptime, Sentry, avisos al dueño | Simulacro de restauración hecho y alertas probadas |
-| **F5 · Migración de los bots** | Ver abajo | Los dos negocios atendidos por FlowPilot; VM de GCP apagada |
-
-**Migración de Peluquería (DM Barber Shop):**
-
-1. El negocio comparte su calendario con la cuenta de servicio de la plataforma.
-2. `tools/migrate_salon_events.py --dry-run` y después real: añade `fp_contact`/`fp_key`/`fp_service` a las citas futuras creadas por el bot actual (reconocibles por `WaId:`), creando sus contactos.
-3. Config portada de `config.yaml` a `tenants/dm-barber/tenant.yaml` (mismo horario, servicios, evento especial, interruptores de envíos con su valor actual).
-4. Secretos de la app de Meta existente con `set_secret`; las plantillas ya aprobadas se reutilizan.
-5. En una hora valle: cambiar la URL del webhook en la app de Meta al de FlowPilot → probar → parar el servicio de la VM. La VM se conserva una semana apagada como vuelta atrás (volver a poner la URL antigua).
-
-**Migración de buscaBus (Autocares San Sebastián):** aún no tiene alta en Meta. Se mueve `horarios/` a `tenants/<slug>/datasets/timetable/` y `config.yaml` a la config del tenant, se crea el tag `datos/<slug>/…` equivalente al último publicado y el alta en Meta se hace directamente contra FlowPilot. Las preguntas abiertas a negocio (P28, P30, P37) siguen documentadas en los comentarios del dataset.
-
----
-
-### 22. Pendiente de verificar y decisiones abiertas
-
-| # | Tema | Qué falta | Cuándo |
-|---|---|---|---|
-| 1 | Proveedor y plan de VPS | [VERIFICAR] precio actual y plan exacto; decidir si algún cliente exige datos en España | F4 |
-| 2 | Precio de los mensajes de servicio en España | [VERIFICAR] tarifa real en la cuenta de cada negocio (§11.5) | Antes de activar cada negocio |
-| 3 | BSUID / nombres de usuario de WhatsApp | [VERIFICAR] que se pueden enviar plantillas a un contacto identificado solo por BSUID (sin teléfono); si no, los recordatorios a esos contactos no salen y se registra | F3 |
-| 4 | Versión de la Graph API | [VERIFICAR] fecha de caducidad de `v23.0` | Cada 6 meses (runbook 11) |
-| 5 | Cuotas de Google Calendar API | [VERIFICAR] anuncios de Google sobre facturación de cuota; al volumen previsto, impacto nulo | Anual |
-| 6 | Aviso de IA (AI Act art. 50) | No aplica mientras no haya IA; [VERIFICAR] si se exige identificar bots deterministas (bastaría con "asistente automático" en el texto del menú) | Antes de añadir IA |
-| 7 | Retención definitiva | Ajustar §13.3 al contrato de encargo firmado con cada negocio | Antes del primer negocio de pago |
-| 8 | Datos de `bus` | P28 (días especiales; antes del 24/12), P30 (verano de Adamuz), P37 (informativo) | Con la empresa |
-| 9 | Precios en `bus` | Formato de los datos de precios (por línea o por tramo) | Cuando la empresa los envíe |
-
-**Cerrado:**
-
-| Tema | Decisión |
+| Tema | Qué falta |
 |---|---|
-| Versiones | Python 3.14 · Django 5.2 LTS (migrar a 6.2 LTS tras abril de 2027) · PostgreSQL 18 · Procrastinate 3.x |
-| Infraestructura | VPS + Docker Compose (sustituye a AWS) |
-| Alcance de packs | `salon` y `bus`; `gym` fuera |
-| IA | Fuera de la v1 |
-| Fechas en `bus` | Formato cerrado `día/mes[/año]`, sin lenguaje natural |
-| Calendar | Barrido cada 15 min, sin watch |
+| VPS | Plan y precio actuales del proveedor |
+| Precio de los mensajes de WhatsApp | Tarifa real de los mensajes de servicio y de las plantillas *utility* en la cuenta de cada negocio |
+| BSUID | Si se pueden enviar plantillas a un contacto identificado solo por BSUID. Si no, sus avisos proactivos se registran y no se envían |
+| Graph API | Fecha de caducidad de `v23.0` |
+| Google Calendar | Avisos de Google sobre cuotas o facturación de la API |
+| Datos de `bus` | Preguntas abiertas a la empresa (P28 días especiales, P30 verano de Adamuz, P37), anotadas en el dataset |
+| Identificar el bot como automático | Si la normativa lo exige a bots sin IA; bastaría con indicarlo en el texto del menú |
+
+**Versiones verificadas (octubre de 2026):** Python 3.14 · Django 5.2 LTS (5.2.18, soporte hasta abril de 2028, compatible con 3.14) · PostgreSQL 18 · Procrastinate 3.10 (su CI prueba Python 3.14 con PostgreSQL 18) · psycopg 3.3 · pydantic 2.14 · google-api-python-client 2.x · httpx 0.28 · gunicorn · django-otp.
 
 ---
 
-### 23. Documentación
+### 19. Documentación
 
 - `README.md`: qué es, estado y cómo arrancar en local.
 - `design.md`: este documento.
-- `CLAUDE.md`: reglas para trabajar en el repo (agente y personas).
-- `docs/adr/`: ADR-001 (monolito modular), ADR-002 (RLS), ADR-003 (packs), ADR-004 (entrada idempotente), ADR-005 (VPS + Docker Compose).
-- `docs/packs/salon.md` y `docs/packs/bus.md`: qué hace cada pack, su config, sus plantillas y (en `bus`) el formato completo del dataset y su ciclo de actualización.
-- `docs/runbooks/`: §18.4.
+- `docs/adr/`: ADR-001 (monolito modular), ADR-002 (RLS), ADR-003 (packs), ADR-004 (entrada idempotente), ADR-005 (VPS con Docker Compose).
+- `docs/packs/salon.md` y `docs/packs/bus.md`: qué hace cada pack, su config, sus plantillas y, en `bus`, el formato del dataset y su ciclo de actualización.
+- `docs/runbooks/`: los de §16.4.
 - `docs/glosario.md`: términos técnicos en lenguaje llano.

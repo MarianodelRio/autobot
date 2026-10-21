@@ -7,6 +7,7 @@
 | **Advisory lock** | Candado de PostgreSQL que la aplicación toma por un nombre (p. ej. "calendario X, día Y") para que dos procesos no hagan lo mismo a la vez |
 | **API** | La forma en que un programa le pide cosas a otro (p. ej. "envía este mensaje" a Meta) |
 | **Backoff exponencial** | Reintentar esperando cada vez más (2 s, 4 s, 8 s…) para no saturar |
+| **Adaptador de canal** | Código que traduce entre un servicio de mensajería (WhatsApp, Telegram) y el formato común que entienden los packs |
 | **BSUID** | Identificador de un usuario de WhatsApp propio de cada negocio (`ES.xxxx`); Meta lo envía en lugar del teléfono cuando el usuario usa nombre de usuario |
 | **Caddy** | Servidor web que hace de puerta de entrada y consigue y renueva solo los certificados HTTPS |
 | **CI** | Integración continua: tests automáticos en cada cambio, antes de aceptarlo |
@@ -14,9 +15,9 @@
 | **Dataset** | Datos estructurados de un negocio (p. ej. horarios de autobús) en ficheros, con un validador estricto |
 | **Docker Compose** | Herramienta que arranca varios contenedores juntos (web, worker, base de datos…) a partir de un fichero |
 | **Expand/contract** | Cambiar la BD en dos pasos para que la versión vieja y la nueva del código funcionen a la vez |
-| **Fernet** | Formato de cifrado simétrico de la librería `cryptography`; aquí cifra las credenciales de los negocios |
 | **GHCR** | Registro de imágenes de contenedor de GitHub |
 | **healthchecks.io** | Servicio externo que avisa si deja de recibir un "latido" periódico; detecta que algo se ha caído aunque no pueda avisar por sí mismo |
+| **Long polling** | Forma de recibir mensajes de Telegram preguntando continuamente al servidor, sin necesidad de una URL pública; se usa en desarrollo local |
 | **HMAC / firma** | Un código que demuestra que un mensaje viene de quien dice (Meta) y no ha sido modificado |
 | **Idempotente** | Que hacerlo dos veces tiene el mismo efecto que hacerlo una |
 | **Migración** | Script que cambia la estructura de la base de datos |
@@ -29,5 +30,5 @@
 | **Tenant** | Un negocio de la plataforma |
 | **UUIDv7** | Identificador único que además se ordena por fecha de creación |
 | **VPS** | Servidor virtual alquilado a un proveedor, con su propia IP |
-| **Webhook** | Aviso que un servicio externo (Meta) envía a nuestra URL cuando pasa algo |
+| **Webhook** | Aviso que un servicio externo (Meta, Telegram) envía a nuestra URL cuando pasa algo |
 | **Worker** | El proceso que hace el trabajo de fondo (lo que no es atender una petición web) |

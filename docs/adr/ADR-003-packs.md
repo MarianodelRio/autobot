@@ -1,22 +1,23 @@
 # ADR-003 — Packs con máquina de estados propia
 
-**Estado:** aceptada (sustituye a "Packs y contrato PackContext" con motor de recorridos, el 2026-10-21) · **Relacionado:** `design.md` §4.3, §8
+**Estado:** aceptada · **Relacionado:** `design.md` §6, §8
 
 ## Contexto
 
-Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar (peluquería) y consulta de horarios con datos estructurados (autobuses). Los dos bots existentes resuelven su conversación con una máquina de estados explícita y funcionan bien. El diseño anterior proponía un motor genérico de recorridos con bloques versionados, parámetros validados y comprobación de alcanzabilidad.
+Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar (peluquería) y consulta de horarios con datos estructurados (autobuses). Los dos bots de origen resuelven su conversación con una máquina de estados explícita y funcionan bien. Las conversaciones deben funcionar igual por WhatsApp y por Telegram.
 
 ## Decisión
 
 - Cada tipo de negocio es un **pack** en `packs/<nombre>/`: esquema de config (pydantic), **su propia máquina de estados** (`handle_message(ctx, msg) -> PackResult`), sus textos, sus periódicas y sus tests.
 - El pack recibe un `PackContext` (tenant, config, datos cargados, contacto, estado, reloj, puertos externos como `calendar`, candados, claves idempotentes) y devuelve respuestas, nuevo estado y acciones. **Nunca toca la BD ni las APIs directamente.**
-- La plataforma resuelve lo común: caducidad del estado, versión del estado, comandos globales (`menu`, `baja`), mensajes no soportados, recuperación ante errores, plan de envío y límites de WhatsApp.
+- La plataforma resuelve lo común: caducidad del estado, versión del estado, comandos globales (`menu`, `baja`), mensajes no soportados, recuperación ante errores, plan de envío y límites comunes de mensajes.
+- Los packs no conocen el canal: construyen respuestas comunes (texto, botones, lista) dentro de los límites más estrictos de WhatsApp y Telegram, y cada adaptador de canal las traduce.
 - **Utilidades comunes, no framework**: `core/ui`, `core/text`, `core/dates`, `core/whatsapp_limits`. Solo entra en `core` lo que usan los dos packs.
 - Registro explícito de packs (`packs/registry.py`), sin descubrimiento automático.
 
 ## Alternativas consideradas
 
-- **Motor genérico de recorridos y bloques** (diseño anterior): mucha maquinaria para dos flujos que no comparten pasos; obligaría a reescribir dos bots que ya funcionan.
+- **Motor genérico de recorridos y bloques**: mucha maquinaria para dos flujos que no comparten pasos; obligaría a reescribir dos bots que ya funcionan.
 - **Recetas YAML / DSL por tenant**: tienden a convertirse en un lenguaje de programación sin herramientas.
 
 ## Consecuencias

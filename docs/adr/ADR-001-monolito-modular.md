@@ -1,6 +1,6 @@
 # ADR-001 — Monolito modular Django + Procrastinate
 
-**Estado:** aceptada (revisada el 2026-10-21) · **Relacionado:** `design.md` §0, §5, §7.5
+**Estado:** aceptada · **Relacionado:** `design.md` §0, §4, §7.5
 
 ## Contexto
 
@@ -9,14 +9,14 @@ Una sola persona construye y opera la plataforma para 5–15 negocios. Hay que a
 ## Decisión
 
 - **Un solo proyecto Python 3.14 + Django 5.2 LTS**, dividido en `core/` e `integrations/` (sin Django), `packs/` (solo dependen de `core`) y `flowpilot/` (Django), con la regla de dependencias comprobada por `import-linter`.
-- **Una imagen, varios procesos**: `web` (verifica, guarda y encola), `worker` (Procrastinate) y `admin` (Django Admin, solo por túnel SSH).
+- **Una imagen, dos procesos**: `web` (webhooks de WhatsApp y Telegram: verifica, guarda y encola; también sirve el Django Admin, solo accesible por túnel SSH) y `worker` (Procrastinate).
 - **Cola en el propio PostgreSQL con Procrastinate 3.x**: 3 colas (`inbound`, `outbound`, `periodic`) atendidas por un solo worker; candados por contacto; tareas periódicas integradas.
 
 ## Alternativas consideradas
 
 - **Microservicios**: más despliegues y fallos parciales; sin beneficio a esta escala.
 - **Celery + Redis**: una pieza más que operar; Postgres ya da transacciones compartidas con los datos (el trabajo solo existe si hay COMMIT).
-- **Seguir con FastAPI como los bots actuales**: habría que montar a mano admin, migraciones y ORM, que Django trae.
+- **FastAPI** (la base de los bots de origen): habría que montar a mano admin, migraciones y ORM, que Django trae.
 
 ## Consecuencias
 
