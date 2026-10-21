@@ -1,0 +1,46 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "9876543210",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "34682214469",
+              "phone_number_id": "1122334455"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Lucía"
+                },
+                "wa_id": "34600000001",
+                "user_id": "ES.13491208655302741918"
+              }
+            ],
+            "messages": [
+              {
+                "from": "34600000001",
+                "from_user_id": "ES.13491208655302741918",
+                "id": "wamid.HBgLMzQ2MDAwMDAwMDEVAgASGBQzQUVCMDAwMDAwMDAwMDAwMDAwMwA=",
+                "timestamp": "1791194400",
+                "type": "interactive",
+                "interactive": {
+                  "type": "list_reply",
+                  "list_reply": {
+                    "id": "day_2026-10-09",
+                    "title": "Jueves 9 de octubre",
+                    "description": "Quedan 4 huecos"
+                  }
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

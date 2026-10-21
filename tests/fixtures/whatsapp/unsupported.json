@@ -1,0 +1,97 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "9876543210",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "34682214469",
+              "phone_number_id": "1122334455"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Lucía"
+                },
+                "wa_id": "34600000001",
+                "user_id": "ES.13491208655302741918"
+              }
+            ],
+            "messages": [
+              {
+                "from": "34600000001",
+                "from_user_id": "ES.13491208655302741918",
+                "id": "wamid.HBgLMzQ2MDAwMDAwMDEVAgASGBQzQUVCMDAwMDAwMDAwMDAwMDAwNgA=",
+                "timestamp": "1791194400",
+                "type": "image",
+                "image": {
+                  "mime_type": "image/jpeg",
+                  "sha256": "aGFzaA==",
+                  "id": "1234567890123456"
+                }
+              },
+              {
+                "from": "34600000001",
+                "from_user_id": "ES.13491208655302741918",
+                "id": "wamid.HBgLMzQ2MDAwMDAwMDEVAgASGBQzQUVCMDAwMDAwMDAwMDAwMDAwNwA=",
+                "timestamp": "1791194400",
+                "type": "audio",
+                "audio": {
+                  "mime_type": "audio/ogg; codecs=opus",
+                  "sha256": "aGFzaA==",
+                  "id": "1234567890123457",
+                  "voice": true
+                }
+              },
+              {
+                "from": "34600000001",
+                "from_user_id": "ES.13491208655302741918",
+                "id": "wamid.HBgLMzQ2MDAwMDAwMDEVAgASGBQzQUVCMDAwMDAwMDAwMDAwMDAwOAA=",
+                "timestamp": "1791194400",
+                "type": "sticker",
+                "sticker": {
+                  "mime_type": "image/webp",
+                  "sha256": "aGFzaA==",
+                  "id": "1234567890123458",
+                  "animated": false
+                }
+              },
+              {
+                "from": "34600000001",
+                "from_user_id": "ES.13491208655302741918",
+                "id": "wamid.HBgLMzQ2MDAwMDAwMDEVAgASGBQzQUVCMDAwMDAwMDAwMDAwMDAwOQA=",
+                "timestamp": "1791194400",
+                "type": "location",
+                "location": {
+                  "latitude": 37.88,
+                  "longitude": -4.77
+                }
+              },
+              {
+                "from": "34600000001",
+                "from_user_id": "ES.13491208655302741918",
+                "id": "wamid.HBgLMzQ2MDAwMDAwMDEVAgASGBQzQUVCMDAwMDAwMDAwMDAwMDAxMAA=",
+                "timestamp": "1791194400",
+                "type": "unsupported",
+                "errors": [
+                  {
+                    "code": 131051,
+                    "title": "Message type unknown",
+                    "message": "Message type unknown",
+                    "error_data": {
+                      "details": "Message type is currently not supported."
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

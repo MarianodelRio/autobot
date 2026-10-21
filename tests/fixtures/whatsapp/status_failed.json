@@ -1,0 +1,40 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "9876543210",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "34682214469",
+              "phone_number_id": "1122334455"
+            },
+            "statuses": [
+              {
+                "id": "wamid.HBgLMzQ2MDAwMDAwMDEVAgARGBI0QUVCMDAwMDAwMDAwMDAwNAA=",
+                "status": "failed",
+                "timestamp": "1791194470",
+                "recipient_id": "34600000002",
+                "recipient_user_id": "ES.99225512874400319256",
+                "biz_opaque_callback_data": "01920000-0000-7000-8000-0000000000b2",
+                "errors": [
+                  {
+                    "code": 131026,
+                    "title": "Message undeliverable",
+                    "message": "Message undeliverable",
+                    "error_data": {
+                      "details": "Message Undeliverable."
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 0 | pending |
+| F3 | Canales y runtime | 10 | 1 | in_progress |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **14** | |
+| **Total** | | **52** | **15** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -431,14 +431,22 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** el pack de juguete conversa de extremo a extremo por el bot de pruebas de desarrollo (`telegram_poll`) y por WhatsApp simulado en tests de integración.
 
 ### T-3.1 · Contrato de adaptador y adaptador de WhatsApp ⚠️ 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-1.1 · **Diseño:** §6.2, §6.3
+- **Estado:** done · **Revisión:** aprobada (y aprobación ⚠️ de la persona, 2026-10-21) · **Depende de:** T-1.1 · **Diseño:** §6.2, §6.3
 - **Hacer:**
   - `ChannelAdapter` y `SendOutcome`.
   - `WhatsAppAdapter`: `verify` (HMAC), `parse` (mensajes, botones de plantilla, BSUID, estados, `phone_number_id`), `render` (incluidas plantillas), `send` con la tabla de resultados y verificación `GET`.
   - Se porta de `webhook.py` y `whatsapp.py` de Peluquería.
 - **Acepta:** cada fila de la tabla de §6.3 produce el `SendOutcome` correcto; el cuerpo de las respuestas 4xx nunca se registra.
 - **Tests:** contrato contra payloads reales grabados en `tests/fixtures/whatsapp/` (texto, `button_reply`, `list_reply`, botón de plantilla, BSUID, estados con `pricing`, tipos no soportados) y respuestas de error simuladas con `httpx`.
-- **Notas:** —
+- **Notas:**
+  - **Contrato** (`flowpilot/channels/base.py`): `ChannelAdapter[C, S]` es un `Protocol` genérico (canal y secretos de cada tipo), con `InboundItem`, `StatusItem`, `Sent`, `Rejected`, `RetryLater(after_s=None)` y `Ambiguous`. Cada elemento lleva en `payload` su parte del cuerpo, autosuficiente: es lo que guardará `inbound_event.payload`, y `parse_stored` la vuelve a convertir en el mismo elemento (para T-3.5). `StatusItem` añade `provider_message_id` y `error` (solo códigos), que `apply_status` necesita (§7.2).
+  - **`WhatsAppAdapter`** (`flowpilot/channels/whatsapp/adapter.py`): `verify` (HMAC del cuerpo crudo con `compare_digest`), `verify_subscription` para el `GET`, `parse`, `acknowledge` (no hace nada), `render` (texto, botones, lista y plantilla con parámetros y `quick_reply`) y `send` con la tabla de §6.3 (`classify`). El cliente `httpx` se inyecta en el constructor; los tests usan `MockTransport`. Nueva variable `WHATSAPP_GRAPH_VERSION` (por defecto `v23.0`) en settings y `.env.example`.
+  - **Corrección del diseño (documentación de Meta):** el BSUID llega en `messages[].from_user_id` (y en `contacts[].user_id`), no en `messages[].user_id` como leía Peluquería; se aceptan los dos. Para enviar a un BSUID se usa `recipient` en lugar de `to`. §6.3 y §18 actualizados.
+  - **Decisiones añadidas a §6.3:** códigos de destinatario 131021, 131026 y 131030; un 2xx sin `messages[0].id` es `Ambiguous`; un 5xx sin el cuerpo de error de Meta es `Ambiguous`; un fallo al conectar (`ConnectError`, `ConnectTimeout`, `PoolTimeout`) es `RetryLater`, porque no salió nada; `Retry-After` se ignora si no es finito y se limita a 3.600 s; los mensajes `system` se descartan; un texto vacío se descarta, como en Peluquería.
+  - **Logs:** solo estado HTTP y códigos de error; nunca cuerpos, identificadores, textos ni tokens (lo comprueba un test). Los *loggers* `httpx` y `httpcore` pasan a `WARNING` en settings, porque en `INFO` registran la URL (la de Telegram, en T-3.2, lleva el token).
+  - **De la revisión:** `verify` compara bytes (una cabecera no ASCII lanzaba `TypeError` en lugar de dar `False`). Un canal sin `phone_number_id` no acepta nada. Pendiente de comprobar con el número real (M-4.1): si Meta devuelve los errores de límite 130429 o 131056 con HTTP 400, hoy son `Rejected(other)`, como dice la tabla.
+  - **Fixtures:** no hay número de WhatsApp del que grabar; los cuerpos de `tests/fixtures/whatsapp/` siguen los ejemplos de la documentación de Meta, con datos ficticios (lo explica su `README.md`). Sustituirlos por grabaciones reales anonimizadas cuando exista el número de pruebas (M-4.1).
+  - **Tests:** `tests/contract/test_whatsapp.py` (firma, `GET`, cada tipo de mensaje y estado, descartes, ida y vuelta del `payload` guardado, `render` y cada fila de la tabla de resultados, también errores de red).
 
 ### T-3.2 · Adaptador de Telegram 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.1 · **Diseño:** §6.4

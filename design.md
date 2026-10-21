@@ -368,22 +368,27 @@ Las longitudes se cuentan en caracteres (puntos de código). Formato de texto: t
 #### 6.2 Contrato de adaptador (`flowpilot/channels/base.py`)
 
 ```python
-class ChannelAdapter(Protocol):
+class ChannelAdapter[C, S](Protocol):          # C: descripción del canal; S: sus secretos
     type: Literal["whatsapp", "telegram"]
 
-    def verify(self, request: HttpRequest, channel: Channel, secrets: ChannelSecrets) -> bool
-    def parse(self, body: dict, channel: Channel) -> list[ParsedItem]
-        # ParsedItem = InboundItem(provider_event_id, external_id, display_name, phone, message: IncomingMessage)
-        #            | StatusItem(provider_event_id, outbound_ref, status, pricing_category, billable)
-    def acknowledge(self, payload: dict, channel: Channel, secrets: ChannelSecrets) -> None
+    def verify(self, request: HttpRequest, channel: C, secrets: S) -> bool
+    def parse(self, body: dict, channel: C) -> list[ParsedItem]
+        # ParsedItem = InboundItem(provider_event_id, external_id, display_name, phone, message: IncomingMessage, payload)
+        #            | StatusItem(provider_event_id, outbound_ref, provider_message_id, status, pricing_category,
+        #                         billable, error, payload)
+    def acknowledge(self, payload: dict, channel: C, secrets: S) -> None
         # efectos inmediatos tras recibir (Telegram: answerCallbackQuery); en WhatsApp no hace nada
-    def render(self, out: Reply | ProactiveMessage, channel: Channel) -> dict
-    def send(self, rendered: dict, recipient: str, channel: Channel, secrets: ChannelSecrets,
+    def render(self, out: Reply | ProactiveMessage, channel: C) -> dict
+    def send(self, rendered: dict, recipient: str, channel: C, secrets: S,
              outbound_id: UUID) -> SendOutcome
-        # SendOutcome = Sent(provider_message_id) | Rejected(reason, kind) | RetryLater(after_s) | Ambiguous(reason)
+        # SendOutcome = Sent(provider_message_id) | Rejected(reason, kind) | RetryLater(after_s=None) | Ambiguous(reason)
+
+def parse_stored(adapter, payload, channel) -> ParsedItem   # el único elemento de un inbound_event.payload
 ```
 
-- `Channel` describe el canal concreto (tipo, bot o número, credenciales); para el canal `test` es el bot de pruebas.
+- `Channel` describe el canal concreto (tipo, bot o número, credenciales); para el canal `test` es el bot de pruebas. En el código, `C` es el `channel` de `tenant.yaml` (`WhatsAppChannel` o `TelegramChannel`) y `S` sus secretos (`WhatsAppSecrets` o `TelegramSecrets`); el protocolo es genérico para que cada adaptador declare los suyos.
+- Cada elemento lleva en `payload` su parte del cuerpo del proveedor, autosuficiente: es lo que se guarda en `inbound_event.payload`, y `parse` sobre ese `payload` devuelve exactamente el mismo elemento (`parse_stored`, que usan `process_event` y `apply_status`).
+- `Rejected.reason` y `StatusItem.error` llevan solo el estado HTTP y los códigos de error del proveedor, nunca su texto.
 - `ProactiveMessage(template: TemplateSpec, params: list[str], button_payloads: list[str])`: un aviso que el bot inicia (§6.3, §6.4).
 - `TemplateSpec(name, language, text, buttons)` lo declara el pack: `name` y `language` sirven en WhatsApp; `text` (con `{1}`, `{2}`…) y los títulos de `buttons` sirven en Telegram. El texto debe coincidir con el de la plantilla aprobada en Meta.
 - `Rejected.kind`: `auth` (token inválido o revocado), `recipient` (el contacto no puede recibir: bloqueó el bot, número inválido) u `other`.
@@ -398,23 +403,24 @@ Se porta de `webhook.py` y `whatsapp.py` de Peluquería.
 - **`verify`:** `X-Hub-Signature-256` = HMAC-SHA256 del cuerpo con `app_secret`, en tiempo constante.
 - **`parse`:**
   - `value.metadata.phone_number_id` debe ser el del tenant; si no, el elemento se descarta y se registra.
-  - Mensajes: `text`, `interactive.button_reply`, `interactive.list_reply` y `button` (botón de plantilla, con `button.payload`) → `IncomingMessage`; audio, imagen, documento, sticker, ubicación… → `unsupported`. Texto truncado a 4.096; ids de más de 64 bytes se descartan.
-  - `external_id` = `user_id` (BSUID, `^[A-Z]{2}\.[A-Za-z0-9]{1,128}$`) si viene; si no, `from` (teléfono, 7–15 dígitos). `phone` solo si `from` es un teléfono. `display_name` de `contacts[].profile.name`.
-  - Estados (`sent`, `delivered`, `read`, `failed`) → `StatusItem` con `biz_opaque_callback_data` como `outbound_ref` y su `pricing`.
+  - Mensajes: `text`, `interactive.button_reply`, `interactive.list_reply` y `button` (botón de plantilla, con `button.payload`) → `IncomingMessage`; audio, imagen, documento, sticker, ubicación, reacción, otros `interactive` y `unsupported`… → `unsupported`. Los mensajes `system` (p. ej. cambio de número) no vienen del contacto y se descartan. Texto recortado y truncado a 4.096; un texto vacío se descarta (como en Peluquería). Ids de botón vacíos o de más de 64 bytes, mensajes sin `id` o `timestamp` válidos y remitentes con formato inválido se descartan y se registran sin datos.
+  - `external_id` = `from_user_id` (BSUID, `^[A-Z]{2}\.[A-Za-z0-9]{1,128}$`; Meta lo envía desde abril de 2026; también se acepta `user_id`, que leía Peluquería) si viene; si no, `from` (teléfono, 7–15 dígitos). `phone` (E.164 con `+`) solo si `from` es un teléfono, que con BSUID puede faltar. `display_name` de `contacts[].profile.name` del contacto con ese `user_id` o `wa_id`.
+  - Estados (`sent`, `delivered`, `read`, `failed`) → `StatusItem` con `biz_opaque_callback_data` como `outbound_ref`, el `wamid` como `provider_message_id`, su `pricing` (`category`, `billable`) y, en `failed`, los códigos de `errors[]`. Otros estados se ignoran.
   - `provider_event_id` = `wamid` en mensajes y `<wamid>:<status>` en estados.
 - **`render`:** `Text` → `text`; `Buttons` → `interactive.button`; `List` → `interactive.list`; un texto seguido de un interactivo va en su cuerpo si caben juntos (§7.4). `ProactiveMessage` → `template` con `body` (parámetros) y botones `quick_reply` con sus `payload`.
-- **`send`:** `POST https://graph.facebook.com/<versión>/<phone_number_id>/messages` con `biz_opaque_callback_data = outbound_id`, timeout 10 s, cliente `httpx` con *pool* de conexiones.
+- **`send`:** `POST https://graph.facebook.com/<WHATSAPP_GRAPH_VERSION>/<phone_number_id>/messages` con `biz_opaque_callback_data = outbound_id`, timeout 10 s, cliente `httpx` con *pool* de conexiones. El destinatario va en `to` si es un teléfono y en `recipient` si es un BSUID (Meta: "omit the `to` property").
 
 | Respuesta de Meta | `SendOutcome` |
 |---|---|
-| 2xx | `Sent(wamid)` |
+| 2xx con `messages[0].id` | `Sent(wamid)` (sin id: `Ambiguous`) |
 | 401, o error OAuth 190 | `Rejected(kind=auth)` |
-| 400 con error de destinatario (número no válido o fuera de WhatsApp) | `Rejected(kind=recipient)` |
+| 400 con error de destinatario (131021, 131026, 131030: número no válido, fuera de WhatsApp o fuera de la lista de un número de pruebas) | `Rejected(kind=recipient)` |
 | Otros 4xx salvo 429 | `Rejected(kind=other)` |
-| 429, o 5xx con cuerpo de error JSON | `RetryLater` |
-| Timeout, error de red, 502/504 sin cuerpo | `Ambiguous` |
+| 429 (con `Retry-After` si viene, finito y como mucho 3.600 s), o 5xx con cuerpo de error JSON de Meta | `RetryLater` |
+| No se pudo conectar o no había conexión libre en el *pool* (`ConnectError`, `ConnectTimeout`, `PoolTimeout`): no salió nada | `RetryLater` |
+| Timeout o error de red tras conectar, 5xx sin cuerpo de error de Meta (502/504 de un proxy) | `Ambiguous` |
 
-- Nunca se registra el cuerpo de una respuesta 4xx (puede llevar datos personales).
+- Nunca se registra el cuerpo de una respuesta 4xx (puede llevar datos personales). Los *loggers* `httpx` y `httpcore` van a `WARNING`, porque en `INFO` registran la URL de cada petición (la de Telegram lleva el token).
 - **Ventana de 24 h:** las respuestas siempre van dentro, porque contestan a un mensaje del contacto. Los avisos proactivos usan plantilla.
 - **Costes:** desde el 1/10/2026 Meta cobra también los mensajes de servicio (respuestas dentro de la ventana) al precio *utility* del país ([página oficial](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages)); no se cuenta con ningún tramo gratuito. Tarifa de España [VERIFICAR en la cuenta de cada negocio]. Por eso se fusionan mensajes (§7.4) y `outbound_message` guarda `pricing_category` y `billable`.
 - **Alta de un número:** SIM sin WhatsApp activo; Gmail y Business Portfolio del negocio; verificación de empresa (2–5 días hábiles, necesaria para el nombre visible); app tipo Business con WhatsApp; número registrado; app suscrita a la WABA (`POST /<WABA_ID>/subscribed_apps`); campo `messages` suscrito; System User con token permanente (`whatsapp_business_messaging`, `whatsapp_business_management`); plantillas del pack creadas (aprobación de 1 a 48 h).
@@ -519,7 +525,7 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
         if event.status != "pending":
             return                                          # ya procesado (reintento tras COMMIT)
         channel = tenant.channel(event.channel)             # main del tenant, o el bot de pruebas
-        item = channel.adapter.parse_one(event.payload)     # InboundItem
+        item = parse_stored(channel.adapter, event.payload, channel)   # InboundItem
         contact = upsert_contact(tenant, event.channel, item)   # actualiza nombre y teléfono
         conv = load_or_create_conversation(contact)
         eff = effective_state(conv.state, conv.state_version, conv.last_inbound_at,
@@ -1332,7 +1338,7 @@ Cada respuesta se comprueba contra los límites comunes (§6.1) y se renderiza c
 |---|---|
 | VPS | Plan y precio actuales del proveedor |
 | Precio de los mensajes de WhatsApp | Tarifa real de los mensajes de servicio y de las plantillas *utility* en la cuenta de cada negocio |
-| BSUID | Si se pueden enviar plantillas a un contacto identificado solo por BSUID. Si no, sus avisos proactivos se registran y no se envían |
+| BSUID | Meta anuncia el envío con `recipient` = BSUID desde julio de 2026 (§6.3), salvo plantillas de autenticación y números de *sandbox*. Falta comprobarlo con un número real, también con plantillas *utility*. Si no funcionara, los avisos proactivos a un contacto solo con BSUID se registran y no se envían |
 | Graph API | Fecha de caducidad de `v23.0` |
 | Google Calendar | Avisos de Google sobre cuotas o facturación de la API |
 | Datos de `bus` | Preguntas abiertas a la empresa (P28 días especiales, P30 verano de Adamuz, P37), anotadas en el dataset |
