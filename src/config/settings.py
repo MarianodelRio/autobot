@@ -97,6 +97,11 @@ if _owner_url:
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Tenants (design.md §5): config in git, channel secrets on the server (in local, the
+# repository root, ignored by git).
+TENANTS_DIR = Path(os.environ.get("TENANTS_DIR", BASE_DIR / "tenants"))
+SECRETS_FILE = Path(env("SECRETS_FILE", str(BASE_DIR / "secrets.yaml")))
+
 LANGUAGE_CODE = "es-es"
 TIME_ZONE = "UTC"
 USE_I18N = True

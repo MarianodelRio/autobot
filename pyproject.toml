@@ -15,6 +15,7 @@ dependencies = [
     "gunicorn>=23,<27",
     "django-otp>=1.7,<2",
     "dj-database-url>=3",
+    "pyyaml>=6.0,<7",
 ]
 
 [dependency-groups]
@@ -27,6 +28,7 @@ dev = [
     "weasyprint>=66",
     "import-linter>=2.15,<3",
     "django-migration-linter>=6,<7",
+    "types-pyyaml>=6",
 ]
 
 [tool.uv]

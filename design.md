@@ -270,7 +270,7 @@ config:                         # validado con el esquema del pack (SalonConfig,
   # …
 ```
 
-Validaciones comunes: slugs, ids y `public_id` únicos en todo el repositorio; campos obligatorios según `channel.type`; `phone_number_id` único entre tenants; `testers.telegram` con enteros y `testers.main` con ids del tipo del canal `main` (BSUID o teléfono en WhatsApp, entero en Telegram).
+Validaciones comunes: slugs, ids (UUIDv7) y `public_id` únicos en todo el repositorio; campos según `channel.type` (los de otro tipo de canal son un error; los ids de Meta o el `bot_username` pueden faltar mientras se da de alta el canal, y entonces el canal `main` queda deshabilitado); `phone_number_id` único entre tenants; `testers.telegram` con enteros y `testers.main` con ids del tipo del canal `main` (BSUID o teléfono en WhatsApp, entero en Telegram); zona horaria conocida; el `slug` coincide con su directorio.
 
 #### 5.3 Secretos
 
@@ -315,6 +315,16 @@ autocares-ss:                  # canal telegram
 - **Un tenant inválido no afecta a los demás.** CI lo habría bloqueado (§17.3); si aun así falla al arrancar, queda `degraded`: sus eventos se guardan como `ignored`, los contactos reciben un texto genérico de plataforma ("Ahora mismo no puedo atenderte; inténtalo más tarde") y salta una alerta 🔴.
 - **Estados:** `onboarding` (el canal `main` solo responde a `testers.main`), `active`, `paused` (el canal `main` guarda y no responde), `offboarded` (contesta 200 sin guardar). El bot de pruebas funciona en `onboarding`, `active` y `paused`.
 - **`sync_tenants`** (tras `migrate`, §14.6) hace *upsert* de la tabla `tenant` (id, slug, name, pack, status, timezone) para las claves foráneas y RLS. Esa tabla es un reflejo y nunca se edita a mano.
+- **Implementación** (`flowpilot/tenancy/schema.py` y `registry.py`):
+  - **Qué pasa ante cada fallo:**
+    - Fichero ilegible (también sin permisos o no UTF-8), YAML inválido, parte común inválida, un `slug` que no coincide con su directorio o un directorio sin `tenant.yaml`: el tenant no se carga y se informa del error.
+    - Pack desconocido, `config` inválida, `load_data` que falla o un `id`, `public_id` o `phone_number_id` repetido: el tenant queda `degraded`. Los repetidos no se enrutan ni se sincronizan, porque serían ambiguos.
+    - Faltan secretos o faltan ids del canal: solo se deshabilita su canal `main`. Por ejemplo, un WhatsApp sin `app_id`, `waba_id` o `phone_number_id`, que se rellenan durante el alta.
+  - **Secretos:** se cargan como `SecretStr` y los mensajes de error nunca incluyen valores.
+  - **Carga:** el registro se carga una vez por proceso (`get_registry()`).
+  - **`sync_tenants`:** escribe como `fp_owner` y continúa aunque haya tenants rotos, informando de ellos.
+  - **`new_tenant <slug> --pack <pack> --channel whatsapp|telegram`:** deja en `null` los campos de la config que no tienen valor por defecto.
+  - **CI:** `tests/test_tenants.py` exige que todos los `tenants/*` validen.
 
 ---
 
@@ -1226,7 +1236,7 @@ Una vista "Estado" en el Admin muestra:
 
 #### 16.1 Alta de un negocio
 
-1. `manage.py new_tenant <slug> --pack salon|bus` crea `tenants/<slug>/tenant.yaml` con `id`, `status: onboarding` y la config por defecto del pack.
+1. `manage.py new_tenant <slug> --pack salon|bus --channel whatsapp|telegram` crea `tenants/<slug>/tenant.yaml` con `id`, `public_id` aleatorio, `status: onboarding` y la config por defecto del pack.
 2. Completar la config. En `bus`, añadir el dataset y pasar `make bus-validar`.
 3. **Pruebas:** añadir a `testers.telegram` los ids de Telegram de las personas del negocio que vayan a probar.
 4. **Canal `main`:**

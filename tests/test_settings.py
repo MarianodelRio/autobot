@@ -52,6 +52,7 @@ def test_prod_with_all_variables_passes_check() -> None:
         DJANGO_SECRET_KEY="k",
         DJANGO_ALLOWED_HOSTS="api.x,",
         DB_APP_URL="postgres://u:p@127.0.0.1:1/none",
+        SECRETS_FILE="/run/secrets/secrets.yaml",
     )
     assert result.returncode == 0, result.stderr
 

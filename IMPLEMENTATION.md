@@ -84,14 +84,14 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
-| F2 | Datos, tenants y aislamiento | 5 | 3 | in_progress |
+| F2 | Datos, tenants y aislamiento | 5 | 4 | in_progress |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **12** | |
+| **Total** | | **52** | **13** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -354,7 +354,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Diseño:** §12.2 ampliado.
 
 ### T-2.4 · Registro de tenants y secretos 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-2.2, T-1.1 · **Diseño:** §5.2, §5.3, §5.4
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-2.2, T-1.1 · **Diseño:** §5.2, §5.3, §5.4
 - **Hacer:**
   - Esquema común de `tenant.yaml` (`channel`, `testers`, `owner`, estados) y carga de `secrets.yaml`.
   - Validación de la config con el esquema del pack y llamada a `load_data`.
@@ -368,7 +368,31 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - `sync_tenants` es idempotente.
   - `new_tenant` genera un `id` UUIDv7 y un `public_id` aleatorio.
 - **Tests:** unitarios de validación (ids o `phone_number_id` duplicados, campos por tipo de canal, `testers`), `degraded` e idempotencia de `sync_tenants`.
-- **Notas:** —
+- **Notas:**
+  - **Esquema común** (`flowpilot/tenancy/schema.py`, pydantic con `extra="forbid"`):
+    - Valida `id` como UUIDv7, el formato de `slug` y `public_id`, la zona horaria y el canal discriminado por `type`.
+    - `testers.main` se valida según el tipo de canal: BSUID o teléfono en WhatsApp, entero en Telegram.
+    - Los ids de Meta (numéricos) y el `bot_username` (`[A-Za-z0-9_]{5,32}`) son opcionales, porque T-4.6 necesita que Autocares valide antes de tenerlos; mientras falten, el canal `main` queda deshabilitado.
+    - Los secretos son `SecretStr` (`WhatsAppSecrets` y `TelegramSecrets`, este con `webhook_secret` de 32 caracteres o más).
+  - **Registro** (`flowpilot/tenancy/registry.py`):
+    - `load_registry(tenants_dir, secrets_file, packs)` es puro y testeable; `get_registry()` es la instancia del proceso, perezosa, con `settings.TENANTS_DIR`, `settings.SECRETS_FILE` (nuevo en settings y `.env.example`) y `packs.registry.PACKS`.
+    - **Índices:** por id, slug, `(tipo, public_id)`, `phone_number_id` y tester de Telegram. `visible_to()` cubre el bot de pruebas (los operadores ven todos) y `serving(pack)` da los tenants no degradados ni `offboarded`; T-3.7 decide si `paused` cuenta.
+    - **`problems`** reúne lo que debe fallar en CI.
+    - **Fallos:**
+      - Un fichero ilegible (sin permisos, no UTF-8, YAML inválido), un directorio sin `tenant.yaml` o un fallo en la parte común dejan el tenant fuera, en `errors`.
+      - Si el `secrets.yaml` no se puede usar (ilegible, o sin un mapa de slugs con claves de texto), queda en `secrets_error` y los demás tenants cargan igual, con su canal `main` deshabilitado.
+      - Pack desconocido, config inválida, `load_data` que falla o claves repetidas dejan el tenant `degraded`. Las repetidas además lo marcan `ambiguous` a él y a todos los implicados: no se enrutan ni se sincronizan.
+      - Si faltan secretos o ids, solo se deshabilita el canal `main`.
+      - Las entradas de `secrets.yaml` de slugs desconocidos se avisan, solo por nombre.
+      - Si no existe `tenants/`, el registro queda vacío y se avisa.
+    - **Logs:** registran nombres de campos, nunca valores.
+  - **`packs/registry.py`:** `PACKS: dict[str, Pack] = {}`. Los tests registran el pack de juguete con `monkeypatch`.
+  - **Comandos:**
+    - `sync_tenants` usa `update_or_create` como `owner`, en una transacción por tenant. Omite e informa de los tenants ambiguos (un `id` copiado nunca sobrescribe la fila del otro), de los que chocan por `slug` con otro `id` y de los ilegibles, y no falla por ellos (§5.4).
+    - `new_tenant <slug> --pack --channel [--name]` genera UUIDv7, un `public_id` de 16 caracteres `[a-z0-9]`, `status: onboarding`, `Europe/Madrid` y la config por defecto del pack (`null` en los campos obligatorios; los valores por defecto se pasan a JSON con `TypeAdapter`). Nunca sobrescribe. `--channel` es necesario porque el canal es obligatorio en el esquema.
+  - **Para T-3.x y T-6.x:** el texto genérico a los contactos de un tenant `degraded` y la alerta 🔴 son del runtime y del bot de avisos.
+  - **Tests:** unitarios del registro, integración de los dos comandos (idempotencia, cambios, tenants rotos) y `tests/test_tenants.py`, la puerta de CI sobre `tenants/*` (hoy vacío).
+  - **Diseño:** §5.2, §5.4 y §16.1 (`--channel`) ampliados.
 
 ### T-2.5 · Cola Procrastinate 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-2.1 · **Diseño:** §7.5, §4.2
