@@ -1,0 +1,33 @@
+{
+  "update_id": 810000005,
+  "message": {
+    "message_id": 45,
+    "from": {
+      "id": 100000001,
+      "is_bot": false,
+      "first_name": "Lucía",
+      "last_name": "Pérez",
+      "username": "lucia_test",
+      "language_code": "es"
+    },
+    "chat": {
+      "id": 100000001,
+      "first_name": "Lucía",
+      "last_name": "Pérez",
+      "username": "lucia_test",
+      "type": "private"
+    },
+    "date": 1791194440,
+    "sticker": {
+      "width": 512,
+      "height": 512,
+      "emoji": "👍",
+      "is_animated": false,
+      "is_video": false,
+      "type": "regular",
+      "file_id": "CAACAgIAAxkBAAIBXGZ",
+      "file_unique_id": "AgADXGZ",
+      "file_size": 24000
+    }
+  }
+}

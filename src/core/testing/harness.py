@@ -6,7 +6,7 @@ through JSON, as they would in `outbound_message.payload` and `conversation.stat
 import itertools
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -31,12 +31,17 @@ from core.messages import IncomingMessage
 from core.pack import ContactInfo, Pack, PackContext, PackResult, TenantInfo
 from core.proactive import ProactiveMessage
 from core.replies import Buttons, List, Reply, Text
-from core.serialization import dump_outbound, load_outbound
+from core.serialization import Outbound, dump_outbound, load_outbound
 from core.testing.clock import FixedClock
 
 type ChannelType = Literal["whatsapp", "telegram"]
 
 DEFAULT_NOW = "2026-10-05T10:00:00+02:00"
+
+# Run on every reply and proactive message of every turn; they raise to fail the test.
+# The platform's root conftest.py registers the rendering with both channel adapters here
+# (design.md §17.2): core cannot import them.
+RENDER_CHECKS: list[Callable[[Outbound], None]] = []
 
 
 def sample_tenant(timezone: str = "Europe/Madrid") -> TenantInfo:
@@ -264,6 +269,8 @@ class Conversation:
 
         planned = plan_sends([*effective.notices, *result.replies], strict=True)
         replies = [_through_json(r) for r in planned]
+        for r in replies:
+            _render(r)
         new_state = state if result.state is None else result.state
         self.state = _json_copy(new_state)  # as stored in conversation.state
         self.state_version = self.pack.state_version
@@ -320,6 +327,9 @@ class Conversation:
                         self.contact = replace(self.contact, opt_out=action.opt_out)
                 case SendProactive():
                     self._check_proactive(action)
+                    _render(
+                        ProactiveMessage(action.template, action.params, action.button_payloads)
+                    )
                     if action.to.contact_id == self.contact.id:
                         self._pressable.update(action.button_payloads)
                 case NotifyOwner():
@@ -363,6 +373,11 @@ class _Snapshot:
 @contextmanager
 def _no_lock() -> Iterator[None]:
     yield
+
+
+def _render(out: Outbound) -> None:
+    for check in RENDER_CHECKS:
+        check(out)
 
 
 def _aware(at: str | datetime) -> datetime:

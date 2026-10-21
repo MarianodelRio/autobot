@@ -1,0 +1,23 @@
+{
+  "update_id": 810000001,
+  "message": {
+    "message_id": 41,
+    "from": {
+      "id": 100000001,
+      "is_bot": false,
+      "first_name": "Lucía",
+      "last_name": "Pérez",
+      "username": "lucia_test",
+      "language_code": "es"
+    },
+    "chat": {
+      "id": 100000001,
+      "first_name": "Lucía",
+      "last_name": "Pérez",
+      "username": "lucia_test",
+      "type": "private"
+    },
+    "date": 1791194400,
+    "text": "Hola, ¿a qué hora sale el bus?"
+  }
+}

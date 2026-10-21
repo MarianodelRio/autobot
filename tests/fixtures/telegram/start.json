@@ -1,0 +1,30 @@
+{
+  "update_id": 810000002,
+  "message": {
+    "message_id": 42,
+    "from": {
+      "id": 100000001,
+      "is_bot": false,
+      "first_name": "Lucía",
+      "last_name": "Pérez",
+      "username": "lucia_test",
+      "language_code": "es"
+    },
+    "chat": {
+      "id": 100000001,
+      "first_name": "Lucía",
+      "last_name": "Pérez",
+      "username": "lucia_test",
+      "type": "private"
+    },
+    "date": 1791194410,
+    "text": "/start",
+    "entities": [
+      {
+        "offset": 0,
+        "length": 6,
+        "type": "bot_command"
+      }
+    ]
+  }
+}

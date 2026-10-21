@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 1 | in_progress |
+| F3 | Canales y runtime | 10 | 2 | in_progress |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **15** | |
+| **Total** | | **52** | **16** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -449,13 +449,22 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests:** `tests/contract/test_whatsapp.py` (firma, `GET`, cada tipo de mensaje y estado, descartes, ida y vuelta del `payload` guardado, `render` y cada fila de la tabla de resultados, también errores de red).
 
 ### T-3.2 · Adaptador de Telegram 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-3.1 · **Diseño:** §6.4
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-3.1 · **Diseño:** §6.4
 - **Hacer:**
   - `TelegramAdapter`: `verify` (secret token), `parse` (solo chats privados, `callback_query`), `acknowledge` (`answerCallbackQuery`), `render` (listas como botones con descripciones en el texto, `*negrita*` a HTML con escape) y `send`.
   - Conectar los dos adaptadores al arnés (renderizado de cada respuesta de los escenarios).
 - **Acepta:** la tabla de resultados de §6.4 se cumple; los grupos se ignoran; el texto se escapa correctamente.
 - **Tests:** contrato con fixtures grabados en `tests/fixtures/telegram/` (mensaje, `/start`, `callback_query`, grupo, sticker, 403, 429 con `retry_after`).
-- **Notas:** —
+- **Notas:**
+  - **`TelegramAdapter`** (`flowpilot/channels/telegram/adapter.py`): `verify` (`secret_token` en bytes y en tiempo constante), `parse`, `acknowledge`, `render`, `send` y `classify` con la tabla de §6.4, más `overflow(out)`. Mismo patrón que WhatsApp: cliente `httpx` inyectable; un fallo al conectar es `RetryLater` y `Retry-After` se limita a 3.600 s.
+  - **Canal del bot de pruebas:** el parámetro de canal es `TelegramChannel | None`; `None` es el bot de pruebas, que no tiene `tenant.yaml` (T-3.8 lo usará así).
+  - **Para T-3.5:** un `callback_query` no trae fecha, así que su `received_at` es la hora del `parse` y no se repite al volver a parsear el `payload`. El runtime debe usar `inbound_event.received_at`.
+  - **Render:** cabecera en negrita y pie descartado también en `Buttons`; descripciones de lista como `título: descripción`, o como texto del botón si empiezan por el título (buscaBus); sin vista previa de enlaces; `*negrita*` → `<b>` tras escapar el HTML. La longitud se cuenta en UTF-16 (nota de T-1.2): `render` trunca sin partir caracteres y registra.
+  - **Arnés (§17.2):** `core/testing` no puede importar `flowpilot`, así que tiene `RENDER_CHECKS`, que se ejecuta sobre cada respuesta y cada aviso proactivo. El `conftest.py` raíz registra `flowpilot/channels/testing.check_rendering`, que renderiza con los dos adaptadores, comprueba que el resultado es JSON y falla si no cabe en Telegram. Así lo aplican todos los escenarios, también los de `src/packs/*/tests`.
+  - **Logs:** nunca la URL (lleva el token), el texto de las excepciones de `httpx` ni la `description` de Telegram (lo comprueba un test).
+  - **Fixtures:** siguen los objetos documentados de la Bot API, con datos ficticios (lo explica su `README.md`). Cuando exista el bot de desarrollo (M-3.1) se pueden sustituir por grabaciones.
+  - **De la revisión:** los parámetros de una plantilla se sustituyen de una sola pasada (un `{2}` dentro de un parámetro ya no se sustituía otra vez), `*negrita*` sigue la regla de WhatsApp, la cabecera deja sitio al salto de línea y `check_rendering` usa un cliente HTTP que falla si se le llama.
+  - **Diseño:** §6.4 y §17.2 actualizados.
 
 ### T-3.3 · Webhooks y `/health` ⚠️ 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.2, T-2.4, T-2.5 · **Diseño:** §7.1, §13, §15.3

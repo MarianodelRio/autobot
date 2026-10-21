@@ -1,0 +1,21 @@
+{
+  "update_id": 810000004,
+  "message": {
+    "message_id": 44,
+    "from": {
+      "id": 100000001,
+      "is_bot": false,
+      "first_name": "Lucía",
+      "last_name": "Pérez",
+      "username": "lucia_test",
+      "language_code": "es"
+    },
+    "chat": {
+      "id": -1001234567890,
+      "title": "Grupo de prueba",
+      "type": "supergroup"
+    },
+    "date": 1791194430,
+    "text": "hola bot"
+  }
+}

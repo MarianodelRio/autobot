@@ -27,7 +27,8 @@ class InboundItem:
     phone: str | None  # E.164 with "+", only when the provider gives it
     message: IncomingMessage
     # The item on its own, in the provider's format, as stored in inbound_event.payload:
-    # `parse(payload)` gives back exactly this item (see `parse_stored`).
+    # `parse(payload)` gives back this item (see `parse_stored`); only a Telegram
+    # callback_query, which has no date, gets the time of the new parse as received_at.
     payload: dict[str, Any]
 
 

@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "result": {
+    "message_id": 46,
+    "from": {
+      "id": 7000000001,
+      "is_bot": true,
+      "first_name": "FlowPilot Dev",
+      "username": "flowpilot_dev_bot"
+    },
+    "chat": {
+      "id": 100000001,
+      "first_name": "Lucía",
+      "last_name": "Pérez",
+      "username": "lucia_test",
+      "type": "private"
+    },
+    "date": 1791194450,
+    "text": "Hola"
+  }
+}

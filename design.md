@@ -432,24 +432,30 @@ Se apoya en `tools/telegram_pruebas.py` de buscaBus (mapeo de listas y botones).
 - **Entrada en el servidor:** webhook registrado con `manage.py telegram_set_webhook <slug|test>` (`setWebhook` con `secret_token` y `allowed_updates = [message, callback_query]`). URL: `https://api.<dominio>/webhooks/telegram/<public_id>` para un bot de negocio y `https://api.<dominio>/webhooks/telegram-test` para el bot de pruebas.
 - **Entrada en local:** `manage.py telegram_poll [<slug>]` hace *long polling* con `getUpdates` (por defecto, del bot de pruebas de desarrollo) y pasa cada update **por el mismo camino que el webhook**. No hace falta túnel ni dominio. Un mismo bot nunca se usa a la vez en local y en el servidor: Telegram no admite webhook y `getUpdates` simultáneos.
 - **`verify`:** cabecera `X-Telegram-Bot-Api-Secret-Token` comparada en tiempo constante con el `webhook_secret` del bot.
-- **`parse`:** solo chats privados (grupos y canales se ignoran). `message.text` → `text`; `callback_query.data` → `button` con ese `payload`; resto de tipos → `unsupported`. `external_id` = `from.id`; `display_name` = `first_name`; sin teléfono. `provider_event_id` = `update_id` (único por bot). Sin estados de entrega. `/start` llega como texto y el runtime lo trata como `menu` (§7.3).
-- **`acknowledge`:** `answerCallbackQuery` del `callback_query`, para que el cliente deje de mostrar el botón "cargando". Lo llama el worker al empezar el evento; si falla, se registra y se sigue.
+- **`parse`:** solo chats privados con personas (grupos, canales y mensajes de otros bots se ignoran, igual que otros tipos de update como `edited_message`). `message.text` → `text` (recortado y truncado a 4.096; vacío, se descarta); `callback_query.data` → `button` con ese `payload` (vacío o de más de 64 bytes, se descarta); resto de tipos de mensaje → `unsupported`. `external_id` = `from.id`; `display_name` = `first_name`; sin teléfono. `provider_event_id` = `update_id` (único por bot); el `payload` guardado es el update entero. Sin estados de entrega. `/start` llega como texto y el runtime lo trata como `menu` (§7.3). Un `callback_query` no trae fecha: su `received_at` es la hora del `parse`, y el runtime usa la de `inbound_event.received_at`.
+- **Canal:** el de `tenant.yaml` (`TelegramChannel`) para el bot de un negocio y `None` para el bot de pruebas, que no tiene `tenant.yaml`. El adaptador solo necesita los secretos (`bot_token`, `webhook_secret`).
+- **`acknowledge`:** `answerCallbackQuery` del `callback_query`, para que el cliente deje de mostrar el botón "cargando". Lo llama el worker al empezar el evento; si falla, se registra (solo el nombre del error o el código) y se sigue.
 - **`render`:**
   - `Text` → `sendMessage`.
   - `Buttons` → `sendMessage` con `InlineKeyboardMarkup`, un botón por fila.
-  - `List` → `sendMessage` con un botón inline por fila. La cabecera va como primera línea en negrita y el pie se descarta. Las descripciones de las filas se añaden al texto como `título: descripción`, porque los botones de Telegram no tienen descripción.
-  - `ProactiveMessage` → `sendMessage` con `TemplateSpec.text` y sus parámetros, más los botones con sus `payload`. Telegram no tiene ventana de 24 h ni plantillas.
-  - `*negrita*` se convierte a `<b>…</b>` con `parse_mode=HTML`, escapando el resto del texto.
+  - `List` → `sendMessage` con un botón inline por fila. Las descripciones de las filas se añaden al texto como `título: descripción`, porque los botones de Telegram no tienen descripción; si la descripción empieza por el título, va como texto del botón (como en buscaBus).
+  - En `Buttons` y `List`, la cabecera va como primera línea en negrita y el pie se descarta.
+  - `ProactiveMessage` → `sendMessage` con `TemplateSpec.text` y sus parámetros (sustituidos de una sola pasada: un parámetro que contenga `{2}` no se vuelve a sustituir), más los botones con sus `payload`. Telegram no tiene ventana de 24 h ni plantillas.
+  - `*negrita*` se convierte a `<b>…</b>` con `parse_mode=HTML`, escapando el resto del texto. Sigue la regla de WhatsApp (asteriscos en el borde de una palabra y sin espacio por dentro), así que `2*3*4` o `a * b * c` se quedan igual en los dos canales. Sin vista previa de enlaces (`link_preview_options`), como en WhatsApp.
+  - **Longitud:** Telegram cuenta el texto en unidades UTF-16 (un emoji fuera del plano básico cuenta 2), y el texto lleva además la cabecera y las descripciones de la lista. `overflow(out)` dice si se pasa de 4.096; `render` lo trunca sin partir caracteres y lo registra, y en los escenarios hace fallar el test (§17.2).
 - **`send`:** `POST https://api.telegram.org/bot<token>/sendMessage`, timeout 10 s.
 
 | Respuesta de Telegram | `SendOutcome` |
 |---|---|
-| `ok: true` | `Sent(message_id)` |
+| `ok: true` con `result.message_id` | `Sent(message_id)` (sin él: `Ambiguous`) |
 | 401 | `Rejected(kind=auth)` |
 | 403 (el usuario bloqueó el bot) | `Rejected(kind=recipient)` |
 | Otros 4xx salvo 429 | `Rejected(kind=other)` |
-| 429 (con `retry_after`) o 5xx | `RetryLater` |
-| Timeout o error de red | `Ambiguous` |
+| 429 (con `parameters.retry_after`, como mucho 3.600 s) o 5xx | `RetryLater` |
+| No se pudo conectar (`ConnectError`, `ConnectTimeout`, `PoolTimeout`) | `RetryLater` |
+| Timeout o error de red tras conectar | `Ambiguous` |
+
+- La URL de la API lleva el token: nunca se registra la URL, el texto de una excepción de `httpx` ni la `description` de Telegram, solo el nombre del error, el estado y `error_code`.
 
 #### 6.5 Bot de pruebas
 
@@ -1318,7 +1324,7 @@ def test_reserva_completa(salon):                     # tenant de ejemplo + Fake
     assert salon.calendar.created == [("2026-10-09T17:00", "corte", "Lucía")]
 ```
 
-Cada respuesta se comprueba contra los límites comunes (§6.1) y se renderiza con los dos adaptadores, así que un pack que se sale de los límites falla en los tests. El arnés vive en `core/testing/` (`Conversation`, `Turn.expect`, `FixedClock`, `sample_tenant`). Además de `send` y `press`, tiene `unsupported`, `replay` (deshace lo que guardó el último turno y lo reprocesa con el mismo evento, como un reintento entre tx1 y tx2) y `run_periodic`. Respuestas y estado pasan por JSON, como en la BD, y el reloj fijo da la hora en la zona del tenant. Un `TransientError` se reintenta `attempts` veces (por defecto 1) antes del texto de recuperación, y cualquier otra excepción del pack hace fallar el test.
+Cada respuesta se comprueba contra los límites comunes (§6.1) y se renderiza con los dos adaptadores, así que un pack que se sale de los límites falla en los tests. Como `core` no puede importar los adaptadores, el arnés ejecuta las comprobaciones de `core.testing.harness.RENDER_CHECKS` sobre cada respuesta y cada aviso proactivo, y el `conftest.py` raíz registra ahí `flowpilot/channels/testing.check_rendering`: renderiza con los dos adaptadores (con un cliente HTTP que falla si se le llama) y falla si el mensaje no cabe en Telegram (longitud en UTF-16). El arnés vive en `core/testing/` (`Conversation`, `Turn.expect`, `FixedClock`, `sample_tenant`). Además de `send` y `press`, tiene `unsupported`, `replay` (deshace lo que guardó el último turno y lo reprocesa con el mismo evento, como un reintento entre tx1 y tx2) y `run_periodic`. Respuestas y estado pasan por JSON, como en la BD, y el reloj fijo da la hora en la zona del tenant. Un `TransientError` se reintenta `attempts` veces (por defecto 1) antes del texto de recuperación, y cualquier otra excepción del pack hace fallar el test.
 
 #### 17.3 Puertas de CI (si fallan, no se publica imagen)
 

@@ -1,0 +1,44 @@
+{
+  "update_id": 810000003,
+  "callback_query": {
+    "id": "4382bfdwdsb323b2d9",
+    "from": {
+      "id": 100000001,
+      "is_bot": false,
+      "first_name": "Lucía",
+      "last_name": "Pérez",
+      "username": "lucia_test",
+      "language_code": "es"
+    },
+    "message": {
+      "message_id": 43,
+      "from": {
+        "id": 7000000001,
+        "is_bot": true,
+        "first_name": "FlowPilot Dev",
+        "username": "flowpilot_dev_bot"
+      },
+      "chat": {
+        "id": 100000001,
+        "first_name": "Lucía",
+        "last_name": "Pérez",
+        "username": "lucia_test",
+        "type": "private"
+      },
+      "date": 1791194420,
+      "text": "¿Qué quieres hacer?",
+      "reply_markup": {
+        "inline_keyboard": [
+          [
+            {
+              "text": "Saludar",
+              "callback_data": "greet"
+            }
+          ]
+        ]
+      }
+    },
+    "chat_instance": "-1234567890123456789",
+    "data": "greet"
+  }
+}

@@ -43,3 +43,15 @@ def _flush_as_owner() -> Iterator[None]:
     flush.Command.handle = handle  # type: ignore[method-assign]
     yield
     flush.Command.handle = original  # type: ignore[method-assign]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _render_scenarios_with_both_adapters() -> Iterator[None]:
+    """Every conversation scenario renders its messages with the WhatsApp and Telegram
+    adapters (design.md §17.2); core's harness cannot import them itself."""
+    from core.testing.harness import RENDER_CHECKS
+    from flowpilot.channels.testing import check_rendering
+
+    RENDER_CHECKS.append(check_rendering)
+    yield
+    RENDER_CHECKS.remove(check_rendering)
