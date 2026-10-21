@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Multi-stage image (design.md §14.6): dependencies with uv, then a minimal non-root runtime.
-FROM ghcr.io/astral-sh/uv:0.13.1 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.4 AS uv
 
 FROM python:3.14-slim AS build
 COPY --from=uv /uv /usr/local/bin/uv
