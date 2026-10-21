@@ -145,7 +145,7 @@ Una sola imagen; cambia el comando.
 
 | Servicio | Comando | Hace | No hace |
 |---|---|---|---|
-| `web` | `gunicorn config.wsgi --workers 2 --threads 4` | Webhooks de WhatsApp y Telegram, `/health`, Django Admin (solo accesible por túnel SSH) | Llamar a APIs externas ni ejecutar packs |
+| `web` | `gunicorn config.wsgi --workers 2 --threads 4 --no-control-socket` | Webhooks de WhatsApp y Telegram, `/health`, Django Admin (solo accesible por túnel SSH) | Llamar a APIs externas ni ejecutar packs |
 | `worker` | `manage.py procrastinate worker --concurrency 4` | Procesar eventos, ejecutar packs, enviar mensajes, periódicas, barridos, comprobaciones de operación | Atender HTTP |
 | `db` | `postgres:18` | Datos y cola | Exponerse fuera de la red de Compose |
 | `caddy` | `caddy:2` | TLS automático y proxy a `web` solo para las rutas públicas | — |
@@ -1091,7 +1091,7 @@ x-app: &app
 
 services:
   caddy:  image: caddy:2 · ports 80, 443 · volúmenes caddy_data, caddy_config · ./Caddyfile
-  web:    <<: *app · command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4
+  web:    <<: *app · command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4 --no-control-socket
           ports: ["127.0.0.1:8000:8000"]    (solo para el túnel del Admin)
           healthcheck: GET /health
   worker: <<: *app · command: manage.py procrastinate worker --concurrency 4 · stop_grace_period: 60s

@@ -82,7 +82,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 
 | Fase | Contenido | Tareas 🤖 | Hechas | Estado |
 |---|---|---:|---:|---|
-| F0 | Base del proyecto | 4 | 1 | in_progress |
+| F0 | Base del proyecto | 4 | 2 | in_progress |
 | F1 | Núcleo puro (`core`) | 5 | 0 | pending |
 | F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
 | F3 | Canales y runtime | 10 | 0 | pending |
@@ -91,7 +91,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **1** | |
+| **Total** | | **52** | **2** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -142,13 +142,13 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** `uv` con `package = false` y `src/` en `sys.path` (`manage.py`, `pythonpath` de pytest, `mypy_path`). Dependencias de §18 más `dj-database-url` (leer `DB_APP_URL`); `whitenoise`, `pyyaml` y `sentry-sdk` se añaden en las tareas que los usan. `ENVIRONMENT=local` (por defecto) da valores de desarrollo; `prod` exige cada variable. `mypy --strict` en todo el repo. Ruff excluye `*.md` (la 0.17 formatea los bloques de código de la documentación). `make up/down/shell` usan Compose, que llega en T-0.2.
 
 ### T-0.2 · Contenedores locales 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-0.1 · **Diseño:** §4.2, §14.2, §14.6
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-0.1 · **Diseño:** §4.2, §14.2, §14.6
 - **Hacer:**
   - `Dockerfile` multi-etapa (`uv` → imagen mínima, usuario no root).
   - `compose.yaml` local con `db` (postgres:18), `web` (`runserver`) y `worker` (por ahora un comando de espera), con el código montado.
 - **Acepta:** `make up` levanta los tres servicios; `docker compose exec web manage.py check` pasa; la imagen se construye sin root.
 - **Tests:** —
-- **Notas:** —
+- **Notas:** Imagen `python:3.14-slim` con el venv de `uv` en `/opt/venv` y usuario `app` (uid 10001); el código queda de root y de solo lectura para `app`. Verificado: `make up` levanta `db`, `web` y `worker`, `manage.py check` pasa en `web`, `id` da `app` y la imagen arranca gunicorn con `--read-only` sin errores gracias a `--no-control-socket` (gunicorn 26 intenta crear su socket de control en `$HOME`; añadido también en §4.2 y §14.2 de `design.md`). `db` no publica puerto (el 5432 del host suele estar ocupado y el diseño no lo expone). Hasta T-2.1, `compose.yaml` conecta con el superusuario local de `db`, porque `runserver` comprueba las migraciones y `fp_app` aún no existe; T-2.1 lo cambia a `fp_app`. El worker usa `sleep infinity` con `init: true` hasta T-2.5. La contraseña de `db` en local es fija (`postgres`), sin interpolar desde `.env`, para que copiar `.env.example` no rompa un volumen ya creado.
 
 ### T-0.3 · Integración continua 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-0.2, M-0.1 · **Diseño:** §17.3, §14.6
@@ -258,7 +258,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - Permisos de `fp_app` sobre las tablas de la aplicación y de Procrastinate.
 - **Acepta:** las migraciones se ejecutan como `fp_owner`; `fp_app` no puede hacer DDL.
 - **Tests:** test de que `fp_app` no tiene `BYPASSRLS` ni puede crear tablas.
-- **Notas:** —
+- **Notas:** quitar de `compose.yaml` el `DB_APP_URL` con el superusuario local puesto en T-0.2 y usar `fp_app` (y `fp_owner` para migraciones).
 
 ### T-2.2 · Modelos y políticas RLS ⚠️ 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-2.1 · **Diseño:** §12.1, §12.2

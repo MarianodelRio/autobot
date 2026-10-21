@@ -21,3 +21,12 @@ Requisitos: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta)
 uv sync          # dependencias, incluidas las de desarrollo
 make check       # ruff, mypy y pytest (lo mismo que CI)
 ```
+
+Con Docker Compose (`db`, `web` y `worker`, con el código montado):
+
+```bash
+cp .env.example .env   # opcional en local: sin .env se usan los valores de desarrollo
+make up                # construye la imagen y levanta los servicios; web en http://127.0.0.1:8000
+make shell             # shell de Django dentro de web
+make down
+```

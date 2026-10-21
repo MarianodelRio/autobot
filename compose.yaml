@@ -1,0 +1,47 @@
+# Local development (design.md §14.2): same image as production, code mounted, no Caddy.
+x-app: &app
+  build: .
+  image: flowpilot:local
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    # Local superuser until T-2.1 creates the fp_app and fp_owner roles.
+    DB_APP_URL: postgres://postgres:postgres@db:5432/flowpilot
+  volumes:
+    - ./src:/app/src
+    - ./tenants:/app/tenants
+    - ./manage.py:/app/manage.py
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  web:
+    <<: *app
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  worker:
+    <<: *app
+    # Placeholder until the Procrastinate worker arrives (T-2.5).
+    command: sleep infinity
+    init: true
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: flowpilot
+      # Fixed local-only password; production takes it from .env (T-7.1).
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d flowpilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
