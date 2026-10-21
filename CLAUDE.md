@@ -2,7 +2,7 @@
 
 Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de Telegram compartido para probar cualquier negocio. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). El diseño completo está en [`design.md`](design.md); este fichero resume las reglas para trabajar en el repo.
 
-**Estado:** en fase de diseño. Todavía no existe implementación; `design.md` es la especificación.
+**Estado:** diseño cerrado; implementación sin empezar. `design.md` es la especificación e `IMPLEMENTATION.md` el plan.
 
 ## Idioma
 
@@ -11,7 +11,8 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 ## Forma de trabajo
 
-- Un solo agente; sin framework de agentes ni tareas.
+- El trabajo sigue [`IMPLEMENTATION.md`](IMPLEMENTATION.md): un agente implementa cada tarea y otro, en una sesión nueva, la revisa (apartados 1.3 y 1.5 de ese fichero). Sin framework de orquestación.
+- El estado de las tareas y las notas para retomar el trabajo viven solo en `IMPLEMENTATION.md`.
 - Se trabaja directamente sobre `main`; sin ramas ni PR salvo que la persona lo pida. CI debe quedar en verde.
 - Commit o push solo cuando la persona lo pida.
 - Si un cambio contradice `design.md`, se actualiza `design.md` en el mismo commit (o se pregunta antes).

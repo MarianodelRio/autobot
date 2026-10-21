@@ -264,6 +264,7 @@ config:                         # validado con el esquema del pack (SalonConfig,
   business_name: DM Barber Shop
   contact_phone: "+34 682 21 44 69"
   calendar_id: c_abc123@group.calendar.google.com
+  test_calendar_id: c_test456@group.calendar.google.com   # calendario del bot de pruebas (§6.5)
   services:
     corte: {name: Corte de pelo, price_eur: 10, duration_min: 30, client_presence_min: 30}
   # …
@@ -447,6 +448,17 @@ Un único bot de Telegram de la plataforma (`TEST_BOT_TOKEN`) para probar cualqu
 - Un tenant `degraded` u `offboarded` no aparece en la lista; si estaba elegido, se responde que no está disponible y se vuelve a mostrar la lista.
 - `test_session` guarda solo `(telegram_user_id, tenant_id, selected_at)`; `test_bot_event` guarda el update entrante y se borra a los 7 días.
 
+**Aislamiento de servicios reales.** Una conversación del canal `test` nunca produce efectos en los sistemas reales del negocio. Lo garantiza el runtime, no el pack:
+
+| Efecto | En el canal `test` |
+|---|---|
+| Google Calendar | `ctx.calendar` se liga al `test_calendar_id` del negocio: un calendario de pruebas creado por el operador y compartido con la cuenta de servicio. Nunca al `calendar_id` real. Un negocio con `needs_calendar` sin `test_calendar_id` no aparece en el selector |
+| Respuestas y avisos proactivos | Solo por el bot de pruebas, a contactos del canal `test`. Nunca por WhatsApp ni por el bot del negocio |
+| Confirmaciones de citas manuales | No existen en el canal `test` (solo se buscan en el calendario real, §9.6) |
+| Avisos al dueño (`NotifyOwner`) | Se envían al chat de ops con el prefijo "🧪", nunca al dueño |
+
+El barrido de Calendar (§9.6) recorre los dos calendarios por separado: el real con contactos `main` y el de pruebas con contactos `test`.
+
 #### 6.6 Contactos y canales
 
 - Un contacto se identifica por `(tenant, canal, external_id)`, con canal `main` o `test`. La misma persona en el canal `main` y en el bot de pruebas son dos contactos distintos, con conversaciones distintas.
@@ -621,7 +633,7 @@ pack = Pack(
     conversation_timeout_min=30,
     handle_message=conversation.handle,             # (ctx, IncomingMessage) -> PackResult
     periodic=[Periodic("calendar_sweep", every_min=15, handler=sweep.run, max_delay_min=60)],
-    needs_calendar=True,                             # el runtime le da ctx.calendar
+    needs_calendar=True,                             # el runtime le da ctx.calendar (config con calendar_id y test_calendar_id)
     load_data=None,                                  # (tenant, config, path) -> objeto en memoria; bus lo usa
     health=health.check,                             # (ctx) -> list[HealthIssue]
     templates=[TEMPLATE_CONFIRMATION, TEMPLATE_REMINDER],   # TemplateSpec (§6.2)
@@ -644,8 +656,8 @@ class PackContext:
     contact: ContactInfo | None         # id, external_id, phone (puede ser None), display_name, opt_out
     state: Mapping[str, Any]            # estado actual (solo lectura)
     clock: Clock                        # now() en la zona del tenant; inyectable en tests
-    calendar: CalendarPort | None       # solo si needs_calendar
-    lock: Callable[[str], ContextManager]   # advisory lock de PostgreSQL por clave (§9.5)
+    calendar: CalendarPort | None       # solo si needs_calendar; ya ligado al calendario del canal (§6.5)
+    lock: Callable[[str], ContextManager]   # advisory lock de PostgreSQL; la clave se prefija con tenant y calendario (§9.5)
     idem: IdemKeys                      # .event(name) ligada al evento actual; .stable(name) para barridos
     log: Logger                         # con tenant y event_id; enmascara teléfonos
 
@@ -662,7 +674,7 @@ NotifyOwner(kind: str, text: str, idem_key: str)
 UpdateContact(display_name: str | None = None, opt_out: bool | None = None)
 ```
 
-- Un pack **nunca** toca la BD, los canales ni las APIs directamente: todo lo externo le llega por `ctx`.
+- Un pack **nunca** toca la BD, los canales ni las APIs directamente: todo lo externo le llega por `ctx`. Tampoco elige calendario ni sabe si la conversación es de pruebas.
 - Los handlers periódicos reciben `ctx` con `contact=None` y `state={}`, y solo devuelven `actions`.
 - `SendProactive` lo resuelve el runtime: busca contacto y canal (§6.5), descarta contactos con `opt_out` o `unreachable`, y crea un `outbound_message` de tipo `proactive` con su `idem_key`.
 
@@ -674,7 +686,7 @@ UpdateContact(display_name: str | None = None, opt_out: bool | None = None)
 | `core/text.py` | `normalize` (minúsculas, sin tildes, sin puntuación, espacios colapsados), `strip_html` | `parser.py` de Peluquería y `formato.py` de buscaBus |
 | `core/dates.py` | `format_date_es`, `weekday_es`, `next_days`; zonas con `zoneinfo` | `slots.py` de Peluquería y `fechas.py` de buscaBus |
 | `core/limits.py` | Límites comunes y `plan_sends` | — |
-| `core/testing/` | Arnés de conversación (§17.2), reloj fijo, `FakeCalendar` | `conftest.py` de los dos bots |
+| `core/testing/` | Arnés de conversación (§17.2) y reloj fijo | `conftest.py` de los dos bots |
 
 A `core` solo entra lo que usan los dos packs.
 
@@ -725,7 +737,8 @@ class SpecialEvent(BaseModel):
 class SalonConfig(BaseModel):
     business_name: str
     contact_phone: str
-    calendar_id: str
+    calendar_id: str                        # calendario real del negocio (canal main)
+    test_calendar_id: str | None = None     # calendario del bot de pruebas (canal test, §6.5)
     services: dict[str, Service]            # 1–9
     opening_hours: WeeklyHours              # {martes: ["10:00-14:00", "16:00-21:00"], …}; día ausente = cerrado
     slot_step_min: int = 30
@@ -741,7 +754,7 @@ class SalonConfig(BaseModel):
     texts: SalonTexts = SalonTexts()        # textos sobrescribibles, con los de messages.py por defecto
 ```
 
-Validaciones: franjas con formato `HH:MM` y sin solapes; `duration_min ≤ client_presence_min`; claves de servicio `^[a-z0-9_]+$` (van en `id` de botones); fechas del evento especial válidas; `manual_confirmations_since` obligatorio si `manual_confirmations_enabled`. La ventana de búsqueda de citas del contacto se deriva: `booking_window_days + 1`.
+Validaciones: franjas con formato `HH:MM` y sin solapes; `duration_min ≤ client_presence_min`; claves de servicio `^[a-z0-9_]+$` (van en `id` de botones); fechas del evento especial válidas; `manual_confirmations_since` obligatorio si `manual_confirmations_enabled`; `test_calendar_id` distinto de `calendar_id`. La ventana de búsqueda de citas del contacto se deriva: `booking_window_days + 1`.
 
 #### 9.3 Google Calendar
 
@@ -749,16 +762,18 @@ Validaciones: franjas con formato `HH:MM` y sin solapes; `duration_min ≤ clien
 
 ```python
 class CalendarPort(Protocol):
-    def list_events(self, calendar_id, start: datetime, end: datetime) -> list[CalEvent]
-    def get_event(self, calendar_id, gcal_id) -> CalEvent | None
-    def insert_event(self, calendar_id, event: NewEvent, gcal_id: str) -> CalEvent     # 409 → get_event
-    def patch_description(self, calendar_id, gcal_id, fields: dict[str, str]) -> CalEvent
-    def cancel_event(self, calendar_id, gcal_id) -> None                               # ya cancelado = ok
-    def list_contact_events(self, calendar_id, contact_id, phone, start, end) -> list[CalEvent]
-    def check_access(self, calendar_id) -> None
+    # La instancia ya está ligada a un calendario: el pack nunca pasa calendar_id
+    def list_events(self, start: datetime, end: datetime) -> list[CalEvent]
+    def get_event(self, gcal_id) -> CalEvent | None
+    def insert_event(self, event: NewEvent, gcal_id: str) -> CalEvent     # 409 → get_event
+    def patch_description(self, gcal_id, fields: dict[str, str]) -> CalEvent
+    def cancel_event(self, gcal_id) -> None                               # ya cancelado = ok
+    def list_contact_events(self, contact_id, phone, start, end) -> list[CalEvent]
+    def check_access(self) -> None
 # CalEvent: gcal_id, summary, description (texto sin HTML), start, end, all_day, created, status, private
 ```
 
+- **`FakeCalendar`** (`packs/salon/testing.py`): implementación en memoria de `CalendarPort` para escenarios y tests, con huecos ocupados, errores programables y registro de lo creado o cancelado.
 - **Errores:** `CalendarTransientError` (red, timeout, 5xx, 429; el cliente hace 2 reintentos rápidos antes de lanzarlo) y `CalendarPermanentError` (403/404). Timeout de 10 s por llamada.
 - **Lecturas por ventana:** `singleEvents=true`, `timeMin`/`timeMax`, paginación con tope de 10 páginas. Sin caché entre peticiones.
 - **Siempre se comprueba el resultado de una escritura.**
@@ -799,7 +814,7 @@ id:           determinista (§9.5)
 
 El candado por conversación no impide que **dos contactos** cojan el mismo hueco a la vez, y Google Calendar admite solapes. Por eso:
 
-1. `with ctx.lock(f"cal:{calendar_id}:{day}")`: advisory lock de sesión de PostgreSQL (`pg_try_advisory_lock` en bucle durante 10 s como máximo, en una conexión sin transacción abierta, liberado en `finally`). Si no se consigue en 10 s → `TransientError`.
+1. `with ctx.lock(f"cal:{day}")` (el runtime antepone tenant y calendario): advisory lock de sesión de PostgreSQL (`pg_try_advisory_lock` en bucle durante 10 s como máximo, en una conexión sin transacción abierta, liberado en `finally`). Si no se consigue en 10 s → `TransientError`.
 2. `get_event(id determinista)`: si existe y no está cancelado → éxito (es un reintento de una reserva ya hecha).
 3. Lee los eventos del día y comprueba que `[start, start + duration_min)` sigue libre; si no, `SlotTaken`.
 4. `insert_event` con el id determinista. Un 409 → `get_event` y se devuelve esa cita.
@@ -810,7 +825,7 @@ Una cita que el dueño cree a mano en ese mismo segundo puede solaparse: se acep
 
 #### 9.6 Barrido de Calendar (`calendar_sweep`, cada 15 min por tenant)
 
-Una lectura de `[now, now + booking_window_days + 1]` con dos pasadas:
+Se ejecuta una vez por calendario: el real (contactos `main`) y, si existe, el de pruebas (contactos `test`, sin confirmaciones de citas manuales). Cada ejecución hace una lectura de `[now, now + booking_window_days + 1]` con dos pasadas:
 
 | Pasada | Condición | Acción |
 |---|---|---|
@@ -943,7 +958,7 @@ Escenarios de conversación: consulta completa · Ver la vuelta · Otro día · 
 
 Un **bot de avisos de la plataforma** (`NOTIFY_BOT_TOKEN`), distinto de los bots de canal y **solo de salida**: no tiene webhook ni recibe mensajes en producción.
 
-- **`NotifyOwner(kind, text, idem_key)`:** si el tenant tiene `owner.telegram_chat_id` y `kind` está en `owner.notify`, se guarda en `notification` (única por `idem_key`) y se entrega con `send_notification` (cola `outbound`, candado `owner:<tenant>`, reintentos ante 429 y 5xx). Si no, solo se registra.
+- **`NotifyOwner(kind, text, idem_key)`:** si el tenant tiene `owner.telegram_chat_id` y `kind` está en `owner.notify`, se guarda en `notification` (única por `idem_key`) y se entrega con `send_notification` (cola `outbound`, candado `owner:<tenant>`, reintentos ante 429 y 5xx). Si no, solo se registra. Los avisos que nacen en el canal `test` van al chat de ops con el prefijo "🧪" (§6.5).
 - **Vinculación:** `manage.py notify_link <slug>` genera un código; el dueño envía `/start <código>` al bot de avisos; el comando lee `getUpdates`, muestra su `chat_id` y el operador lo añade al `tenant.yaml`.
 - **Alertas de operación:** las envía `ops_check` (§15.3) con el mismo bot al chat `OPS_TELEGRAM_CHAT_ID`. No pasan por `notification`: se deduplican con un enfriamiento de 30 min por tipo y tenant, guardado en la caché de Django en BD.
 
@@ -1202,7 +1217,7 @@ Una vista "Estado" en el Admin muestra:
 4. **Canal `main`:**
    - WhatsApp: seguir el checklist de §6.3, declarar `channel` y añadir sus secretos a `secrets.yaml`.
    - Telegram: crear el bot con @BotFather a nombre del negocio, declarar `channel` y añadir `bot_token` y `webhook_secret` a `secrets.yaml`.
-5. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de servicio y se pone el `calendar_id` en la config. Si el canal es WhatsApp, crear las plantillas del pack en el WhatsApp Manager.
+5. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de servicio y se pone el `calendar_id` en la config. El operador crea un calendario de pruebas, lo comparte con la cuenta de servicio y pone su id en `test_calendar_id`. Si el canal es WhatsApp, crear las plantillas del pack en el WhatsApp Manager.
 6. **Avisos al dueño** (opcional): `manage.py notify_link <slug>`.
 7. Commit y despliegue. Si el canal `main` es Telegram, `manage.py telegram_set_webhook <slug>`.
 8. `manage.py tenant_health <slug>` en verde.
@@ -1248,7 +1263,7 @@ Una vista "Estado" en el Admin muestra:
 | **Escenarios** | Conversaciones completas de un pack | Nada (`FakeCalendar`, datasets de ejemplo, reloj fijo) | §9.8, §10.5 |
 | **Adaptadores** | `parse`, `render` y clasificación de errores de cada canal contra **payloads reales grabados** | Fixtures JSON | Mensaje con BSUID, botón de plantilla, estado `failed`, `callback_query`, 403 de Telegram, 429 con `retry_after` |
 | **Datos de tenants** | Todos los `tenant.yaml` y datasets validan | Ficheros del repositorio | Un precio mal escrito deja CI en rojo |
-| **Integración** | Webhook → cola → worker → envío, con BD real | PostgreSQL | Aviso duplicado procesado una vez; dos mensajes del mismo contacto en orden; dos reservas del mismo hueco → un `SlotTaken`; reintento de una reserva creada → sin duplicado; barrido dos veces → un aviso; `unknown` no se reenvía; tenant `degraded` no afecta a otro; selector del bot de pruebas (usuario sin permiso, elegir negocio, cambiar con `/negocio`, negocio que deja de estar disponible) |
+| **Integración** | Webhook → cola → worker → envío, con BD real | PostgreSQL | Aviso duplicado procesado una vez; dos mensajes del mismo contacto en orden; dos reservas del mismo hueco → un `SlotTaken`; reintento de una reserva creada → sin duplicado; barrido dos veces → un aviso; `unknown` no se reenvía; tenant `degraded` no afecta a otro; selector del bot de pruebas (usuario sin permiso, elegir negocio, cambiar con `/negocio`, negocio que deja de estar disponible); **aislamiento del canal `test`**: nunca usa `calendar_id`, nunca envía por WhatsApp ni por el bot del negocio, y sus `NotifyOwner` van a ops |
 | **Aislamiento** | RLS en todas las tablas con `tenant_id` | PostgreSQL | §12.2 |
 | **Contrato de Calendar** | Cliente contra respuestas grabadas | Fixtures | 409, paginación, eventos de día completo |
 | **Migraciones** | No faltan y no son peligrosas | PostgreSQL | — |
