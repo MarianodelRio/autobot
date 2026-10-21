@@ -42,11 +42,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "procrastinate.contrib.django",
     "flowpilot",
 ]
 # Development-only: provides `lintmigrations` for CI (design.md §17.3); absent from the image.
 if importlib.util.find_spec("django_migration_linter"):
     INSTALLED_APPS.append("django_migration_linter")
+    # Third-party migrations (Procrastinate) are not ours to fix; every app of ours is linted.
+    MIGRATION_LINTER_OPTIONS = {"exclude_apps": ["procrastinate"]}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -96,6 +99,10 @@ if _owner_url:
     DATABASES["owner"] = _database(_owner_url)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Job queue (design.md §7.5): Procrastinate on the `default` alias (fp_app); jobs are
+# declared in flowpilot/jobs.py.
+PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"
 
 # Tenants (design.md §5): config in git, channel secrets on the server (in local, the
 # repository root, ignored by git).

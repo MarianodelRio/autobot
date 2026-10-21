@@ -146,7 +146,7 @@ Una sola imagen; cambia el comando.
 | Servicio | Comando | Hace | No hace |
 |---|---|---|---|
 | `web` | `gunicorn config.wsgi --workers 2 --threads 4 --no-control-socket` | Webhooks de WhatsApp y Telegram, `/health`, Django Admin (solo accesible por túnel SSH) | Llamar a APIs externas ni ejecutar packs |
-| `worker` | `manage.py procrastinate worker --concurrency 4` | Procesar eventos, ejecutar packs, enviar mensajes, periódicas, barridos, comprobaciones de operación | Atender HTTP |
+| `worker` | `manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50` | Procesar eventos, ejecutar packs, enviar mensajes, periódicas, barridos, comprobaciones de operación | Atender HTTP |
 | `db` | `postgres:18` | Datos y cola | Exponerse fuera de la red de Compose |
 | `caddy` | `caddy:2` | TLS automático y proxy a `web` solo para las rutas públicas | — |
 
@@ -608,7 +608,8 @@ outcome = adaptador.send(adaptador.render(payload), ...)
 - Un solo `worker` atiende las tres colas, que permiten ver qué se atasca.
 - Los trabajos reciben solo ids: nunca datos personales en argumentos ni candados.
 - Un trabajo que agota sus reintentos queda `failed` en Procrastinate, aparece en el Admin con "Reintentar" y dispara una alerta (§15.3).
-- **Parada ordenada:** al desplegar, el `worker` recibe SIGTERM, deja de coger trabajos y termina los que tiene (`stop_grace_period: 60s`). Lo que se corta se reintenta, y todos los trabajos son idempotentes.
+- **Parada ordenada:** al desplegar, el `worker` recibe SIGTERM, deja de coger trabajos y termina los que tiene, durante 50 s como máximo (`--shutdown-graceful-timeout 50`), dentro de los 60 s que Docker espera (`stop_grace_period: 60s`). Lo que se corta se reintenta, y todos los trabajos son idempotentes.
+- **Implementación:** `procrastinate.contrib.django` monta la app sobre el alias `default` (`fp_app`), y sus migraciones las aplica `fp_owner`. Los trabajos se declaran en `flowpilot/jobs.py` (`PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"`), con las constantes de las tres colas. El worker usa su propio *pool* de psycopg sobre el mismo alias, como hace `manage.py procrastinate worker`.
 
 #### 7.6 Tareas periódicas y barridos
 
@@ -1119,13 +1120,13 @@ services:
   web:    <<: *app · command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4 --no-control-socket
           ports: ["127.0.0.1:8000:8000"]    (solo para el túnel del Admin)
           healthcheck: GET /health
-  worker: <<: *app · command: manage.py procrastinate worker --concurrency 4 · stop_grace_period: 60s
+  worker: <<: *app · command: manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50 · stop_grace_period: 60s
           environment: DB_OWNER_URL vacío (el worker no la necesita)
   db:     image: postgres:18 · volumen pgdata · sin ports · healthcheck pg_isready
           (shared_buffers 512MB, max_connections 100, log_min_duration_statement 1s)
 ```
 
-`compose.yaml` (local): los mismos `web`, `worker` y `db`, con la imagen construida en local, código montado, `runserver` y recarga automática del worker; sin Caddy. En local se conversa con los packs mediante el bot de pruebas de desarrollo y `telegram_poll` (§6.4).
+`compose.yaml` (local): los mismos `web`, `worker` y `db`, con la imagen construida en local, código montado y `runserver` (con recarga automática); sin Caddy. El worker no se recarga solo: tras cambiar código, `docker compose restart worker`. `db` se publica en `127.0.0.1:5433` para los tests desde el host. En local se conversa con los packs mediante el bot de pruebas de desarrollo y `telegram_poll` (§6.4).
 
 #### 14.3 Caddy
 

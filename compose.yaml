@@ -30,8 +30,11 @@ services:
     environment:
       DB_APP_URL: postgres://fp_app:fp_app@db:5432/flowpilot
       DB_OWNER_URL: ""  # the worker never uses fp_owner (design.md §14.2)
-    # Placeholder until the Procrastinate worker arrives (T-2.5).
-    command: sleep infinity
+    # Graceful stop (design.md §7.5): on SIGTERM it takes no new jobs and lets running
+    # ones finish for up to 50 s, within the 60 s before Docker kills it; a cut job is
+    # retried (every job is idempotent).
+    command: python manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50
+    stop_grace_period: 60s
     init: true
 
   db:

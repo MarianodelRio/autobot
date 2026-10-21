@@ -84,14 +84,14 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
-| F2 | Datos, tenants y aislamiento | 5 | 4 | in_progress |
+| F2 | Datos, tenants y aislamiento | 5 | 5 | done (validación pendiente de confirmación) |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **13** | |
+| **Total** | | **52** | **14** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -395,7 +395,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Diseño:** §5.2, §5.4 y §16.1 (`--channel`) ampliados.
 
 ### T-2.5 · Cola Procrastinate 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-2.1 · **Diseño:** §7.5, §4.2
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-2.1 · **Diseño:** §7.5, §4.2
 - **Hacer:**
   - App de Procrastinate con las colas `inbound`, `outbound` y `periodic`, y `flowpilot/jobs.py` con el registro de tareas.
   - El worker de `compose.yaml` ejecuta `procrastinate worker --concurrency 4`.
@@ -404,7 +404,20 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - Un trabajo de ejemplo se encola y se ejecuta.
   - Dos trabajos con el mismo `lock` se ejecutan en orden de creación y nunca a la vez.
 - **Tests:** integración del orden por candado.
-- **Notas:** —
+- **Notas:**
+  - **Integración:** `procrastinate.contrib.django` en `INSTALLED_APPS`, con su app sobre el alias `default` (`fp_app`). Sus migraciones las aplica `fp_owner`, y `fp_app` recibe acceso a sus tablas por los permisos por defecto de T-2.1 (comprobado).
+  - **`flowpilot/jobs.py`:** reexporta `app` y declara las colas `INBOUND`, `OUTBOUND` y `PERIODIC`; se descubre con `PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"`. Todavía no tiene trabajos (llegan en T-3.x); el trabajo de ejemplo vive solo en el test.
+  - **Worker en `compose.yaml`:** `manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50` con `stop_grace_period: 60s`. Añadido el *flag* a §4.2, §7.5 y §14.2.
+  - **Verificado en local:** un trabajo encolado desde `web` lo ejecuta el worker, y tras SIGTERM se para de forma ordenada ("Stop requested" → "Stopped worker").
+  - **Tests (`tests/integration/test_queue.py`, transaccionales):**
+    - un trabajo se encola y se ejecuta;
+    - cuatro trabajos con el mismo candado y 4 huecos de concurrencia se ejecutan en orden de creación y sin solaparse (el primero tarda 0,3 s);
+    - con candados distintos sí se ejecutan a la vez: `a` espera con un `threading.Event` a que empiece `b`, sin depender de tiempos.
+
+    El worker se lanza en el propio proceso con el mismo conector que el comando (`replace_connector(get_worker_connector())`). Con `DjangoConnector`, el `jsonb` llega como texto y el trabajo falla. Como con `wait=False` el worker se para si los trabajos que quedan están bloqueados por un candado, se relanza hasta vaciar la cola. Pasan estables (6 de 6).
+  - **`lintmigrations`:** excluye la app `procrastinate` (`MIGRATION_LINTER_OPTIONS`), porque sus migraciones no son nuestras; cualquier app propia nueva sí se analiza.
+  - **Limpieza:** las tablas de Procrastinate son modelos no gestionados y el `flush` no las vacía, así que el test borra sus trabajos como `owner`.
+  - **Recarga en local:** §14.2 corregido. El worker no se recarga solo; tras cambiar código, `docker compose restart worker`.
 
 ### ✅ Validación F2
 - [ ] Test de aislamiento en verde en CI.
@@ -469,7 +482,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - `apply_status`.
 - **Acepta:** reprocesar un evento no duplica respuestas; un evento que no está `pending` termina sin hacer nada; caducidad y versión aplicadas.
 - **Tests:** integración (duplicado, reintento entre tx1 y tx2, excepción del pack que lleva al texto de recuperación, límite por contacto, `baja`/`alta`, estado de WhatsApp que actualiza el mensaje).
-- **Notas:** —
+- **Notas:** (de la revisión de T-2.5) las tareas síncronas que usan el ORM se ejecutan en hilos del worker: cerrar las conexiones viejas (`close_old_connections`) para no pasar de las ~6 de §4.2. `job.is_last_attempt` necesita `pass_context=True`.
 
 ### T-3.6 · Envío de mensajes 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.5 · **Diseño:** §7.4, §7.5
