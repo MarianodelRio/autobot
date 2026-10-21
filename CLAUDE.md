@@ -12,7 +12,8 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 ## Forma de trabajo
 
 - El trabajo sigue [`IMPLEMENTATION.md`](IMPLEMENTATION.md): un agente implementa cada tarea y otro, en una sesión nueva, la revisa (apartados 1.3 y 1.5 de ese fichero). Sin framework de orquestación.
-- El estado de las tareas y las notas para retomar el trabajo viven solo en `IMPLEMENTATION.md`.
+- El estado de las tareas y las notas para retomar el trabajo viven solo en `IMPLEMENTATION.md`. Una tarea se cierra en un único commit que incluye código, tests y su marca `done`.
+- Si una tarea espera una acción manual, se marca `blocked` y se sigue con otra independiente. Nunca se inventan credenciales ni ids, ni se simulan aprobaciones o verificaciones reales (apartado 1.6 de `IMPLEMENTATION.md`).
 - Se trabaja directamente sobre `main`; sin ramas ni PR salvo que la persona lo pida. CI debe quedar en verde.
 - Commit o push solo cuando la persona lo pida.
 - Si un cambio contradice `design.md`, se actualiza `design.md` en el mismo commit (o se pregunta antes).

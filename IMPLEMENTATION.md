@@ -19,13 +19,13 @@ Guía ejecutable para construir FlowPilot. **`design.md` es la fuente de verdad*
 | `pending` | Sin empezar |
 | `in_progress` | Alguien la está implementando o revisando (el campo **Revisión** dice en qué punto está) |
 | `blocked` | No puede avanzar; el motivo va en **Notas** (dependencia, acción manual, decisión pendiente) |
-| `done` | Implementada, revisada y aprobada; criterios cumplidos; commit en `main` |
+| `done` | Implementada, revisada y aprobada; criterios cumplidos; incluida en `main` en el mismo commit que la marca como `done` |
 
 Campo **Revisión**: `—` (no hay nada que revisar) · `pendiente` (implementación terminada, esperando revisor) · `cambios` (el revisor pide correcciones, listadas en Notas) · `aprobada`.
 
 ### 1.3 Ciclo de una tarea
 
-1. **Elegir:** la primera tarea `pending` cuyas dependencias están `done` y cuyas acciones 👤 previas están hechas. Ponerla en `in_progress`.
+1. **Elegir:** la primera tarea `pending` cuyas dependencias están `done` y cuyas acciones 👤 previas están hechas. Ponerla en `in_progress`. Si la siguiente tarea en orden está bloqueada, se elige otra independiente (apartado 1.6).
 2. **Implementar** (agente implementador):
    - Leer la tarea, las secciones de `design.md` que cita y `CLAUDE.md`. Si es un port, leer también el código de origen en `~/Desktop/Peluqueria` o `~/Desktop/buscaBus`.
    - Implementar solo el alcance de la tarea, con los tests que pide.
@@ -35,9 +35,9 @@ Campo **Revisión**: `—` (no hay nada que revisar) · `pendiente` (implementac
    - Leer la tarea, las secciones citadas y el diff.
    - Aplicar la lista del apartado 1.5 y ejecutar `make check`.
    - Resultado: Revisión `aprobada`, o `cambios` con la lista concreta de lo que hay que corregir.
-4. **Cerrar:**
-   - Con la revisión aprobada (y, si la tarea lleva ⚠️, también tu aprobación), commit en `main` con el mensaje `T-x.y: <resumen>`.
-   - Estado `done` y la tabla de progreso actualizada.
+4. **Cerrar**, con la revisión aprobada (y, si la tarea lleva ⚠️, también tu aprobación):
+   - Marcar la tarea como `done` y actualizar la tabla de progreso.
+   - Hacer **un único commit** en `main` con el código, los tests y el cambio de estado, con el mensaje `T-x.y: <resumen>`. Así cada commit deja el seguimiento al día.
 
 Para retomar el trabajo en una sesión nueva:
 
@@ -67,6 +67,15 @@ Para retomar el trabajo en una sesión nueva:
 6. **Tests:** cubren el camino feliz y los errores que pide la tarea; los tests de escenarios comprueban los límites de mensajes; nada de red real en CI.
 7. **Calidad:** código legible, sin abstracciones que el diseño no pide, textos al usuario en español y código en inglés.
 
+### 1.6 Acciones manuales pendientes
+
+Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que dependen de ella, nunca el resto del plan:
+
+- Si una tarea depende de una acción 👤 pendiente, se pone en `blocked` con el motivo en Notas y se sigue con otra tarea cuyas dependencias estén cumplidas, aunque sea de otra fase.
+- El código que usará credenciales o servicios reales se implementa y se prueba con fixtures, dobles de prueba y datos de ejemplo. Lo único que espera a la acción manual es la prueba contra el servicio real.
+- Una validación de fase con pasos manuales pendientes queda con esas casillas sin marcar y se anota en la tabla de progreso. Las fases siguientes pueden avanzar en todo lo que no dependa de ellas.
+- **Nunca** se inventan credenciales, ids, tokens ni respuestas de servicios reales, ni se da por hecha una acción manual, una verificación de Meta, una plantilla aprobada o tu aprobación ⚠️. Si falta algo, se deja `blocked` y se pide.
+
 ---
 
 ## 2. Progreso
@@ -84,7 +93,7 @@ Para retomar el trabajo en una sesión nueva:
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
 | **Total** | | **52** | **0** | |
 
-Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Algunas tareas de F6 y F7 pueden adelantarse si sus dependencias concretas lo permiten.
+Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
 ---
 
@@ -94,9 +103,9 @@ Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier ord
 |---|---|---|---|
 | M-0.1 | Repositorio GitHub listo para CI y GHCR | T-0.3 | pending |
 | M-3.1 | Bot de pruebas de **desarrollo** y tu id de Telegram | Validación F3 | pending |
-| M-4.1 | Autocares San Sebastián: personas de prueba y verificación de empresa en Meta | T-4.6 | pending |
+| M-4.1 | Autocares San Sebastián: personas de prueba y verificación de empresa en Meta | Validación F4 (personas de prueba) y M-8.3 (verificación) | pending |
 | M-5.1 | Proyecto de Google Cloud de la plataforma y cuenta de servicio | Validación F5 | pending |
-| M-5.2 | Calendario de pruebas de desarrollo | Validación F5 | pending |
+| M-5.2 | Calendarios de desarrollo (real y de pruebas, distintos) | Validación F5 | pending |
 | M-6.1 | Bot de avisos y chat de ops | Validación F6 | pending |
 | M-6.2 | Sentry y healthchecks.io | Validación F6 | pending |
 | M-7.1 | Dominio y VPS | T-7.4 | pending |
@@ -476,7 +485,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** —
 
 ### T-4.6 · Tenant de Autocares San Sebastián 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-4.4, T-2.4, M-4.1 · **Diseño:** §5.2, §10.1
+- **Estado:** pending · **Revisión:** — · **Depende de:** T-4.4, T-2.4 · **Diseño:** §5.2, §10.1
 - **Hacer:**
   - `tenants/autocares-ss/` con `tenant.yaml` (canal `main` de **WhatsApp**, decidido; los ids de Meta se rellenan en M-8.3), `status: onboarding`, `testers` y la config portada de `buscaBus/config.yaml`.
   - El dataset copiado de `buscaBus/horarios/` sin cambios, con los comentarios de las preguntas abiertas (P28, P30, P37).
@@ -487,12 +496,12 @@ Cada acción está detallada en su fase, con cómo verificarla.
 
 ### 👤 M-4.1 · Autocares San Sebastián: personas de prueba y verificación en Meta
 - **Decidido:** su canal de producción es **WhatsApp**, con un número propio y la app de Meta en el portfolio de la empresa (§6.3).
-- **Cuándo:** antes de T-4.6. La verificación de empresa se inicia cuanto antes, porque tarda de 2 a 5 días hábiles y bloquea M-8.3.
+- **Cuándo:** cuanto antes. No bloquea T-4.6: el tenant se crea con `testers` vacío y se completa cuando lleguen los ids. La verificación de empresa tarda de 2 a 5 días hábiles y solo bloquea M-8.3.
 - **Qué:**
   1. Conseguir los ids de Telegram de las personas de la empresa que vayan a probar (`testers.telegram`).
   2. Pedir a la empresa una SIM sin WhatsApp activo para el número.
   3. Crear o localizar su Business Portfolio, con el operador como administrador, e iniciar la verificación de empresa.
-- **Verificar:** los ids están en las notas de T-4.6, la SIM está disponible y la verificación figura como enviada en Meta Business Manager.
+- **Verificar:** los ids están en `testers.telegram` del tenant, la SIM está disponible y la verificación figura como enviada en Meta Business Manager.
 
 ### ✅ Validación F4
 - [ ] Pasan todas las pruebas portadas de buscaBus.
@@ -594,12 +603,12 @@ Cada acción está detallada en su fase, con cómo verificarla.
   2. Habilitar Google Calendar API.
   3. Crear una cuenta de servicio con clave JSON.
   4. Guardar el JSON en local (`google_sa.json`, ignorado por git) y en el gestor de contraseñas, y apuntar el email de la cuenta de servicio.
-- **Verificar:** `manage.py shell` → `check_access` contra el calendario de M-5.2 devuelve OK.
+- **Verificar:** `manage.py shell` → `check_access` contra los dos calendarios de M-5.2 devuelve OK.
 
-### 👤 M-5.2 · Calendario de pruebas de desarrollo
+### 👤 M-5.2 · Calendarios de desarrollo
 - **Cuándo:** antes de la validación de F5.
-- **Qué:** crear un Google Calendar "FlowPilot pruebas dev", compartirlo con el email de la cuenta de servicio con "Hacer cambios en los eventos" y usarlo como `calendar_id` y `test_calendar_id` de un tenant `salon` de desarrollo (`tenants/dev-salon/`, `status: onboarding`). Para probar el aislamiento, conviene un segundo calendario como `calendar_id`.
-- **Verificar:** al reservar desde el bot de pruebas, la cita aparece en el calendario de pruebas y no en el otro.
+- **Qué:** crear **dos** Google Calendars, "FlowPilot dev (real)" y "FlowPilot dev (pruebas)", compartirlos con el email de la cuenta de servicio con "Hacer cambios en los eventos" y usarlos, respectivamente, como `calendar_id` y `test_calendar_id` de un tenant `salon` de desarrollo (`tenants/dev-salon/`, `status: onboarding`). Tienen que ser distintos (validación de T-5.3).
+- **Verificar:** el tenant `dev-salon` valida; al reservar desde el bot de pruebas, la cita aparece en "FlowPilot dev (pruebas)" y no en "FlowPilot dev (real)".
 
 ### ✅ Validación F5
 - [ ] Escenarios de §9.8 en verde.
@@ -608,7 +617,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - [ ] Moverla y cancelarla.
   - [ ] Un evento `[CFG] CERRADO` quita ese día.
   - [ ] Con un recordatorio forzado (ventana ajustada), llega por el bot de pruebas y "Confirmar" escribe `Estado: confirmada`.
-  - [ ] El calendario "real" de desarrollo no se toca en ningún momento.
+  - [ ] "FlowPilot dev (real)" no se toca en ningún momento.
 
 ---
 
