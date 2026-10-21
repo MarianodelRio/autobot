@@ -10,11 +10,13 @@ Rules for every job (CLAUDE.md): arguments, locks and logs carry only ids, never
 numbers, user ids or personal data; every job is idempotent.
 """
 
+import math
 from uuid import UUID
 
 from django.db import close_old_connections
-from procrastinate import JobContext, RetryStrategy
+from procrastinate import BaseRetryStrategy, JobContext, RetryDecision, RetryStrategy
 from procrastinate.contrib.django import app as app
+from procrastinate.jobs import Job
 
 from core.errors import TransientError
 
@@ -61,6 +63,31 @@ def apply_status(tenant_id: str, event_id: str) -> None:
     close_old_connections()
     try:
         process.apply_status(UUID(tenant_id), UUID(event_id))
+    finally:
+        close_old_connections()
+
+
+class SendRetryStrategy(BaseRetryStrategy):
+    """`send_message` is retried only when the provider asked for it (`RetryLater`, raised
+    as `SendRetry`), after its `retry_after` or 2, 4, 8, 16 s. The message itself counts
+    its attempts and becomes `failed` after the fifth (§7.4)."""
+
+    def get_retry_decision(self, *, exception: BaseException, job: Job) -> RetryDecision | None:
+        from flowpilot.runtime.outbound import MAX_SEND_ATTEMPTS, SendRetry
+
+        if not isinstance(exception, SendRetry) or job.attempts >= MAX_SEND_ATTEMPTS:
+            return None
+        wait = exception.after_s if exception.after_s is not None else 2 ** (job.attempts + 1)
+        return RetryDecision(retry_in={"seconds": math.ceil(wait)})
+
+
+@app.task(queue=OUTBOUND, name=SEND_MESSAGE, retry=SendRetryStrategy())
+def send_message(tenant_id: str, outbound_id: str) -> None:
+    from flowpilot.runtime import outbound
+
+    close_old_connections()
+    try:
+        outbound.send_message(UUID(tenant_id), UUID(outbound_id))
     finally:
         close_old_connections()
 

@@ -30,7 +30,16 @@ from flowpilot.runtime.models import (
     OutboundMessage,
 )
 from flowpilot.tenancy.registry import LoadedTenant, get_registry
-from tests.integration.helpers import BSUID, events, fixture, jobs, post_wa, wa_tenant
+from tests.integration.helpers import (
+    BSUID,
+    events,
+    fixture,
+    jobs,
+    post_wa,
+    wa_press,
+    wa_tenant,
+    wa_text,
+)
 from tests.toy_pack import pack as toy
 
 pytestmark = [
@@ -39,23 +48,6 @@ pytestmark = [
 ]
 
 MENU = ["Saludar", "Elegir color", "Probar error"]
-_counter = iter(range(1, 10_000))
-
-
-def wa_text(text: str) -> bytes:
-    body = json.loads(fixture("whatsapp/text.json"))
-    message = body["entry"][0]["changes"][0]["value"]["messages"][0]
-    message["id"] = f"wamid.test{next(_counter)}"
-    message["text"] = {"body": text}
-    return json.dumps(body).encode()
-
-
-def wa_press(payload: str) -> bytes:
-    body = json.loads(fixture("whatsapp/button_reply.json"))
-    message = body["entry"][0]["changes"][0]["value"]["messages"][0]
-    message["id"] = f"wamid.test{next(_counter)}"
-    message["interactive"]["button_reply"]["id"] = payload
-    return json.dumps(body).encode()
 
 
 def tenant() -> LoadedTenant:

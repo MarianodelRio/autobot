@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 5 | in_progress |
+| F3 | Canales y runtime | 10 | 6 | in_progress |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **19** | |
+| **Total** | | **52** | **20** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -531,14 +531,24 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests:** los helpers de integración pasan a `tests/integration/helpers.py` y `conftest.py`. `tests/integration/test_process.py` (28): camino feliz, `plan_sends` y orden de los envíos, evento no `pending`, reintento entre tx1 y tx2, duplicado, `TransientError` reintentado y luego recuperación, excepción del pack, caducidad, versión, `menu`, `baja`/`alta`, límite por contacto, tenant `degraded`, `SendProactive` (con `opt_out`, `unreachable` y a un teléfono sin contacto), `NotifyOwner` con y sin dueño, `apply_status` (por `outbound_ref` y por `wamid`, `unknown` → `sent`, `failed`, estado tardío) y el trabajo ejecutado por el worker. Comprobado en local que el worker arranca con los trabajos nuevos.
 
 ### T-3.6 · Envío de mensajes 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-3.5 · **Diseño:** §7.4, §7.5
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-3.5 · **Diseño:** §7.4, §7.5
 - **Hacer:**
   - `plan_sends` conectado a la creación de `outbound_message`.
   - `send_message` con su máquina de estados, reintentos según `SendOutcome` y candado `out:<h>`.
   - Marca `unreachable` ante `Rejected(kind=recipient)` y alerta preparada ante `Rejected(kind=auth)` (el envío de la alerta llega en T-6.1).
 - **Acepta:** un `unknown` no se reenvía ni bloquea los mensajes siguientes; `sending` huérfano pasa a `unknown`.
 - **Tests:** integración de cada transición de §7.4.
-- **Notas:** —
+- **Notas:**
+  - **`plan_sends` → `outbound_message`:** ya lo hizo T-3.5 (`create_replies` en tx2), porque su criterio "no duplicar respuestas" lo necesitaba.
+  - **`send_message`** (`flowpilot/runtime/outbound.py`): máquina de estados de §7.4. `sending` y `attempts` se confirman en una transacción corta antes de llamar al proveedor (con `endpoint` y `render` ya calculados); el envío va sin transacción; el resultado se guarda en otra. `sent`, `unknown` y `failed` no se tocan; un `sending` huérfano pasa a `unknown`.
+  - **Resultados:** `Sent` → `sent` con `provider_message_id` y `sent_at`. `Rejected` → `failed` con `last_error = "<tipo>: <motivo>"`; si es `recipient`, el contacto queda `unreachable`; si es `auth`, se registra `ALERT tenant <slug>: channel token rejected` para que T-6.1 envíe la alerta 🔴 (ops_check buscará `last_error` con `auth:`). `RetryLater` → `pending` y `SendRetry`, salvo en el quinto intento, que da `failed`. `Ambiguous` → `unknown`.
+  - **Reintentos sin perder el orden:** `SendRetryStrategy` (en `flowpilot/jobs.py`) reintenta solo `SendRetry`, tras `retry_after` o 2, 4, 8 y 16 s. Comprobado en el SQL de Procrastinate 3.10 (`procrastinate_fetch_job_v2` y `procrastinate_retry_job_v2`): el trabajo reintentado conserva su id y vuelve a `todo`, así que los posteriores con el mismo candado `out:<h>` esperan detrás de él.
+  - **Destinatario:** el teléfono si se conoce y, si no, el `external_id`. En WhatsApp, con BSUID, el adaptador usa `recipient` (T-3.1).
+  - **Casos límite:** un `payload` vaciado por la retención da `failed` sin enviar; un canal `main` sin secretos, `Rejected(other)`.
+  - **Tests** (`tests/integration/test_send.py`, con los adaptadores reales y `httpx.MockTransport`): `pending` → `sent` (cuerpo con teléfono y `biz_opaque_callback_data`), `sent`/`unknown`/`failed` no se reenvían, `sending` huérfano → `unknown`, `sending` confirmado antes de la llamada (visto desde otra sesión), `RetryLater` → `pending` con `retry_after`, quinto intento → `failed`, `recipient` → `unreachable`, `auth` → alerta en el log, `Ambiguous` → `unknown`, `payload` vaciado, Telegram al `chat_id`, la estrategia de reintentos y, con el worker, que un `unknown` no bloquea el mensaje siguiente del contacto. `wa_text` y `wa_press` pasan a `tests/integration/helpers.py`.
+  - **De la revisión:** `endpoint` y `render` antes de marcar `sending` (un error ahí deja el mensaje `pending`); si un estado de entrega adelanta a la respuesta HTTP, no se pisa; tests de las esperas exactas y, con el worker, de que un `RetryLater` retiene al siguiente mensaje del contacto.
+  - **Para T-3.10 (de la revisión):** comprobar con un test si Procrastinate 3.10 vuelve a encolar los trabajos de un worker caído. Parece que `prune_stalled_workers` solo borra el worker, y que hace falta `get_stalled_jobs` + `retry_job`, que nadie llama. Si es así, un `send_message` en `doing` retendría `out:<h>` y bloquearía al contacto, y §7.7 ("Procrastinate libera el trabajo") no se cumpliría.
+  - **Diseño:** §7.4 y §7.5 ampliados.
 
 ### T-3.7 · Periódicas y barridos 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.5 · **Diseño:** §7.6

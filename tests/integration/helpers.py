@@ -4,6 +4,7 @@ inbound_event and procrastinate_jobs tables."""
 
 import hashlib
 import hmac
+import itertools
 import json
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,25 @@ def tg_tenant(slug: str = "tg", **changes: Any) -> dict[str, Any]:
 
 def fixture(path: str) -> bytes:
     return (FIXTURES / path).read_bytes()
+
+
+_COUNTER = itertools.count(1)
+
+
+def wa_text(text: str) -> bytes:
+    body = json.loads(fixture("whatsapp/text.json"))
+    message = body["entry"][0]["changes"][0]["value"]["messages"][0]
+    message["id"] = f"wamid.test{next(_COUNTER)}"
+    message["text"] = {"body": text}
+    return json.dumps(body).encode()
+
+
+def wa_press(payload: str) -> bytes:
+    body = json.loads(fixture("whatsapp/button_reply.json"))
+    message = body["entry"][0]["changes"][0]["value"]["messages"][0]
+    message["id"] = f"wamid.test{next(_COUNTER)}"
+    message["interactive"]["button_reply"]["id"] = payload
+    return json.dumps(body).encode()
 
 
 def post_wa(body: bytes, secret: str = WA_SECRETS["app_secret"], ip: str = "203.0.113.1") -> int:

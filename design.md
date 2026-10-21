@@ -602,7 +602,7 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
 1. Fusiona los textos consecutivos de un turno en un solo mensaje.
 2. Si un texto va seguido de botones o lista, lo mete en el cuerpo del interactivo, salvo que juntos superen 1.024 caracteres.
 3. Comprueba los límites comunes (§6.1). Superarlos es un error de programación: en tests falla (`strict=True`) y en producción se trunca y se registra sin contenido. Lo que truncar no arregla (ids de más de 64 bytes, vacíos o repetidos; títulos de botón repetidos; mensajes o secciones sin botones o filas; varias secciones sin título; cuerpo vacío) falla siempre, y se comprueba antes de fusionar.
-4. Crea un `outbound_message` por mensaje final, en orden (`seq`), con `idem_key = reply:<event_id>:<seq>`. Este paso lo hace el runtime (T-3.6); la función pura de `core` devuelve la lista final de respuestas.
+4. Crea un `outbound_message` por mensaje final, en orden (`seq`), con `idem_key = reply:<event_id>:<seq>`. Este paso lo hace el runtime; la función pura de `core` devuelve la lista final de respuestas.
 
 Fusionar reduce el coste en WhatsApp y el ruido en los dos canales.
 
@@ -623,13 +623,19 @@ outcome = adaptador.send(adaptador.render(payload), ...)
 - Un `unknown` o `failed` **no bloquea** los siguientes mensajes del contacto.
 - WhatsApp: un estado posterior con ese `outbound_ref` pasa un `unknown` a `sent`. Los que siguen en `unknown` más de 10 min aparecen en el Admin con "Marcar enviado" y "Reenviar", y en la alerta de §15.3.
 - Telegram no envía estados: un `unknown` queda así hasta que lo revise el operador.
+- **Implementación** (`flowpilot/runtime/outbound.py`; trabajo en `flowpilot/jobs.py`):
+  - El destinatario es el teléfono del contacto si se conoce y, si no, su `external_id` (BSUID en WhatsApp, id de usuario en Telegram).
+  - `last_error` empieza por el tipo de rechazo (`auth: …`, `recipient: …`, `other: …`), solo con estado HTTP y códigos; `ops_check` (§15.3) buscará los `auth:` para la alerta 🔴, y hasta T-6.1 se registra un `ALERT` en el log.
+  - `RetryLater` deja el mensaje en `pending` y hace que Procrastinate reintente **el mismo trabajo** (`SendRetryStrategy`): conserva su id, así que los mensajes posteriores del contacto, con el mismo candado, siguen esperando detrás y el orden se mantiene. Espera `retry_after` si el proveedor lo da y, si no, 2, 4, 8 y 16 s. El mensaje cuenta sus `attempts`, y el `RetryLater` del quinto intento lo deja `failed`.
+  - Un mensaje cuyo `payload` ya se vació (retención, §12.3) pasa a `failed` sin enviarse; un canal `main` sin secretos da `Rejected(other)`.
+  - `endpoint` y `render` se calculan antes de marcar `sending`: si fallan, el mensaje sigue `pending` y el trabajo queda `failed` (visible en §15.3). Si al guardar el resultado el mensaje ya no está `sending` (un estado de entrega de `apply_status` llegó antes que la respuesta HTTP), no se toca su estado; solo se completa el `provider_message_id`.
 
 #### 7.5 Colas, candados y reintentos
 
 | Cola | Trabajos | Candado | Reintentos |
 |---|---|---|---|
 | `inbound` | `process_event`, `apply_status`, `route_test_update` | `conv:<h>` en `process_event`; `tg:<h>` en `route_test_update` | 3, con espera exponencial (2, 4 y 8 s), solo para `TransientError` |
-| `outbound` | `send_message`, `send_notification` | `out:<h>` y `owner:<tenant>` | Según `SendOutcome` |
+| `outbound` | `send_message`, `send_notification` | `out:<h>` y `owner:<tenant>` | Según `SendOutcome`: solo `RetryLater`, hasta 5 intentos por mensaje |
 | `periodic` | `run_periodic`, `ops_check`, `retention_cleanup` | `queueing_lock` por nombre y tenant (nunca dos iguales pendientes) | 2 |
 
 - El candado (`lock`) de Procrastinate garantiza que los trabajos con el mismo candado se ejecutan **de uno en uno y en orden de creación**. Así se ordenan los mensajes por conversación, sin candados propios.
