@@ -83,7 +83,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | Fase | Contenido | Tareas 🤖 | Hechas | Estado |
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
-| F1 | Núcleo puro (`core`) | 5 | 3 | in_progress |
+| F1 | Núcleo puro (`core`) | 5 | 4 | in_progress |
 | F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
@@ -91,7 +91,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **7** | |
+| **Total** | | **52** | **8** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -225,7 +225,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Pendiente de consultar:** hoy un solo pack usa `strip_html`, `next_days` y `format_date_es` (salon) y `paginate` (bus), aunque §8.3 los pone en `core` y la regla dice que a `core` solo sube lo que usan los dos. Se dejan donde dice §8.3 hasta que decida la persona.
 
 ### T-1.4 · Reglas comunes de conversación 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-1.1 · **Diseño:** §7.2, §7.3
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-1.1 · **Diseño:** §7.2, §7.3
 - **Hacer:** en `core/conversation.py`, funciones puras compartidas por el runtime y el arnés:
   - `effective_state`: caducidad y versión del estado.
   - `global_command`: `menu`, `menú`, `inicio`, `/start`, `baja` y `alta`.
@@ -233,7 +233,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - El texto de reinicio amable.
 - **Acepta:** caducidad a los 30 min; una versión distinta reinicia; `/start` equivale a `menu`.
 - **Tests:** unitarios.
-- **Notas:** —
+- **Notas:**
+  - **`effective_state`:** recibe `state`, `state_version`, `last_inbound_at`, la versión y el timeout del pack y `now`, y devuelve `EffectiveState(state, reset, notices)`. Si la conversación caducó (más de 30 min, estrictamente), reinicia en silencio; si cambió la versión, reinicia y añade el texto amable a `notices`. Si pasan las dos cosas, gana la caducidad. Con un estado vacío no hay nada que reiniciar.
+  - **`global_command`:** solo mira mensajes de tipo `text`, normalizados con `core.text.normalize`. `/start` se compara aparte, y también se acepta `/start <param>` (enlaces profundos) y `/start@bot`; un "start" sin barra no es un comando.
+  - **`opt_result` y `menu_message`:** son la parte pura de `run_global_command`, para que el arnés de T-1.5 haga lo mismo que el runtime. `baja` y `alta` devuelven `UpdateContact` y un texto de confirmación y conservan el estado; `menu` deja el estado en `{}` y el pack recibe un texto vacío.
+  - **`recovery_result()`:** no recibe el tenant, porque el texto es común (§7.2).
+  - **Textos:** los de `baja` y `alta` son nuevos; el de recuperación y el de reinicio vienen de §7.2 y §7.3.
+  - **Para T-3.5:** `state=None` en el resultado conserva el estado **efectivo** (ya reiniciado si caducó), no el guardado. Las `notices` se envían también con los comandos globales.
+  - **Diseño:** §7.3 ampliado y el pseudocódigo de §7.2 al día (`effective_state` con campos sueltos y `notices`, `recovery_result()` sin tenant).
 
 ### T-1.5 · Arnés de pruebas de conversación 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-1.2, T-1.4 · **Diseño:** §17.2

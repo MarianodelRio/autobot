@@ -511,7 +511,8 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
         item = channel.adapter.parse_one(event.payload)     # InboundItem
         contact = upsert_contact(tenant, event.channel, item)   # actualiza nombre y teléfono
         conv = load_or_create_conversation(contact)
-        state = effective_state(conv, tenant.pack, now)     # caducidad y versión (§7.3)
+        eff = effective_state(conv.state, conv.state_version, conv.last_inbound_at,
+                              pack_state_version=..., timeout_min=..., now=now)   # caducidad y versión (§7.3)
 
     channel.adapter.acknowledge(event.payload, ...)        # Telegram: answerCallbackQuery (sin transacción)
 
@@ -520,19 +521,19 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
     elif (cmd := global_command(item.message)) is not None:
         result = run_global_command(cmd, tenant, contact)   # menu, baja, alta (§7.3)
     else:
-        ctx = build_context(tenant, contact, state, event)  # sin transacción: aquí van las llamadas externas
+        ctx = build_context(tenant, contact, eff.state, event)  # sin transacción: aquí van las llamadas externas
         try:
             result = tenant.pack.handle_message(ctx, item.message)
         except TransientError:
-            if job.is_last_attempt: result = recovery_result(tenant)    # texto de recuperación + estado {}
+            if job.is_last_attempt: result = recovery_result()          # texto de recuperación + estado {}
             else: raise                                     # Procrastinate reintenta
         except Exception:
             report_to_sentry()
-            result = recovery_result(tenant)
+            result = recovery_result()
 
     with tenant_tx(tenant_id):                              # tx2: persistir
-        conv.save_state(result.state)
-        msgs = plan_sends(result.replies, contact, channel, idem_prefix=f"reply:{event_id}")
+        conv.save_state(eff.state if result.state is None else result.state)   # None = se conserva el estado efectivo
+        msgs = plan_sends(eff.notices + result.replies, contact, channel, idem_prefix=f"reply:{event_id}")
         apply_actions(result.actions, tenant)               # SendProactive, NotifyOwner, UpdateContact
         event.mark_done()
         defer_sends(msgs)                                   # el trabajo solo existe si hay COMMIT
@@ -550,9 +551,10 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
 - **Caducidad:** si han pasado más de `pack.conversation_timeout_min` (30) desde el último mensaje, el estado vuelve a `{}` y el pack empieza por su menú.
 - **Versión del estado:** si `state_version` no coincide con `pack.state_version` (un despliegue cambió la forma del estado), se reinicia con "Perdona, he tenido que empezar de nuevo" y se registra.
 - **Comandos globales** (los resuelve el runtime antes que el pack, sobre el texto normalizado):
-  - `menu`, `menú`, `inicio`, `/start` → estado `{}` y el pack responde a un mensaje vacío con su menú.
+  - `menu`, `menú`, `inicio`, `/start` (también `/start <param>` y `/start@bot`) → estado `{}` y el pack responde a un mensaje vacío con su menú.
   - `baja` → `contact.opt_out = true` (deja de recibir avisos proactivos) y confirmación. `alta` lo revierte.
 - **Mensajes no soportados:** el pack recibe `IncomingMessage(type="unsupported")` y pide texto o botones.
+- Estas reglas son funciones puras de `core/conversation.py` (`effective_state`, `global_command`, `menu_message`, `opt_result`, `recovery_result`, con sus textos), compartidas por el runtime y el arnés de pruebas. Si la conversación ha caducado y además cambió la versión, gana la caducidad (reinicio silencioso).
 
 #### 7.4 Salida
 
