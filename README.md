@@ -19,7 +19,7 @@ Requisitos: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta)
 
 ```bash
 uv sync          # dependencias, incluidas las de desarrollo
-make check       # ruff, mypy y pytest (lo mismo que CI)
+make check       # ruff, mypy, import-linter y pytest (lo mismo que CI)
 ```
 
 Con Docker Compose (`db`, `web` y `worker`, con el código montado):

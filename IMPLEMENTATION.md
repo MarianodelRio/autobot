@@ -82,7 +82,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 
 | Fase | Contenido | Tareas 🤖 | Hechas | Estado |
 |---|---|---:|---:|---|
-| F0 | Base del proyecto | 4 | 2 | in_progress |
+| F0 | Base del proyecto | 4 | 3 | in_progress |
 | F1 | Núcleo puro (`core`) | 5 | 0 | pending |
 | F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
 | F3 | Canales y runtime | 10 | 0 | pending |
@@ -91,7 +91,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **2** | |
+| **Total** | | **52** | **3** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -163,7 +163,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** —
 
 ### T-0.4 · Reglas de dependencias 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-0.1 · **Diseño:** §4.4
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-0.1 · **Diseño:** §4.4
 - **Hacer:** contratos de `import-linter`:
   - `core` no importa nada del proyecto.
   - `integrations` solo importa `core`.
@@ -171,7 +171,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - `flowpilot` puede importar `core`, `integrations` y `packs.registry`.
 - **Acepta:** un import prohibido añadido a propósito hace fallar `make check` (probado y revertido).
 - **Tests:** —
-- **Notas:** —
+- **Notas:** Contratos en `[tool.importlinter]` de `pyproject.toml`; `make check` ejecuta `PYTHONPATH=src lint-imports`. Tres contratos `forbidden` (`core`, `integrations` y `packs`, que tampoco pueden importar `django`) y uno `protected`: los `packs.*` solo los importa `packs.registry`, con la excepción `flowpilot` y `flowpilot.** -> packs.registry`. Así un pack no importa a otro ni al registro, y `flowpilot` no importa un pack directamente. `import-linter` exige que `packs.registry` exista, así que se crea vacío (`PACKS = {}`) y T-2.4 lo rellena. Probado y revertido: un import prohibido rompe su contrato (`core → django` y `core → flowpilot`, `integrations → packs`, `packs → django` y `packs → integrations`, un pack que importa otro pack o el registro, `flowpilot → packs.<pack>`), y `make check` falla con código 2. Los imports permitidos (`flowpilot → packs.registry`, `core` e `integrations`, y `registry → pack`) pasan.
 
 ### 👤 M-0.1 · Repositorio GitHub
 - **Cuándo:** antes de T-0.3.

@@ -25,6 +25,7 @@ dev = [
     "pytest>=8.4",
     "pytest-django>=4.11",
     "weasyprint>=66",
+    "import-linter>=2.15,<3",
 ]
 
 [tool.uv]
@@ -58,3 +59,34 @@ DJANGO_SETTINGS_MODULE = "config.settings"
 pythonpath = ["src"]
 testpaths = ["tests", "src"]
 addopts = "--strict-markers"
+
+# Module dependency rules (design.md §4.4). Run with `PYTHONPATH=src lint-imports`.
+[tool.importlinter]
+root_packages = ["core", "integrations", "packs", "flowpilot", "config"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "core imports nothing from the project nor Django"
+type = "forbidden"
+source_modules = ["core"]
+forbidden_modules = ["integrations", "packs", "flowpilot", "config", "django"]
+
+[[tool.importlinter.contracts]]
+name = "integrations only imports core (no Django)"
+type = "forbidden"
+source_modules = ["integrations"]
+forbidden_modules = ["packs", "flowpilot", "config", "django"]
+
+[[tool.importlinter.contracts]]
+name = "packs only import core (no Django, integrations or flowpilot)"
+type = "forbidden"
+source_modules = ["packs"]
+forbidden_modules = ["integrations", "flowpilot", "config", "django"]
+
+[[tool.importlinter.contracts]]
+name = "A pack is imported only by packs.registry; flowpilot reaches packs only via the registry"
+type = "protected"
+protected_modules = ["packs.*"]
+allowed_importers = ["packs.registry"]
+ignore_imports = ["flowpilot -> packs.registry", "flowpilot.** -> packs.registry"]
+unmatched_ignore_imports_alerting = "none"
