@@ -83,7 +83,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | Fase | Contenido | Tareas 🤖 | Hechas | Estado |
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
-| F1 | Núcleo puro (`core`) | 5 | 4 | in_progress |
+| F1 | Núcleo puro (`core`) | 5 | 5 | done (validación pendiente de confirmación) |
 | F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
@@ -91,7 +91,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **8** | |
+| **Total** | | **52** | **9** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -243,7 +243,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Diseño:** §7.3 ampliado y el pseudocódigo de §7.2 al día (`effective_state` con campos sueltos y `notices`, `recovery_result()` sin tenant).
 
 ### T-1.5 · Arnés de pruebas de conversación 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-1.2, T-1.4 · **Diseño:** §17.2
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-1.2, T-1.4 · **Diseño:** §17.2
 - **Hacer:** `core/testing/`:
   - Reloj fijo y fixture de tenant de ejemplo.
   - `send` y `press` con `expect` para texto, botones y filas de lista.
@@ -253,6 +253,16 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Acepta:** el ejemplo de §17.2, adaptado al pack de juguete, se puede escribir tal cual; una respuesta que se sale de los límites hace fallar el test.
 - **Tests:** tests del propio arnés con el pack de juguete.
 - **Notas:** el render real con los dos adaptadores se añade en T-3.2, cuando existan.
+  - **Arnés:** `core/testing/` tiene `Conversation(pack, config=, data=, channel="whatsapp"|"telegram", tenant=, calendar=, now=, attempts=)`, `Turn.expect(text=, text_contains=, buttons=, rows=, list_includes=, nothing=)`, que devuelve el `Turn` para encadenar, `FixedClock` (con `set` y `advance`; da la hora en la zona del tenant, con su horario de verano o de invierno) y `sample_tenant()`. Como fixture del tenant de ejemplo hay una función, no una fixture de pytest; cada pack monta la suya.
+  - **Cada turno sigue el orden de `process_event`:** `effective_state`, comando global, pack y `plan_sends(strict=True)`; después, el estado pasa por JSON y se aplican las acciones. Un `TransientError` se reintenta `attempts` veces (por defecto 1) con el mismo evento y después da el texto de recuperación; cualquier otra excepción se propaga para que un fallo no quede oculto. El pack recibe en cada intento una copia del estado pasada por JSON (`allow_nan=False`).
+  - **Simulación de canal:** el contacto de WhatsApp tiene teléfono y el de Telegram no.
+  - **Comprobaciones extra:**
+    - `press` exige que el id se haya ofrecido antes, en una respuesta o en un aviso proactivo (`check=False` lo desactiva).
+    - Los `SendProactive` se validan contra su `TemplateSpec`: tiene que estar declarada en `pack.templates`, con el número de botones correcto, payloads ≤ 64 bytes y los parámetros `{n}` justos. Solo se pueden pulsar los botones de los avisos dirigidos a este contacto.
+    - `ctx.lock` registra las claves.
+  - **`replay()` y `run_periodic()`:** existen para los escenarios de reintento y de barrido de T-5.x. `replay()` deshace estado, cambios del contacto, acciones y respuestas del último turno antes de repetirlo; los efectos del propio pack, como un calendario falso, se mantienen.
+  - **Pack de juguete:** `tests/toy_pack/` incluye menú, nombre con `NotifyOwner`, lista paginada con `SendProactive`, error transitorio y una periódica. Lo ejercitan sus escenarios en los dos canales. Un test comprueba que solo importa `core` y `pydantic`, porque import-linter no mira `tests/`.
+  - **Diseño:** §17.2 ampliado.
 
 ### ✅ Validación F1
 - [ ] El pack de juguete pasa sus escenarios con el arnés.

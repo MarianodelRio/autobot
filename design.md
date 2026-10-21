@@ -1292,7 +1292,7 @@ def test_reserva_completa(salon):                     # tenant de ejemplo + Fake
     assert salon.calendar.created == [("2026-10-09T17:00", "corte", "Lucía")]
 ```
 
-Cada respuesta se comprueba contra los límites comunes (§6.1) y se renderiza con los dos adaptadores, así que un pack que se sale de los límites falla en los tests.
+Cada respuesta se comprueba contra los límites comunes (§6.1) y se renderiza con los dos adaptadores, así que un pack que se sale de los límites falla en los tests. El arnés vive en `core/testing/` (`Conversation`, `Turn.expect`, `FixedClock`, `sample_tenant`). Además de `send` y `press`, tiene `unsupported`, `replay` (deshace lo que guardó el último turno y lo reprocesa con el mismo evento, como un reintento entre tx1 y tx2) y `run_periodic`. Respuestas y estado pasan por JSON, como en la BD, y el reloj fijo da la hora en la zona del tenant. Un `TransientError` se reintenta `attempts` veces (por defecto 1) antes del texto de recuperación, y cualquier otra excepción del pack hace fallar el test.
 
 #### 17.3 Puertas de CI (si fallan, no se publica imagen)
 
