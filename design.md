@@ -110,7 +110,7 @@ IA o lenguaje natural · más de un canal de producción por negocio · otros ca
 ### 3. Principios
 
 1. **Simple antes que flexible.** Una máquina, una base de datos, una imagen, dos procesos de aplicación.
-2. **Lo genérico en la plataforma, lo específico en los packs.** La plataforma no sabe qué es una cita ni un autobús; los packs no saben qué es WhatsApp ni Telegram. A `core/` solo sube lo que usan los dos packs.
+2. **Lo genérico en la plataforma, lo específico en los packs.** La plataforma no sabe qué es una cita ni un autobús; los packs no saben qué es WhatsApp ni Telegram. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio (§8.3).
 3. **Lógica en código; datos de negocio en ficheros validados.** Precios, horarios, textos y datasets se cambian sin programar, con historial en git y validación en CI.
 4. **Nada se pierde y nada se duplica.** Todo evento se guarda antes de procesarse; todo efecto externo es idempotente; nunca se reintenta a ciegas un envío ambiguo.
 5. **Determinista.** El bot nunca adivina en silencio: o hay una respuesta única, o pregunta.

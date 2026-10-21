@@ -22,7 +22,7 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 - Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `worker`, `db`).
 - `core/` e `integrations/` no importan Django; `packs/*` solo importan `core` (nunca Django, `integrations` ni otro pack). Lo comprueba `import-linter`.
-- Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de pruebas solo en `channels/test_bot/`. A `core/` solo sube lo que usan los dos packs.
+- Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de pruebas solo en `channels/test_bot/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio (§8.3).
 - Config y datasets de cada negocio en `tenants/<slug>/` (YAML validado en CI). Secretos en `.env` y `secrets.yaml` del servidor; nunca en git.
 
 ## Reglas obligatorias
