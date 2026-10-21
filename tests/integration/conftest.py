@@ -45,4 +45,6 @@ def clean_jobs() -> Iterator[None]:
     """The flush does not reach Procrastinate's tables (unmanaged models)."""
     yield
     with connections["owner"].cursor() as cursor:
+        # Periodic defers reference their job: they go first.
+        cursor.execute("DELETE FROM procrastinate_periodic_defers")
         cursor.execute("DELETE FROM procrastinate_jobs")

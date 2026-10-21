@@ -17,8 +17,11 @@ from django.db import close_old_connections
 from procrastinate import BaseRetryStrategy, JobContext, RetryDecision, RetryStrategy
 from procrastinate.contrib.django import app as app
 from procrastinate.jobs import Job
+from procrastinate.periodic import PeriodicRegistry
+from procrastinate.tasks import Task
 
 from core.errors import TransientError
+from core.pack import Pack
 
 # One worker serves the three queues (§7.5); separate queues show what gets stuck.
 INBOUND = "inbound"  # process_event, apply_status, route_test_update
@@ -31,6 +34,8 @@ PROCESS_EVENT = "process_event"  # (tenant_id, event_id), lock conv:<h>
 APPLY_STATUS = "apply_status"  # (tenant_id, event_id), no lock
 SEND_MESSAGE = "send_message"  # (tenant_id, outbound_id), lock out:<h> (T-3.6)
 SEND_NOTIFICATION = "send_notification"  # (tenant_id, notification_id), lock owner:<tenant> (T-6.1)
+DISPATCH_PERIODIC = "dispatch_periodic"  # (timestamp, pack, name): one per pack Periodic
+RUN_PERIODIC = "run_periodic"  # (tenant_id, name, scheduled_at), queueing lock per both
 
 # `inbound` jobs are retried 3 times, only on TransientError, after 2, 4 and 8 s (§7.5).
 INBOUND_RETRIES = 3
@@ -90,6 +95,64 @@ def send_message(tenant_id: str, outbound_id: str) -> None:
         outbound.send_message(UUID(tenant_id), UUID(outbound_id))
     finally:
         close_old_connections()
+
+
+@app.task(queue=PERIODIC, name=DISPATCH_PERIODIC)
+def dispatch_periodic(timestamp: int, pack: str, name: str) -> None:
+    from flowpilot.runtime import periodic
+
+    close_old_connections()
+    try:
+        periodic.dispatch(pack, name, timestamp)
+    finally:
+        close_old_connections()
+
+
+# Twice (§7.5), a minute apart, so a brief Calendar outage can pass.
+@app.task(queue=PERIODIC, name=RUN_PERIODIC, retry=RetryStrategy(max_attempts=2, wait=60))
+def run_periodic(tenant_id: str, name: str, scheduled_at: int) -> None:
+    from flowpilot.runtime import periodic
+
+    close_old_connections()
+    try:
+        periodic.run_periodic(UUID(tenant_id), name, scheduled_at)
+    finally:
+        close_old_connections()
+
+
+def cron_for(every_min: int) -> str:
+    """A `Periodic.every_min` as cron (UTC): a divisor of 60 minutes, a divisor of 24
+    hours, or once a day."""
+    if 0 < every_min < 60 and 60 % every_min == 0:
+        return f"*/{every_min} * * * *"
+    hours, rest = divmod(every_min, 60)
+    if rest == 0 and 0 < hours < 24 and 24 % hours == 0:
+        return f"0 */{hours} * * *"
+    if every_min == 24 * 60:
+        return "0 0 * * *"
+    raise ValueError(f"every_min={every_min} cannot be scheduled as cron")
+
+
+def register_periodic(registry: PeriodicRegistry, packs: dict[str, Pack]) -> None:
+    """One periodic dispatch per pack Periodic, with periodic_id `<pack>:<name>`."""
+    task: Task[..., None, ...] = dispatch_periodic
+    for pack in packs.values():
+        for periodic in pack.periodic:
+            registry.register_task(
+                task=task,
+                cron=cron_for(periodic.every_min),
+                periodic_id=f"{pack.name}:{periodic.name}",
+                configure_kwargs={"task_kwargs": {"pack": pack.name, "name": periodic.name}},
+            )
+
+
+def _register_pack_periodics() -> None:
+    from packs.registry import PACKS
+
+    register_periodic(app.periodic_registry, PACKS)
+
+
+_register_pack_periodics()
 
 
 def is_last_attempt(context: JobContext) -> bool:

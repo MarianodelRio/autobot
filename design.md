@@ -651,6 +651,10 @@ outcome = adaptador.send(adaptador.render(payload), ...)
 - `run_periodic` construye un `PackContext` sin contacto, ejecuta el handler sin transacción y, en una transacción, aplica sus acciones.
 - **Barridos:** lo que depende de datos que cambia otra persona (citas que el dueño crea o mueve) no se programa entidad a entidad. Un barrido revisa la ventana relevante y actúa con una **clave estable** por entidad (`ctx.idem.stable("reminder:<gcal_id>:<start>")`), que se guarda como `idem_key` única en `outbound_message`. Si la cita se mueve, cambia `start` y le corresponde otro aviso; si no, el barrido la vuelve a ver y no repite.
 - Un barrido con más retraso que su `max_delay_min` (60 por defecto) se descarta y se registra.
+- **Implementación** (`flowpilot/runtime/periodic.py`; tareas en `flowpilot/jobs.py`):
+  - Al importar `jobs.py`, `register_periodic` registra la tarea `dispatch_periodic(timestamp, pack, name)` una vez por cada `Periodic` de `packs.registry.PACKS`, con `periodic_id = "<pack>:<name>"` y un cron en UTC sacado de `every_min` (divisor de 60 minutos, divisor de 24 horas o una vez al día; cualquier otro valor falla al arrancar).
+  - **Tenants activos:** solo los `active`, no `degraded` y con el canal `main` habilitado. En `onboarding` y `paused` el canal `main` no recibe trabajo periódico, para que un negocio en alta no envíe avisos a clientes reales; sin secretos o ids del canal, tampoco, porque sus avisos fallarían y sus claves estables quedarían gastadas. El barrido del calendario de pruebas (canal `test`) es de T-5.6.
+  - `run_periodic` (reintentos: 2, con un minuto de espera) vuelve a comprobar que el tenant sigue activo y que su pack tiene esa periódica; mide el retraso desde `scheduled_at` (el instante programado), y aplica las acciones con `apply_actions` en el canal `main`, en un `tenant_tx`, encolando los envíos en la misma transacción. El `queueing_lock` es `periodic:<tenant_id>:<name>`.
 
 #### 7.7 Comportamiento ante fallos
 

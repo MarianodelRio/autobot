@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 6 | in_progress |
+| F3 | Canales y runtime | 10 | 7 | in_progress |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **20** | |
+| **Total** | | **52** | **21** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -551,11 +551,18 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Diseño:** §7.4 y §7.5 ampliados.
 
 ### T-3.7 · Periódicas y barridos 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-3.5 · **Diseño:** §7.6
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-3.5 · **Diseño:** §7.6
 - **Hacer:** registro de los `Periodic` de los packs, reparto `run_periodic` por tenant activo, descarte por `max_delay_min` y aplicación de acciones en transacción.
 - **Acepta:** un instante programado se encola una sola vez; un barrido retrasado se descarta y se registra.
 - **Tests:** integración con una periódica del pack de juguete.
-- **Notas:** el barrido por calendario (real y de pruebas) se implementa en T-5.6.
+- **Notas:**
+  - El barrido por calendario (real y de pruebas) se implementa en T-5.6.
+  - **Registro** (`flowpilot/jobs.py`): `dispatch_periodic(timestamp, pack, name)` se registra en `app.periodic_registry` una vez por cada `Periodic` de `PACKS`, con `periodic_id = "<pack>:<name>"` y `task_kwargs` con el pack y el nombre. `cron_for(every_min)` traduce a cron en UTC: divisores de 60 minutos (`*/15 * * * *`), divisores de 24 horas (`0 */6 * * *`) o un día (`0 0 * * *`); cualquier otro valor lanza `ValueError` al arrancar. Hoy `PACKS` está vacío, así que el worker dice "No periodic task found" (comprobado).
+  - **Reparto** (`flowpilot/runtime/periodic.py`): `dispatch` encola `run_periodic(tenant_id, name, scheduled_at)` en `periodic` para cada tenant activo, con `queueing_lock = periodic:<tenant_id>:<name>`; si ya hay uno pendiente, `AlreadyEnqueued` se registra y se sigue.
+  - **Decisión (de T-2.4: si `paused` cuenta):** solo los tenants `active`, no `degraded` y con el canal `main` habilitado (`is_active`). `onboarding` tampoco, para no enviar avisos a clientes reales durante el alta. Sin secretos o ids, tampoco: los avisos fallarían y gastarían sus claves estables, así que se perderían al arreglarlo; se registra un aviso con el slug. El canal `test` queda para T-5.6.
+  - **De la revisión:** `run_periodic` reintenta 2 veces con 60 s de espera (`RetryStrategy(max_attempts=2, wait=60)`), para que una caída breve de Calendar pase. `clean_jobs` borra también `procrastinate_periodic_defers`, que referencia a los trabajos. El cron es UTC: `0 0 * * *` son la 1:00 o las 2:00 en Madrid; un pack que necesite una hora local la comprobará en su handler.
+  - **`run_periodic`: vuelve a comprobar el tenant y la periódica; descarta y registra si el retraso desde `scheduled_at` pasa de `max_delay_min`; ejecuta el handler sin transacción con `build_context(contact=None, state={}, event_id=None)` y aplica las acciones con `apply_actions` (canal `main`) y `defer_sends` en un `tenant_tx`.
+  - **Tests** (`tests/integration/test_periodic.py`): `cron_for`, registro con el pack de juguete, reparto solo a tenants activos, `queueing_lock`, que Procrastinate difiere un instante una sola vez (`defer_periodic_job` dos veces), acciones aplicadas una vez gracias a la clave estable, descarte por retraso con su registro, tenant que deja de estar activo y el recorrido `dispatch_periodic` → `run_periodic` con el worker.
 
 ### T-3.8 · Selector del bot de pruebas 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.5, T-3.6 · **Diseño:** §6.5, §6.6
