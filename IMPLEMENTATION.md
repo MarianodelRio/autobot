@@ -83,7 +83,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | Fase | Contenido | Tareas 🤖 | Hechas | Estado |
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
-| F1 | Núcleo puro (`core`) | 5 | 0 | pending |
+| F1 | Núcleo puro (`core`) | 5 | 1 | in_progress |
 | F2 | Datos, tenants y aislamiento | 5 | 0 | pending |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
@@ -91,7 +91,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **4** | |
+| **Total** | | **52** | **5** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -189,7 +189,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** un pack de juguete conversa a través del arnés de pruebas, sin BD ni red.
 
 ### T-1.1 · Tipos del contrato 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-0.4 · **Diseño:** §6.1, §8.1, §8.2
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-0.4 · **Diseño:** §6.1, §8.1, §8.2
 - **Hacer:** en `core`:
   - Mensaje entrante y respuestas: `IncomingMessage`, `Text`, `Buttons`, `List`, `Button`, `Section`, `Row`.
   - Acciones: `SendProactive`, `NotifyOwner`, `UpdateContact`, `ContactRef`.
@@ -198,7 +198,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - Serialización y deserialización JSON de respuestas y avisos proactivos, para `outbound_message.payload`.
 - **Acepta:** tipos inmutables donde el diseño lo indica; la serialización de ida y vuelta da objetos iguales; `mypy` estricto en `core`.
 - **Tests:** unitarios de serialización.
-- **Notas:** —
+- **Notas:** Módulos de `core`: `messages`, `replies`, `proactive` (`TemplateSpec` y `ProactiveMessage`, aparte para que `actions` no dependa de `pack`), `actions`, `pack`, `clock`, `idem`, `errors` y `serialization` (`dump_outbound`/`load_outbound`, con una clave `type`). Todo es `frozen` salvo `PackResult`, que el diseño define mutable; las listas se mantienen como `list`, igual que en el diseño. `PackContext.calendar` es `Any`, porque el `Protocol` vive en `packs/salon/ports.py` y `core` no puede importarlo. `HealthIssue(code, message)` es mínimo hasta T-6.2. `Clock` es un `Protocol` con `now()`, con `SystemClock(tz)` en producción (el reloj fijo llega en T-1.5). `Pack` es `kw_only`, para declararlo con nombres y en el orden de §8.1. Las tres cosas quedan reflejadas en §8.1 y §8.2 de `design.md`. `ContactRef` exige exactamente uno de `contact_id` o `phone`. Añadidos a §8.2 de `design.md`: el formato de `IdemKeys` (`event(name)` = `<name>:<event_id>`; `stable(name)` = `name`) y la firma de `Periodic.handler`. Los tests de `core` viven en `src/core/tests/`.
 
 ### T-1.2 · Límites comunes y plan de envío 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-1.1 · **Diseño:** §6.1, §7.4

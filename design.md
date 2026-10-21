@@ -635,7 +635,7 @@ pack = Pack(
     periodic=[Periodic("calendar_sweep", every_min=15, handler=sweep.run, max_delay_min=60)],
     needs_calendar=True,                             # el runtime le da ctx.calendar (config con calendar_id y test_calendar_id)
     load_data=None,                                  # (tenant, config, path) -> objeto en memoria; bus lo usa
-    health=health.check,                             # (ctx) -> list[HealthIssue]
+    health=health.check,                             # (ctx) -> list[HealthIssue(code, message)]; se concreta en T-6.2
     templates=[TEMPLATE_CONFIRMATION, TEMPLATE_REMINDER],   # TemplateSpec (§6.2)
 )
 ```
@@ -655,10 +655,10 @@ class PackContext:
     data: object | None                 # lo que devolvió load_data
     contact: ContactInfo | None         # id, external_id, phone (puede ser None), display_name, opt_out
     state: Mapping[str, Any]            # estado actual (solo lectura)
-    clock: Clock                        # now() en la zona del tenant; inyectable en tests
-    calendar: CalendarPort | None       # solo si needs_calendar; ya ligado al calendario del canal (§6.5)
+    clock: Clock                        # Protocol con now() en la zona del tenant; SystemClock en producción, reloj fijo en tests
+    calendar: Any                       # CalendarPort | None del pack (packs/salon/ports.py), que core no puede importar; solo si needs_calendar; ya ligado al calendario del canal (§6.5)
     lock: Callable[[str], ContextManager]   # advisory lock de PostgreSQL; la clave se prefija con tenant y calendario (§9.5)
-    idem: IdemKeys                      # .event(name) ligada al evento actual; .stable(name) para barridos
+    idem: IdemKeys                      # .event(name) = "<name>:<event_id>" (evento actual); .stable(name) = name, para barridos
     log: Logger                         # con tenant y event_id; enmascara teléfonos
 
 @dataclass
@@ -675,7 +675,7 @@ UpdateContact(display_name: str | None = None, opt_out: bool | None = None)
 ```
 
 - Un pack **nunca** toca la BD, los canales ni las APIs directamente: todo lo externo le llega por `ctx`. Tampoco elige calendario ni sabe si la conversación es de pruebas.
-- Los handlers periódicos reciben `ctx` con `contact=None` y `state={}`, y solo devuelven `actions`.
+- Los handlers periódicos (`Periodic.handler: (ctx) -> list[Action]`) reciben `ctx` con `contact=None` y `state={}`, y solo devuelven acciones.
 - `SendProactive` lo resuelve el runtime: busca contacto y canal (§6.5), descarta contactos con `opt_out` o `unreachable`, y crea un `outbound_message` de tipo `proactive` con su `idem_key`.
 
 #### 8.3 Utilidades comunes (`core/`)
