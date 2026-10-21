@@ -6,9 +6,9 @@ readme = "README.md"
 requires-python = ">=3.14,<3.15"
 # Versions verified in design.md §18.
 dependencies = [
-    "django>=5.2,<5.3",
+    "django>=6.1.2,<6.2",
     "procrastinate[django]>=3.10,<4",
-    "psycopg[binary]>=3.3,<3.4",
+    "psycopg[binary]>=3.3.6,<3.4",
     "pydantic>=2.14,<3",
     "google-api-python-client>=2,<3",
     "httpx>=0.28,<0.29",
@@ -22,7 +22,7 @@ dependencies = [
 dev = [
     "ruff>=0.14",
     "mypy>=1.18",
-    "django-stubs[compatible-mypy]>=5.2,<5.3",
+    "django-stubs[compatible-mypy]>=6.1.2,<6.2",
     "pytest>=8.4",
     "pytest-django>=4.11",
     "weasyprint>=66",
