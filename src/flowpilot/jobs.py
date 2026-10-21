@@ -16,4 +16,8 @@ OUTBOUND = "outbound"  # send_message, send_notification
 PERIODIC = "periodic"  # run_periodic, ops_check, retention_cleanup
 QUEUES = (INBOUND, OUTBOUND, PERIODIC)
 
-__all__ = ["INBOUND", "OUTBOUND", "PERIODIC", "QUEUES", "app"]
+# Job names, so they can be deferred before their task is declared here (T-3.5).
+PROCESS_EVENT = "process_event"  # (tenant_id, event_id), lock conv:<h>
+APPLY_STATUS = "apply_status"  # (tenant_id, event_id), no lock
+
+__all__ = ["APPLY_STATUS", "INBOUND", "OUTBOUND", "PERIODIC", "PROCESS_EVENT", "QUEUES", "app"]

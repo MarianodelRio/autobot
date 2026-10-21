@@ -1,5 +1,24 @@
-"""Root URLs. Webhooks, /health and the separately mounted Admin arrive with T-3.3."""
+"""Root URLs.
 
-from django.urls import URLPattern, URLResolver
+Public routes are the only ones Caddy forwards (design.md §13, §14.3): the webhooks and
+/health. The Admin is mounted apart: Caddy never routes it, and the operator reaches it
+through the SSH tunnel to 127.0.0.1:8000.
+"""
 
-urlpatterns: list[URLPattern | URLResolver] = []
+from django.contrib import admin
+from django.urls import URLPattern, URLResolver, path
+
+from flowpilot.channels import views as webhooks
+from flowpilot.ops.views import health
+
+public: list[URLPattern | URLResolver] = [
+    path("webhooks/whatsapp/<str:public_id>", webhooks.whatsapp, name="webhook-whatsapp"),
+    path("webhooks/telegram/<str:public_id>", webhooks.telegram, name="webhook-telegram"),
+    path("health", health, name="health"),
+]
+
+internal: list[URLPattern | URLResolver] = [
+    path("admin/", admin.site.urls),
+]
+
+urlpatterns = public + internal

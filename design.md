@@ -500,13 +500,15 @@ El barrido de Calendar (§9.6) recorre los dos calendarios por separado: el real
 
 ```
 POST /webhooks/<tipo>/<public_id>                  (canal main de un tenant)
+  0. IP bloqueada por firmas inválidas             → 429
   1. tenant = registro[(tipo, public_id)]         no existe o canal deshabilitado → 404
-  2. cuerpo ≤ 64 KB y JSON válido                  si no → 400
+  2. cuerpo ≤ 64 KB                                si no → 400
   3. adaptador.verify(...)                         falla → 401 sin guardar; cuenta para el límite por IP
+  3b. JSON válido (un objeto)                      si no → 400 (se analiza después de verificar la firma)
   4. tenant offboarded                             → 200 sin guardar
   5. por cada elemento de adaptador.parse(...):
        status = ignored si el tenant está paused o degraded,
-                o en onboarding y external_id no está en testers.main
+                o en onboarding, es un mensaje y ni su external_id ni su teléfono están en testers.main
        tenant_tx(tenant.id):
          INSERT inbound_event (channel='main', kind, provider_event_id, payload, status)
            ON CONFLICT (tenant_id, channel, provider_event_id) DO NOTHING
@@ -514,12 +516,17 @@ POST /webhooks/<tipo>/<public_id>                  (canal main de un tenant)
            kind=message → defer process_event(tenant_id, event_id)  cola inbound, lock conv:<h>
            kind=status  → defer apply_status(tenant_id, event_id)   cola inbound, sin candado
        COMMIT
-  6. 200 OK
+  6. 200 OK                                        (error de BD o de la cola al guardar → 503; el proveedor reintenta)
 ```
 
 - El bot de pruebas entra por `POST /webhooks/telegram-test` y pasa por el selector (§6.5), que acaba creando el mismo `inbound_event` con `channel='test'` y encolando el mismo `process_event`.
 - `h` = primeros 16 caracteres hex de `sha256(tenant_id, canal, external_id)`. **Los candados nunca llevan teléfonos ni ids de usuario en claro**, porque la tabla de trabajos de Procrastinate no tiene RLS.
 - Los webhooks no hacen ninguna llamada externa: solo leen el registro en memoria y escriben en la BD.
+- **Implementación** (`flowpilot/channels/views.py` y `flowpilot/runtime/inbound.py`):
+  - `GET /webhooks/whatsapp/<public_id>` es la verificación de Meta (§6.3): devuelve `hub.challenge` o 403, y un `verify_token` erróneo cuenta para el límite por IP.
+  - `runtime/inbound.store(tenant, items)` guarda y encola; lo reutilizarán `telegram_poll` y el selector del bot de pruebas, para que todo entre por el mismo camino. El trabajo se encola por nombre (`flowpilot/jobs.py`: `PROCESS_EVENT`, `APPLY_STATUS`) dentro de la misma transacción que el `INSERT`.
+  - En `onboarding`, un tester de WhatsApp se reconoce por su `external_id` o por su teléfono, porque con BSUID el `external_id` ya no es el teléfono. Los estados de entrega (de mensajes nuestros) no dependen de `testers.main`.
+  - **Límite por IP:** en memoria y por proceso (cada *worker* de `web` cuenta por su cuenta): 20 peticiones con firma inválida en 60 s bloquean esa IP con 429 durante la ventana; las válidas nunca cuentan. La IP es la última entrada de `X-Forwarded-For`, la que pone Caddy (§14.3); sin proxy, `REMOTE_ADDR`.
 
 #### 7.2 `process_event`
 
@@ -1093,7 +1100,7 @@ Derechos RGPD: `manage.py export_contact <slug> <external_id>` y `manage.py forg
 | Punto | Protección |
 |---|---|
 | Webhooks | Autenticidad comprobada **antes de nada** y en tiempo constante (HMAC de Meta, `secret_token` de Telegram); cuerpo ≤ 64 KB; URL con `public_id` aleatorio; límite por IP solo de peticiones con firma inválida; validación de formatos de identificador |
-| Superficie pública | Caddy solo enruta `/webhooks/whatsapp/*`, `/webhooks/telegram/*`, `/webhooks/telegram-test` y `/health`; todo lo demás, 404 |
+| Superficie pública | Caddy solo enruta `/webhooks/whatsapp/*`, `/webhooks/telegram/*`, `/webhooks/telegram-test` y `/health`; todo lo demás, 404. En `config/urls.py`, esas rutas están en `public` y el Admin, aparte, en `internal` |
 | Admin | No se publica: `web` también escucha en `127.0.0.1:8000` y el operador entra con `ssh -L` (`make admin-tunnel`). Login de Django con 2FA (`django-otp`); cada cambio queda en `LogEntry` |
 | Pruebas | El bot de pruebas solo atiende a `TEST_BOT_OPERATORS` y a los `testers.telegram` de cada negocio, y cada uno solo ve sus negocios. En `onboarding`, el canal `main` solo responde a `testers.main` |
 | Servidor | SSH solo con clave, sin root; cortafuegos que solo abre 22, 80 y 443; `unattended-upgrades`; `fail2ban` en SSH |
@@ -1232,7 +1239,7 @@ Sentry (plan gratuito): excepciones de `web` y `worker` con `tenant` y `event_id
 - Las alertas van al chat de ops (§11) y se repiten como mucho cada 30 min por tipo y tenant.
 - Al terminar, `ops_check` envía un **latido a healthchecks.io**. Si el worker, la BD o la VPS caen, el latido deja de llegar y healthchecks.io avisa por email y Telegram, sin depender de la plataforma.
 - **Uptime externo** (UptimeRobot o Better Stack) comprueba `https://api.<dominio>/health` cada 5 min. Detecta caídas de Caddy o `web`, fallos de DNS y la caducidad del certificado.
-- **`/health`** devuelve 200 si hay conexión a la BD, junto con el número de tenants cargados y `degraded`. No llama a servicios externos.
+- **`/health`** devuelve 200 si hay conexión a la BD, junto con el número de tenants cargados y `degraded`. No llama a servicios externos. Es público, así que no da nombres: `{"status", "database", "tenants": {"loaded", "degraded", "unreadable"}}`, y 503 sin BD.
 
 #### 15.4 Panel
 

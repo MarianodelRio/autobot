@@ -1,0 +1,59 @@
+"""Limit per IP of webhook requests with an invalid signature (design.md §13).
+
+In memory, per process: enough to slow down someone probing secrets (each `web` worker
+counts on its own). Valid requests are never counted.
+"""
+
+import threading
+import time
+from collections import deque
+from collections.abc import Callable
+
+from django.http import HttpRequest
+
+MAX_IPS = 10_000  # bound on memory: past it, the oldest entries are forgotten
+
+
+class InvalidSignatureLimiter:
+    def __init__(
+        self, limit: int = 20, window_s: float = 60.0, clock: Callable[[], float] = time.monotonic
+    ) -> None:
+        self.limit = limit
+        self.window_s = window_s
+        self.clock = clock
+        self._failures: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def blocked(self, ip: str) -> bool:
+        """Has this IP sent `limit` invalid requests within the window?"""
+        with self._lock:
+            failures = self._failures.get(ip)
+            if failures is None:
+                return False
+            self._prune(failures)
+            if not failures:
+                del self._failures[ip]
+            return len(failures) >= self.limit
+
+    def record(self, ip: str) -> None:
+        with self._lock:
+            failures = self._failures.pop(ip, None) or deque()
+            self._prune(failures)
+            failures.append(self.clock())
+            self._failures[ip] = failures  # last inserted = most recently seen
+            while len(self._failures) > MAX_IPS:
+                del self._failures[next(iter(self._failures))]
+
+    def _prune(self, failures: deque[float]) -> None:
+        oldest = self.clock() - self.window_s
+        while failures and failures[0] <= oldest:
+            failures.popleft()
+
+
+def client_ip(request: HttpRequest) -> str:
+    """The caller's address. Behind Caddy (§14.3) it is the last X-Forwarded-For entry,
+    the one Caddy itself sets; without a proxy, REMOTE_ADDR."""
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded:
+        return str(forwarded.split(",")[-1].strip())
+    return str(request.META.get("REMOTE_ADDR", ""))

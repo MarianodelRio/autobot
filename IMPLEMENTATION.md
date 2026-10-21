@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 2 | in_progress |
+| F3 | Canales y runtime | 10 | 3 | in_progress |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **16** | |
+| **Total** | | **52** | **17** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -467,7 +467,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Diseño:** §6.4 y §17.2 actualizados.
 
 ### T-3.3 · Webhooks y `/health` ⚠️ 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-3.2, T-2.4, T-2.5 · **Diseño:** §7.1, §13, §15.3
+- **Estado:** done · **Revisión:** aprobada (y aprobación ⚠️ de la persona, 2026-10-21) · **Depende de:** T-3.2, T-2.4, T-2.5 · **Diseño:** §7.1, §13, §15.3
 - **Hacer:**
   - Vistas `GET`/`POST /webhooks/whatsapp/<public_id>` y `POST /webhooks/telegram/<public_id>` según §7.1: límite de 64 KB, 404, 401, reglas de `ignored` por estado y `testers.main`, `ON CONFLICT` y encolado.
   - Límite por IP de las peticiones con firma inválida.
@@ -475,7 +475,17 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - URLs de `/admin/` montadas aparte, para que Caddy no las exponga (T-7.1).
 - **Acepta:** el webhook no hace ninguna llamada externa; un aviso duplicado no se encola dos veces.
 - **Tests:** integración de cada rama de §7.1.
-- **Notas:** —
+- **Notas:**
+  - **Vistas** (`flowpilot/channels/views.py`): `whatsapp` (`GET` de verificación y `POST`) y `telegram`. Orden: IP bloqueada (429), tenant (404 si no existe o su canal `main` está deshabilitado), tamaño ≤ 64 KB (400, mirando también `Content-Length`), firma (401 y cuenta para el límite), JSON (400), `offboarded` (200 sin guardar), guardar y encolar (200; un error de BD o de Procrastinate da 503, y un test comprueba que entonces no queda ni el evento ni el trabajo). El JSON se analiza **después** de verificar la firma (§13: autenticidad antes de nada); §7.1 actualizado.
+  - **Guardar y encolar** (`flowpilot/runtime/inbound.py`): `store(tenant, items)`, un `tenant_tx` por elemento con `INSERT … ON CONFLICT DO NOTHING RETURNING id`; si se insertó y está `pending`, encola en la misma transacción `process_event` (candado `conv:<h>`) o `apply_status` (sin candado), con solo los ids como argumentos. Los trabajos se encolan por nombre (`PROCESS_EVENT` y `APPLY_STATUS` en `flowpilot/jobs.py`) porque sus tareas llegan en T-3.5; hasta entonces el worker no sabría ejecutarlos.
+  - **`h`** (`flowpilot/runtime/locks.py`): `contact_hash` = 16 hex de `sha256(tenant_id, canal, external_id)`; T-3.6 lo reutilizará para `out:<h>`.
+  - **`ignored`:** tenant `paused` o `degraded`, o en `onboarding` y ni el `external_id` ni el teléfono del remitente están en `testers.main` (con BSUID, el `external_id` ya no es el teléfono, y `testers.main` admite los dos). Los estados de entrega no dependen de `testers.main`.
+  - **Límite por IP** (`flowpilot/channels/ratelimit.py`): en memoria y por proceso; 20 firmas inválidas en 60 s bloquean la IP con 429 durante la ventana; como mucho 10.000 IPs en memoria. La IP es la última entrada de `X-Forwarded-For`. **Para T-7.1:** depende de que Caddy ponga esa cabecera y de que `web` solo sea accesible a través de Caddy.
+  - **`/health`** (`flowpilot/ops/views.py`): 200 con `{"status", "database", "tenants": {"loaded", "degraded", "unreadable"}}`, o 503 sin BD. No da nombres, porque es público.
+  - **URLs** (`config/urls.py`): `public` (los dos webhooks y `/health`) e `internal` (`/admin/`). T-7.1 enruta en Caddy solo las públicas.
+  - **`provider_event_id` ≤ 200:** el adaptador de WhatsApp descarta ids más largos y el de Telegram usa `update_id` (un entero); un id más largo daría 503 y reintentos sin fin.
+  - **Pendiente para T-3.5 (contradicción del diseño):** §5.4 dice que los contactos de un tenant `degraded` reciben un texto genérico, pero §7.1 guarda sus eventos como `ignored`, y un evento `ignored` no se procesa. Hay que decidir cómo se envía ese texto.
+  - **Tests:** `tests/integration/test_webhooks.py` (cada rama de §7.1, duplicados, lotes, RLS al guardar, estados `ignored`, `GET`, 503, `/health`, URLs y que no haya llamadas externas) y `tests/contract/test_ratelimit.py`. Comprobado en local: `/health` responde en el contenedor `web`.
 
 ### T-3.4 · `ctx`: candados, claves idempotentes y calendario por canal 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-2.3 · **Diseño:** §8.2, §9.5, §6.5
