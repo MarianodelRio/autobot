@@ -84,7 +84,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 |---|---|---:|---:|---|
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
-| F2 | Datos, tenants y aislamiento | 5 | 5 | done (validación pendiente de confirmación) |
+| F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 0 | pending |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
@@ -420,9 +420,9 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Recarga en local:** §14.2 corregido. El worker no se recarga solo; tras cambiar código, `docker compose restart worker`.
 
 ### ✅ Validación F2
-- [ ] Test de aislamiento en verde en CI.
-- [ ] `sync_tenants` con un tenant de ejemplo crea su fila `tenant`.
-- [ ] El orden por candado está comprobado.
+- [x] Test de aislamiento en verde en CI.
+- [x] `sync_tenants` con un tenant de ejemplo crea su fila `tenant`.
+- [x] El orden por candado está comprobado.
 
 ---
 
