@@ -7,6 +7,12 @@ updates:
     groups:
       python:
         patterns: ["*"]
+    # Django stays on the 5.2 LTS (design.md §0, §18): only its patch releases.
+    ignore:
+      - dependency-name: django
+        versions: [">=5.3"]
+      - dependency-name: django-stubs
+        versions: [">=5.3"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
