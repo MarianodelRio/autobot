@@ -1,0 +1,25 @@
+# Pasa por pueblo-a. Su tabla de festivos lleva la condición "solo viernes
+# lectivo": en un festivo local que cae en viernes lectivo no debe activarse.
+nombre: Línea viernes A
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: horario }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      AAA    DDD    EEE
+      06:00  06:10  06:20
+  - temporada: anual
+    dias: domingos-festivos
+    tabla: |
+      AAA    DDD    EEE
+      07:00  07:10  07:20  | solo_viernes_lectivo
+
+pendientes: []

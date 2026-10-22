@@ -1,0 +1,21 @@
+# Comparte autobús físico con linea-fusion-2 (misma hora de salida y
+# llegada, misma pareja de paradas): el motor debe fusionarlas en una sola
+# salida con las líneas y notas de ambas.
+nombre: Línea Fusión 1
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      III    JJJ
+      11:00  11:20  | aviso_uno
+
+pendientes: []

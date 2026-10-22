@@ -1,0 +1,52 @@
+# horarios/lineas/fuente-carreteros-cordoba.yaml
+# Horarios actualizados por negocio el 07/10/2026. El "desde 01/10/2026" de los
+# títulos del Excel se lee como la fecha desde la que rigen, no como un cambio
+# de temporada (P37).
+# Fuente: Excel de negocio del 07/10/2026 («2026-10-07 ACTUALIZACION HORARIOS.xlsx», ya fuera del repo), hoja FTE CARRET.
+#
+# Horario anual (D-c). Viaje de las 13:15 desde Córdoba: cambio de la empresa
+# en el Excel modificado (fila 16). Antes 12:30 ... 13:40, ahora 13:15 ...
+# 14:25, todo el viaje.
+nombre: Fuente Carreteros – Córdoba
+nombre_corto: F. Carreteros – Córdoba
+avisos: [hora_aproximada]
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: horario, domingos-festivos: sin_servicio }
+
+horarios:
+  # ── Lunes a viernes ─────────────────────────────────────────────────────
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      FCA    SIL    FPA    VEN    FCU    GDZ    COR
+      06:30  06:35  06:45  06:50  07:00  07:10  07:45
+      10:00  10:05  10:15  10:20  10:30  10:40  11:10
+      15:30  15:35  15:45  15:50  16:00  16:10  16:40
+
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      COR    GDZ    FCU    VEN    FPA    SIL    FCA
+      08:15  08:45  08:55  09:05  09:10  09:20  09:25
+      13:15  13:45  13:55  14:05  14:10  14:20  14:25
+      18:30  19:00  19:10  19:20  19:25  19:35  19:40
+
+  # ── Sábado ──────────────────────────────────────────────────────────────
+  - temporada: anual
+    dias: sabado
+    tabla: |
+      FCA    SIL    FPA    VEN    FCU    GDZ    COR
+      08:00  08:05  08:15  08:20  08:30  08:40  09:10
+
+  - temporada: anual
+    dias: sabado
+    tabla: |
+      COR    GDZ    FCU    VEN    FPA    SIL    FCA
+      13:30  14:00  14:10  14:20  14:25  14:35  14:40
+
+pendientes: []

@@ -1,0 +1,88 @@
+# horarios/lineas/penarroya-cordoba.yaml
+# Horarios actualizados por negocio el 07/10/2026. El "desde 01/10/2026" de los
+# títulos del Excel se lee como la fecha desde la que rigen, no como un cambio
+# de temporada (P37).
+# Fuente: Excel de negocio del 07/10/2026 («2026-10-07 ACTUALIZACION HORARIOS.xlsx», ya fuera del repo), hoja PYA INV.
+#
+# Todo el año (P01). Villanueva del Rey tiene dos paradas (P20): VRE es el
+# pueblo (celda con marca amarilla en el Excel) y VRC es el cruce (sin marca).
+# Cada fila lleva hora solo en una de las dos columnas.
+#
+# Los viajes que comparten autobús con otras líneas se declaran con `bus:`:
+# el de las 10:30 con Los Blázquez, el de las 10:00 (vuelta) con Los Blázquez,
+# el de las 15:00 y el de las 12:05 con Badajoz, y los del domingo con Badajoz.
+# Las 18:10 de Belmez de las filas 23 y 36 del Excel dicen `18.10` (D-p).
+#
+# Salidas de Córdoba a la misma hora que Pozoblanco – Córdoba (10:30, 13:10,
+# 20:00) y que Villaviciosa (13:10, 18:30): autobuses distintos por rutas que
+# se separan (Pozoblanco no para en El Vacar); `make validar` avisa y no se
+# fusionan.
+nombre: Peñarroya – Córdoba
+avisos: [hora_aproximada]
+no_circula: []
+
+temporadas:
+  anual: todo el año   # P01
+
+dias:
+  anual: { lunes-viernes: horario, sabado: horario, domingos-festivos: horario }
+
+horarios:
+  # ── Ida: lunes a viernes ──────────────────────────────────────────────────
+  # 21:50 en Fuente Obejuna es solo viernes en periodo escolar (P04, D-i).
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      COR    VAC    CVH    ESP    VRC    VRE    BEL    PNR    FOB
+      10:30  11:00  11:05  11:15  -      11:25  11:40  11:55  -  | bus:cor-1030
+      13:10  13:40  13:45  13:55  14:05  -      14:15  14:30  -
+      15:00  -      -      15:40  15:55  -      16:05  16:20  16:40  | bus:cor-1500
+      18:30  19:00  -      19:15  19:25  -      19:35  19:50  20:15
+      20:00  20:30  20:35  20:45  -      20:55  21:10  21:25  21:50V
+
+  # ── Vuelta: lunes a viernes ───────────────────────────────────────────────
+  # Excel: `18.10` en Belmez de la fila 23 (D-p).
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      FOB    PNR    BEL    VRC    VRE    ESP    CVH    VAC    COR
+      07:40  08:00  08:10  08:20  -      08:30  08:40  08:45  09:30
+      -      10:00  10:10  -      10:25  10:35  10:45  10:55  11:30  | bus:pnr-1000
+      12:05  12:30  12:40  12:50  -      13:00  -      -      13:45  | bus:fob-1205
+      -      15:45  15:55  -      16:10  16:20  16:30  16:35  17:15
+      -      18:00  18:10  18:20  -      18:30  18:40  18:45  19:15
+
+  # ── Ida: sábado ───────────────────────────────────────────────────────────
+  - temporada: anual
+    dias: sabado
+    tabla: |
+      COR    VAC    CVH    ESP    VRC    VRE  BEL    PNR    FOB
+      14:45  -      15:20  15:30  15:40  -    15:55  16:10  16:20
+      20:00  20:30  20:35  20:45  20:55  -    21:05  21:20  -
+
+  # ── Vuelta: sábado ────────────────────────────────────────────────────────
+  # Excel: `18.10` en Belmez de la fila 36 (D-p).
+  - temporada: anual
+    dias: sabado
+    tabla: |
+      FOB    PNR    BEL    VRC    VRE  ESP    CVH    VAC    COR
+      08:00  08:20  08:30  08:40  -    08:50  09:00  09:05  09:40
+      17:40  18:00  18:10  18:15  -    18:25  18:35  -      19:30
+
+  # ── Ida: domingos y festivos (P03c) ───────────────────────────────────────
+  - temporada: anual
+    dias: domingos-festivos
+    tabla: |
+      COR    VAC    CVH    ESP    VRC    VRE  BEL    PNR    FOB
+      14:45  -      -      15:30  15:40  -    15:55  16:10  16:20  | bus:cor-1445-dom
+      20:30  21:00  21:05  21:15  21:25  -    21:40  21:50  -
+
+  # ── Vuelta: domingos y festivos ───────────────────────────────────────────
+  - temporada: anual
+    dias: domingos-festivos
+    tabla: |
+      FOB    PNR    BEL    VRC    VRE  ESP    CVH    VAC    COR
+      08:00  08:20  08:30  08:40  -    08:50  09:00  09:05  09:40
+      18:30  18:50  19:00  19:10  -    19:20  -      -      20:10  | bus:fob-1830-dom
+
+pendientes: []

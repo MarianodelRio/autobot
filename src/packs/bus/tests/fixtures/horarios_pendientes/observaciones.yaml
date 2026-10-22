@@ -1,0 +1,10 @@
+# Avisos de viaje de las aldeas pendientes del ciclo C2.
+pasa_por_aldea_a:
+  tipo: aviso
+  ambitos: [viaje]
+  texto: "Para en Aldea A, a unos 4 minutos de Pueblo A."
+
+para_en_aldea_b:
+  tipo: aviso
+  ambitos: [viaje]
+  texto: "Para en Aldea Bonita, a unos 7 minutos de Pueblo B."

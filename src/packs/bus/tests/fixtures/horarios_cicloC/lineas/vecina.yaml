@@ -1,0 +1,27 @@
+# Par NO declarado que parece el mismo autobús que larga.yaml y corta.yaml
+# (misma salida de Córdoba y El Vacar) pero llega a Espiel a otra hora:
+# solo aviso heurístico, nunca error.
+nombre: Vecina – Córdoba
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      COR    VAC    ESP
+      10:30  11:00  11:20
+
+  - temporada: anual
+    dias: lunes-jueves
+    tabla: |
+      COR    VAC    ESP
+      10:30  11:00  11:20
+
+pendientes: []

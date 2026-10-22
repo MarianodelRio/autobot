@@ -1,0 +1,64 @@
+# horarios/lineas/belalcazar-cordoba.yaml
+# Horarios actualizados por negocio el 07/10/2026. El "desde 01/10/2026" de los
+# títulos del Excel se lee como la fecha desde la que rigen, no como un cambio
+# de temporada (P37).
+# Fuente: Excel de negocio del 07/10/2026 («2026-10-07 ACTUALIZACION HORARIOS.xlsx», ya fuera del repo), hoja BELAL- COR.
+nombre: Belalcázar – Córdoba
+telefono_demanda: "957 42 90 30"
+avisos: [hora_aproximada]
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: horario, domingos-festivos: horario }
+
+horarios:
+  # ── Lunes a viernes ──────────────────────────────────────────────────────
+  # Fila de las 09:20: Alcaracejos 10:10 frente a 10:05 en Belalcázar –
+  # Pozoblanco. No es una nota porque P08 dijo "ESO NO TIENES QUE TENERLO EN
+  # CUENTA".
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      CBU    BLZ    HIN    FLA    VDU    VRT     ALC    CVH    VAC    COR
+      -      06:30  06:45  06:55  07:00  -       07:05  -      07:30  08:15
+      -      09:20  09:30  09:40  09:45  09:55D  10:10  10:40  -      11:25
+      14:30  14:50  15:05  15:15  15:20  -       15:25  15:55  -      16:30
+
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      COR    VAC    CVH    ALC    VRT     VDU    FLA    HIN    BLZ    CBU
+      12:00  12:25  12:30  13:00  -       13:05  13:10  13:20  13:35  13:55
+      15:30  -      16:00  16:30  16:35D  16:35  16:40  16:50  17:00  17:20V
+      18:30  -      19:00  19:35  -       19:40  19:45  19:55  20:05  -
+
+  # ── Sábado ───────────────────────────────────────────────────────────────
+  - temporada: anual
+    dias: sabado
+    tabla: |
+      CBU  BLZ    HIN    FLA    VDU    VRT     ALC    CVH    VAC    COR
+      -    07:50  08:05  08:15  08:20  08:25D  08:25  08:55  09:00  09:30
+
+  - temporada: anual
+    dias: sabado
+    tabla: |
+      COR    VAC    CVH    ALC    VRT     VDU    FLA    HIN    BLZ    CBU
+      13:00  13:25  13:30  14:00  14:05D  14:05  14:10  14:20  14:30  -
+
+  # ── Domingos y festivos ──────────────────────────────────────────────────
+  - temporada: anual
+    dias: domingos-festivos
+    tabla: |
+      CBU    BLZ    HIN    FLA    VDU    VRT  ALC    CVH    VAC    COR
+      16:45  17:05  17:20  17:30  17:35  -    17:40  18:00  18:05  19:00
+
+  - temporada: anual
+    dias: domingos-festivos
+    tabla: |
+      COR    VAC    CVH    ALC    VRT  VDU    FLA    HIN    BLZ    CBU
+      20:00  20:25  20:30  21:00  -    21:05  21:10  21:20  21:35  -
+
+pendientes: []

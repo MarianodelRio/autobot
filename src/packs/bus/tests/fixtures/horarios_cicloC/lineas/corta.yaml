@@ -1,0 +1,28 @@
+# Peñarroya – Córdoba. La primera fila es el mismo autobús que larga.yaml;
+# la segunda es un viaje propio que para en el cruce (VRC); la segunda tabla
+# comparte autobús con paso.yaml.
+nombre: Peñarroya – Córdoba
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      COR    VAC    ESP    VRE    VRC    BEL    PNR
+      10:30  11:00  11:15  11:25  -      11:40  11:55  | bus:cor-1030
+      13:10  13:40  13:55  -      14:05  14:15  14:30
+
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      COR    ESP    BEL    PVN
+      15:00  15:40  16:00  16:45  | bus:pas-1500
+
+pendientes: []

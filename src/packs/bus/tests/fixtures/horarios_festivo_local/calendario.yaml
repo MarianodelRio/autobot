@@ -1,0 +1,19 @@
+vigencia: 01/01/2026 - 31/08/2027
+
+festivos:
+  01/01/2026: Año Nuevo
+  25/12/2026: Navidad
+
+curso:
+  inicio_clases: 01/09/2026
+  fin_clases: 30/06/2027
+  vacaciones: []
+  no_lectivos: []
+
+# 14/10/2026 es miércoles; 16/10/2026 es viernes lectivo.
+festivos_locales:
+  pueblo-a:
+    14/10/2026: Fiesta local de A
+    16/10/2026: Feria de A
+
+pendientes: []

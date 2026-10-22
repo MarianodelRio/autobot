@@ -1,0 +1,23 @@
+# Viaje 1: a_demanda en el origen (K). Viaje 2: a_demanda solo en una parada
+# intermedia (M): consultar K -> L no debe llevar ninguna nota, porque M no
+# es ni la parada de origen ni la de destino elegidas para ese par.
+nombre: Línea Demanda
+telefono_demanda: "957 00 00 00"
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      KKK    MMM    LLL
+      10:00D -      10:15
+      11:00  11:10D 11:25
+
+pendientes: []

@@ -1,0 +1,135 @@
+# horarios/lineas/pozoblanco-cordoba.yaml
+# Horarios actualizados por negocio el 07/10/2026. El "desde 01/10/2026" de los
+# títulos del Excel se lee como la fecha desde la que rigen, no como un cambio
+# de temporada (P37).
+# Fuente: Excel de negocio del 07/10/2026 («2026-10-07 ACTUALIZACION HORARIOS.xlsx», ya fuera del repo), hojas POZOB INV y POZOB VER.
+#
+# Villaharta (VHA) es parada a demanda todo el año (D-f),
+# salvo en el viaje de las 10:35 (Pozoblanco → Córdoba, lunes a viernes), que
+# no es a demanda. Se marca D en toda celda donde el autobús para en Villaharta,
+# excepto en ese viaje.
+nombre: Pozoblanco – Córdoba
+telefono_demanda: "957 42 90 30"
+avisos: [hora_aproximada]
+no_circula: []
+
+temporadas:
+  invierno: 15/09 - 22/06   # confirmado por negocio
+  verano: 23/06 - 14/09     # confirmado por negocio; los horarios de verano aún no son definitivos
+
+dias:
+  invierno: { lunes-viernes: horario, sabado: horario, domingos-festivos: horario }
+  verano:   { lunes-viernes: horario, sabado: horario, domingos-festivos: horario }
+
+horarios:
+  # ── INVIERNO — lunes a viernes ──────────────────────────────────────────
+  - temporada: invierno
+    dias: lunes-viernes
+    tabla: |
+      CON     VVC     PZH    POZ    ALC    VHA     CVH    COR
+      -       06:25D  06:45  06:55  07:05  -       -      08:15
+      07:20D  07:45   08:05  08:15  08:25  08:50D  08:55  09:30
+      -       09:30   09:50  10:00  10:10  10:35   10:40  11:25
+      -       14:45   15:05  15:15  15:25  15:50D  15:55  16:30
+      -       17:30   -      18:00  18:10  18:35D  18:40  19:15
+
+  - temporada: invierno
+    dias: lunes-viernes
+    tabla: |
+      COR    CVH    VHA     ALC    POZ    PZH    VVC     CON
+      10:30  11:00  -       11:30  11:40  11:45  -       -
+      12:00  -      -       13:00  13:10  13:15  13:35   -
+      13:10  13:40  13:45D  14:10  14:25  14:35  15:10   -
+      15:30  16:00  -       16:30  16:45  -      -       -
+      18:30  19:00  19:05D  19:30  19:40  19:50  20:10   20:35
+      20:00  20:30  20:35D  21:00  21:10  21:15  21:45C  -
+
+  # ── INVIERNO — sábado ────────────────────────────────────────────────────
+  - temporada: invierno
+    dias: sabado
+    tabla: |
+      VVC    PZH    POZ    ALC    VHA     CVH    COR
+      07:45  08:05  08:15  08:25  08:50D  08:55  09:30
+      14:45  15:05  15:15  15:25  15:50D  15:55  16:30
+
+  - temporada: invierno
+    dias: sabado
+    tabla: |
+      COR    CVH    VHA     ALC    POZ    PZH    VVC
+      13:00  13:30  13:35D  14:00  14:10  14:15  14:40
+      20:00  20:30  20:35D  21:00  21:10  21:15  21:45C
+
+  # ── INVIERNO — domingos y festivos ───────────────────────────────────────
+  - temporada: invierno
+    dias: domingos-festivos
+    tabla: |
+      VVC    PZH    POZ    ALC    VHA     CVH    COR
+      07:45  08:05  08:15  08:25  08:50D  08:55  09:30
+      14:45  15:05  15:15  15:25  15:50D  15:55  16:30
+      17:15  -      17:45  17:55  18:20D  18:25  19:00
+
+  - temporada: invierno
+    dias: domingos-festivos
+    tabla: |
+      COR    CVH    VHA     ALC    POZ    PZH    VVC
+      13:00  13:30  13:35D  14:00  14:10  14:15  14:40
+      14:30  15:00  15:05D  15:30  15:40  -      16:15
+      20:00  20:30  20:35D  21:00  21:10  21:15  21:45C
+
+  # ── VERANO — lunes a viernes ─────────────────────────────────────────────
+  - temporada: verano
+    dias: lunes-viernes
+    tabla: |
+      CON     VVC     PZH    POZ    ALC    VHA     CVH    COR
+      -       06:25D  06:45  06:55  07:05  -       -      08:15
+      07:20D  07:45   08:05  08:15  08:25  08:50D  08:55  09:30
+      -       09:30   09:50  10:00  10:10  10:35   10:40  11:25
+      -       14:45   15:05  15:15  15:25  15:50D  15:55  16:30
+      -       17:30   -      18:00  18:10  -       18:40  19:15
+
+  - temporada: verano
+    dias: lunes-viernes
+    tabla: |
+      COR    CVH    VHA     ALC    POZ    PZH    VVC     CON
+      10:30  11:00  -       11:30  11:40  11:45  -       -
+      12:00  -      -       13:00  13:10  13:15  13:35   -
+      13:10  13:40  13:45D  14:10  14:25  14:35  15:10   -
+      15:30  16:00  -       16:30  16:45  -      -       -
+      18:30  19:00  19:05D  19:30  19:40  19:50  20:10   20:35
+      20:00  20:30  20:35D  21:00  21:10  21:15  21:45C  -
+
+  # ── VERANO — sábado ──────────────────────────────────────────────────────
+  - temporada: verano
+    dias: sabado
+    tabla: |
+      VVC    PZH    POZ    ALC    VHA     CVH    COR
+      07:45  08:05  08:15  08:25  08:50D  08:55  09:30
+      14:45  15:05  15:15  15:25  15:50D  15:55  16:30
+
+  - temporada: verano
+    dias: sabado
+    tabla: |
+      COR    CVH    VHA     ALC    POZ    PZH    VVC
+      13:00  13:30  13:35D  14:00  14:10  14:15  14:40
+      20:00  20:30  20:35D  21:00  21:10  21:15  21:45C
+
+  # ── VERANO — domingos y festivos ─────────────────────────────────────────
+  # P09b: negocio indicó que el viaje de las 17:15 no estaba en vigor en verano.
+  # El Excel del 07/10/2026 recupera ese viaje (fila 48 de POZOB VER) y prevalece.
+  - temporada: verano
+    dias: domingos-festivos
+    tabla: |
+      VVC    PZH    POZ    ALC    VHA     CVH    COR
+      07:45  08:05  08:15  08:25  08:50D  08:55  09:30
+      14:45  15:05  15:15  15:25  15:50D  15:55  16:30
+      17:15  -      17:45  17:55  -       18:20  19:00
+
+  - temporada: verano
+    dias: domingos-festivos
+    tabla: |
+      COR    CVH    VHA     ALC    POZ    PZH    VVC
+      13:00  13:30  13:35D  14:00  14:10  14:15  14:40
+      14:30  15:00  15:05D  15:30  15:40  -      16:15
+      20:00  20:30  20:35D  21:00  21:10  21:15  21:45C
+
+pendientes: []

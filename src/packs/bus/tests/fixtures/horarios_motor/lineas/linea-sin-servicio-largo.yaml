@@ -1,0 +1,20 @@
+# No circula ni en agosto ni en septiembre: sirve para comprobar que, si no
+# hay servicio en los 7 días siguientes, siguiente_con_servicio es None.
+nombre: Línea Sin Servicio Largo
+avisos: []
+no_circula: [agosto, septiembre]
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      PPP    QQQ
+      07:00  07:20
+
+pendientes: []

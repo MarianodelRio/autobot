@@ -86,12 +86,12 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
-| F4 | Pack `bus` | 6 | 0 | pending |
+| F4 | Pack `bus` | 6 | 1 | in_progress |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **24** | |
+| **Total** | | **52** | **25** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -650,11 +650,18 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** la consulta de horarios completa funciona en el bot de pruebas con los datos reales de Autocares San Sebastián, y pasan todas las pruebas portadas de buscaBus.
 
 ### T-4.1 · Dataset: modelo, validador y carga 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-1.3 · **Diseño:** §10.1
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-1.3 · **Diseño:** §10.1
 - **Hacer:** portar de buscaBus `modelo.py`, `formato.py`, `loader.py`, `calendario.py` y `datos.py` a `packs/bus/`, con la normalización sobre `core/text`.
 - **Acepta:** los errores y avisos del validador son idénticos a los del origen.
 - **Tests:** portados `test_formato`, `test_loader` y `test_calendario`, con sus fixtures.
-- **Notas:** —
+- **Notas:**
+  - **Decidido por la persona (2026-10-22):** el código portado conserva los identificadores en español de buscaBus y de §10; lo nuevo del pack, en inglés. Anotado en `CLAUDE.md` y §10.
+  - **Port:** los cinco módulos, casi tal cual, en `packs/bus/`. Cambios: imports; `normalizar` = `core.text.normalize` sin las palabras vacías (equivalente); anotaciones para `mypy --strict` (`_parse_temporada_rango` devuelve `list[int]`, mal anotado en el origen) y tres avisos de `ruff` (`zip(strict=True)` tras comprobar la longitud, `noqa: B023` justificado). Las referencias `design.md x.y` de los comentarios pasan a `buscaBus/design.md`.
+  - **`datos.py`:** sin el estado global (`instalar`/`actual`/`hay_datos`) ni `cargado`: el registro de tenants guarda lo que devuelve `load_data`. `Datos(horarios, menu_origen)`; el `Matcher` se añade en T-4.3. Los mensajes de error nombran `start_menu_towns`.
+  - **Idéntico al origen:** prueba diferencial (fuera del repo) de los dos `validar` sobre el dataset real, las fixtures y 400 mutaciones aleatorias (180 con errores): mismos errores y avisos. Única diferencia, el **orden** de algunos avisos `sin datos` y errores `sin ninguna tabla que la cubra`: en buscaBus dependía del orden de un `frozenset` y cambiaba con `PYTHONHASHSEED` (comprobado); aquí va en orden de semana.
+  - **Fixtures:** las de los tres tests (sin `horarios_matcher`, `paradas_ancha` ni `paradas_con_pendientes`, que llegan con sus tests). `horarios_real/` es una copia congelada de `buscaBus/horarios/` (commit `3125dba`), para que las pruebas doradas no dependan del dataset vivo del tenant (T-4.6); lo explica su `README.md`.
+  - **De la revisión:** docstrings al día. Anotado: `core.text.fold` quita los caracteres de categoría `Mn` y buscaBus los de `combining() != 0`; solo difieren en marcas raras de clase 0 (`\u034f`), que no aparecen en los datos.
+  - **Tests** (`src/packs/bus/tests/`): `test_formato`, `test_loader` y `test_calendario` portados (163), con `conftest.py` (`datos_muchas_lineas`, que devuelve los datos en vez de instalarlos) y `helpers.py` (`modelo_de`, `calendario_de`, para los tipos). Nuevo `test_datos` (6): menú por nombre normalizado, pueblo desconocido, sin prefijo ni errata, duplicado, sin viajes y dataset inválido.
 
 ### T-4.2 · Motor de consulta 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-4.1 · **Diseño:** §10.2

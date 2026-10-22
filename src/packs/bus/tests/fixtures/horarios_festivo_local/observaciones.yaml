@@ -1,0 +1,26 @@
+a_demanda:
+  letra: D
+  tipo: condicion
+  ambitos: [parada]
+  texto: "A demanda: llama al {telefono}."
+
+solo_viernes_lectivo:
+  letra: V
+  tipo: condicion
+  ambitos: [parada, viaje]
+  texto: "Solo viernes en periodo escolar."
+
+aviso_uno:
+  tipo: aviso
+  ambitos: [viaje]
+  texto: "Aviso uno."
+
+aviso_dos:
+  tipo: aviso
+  ambitos: [viaje]
+  texto: "Aviso dos."
+
+hora_aproximada:
+  tipo: aviso
+  ambitos: [linea]
+  texto: "Horarios de paso aproximados."

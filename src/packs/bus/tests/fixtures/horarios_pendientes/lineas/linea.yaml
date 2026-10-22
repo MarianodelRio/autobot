@@ -1,0 +1,27 @@
+# Pueblo A – Pueblo B – Pueblo C. La ida lleva el aviso de Aldea A; la
+# vuelta parcial (B -> A) el de Aldea B.
+nombre: Pueblo A – Pueblo C
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      PAA    PBB    PCC
+      08:00  08:30  09:00  | pasa_por_aldea_a
+      15:00  15:30  16:00
+
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      PBB    PAA
+      10:00  10:30  | para_en_aldea_b
+
+pendientes: []

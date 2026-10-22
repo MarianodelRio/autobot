@@ -1,0 +1,19 @@
+# No pasa por pueblo-a: los festivos locales de A no le afectan.
+nombre: Línea sin A
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      BBB    CCC
+      10:00  10:10
+
+pendientes: []

@@ -1,0 +1,13 @@
+# Variante de observaciones_base.yaml con una condición inventada que el
+# motor no conoce (design.md, 2.3 — "condición que el motor no sabe aplicar").
+a_demanda:
+  letra: D
+  tipo: condicion
+  ambitos: [parada]
+  texto: "A demanda: llama al {telefono}."
+
+condicion_inventada:
+  letra: X
+  tipo: condicion
+  ambitos: [parada]
+  texto: "Una condición que el código no sabe aplicar."

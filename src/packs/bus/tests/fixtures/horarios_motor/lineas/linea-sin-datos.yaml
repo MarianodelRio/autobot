@@ -1,0 +1,22 @@
+# De lunes a viernes no hay datos (nunca se trata como sin servicio). El
+# sábado sí hay tabla (solo para que el motor sepa que esta línea conecta
+# E-F y G-H "alguna vez", igual que exige design.md 3 para distinguir
+# sin_trayecto de sin_datos).
+nombre: Línea Sin Datos
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: sin_datos, sabado: horario, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: sabado
+    tabla: |
+      EEE    FFF    GGG    HHH
+      10:00  10:10  10:20  10:30
+
+pendientes: []

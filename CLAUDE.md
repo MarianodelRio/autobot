@@ -8,6 +8,7 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 - Responde siempre en español: resúmenes, preguntas, planes y revisiones.
 - Documentos (`README`, `docs/`, `design.md`) en español. Código, identificadores, comandos y mensajes de commit en inglés.
+- Excepción (decidida por la persona, 2026-10-22): el código portado de buscaBus en `packs/bus/` conserva sus identificadores en español (`Localidad`, `Viaje`, `SEL_ORIGEN`…), como los nombra `design.md` §10; lo nuevo de ese pack va en inglés.
 
 ## Forma de trabajo
 

@@ -931,6 +931,8 @@ Reserva completa · día sin huecos · mañana/tarde · `SlotTaken` · límite d
 
 Se porta de `buscaBus` casi tal cual: `services/horarios/` (modelo, formato, loader, query, calendario, diff, datos), `utils/matcher.py`, `utils/fechas.py`, `handlers/flujo.py`, `utils/messages.py`, sus constructores de listas, `tools/` y todos sus tests y fixtures. Cambia el pegamento: entra por `PackContext`, el estado se guarda en BD y los datos se cargan por tenant.
 
+El código portado conserva sus identificadores en español (los de esta sección); lo nuevo del pack va en inglés. `datos.py` pierde el estado global de buscaBus (`instalar`/`actual`): lo que devuelve `load_data` lo guarda el registro de tenants y llega en `ctx.data`. Los tests portados y sus pruebas doradas usan una copia congelada de `buscaBus/horarios/` (`packs/bus/tests/fixtures/horarios_real/`), independiente del dataset vivo del tenant.
+
 #### 10.1 Dataset de horarios
 
 ```

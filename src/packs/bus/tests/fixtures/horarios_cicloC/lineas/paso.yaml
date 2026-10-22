@@ -1,0 +1,27 @@
+# Mismo autobús (bus:pas-1500) repartido entre dos tablas de la misma línea
+# (lunes-jueves y viernes, sin días solapados) y un viaje lunes-viernes de
+# corta.yaml. Es válido (caso Badajoz).
+nombre: Paso – Córdoba
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-jueves: horario, viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-jueves
+    tabla: |
+      COR    ESP    BEL    PNR
+      15:00  15:40  16:00  16:30  | bus:pas-1500
+
+  - temporada: anual
+    dias: viernes
+    tabla: |
+      COR    ESP    BEL    PNR
+      15:00  15:40  16:00  16:30  | bus:pas-1500
+
+pendientes: []

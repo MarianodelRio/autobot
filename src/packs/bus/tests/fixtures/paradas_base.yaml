@@ -1,0 +1,9 @@
+localidades:
+  pueblo-a: { nombre: Pueblo A }
+  pueblo-b: { nombre: Pueblo B }
+  pueblo-c: { nombre: Pueblo C }
+
+paradas:
+  AAA: { nombre: Pueblo A, localidad: pueblo-a }
+  BBB: { nombre: Pueblo B, localidad: pueblo-b }
+  CCC: { nombre: Pueblo C, localidad: pueblo-c }

@@ -1,0 +1,29 @@
+# Variante de observaciones_base.yaml con un marcador `{otro}` en el texto
+# que no es `{telefono}` (design.md 2.3 — solo se admite `{telefono}`).
+a_demanda:
+  letra: D
+  tipo: condicion
+  ambitos: [parada]
+  texto: "A demanda: llama al {otro}."
+
+solo_viernes_lectivo:
+  letra: V
+  tipo: condicion
+  ambitos: [parada, viaje]
+  texto: "Solo viernes en periodo escolar."
+
+entra_en_pueblo:
+  letra: P
+  tipo: aviso
+  ambitos: [parada]
+  texto: "Este autobús entra en el pueblo."
+
+hora_aproximada:
+  tipo: aviso
+  ambitos: [linea]
+  texto: "Horarios de paso aproximados."
+
+pasa_por_rivero:
+  tipo: aviso
+  ambitos: [viaje]
+  texto: "Pasa por Rivero de Posadas."

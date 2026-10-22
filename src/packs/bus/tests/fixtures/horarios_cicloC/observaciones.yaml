@@ -1,0 +1,7 @@
+# Observaciones mínimas del ciclo C1. `hora_aproximada` con letra A en
+# ámbitos [linea, parada] (P15).
+hora_aproximada:
+  letra: A
+  tipo: aviso
+  ambitos: [linea, parada]
+  texto: "Horarios de paso aproximados."

@@ -1,0 +1,46 @@
+# horarios/lineas/torrecampo-pozoblanco.yaml
+# Horarios actualizados por negocio el 07/10/2026. El "desde 01/10/2026" de los
+# títulos del Excel se lee como la fecha desde la que rigen, no como un cambio
+# de temporada (P37).
+# Fuente: Excel de negocio del 07/10/2026 («2026-10-07 ACTUALIZACION HORARIOS.xlsx», ya fuera del repo), hojas TORR INV y TORR VER (filas 9-15 de INV y VER).
+# Horario de invierno y de verano distintos: INV 07:40 / 15:10, VER 09:00 / 14:30.
+nombre: Línea Torrecampo
+avisos: [hora_aproximada]
+no_circula: []
+
+temporadas:
+  invierno: 15/09 - 22/06
+  verano: 23/06 - 14/09
+
+dias:
+  invierno: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+  verano:   { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  # ── INVIERNO — lunes a viernes ──────────────────────────────
+  - temporada: invierno
+    dias: lunes-viernes
+    tabla: |
+      TOR    PED    PZH
+      07:40  07:50  08:00
+
+  - temporada: invierno
+    dias: lunes-viernes
+    tabla: |
+      PZH    PED    TOR
+      15:10  15:20  15:30
+
+  # ── VERANO — lunes a viernes ──────────────────────────────
+  - temporada: verano
+    dias: lunes-viernes
+    tabla: |
+      TOR    PED    PZH
+      09:00  09:10  09:20
+
+  - temporada: verano
+    dias: lunes-viernes
+    tabla: |
+      PZH    PED    TOR
+      14:30  14:40  14:50
+
+pendientes: []

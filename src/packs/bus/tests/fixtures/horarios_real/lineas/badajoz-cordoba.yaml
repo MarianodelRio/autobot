@@ -1,0 +1,86 @@
+# horarios/lineas/badajoz-cordoba.yaml
+# Horarios actualizados por negocio el 07/10/2026. El "desde 01/10/2026" de los
+# títulos del Excel se lee como la fecha desde la que rigen, no como un cambio
+# de temporada (P37).
+# Fuente: Excel de negocio del 07/10/2026 («2026-10-07 ACTUALIZACION HORARIOS.xlsx», ya fuera del repo), hoja BADAJOZ (traspuesta:
+# las paradas están en filas, no en columnas).
+#
+# De septiembre a julio, de lunes a jueves la ida termina en Zafra; de lunes a
+# viernes la vuelta empieza en Zafra (confirmado por negocio): se modelan como
+# viajes independientes que no cubren el tramo Zafra-Badajoz, no como un único
+# viaje forzado.
+#
+# Agosto (P31, respuesta de negocio del 07/10/2026): de lunes a viernes la ida
+# termina en Zafra (también el viernes) y la vuelta sale de Zafra; sábado,
+# domingo y festivos (también el 15/08) no hay servicio. Las tablas de agosto
+# repiten las horas de lunes a jueves y de la vuelta de septiembre-julio. Los
+# domingos de agosto la línea de Peñarroya sí funciona (14:45 y 18:30): solo
+# que no continúa a Badajoz.
+#
+# Villanueva del Rey: la columna VRC es el cruce (gasolinera), no el pueblo.
+# P33 cerrada: PYA INV fila 49, Villanueva del Rey 19:10 sin marca amarilla →
+# cruce, por la regla de P20. Se reabre si negocio no está de acuerdo.
+nombre: Badajoz – Córdoba
+telefono_demanda: "957 42 90 30"
+avisos: [hora_aproximada]   # D-k
+no_circula: []
+
+temporadas:
+  septiembre-julio: 01/09 - 31/07
+  agosto: 01/08 - 31/08
+
+dias:
+  septiembre-julio: { lunes-jueves: horario, viernes: horario, sabado: sin_servicio, domingos-festivos: horario }
+  agosto:           { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  # ── Ida: lunes a jueves (termina en Zafra, confirmado) ─────────────────────────
+  - temporada: septiembre-julio
+    dias: lunes-jueves
+    tabla: |
+      COR    VAC  CVH  ESP    VRC    BEL    PNR    FOB    CRN     GRA    AZU    BER    AHI    LLE    VGT     ZAF    VFB  ALM  MER  BAD
+      15:00  -    -    15:40  15:55  16:05  16:20  16:40  16:45D  17:00  17:15  17:25  17:30  17:45  17:50D  18:15  -    -    -    -  | bus:cor-1500
+
+  # ── Ida: viernes ─────────────────────────────────────────────────────────
+  - temporada: septiembre-julio
+    dias: viernes
+    tabla: |
+      COR    VAC  CVH  ESP    VRC    BEL    PNR    FOB    CRN     GRA    AZU    BER    AHI    LLE    VGT     ZAF    VFB    ALM    MER    BAD
+      15:00  -    -    15:40  15:55  16:05  16:20  16:40  16:45D  17:00  17:15  17:25  17:30  17:45  17:50D  18:15  18:25  18:40  19:00  19:50  | bus:cor-1500
+
+  # ── Ida: domingos y festivos ─────────────────────────────────────────────
+  - temporada: septiembre-julio
+    dias: domingos-festivos
+    tabla: |
+      COR    VAC  CVH  ESP    VRC    BEL    PNR    FOB    CRN     GRA    AZU    BER    AHI    LLE    VGT     ZAF    VFB    ALM    MER    BAD
+      14:45  -    -    15:30  15:40  15:55  16:10  16:20  16:20D  16:40  16:50  17:00  17:05  17:30  17:30D  17:40  18:10  18:25  18:50  19:40  | bus:cor-1445-dom
+
+  # ── Vuelta: lunes a viernes (empieza en Zafra, confirmado) ─────────────────────
+  - temporada: septiembre-julio
+    dias: lunes-viernes
+    tabla: |
+      BAD  MER  ALM  VFB  ZAF    VGT     LLE    AHI    BER    AZU    GRA    CRN    FOB    PNR    BEL    VRC    ESP    CVH  VAC  COR
+      -    -    -    -    10:30  10:55D  11:05  11:15  11:20  11:35  11:45  12:00  12:05  12:30  12:40  12:50  13:00  -    -    13:45  | bus:fob-1205
+
+  # ── Vuelta: domingos y festivos ──────────────────────────────────────────
+  - temporada: septiembre-julio
+    dias: domingos-festivos
+    tabla: |
+      BAD    MER    ALM    VFB    ZAF    VGT     LLE    AHI    BER    AZU    GRA    CRN    FOB    PNR    BEL    VRC    ESP    CVH  VAC  COR
+      14:30  15:20  15:45  16:00  16:30  16:55D  17:30  17:45  17:50  18:00  18:10  18:20  18:30  18:50  19:00  19:10  19:20  -    -    20:10  | bus:fob-1830-dom
+
+  # ── AGOSTO — lunes a viernes: la ida termina en Zafra (P31) ───────────────────
+  - temporada: agosto
+    dias: lunes-viernes
+    tabla: |
+      COR    VAC  CVH  ESP    VRC    BEL    PNR    FOB    CRN     GRA    AZU    BER    AHI    LLE    VGT     ZAF    VFB  ALM  MER  BAD
+      15:00  -    -    15:40  15:55  16:05  16:20  16:40  16:45D  17:00  17:15  17:25  17:30  17:45  17:50D  18:15  -    -    -    -  | bus:cor-1500
+
+  # ── AGOSTO — lunes a viernes: la vuelta empieza en Zafra (P31) ────────────────
+  - temporada: agosto
+    dias: lunes-viernes
+    tabla: |
+      BAD  MER  ALM  VFB  ZAF    VGT     LLE    AHI    BER    AZU    GRA    CRN    FOB    PNR    BEL    VRC    ESP    CVH  VAC  COR
+      -    -    -    -    10:30  10:55D  11:05  11:15  11:20  11:35  11:45  12:00  12:05  12:30  12:40  12:50  13:00  -    -    13:45  | bus:fob-1205
+
+pendientes: []

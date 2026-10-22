@@ -1,0 +1,46 @@
+# horarios/lineas/los-blazquez.yaml
+# Horarios actualizados por negocio el 07/10/2026. El "desde 01/10/2026" de los
+# títulos del Excel se lee como la fecha desde la que rigen, no como un cambio
+# de temporada (P37).
+# Fuente: Excel de negocio del 07/10/2026 («2026-10-07 ACTUALIZACION HORARIOS.xlsx», ya fuera del repo), hoja BLAZQUEZ.
+#
+# Todo el año (P01; P27: el "hasta 21/06/26" era un error, negocio confirma
+# "ES UN ERROR, ACABA EL 22/06"). Solo de lunes a viernes; sábados y domingos
+# no hay servicio (P03b).
+#
+# La ida de las 10:30 es el mismo autobús que el Córdoba 10:30 de Peñarroya:
+# llega a Peñarroya a las 11:55 y sale a las 12:30 (P21), luego sigue a Los
+# Blázquez. El Córdoba 10:30 sigue en Peñarroya: no es un enlace (P21). La
+# vuelta de las 09:15 es el mismo autobús que el Peñarroya 10:00 de Peñarroya
+# – Córdoba y en la vuelta no hay parada larga en Peñarroya, así que no lleva
+# `>`. Villanueva del Rey es el pueblo (VRE, celda verde del Excel).
+# La columna C. Muriano del Excel está vacía y no se migra (D-e).
+#
+# Salidas de Córdoba a la misma hora que Pozoblanco – Córdoba (10:30, 13:10,
+# 20:00) y que Villaviciosa (13:10, 18:30): autobuses distintos por rutas que
+# se separan (Pozoblanco no para en El Vacar); `make validar` avisa y no se
+# fusionan.
+nombre: Los Blázquez
+avisos: [hora_aproximada]
+no_circula: []
+
+temporadas:
+  anual: todo el año   # P01
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }   # P03b
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      COR    VAC    CVH    ESP    VRE    BEL    PNR          PVN    GRJ    VSQ    BLQ
+      10:30  11:00  11:05  11:15  11:25  11:40  11:55>12:30  12:50  13:00  13:10  13:20  | bus:cor-1030
+
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      BLQ    VSQ    GRJ    PVN    PNR    BEL    VRE    ESP    CVH    VAC    COR
+      09:15  09:25  09:35  09:45  10:00  10:10  10:25  10:35  10:45  10:55  11:30  | bus:pnr-1000
+
+pendientes: []

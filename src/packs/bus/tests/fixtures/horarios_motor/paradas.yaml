@@ -1,0 +1,45 @@
+# tests/fixtures/horarios_motor/paradas.yaml — localidades y paradas
+# sintéticas para tests/test_query.py (motor de consulta, fase 2). Nombres
+# legibles inventados, sin relación con horarios/ real.
+
+localidades:
+  pueblo-a: { nombre: Pueblo A }
+  pueblo-b: { nombre: Pueblo B }
+  pueblo-c: { nombre: Pueblo C }
+  pueblo-n: { nombre: Pueblo N }
+  pueblo-o: { nombre: Pueblo O }
+  pueblo-p: { nombre: Pueblo P }
+  pueblo-q: { nombre: Pueblo Q }
+  pueblo-e: { nombre: Pueblo E }
+  pueblo-f: { nombre: Pueblo F }
+  pueblo-g: { nombre: Pueblo G }
+  pueblo-h: { nombre: Pueblo H }
+  pueblo-i: { nombre: Pueblo I }
+  pueblo-j: { nombre: Pueblo J }
+  pueblo-k: { nombre: Pueblo K }
+  pueblo-m: { nombre: Pueblo M }
+  pueblo-l: { nombre: Pueblo L }
+  pueblo-r: { nombre: Pueblo R }
+  pueblo-s: { nombre: Pueblo S }
+
+paradas:
+  AAA: { nombre: Pueblo A, localidad: pueblo-a }
+  BBB: { nombre: Pueblo B, localidad: pueblo-b }
+  CCC: { nombre: Pueblo C, localidad: pueblo-c }
+  NNN: { nombre: Pueblo N, localidad: pueblo-n }
+  OOO: { nombre: Pueblo O, localidad: pueblo-o }
+  PPP: { nombre: Pueblo P, localidad: pueblo-p }
+  QQQ: { nombre: Pueblo Q, localidad: pueblo-q }
+  EEE: { nombre: Pueblo E, localidad: pueblo-e }
+  FFF: { nombre: Pueblo F, localidad: pueblo-f }
+  GGG: { nombre: Pueblo G, localidad: pueblo-g }
+  HHH: { nombre: Pueblo H, localidad: pueblo-h }
+  III: { nombre: Pueblo I, localidad: pueblo-i }
+  JJJ: { nombre: Pueblo J, localidad: pueblo-j }
+  KKK: { nombre: Pueblo K, localidad: pueblo-k }
+  MMM: { nombre: Pueblo M, localidad: pueblo-m }
+  LLL: { nombre: Pueblo L, localidad: pueblo-l }
+  RRR: { nombre: Pueblo R, localidad: pueblo-r }
+  SSS: { nombre: Pueblo S, localidad: pueblo-s }
+
+pendientes: []

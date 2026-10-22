@@ -1,0 +1,21 @@
+# Cubre E -> F entre semana; sirve para comprobar que, si otra línea no
+# tiene datos ese mismo día, el resultado muestra igualmente estas salidas
+# (más el aviso de la línea sin datos).
+nombre: Línea Datos Cubre
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      EEE    FFF
+      09:00  09:15
+
+pendientes: []

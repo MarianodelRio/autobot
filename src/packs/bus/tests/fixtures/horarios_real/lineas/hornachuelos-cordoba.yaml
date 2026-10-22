@@ -1,0 +1,153 @@
+# horarios/lineas/hornachuelos-cordoba.yaml
+# Horarios actualizados por negocio el 07/10/2026. El "desde 01/10/2026" de los
+# títulos del Excel se lee como la fecha desde la que rigen, no como un cambio
+# de temporada (P37).
+# Fuente: Excel de negocio del 07/10/2026 («2026-10-07 ACTUALIZACION HORARIOS.xlsx», ya fuera del repo), hojas POSADAS INV y
+# POSADAS VER.
+#
+# Rivero de Posadas (RIV) y Los Mochos (MOC) son columnas (P32, respuesta de
+# negocio del 07/10/2026): llevan la misma hora que Posadas y que Almodóvar,
+# respectivamente, solo en los viajes marcados en el Excel (naranja = Rivero,
+# verde = Los Mochos). En el resto de viajes llevan `-`. Posadas → Rivero y
+# Almodóvar → Los Mochos quedan a 0 minutos: es lo que dice negocio.
+# El asterisco del Excel (no para en El Pedrera, calle Sevilla) es la letra E
+# en la celda de Posadas (P16): solo se muestra con origen o destino Posadas.
+# Las notas internas de POSADAS VER r38/r39 no se publican (D-m).
+#
+# Posadas 08:30 (ida, lunes a viernes) ya no lleva asterisco: cambio de la
+# empresa en el Excel modificado; ahora para en El Pedrera.
+#
+# Domingo, 09:30 desde Hornachuelos: Almodóvar 10:15 (P36, respuesta de negocio
+# del 07/10/2026; fila 45 de POSADAS INV y VER).
+nombre: Hornachuelos – Córdoba
+avisos: [hora_aproximada]
+no_circula: []
+
+temporadas:
+  invierno: 15/09 - 22/06   # P02
+  verano: 23/06 - 14/09     # P02
+
+dias:
+  invierno: { lunes-viernes: horario, sabado: horario, domingos-festivos: horario }
+  verano:   { lunes-viernes: horario, sabado: horario, domingos-festivos: horario }
+
+horarios:
+  # ── INVIERNO — lunes a viernes ─────────────────────────────────────────────
+  - temporada: invierno
+    dias: lunes-viernes
+    tabla: |
+      HOR    POS     RIV    ADR    MOC    COR
+      06:15  06:35   06:35  06:50  -      07:35
+      -      07:15   -      -      -      07:55
+      -      07:15   -      07:30  -      08:15
+      -      08:30   -      08:45  -      09:35
+      09:00  09:30   09:30  09:45  09:45  10:30
+      -      11:30E  -      11:45  -      12:30
+      14:30  14:55   14:55  15:10  -      16:00
+      -      18:15E  -      18:30  -      19:15
+
+  - temporada: invierno
+    dias: lunes-viernes
+    tabla: |
+      COR    ADR    MOC    POS     RIV    HOR
+      08:00  08:30  -      08:45E  -      -
+      10:00  10:30  -      10:45   10:45  11:10
+      12:00  12:30  -      12:40E  -      13:10
+      13:30  14:00  -      14:15   14:15  14:45
+      14:45  15:15  15:15  15:35E  -      -
+      16:00  16:30  -      16:45   16:45  -
+      18:00  18:30  -      18:45   18:45  19:10
+      20:00  20:30  -      20:45E  -      -
+
+  # ── INVIERNO — sábado ──────────────────────────────────────────────────────
+  - temporada: invierno
+    dias: sabado
+    tabla: |
+      HOR    POS    RIV    ADR    MOC    COR
+      08:00  08:30  08:30  08:40  08:40  09:30
+      16:00  16:30  16:30  16:40  -      17:30
+
+  - temporada: invierno
+    dias: sabado
+    tabla: |
+      COR    ADR    MOC    POS    RIV    HOR
+      13:30  13:55  13:55  14:10  14:10  14:50
+      20:00  20:30  -      20:40  20:40  21:15
+
+  # ── INVIERNO — domingos y festivos ─────────────────────────────────────────
+  - temporada: invierno
+    dias: domingos-festivos
+    tabla: |
+      HOR    POS     RIV    ADR    MOC  COR
+      09:30  10:00   10:00  10:15  -    11:00
+      -      15:30E  -      15:40  -    16:20
+      -      19:00E  -      19:10  -    19:40
+
+  - temporada: invierno
+    dias: domingos-festivos
+    tabla: |
+      COR    ADR    MOC  POS     RIV    HOR
+      13:30  14:00  -    14:15E  -      -
+      16:30  17:00  -    17:15E  -      -
+      20:00  20:30  -    20:40   20:40  21:15
+
+  # ── VERANO — lunes a viernes ─────────────────────────────────────────────
+  - temporada: verano
+    dias: lunes-viernes
+    tabla: |
+      HOR    POS     RIV    ADR    MOC    COR
+      06:15  06:35   06:35  06:50  -      07:30
+      -      07:15   -      -      -      07:55
+      -      07:15   -      07:30  -      08:10
+      -      08:30   -      08:45  -      09:35
+      09:00  09:30   09:30  09:45  09:45  10:30
+      -      11:30E  -      11:45  -      12:25
+      14:30  14:55   14:55  15:10  -      15:55
+      -      18:15E  -      18:30  -      19:05
+
+  - temporada: verano
+    dias: lunes-viernes
+    tabla: |
+      COR    ADR    MOC    POS     RIV    HOR
+      08:00  08:30  -      08:45E  -      -
+      10:00  10:30  -      10:40   10:40  11:00
+      12:00  12:30  -      12:40E  -      13:10
+      13:30  14:00  -      14:15   14:15  14:45
+      14:45  15:15  15:15  15:35E  -      -
+      16:00  16:30  -      16:45   16:45  -
+      18:00  18:30  -      18:45   18:45  19:10
+      20:00  20:30  -      20:45E  -      -
+
+  # ── VERANO — sábado ──────────────────────────────────────────────────────
+  - temporada: verano
+    dias: sabado
+    tabla: |
+      HOR    POS    RIV    ADR    MOC    COR
+      08:00  08:30  08:30  08:40  08:40  09:30
+      16:00  16:30  16:30  16:40  -      17:20
+
+  - temporada: verano
+    dias: sabado
+    tabla: |
+      COR    ADR    MOC    POS    RIV    HOR
+      13:30  13:55  13:55  14:10  14:10  14:45
+      20:00  20:25  -      20:40  20:40  21:15
+
+  # ── VERANO — domingos y festivos ─────────────────────────────────────────
+  - temporada: verano
+    dias: domingos-festivos
+    tabla: |
+      HOR    POS     RIV    ADR    MOC  COR
+      09:30  10:00   10:00  10:15  -    11:00
+      -      12:30E  -      12:40  -    13:10
+      -      19:00E  -      19:10  -    19:40
+
+  - temporada: verano
+    dias: domingos-festivos
+    tabla: |
+      COR    ADR    MOC  POS     RIV    HOR
+      11:30  11:55  -    12:10E  -      -
+      13:30  13:55  -    14:10E  -      -
+      20:00  20:25  -    20:40   20:40  21:15
+
+pendientes: []
