@@ -86,12 +86,12 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
-| F4 | Pack `bus` | 6 | 2 | in_progress |
+| F4 | Pack `bus` | 6 | 3 | in_progress |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **26** | |
+| **Total** | | **52** | **27** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -675,11 +675,15 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests:** `test_query` portado (81, sobre `horarios_real/` y las fixtures de T-4.1), con un helper `_info` para los tipos; nuevo `test_ventana_de_siguiente_con_servicio_configurable`.
 
 ### T-4.3 · Matcher y fechas 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-4.1 · **Diseño:** §10.3
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-4.1 · **Diseño:** §10.3
 - **Hacer:** portar `matcher.py` y `fechas.py`.
 - **Acepta:** se cumplen las 7 ramas del matcher, el caso Villafranca y el formato cerrado de fechas.
 - **Tests:** portados `test_matcher` y `test_fechas`.
-- **Notas:** —
+- **Notas:**
+  - **Port:** `packs/bus/matcher.py` y `packs/bus/fechas.py` tal cual, salvo los imports. Sin `paginar` ni `FILAS_POR_PAGINA`: ya se portaron a `core.ui.paginate` (T-1.3, §8.3), con su test, y la conversación (T-4.4) usará esa. Por eso `test_paginar` no se porta aquí.
+  - **`datos.Datos`** lleva ya el `Matcher`, construido en `datos.cargar` (lo que §10.1 pide a `load_data`).
+  - **Mismo comportamiento que buscaBus:** prueba diferencial (fuera del repo) sobre el dataset real y tres fixtures: 1.707 textos (nombres, alias y paradas, en mayúsculas, prefijos de 3, 4 y 6 letras, con relleno inicial, con dos pueblos y con erratas de borrado, inserción y trasposición, además de `villafranka`/`vilafranca`) dan la misma `Coincidencia`; `lineas()` coincide; y 20.000 textos de fecha al azar con `hoy` entre 2025 y 2028 dan la misma `LecturaFecha`.
+  - **Tests:** `test_matcher` (30; todos los del origen menos `test_paginar`, con la fixture `horarios_matcher`) y `test_fechas` (13), con anotaciones de tipos. `test_datos` comprueba que `Datos.matcher` encuentra un pueblo con relleno y errata.
 
 ### T-4.4 · Conversación, config y declaración del pack 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-4.2, T-4.3, T-1.5 · **Diseño:** §10.3, §10.4, §8

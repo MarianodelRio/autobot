@@ -1,0 +1,18 @@
+# tests/fixtures/calendario_base.yaml — calendario mínimo válido para los
+# tests de formato.py, formatear.py y revision.py (que ahora requieren
+# calendario.yaml, igual que paradas.yaml/observaciones.yaml).
+
+vigencia: 01/01/2026 - 31/08/2027
+
+festivos:
+  01/01/2026: Año Nuevo
+  25/12/2026: Navidad
+
+curso:
+  inicio_clases: 10/09/2026
+  fin_clases: 22/06/2027
+  vacaciones:
+    - 23/12/2026 - 31/12/2026
+  no_lectivos: []
+
+pendientes: []

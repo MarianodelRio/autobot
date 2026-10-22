@@ -15,11 +15,13 @@ from pathlib import Path
 from packs.bus import loader
 from packs.bus.formato import normalizar
 from packs.bus.loader import Horarios
+from packs.bus.matcher import Matcher
 
 
 @dataclass(frozen=True)
 class Datos:
     horarios: Horarios
+    matcher: Matcher
     menu_origen: tuple[str, ...]
 
 
@@ -54,4 +56,4 @@ def cargar(directorio: Path | str, pueblos_menu: list[str]) -> Datos:
         vistos.add(lid)
         menu_ids.append(lid)
 
-    return Datos(horarios=horarios, menu_origen=tuple(menu_ids))
+    return Datos(horarios=horarios, matcher=Matcher(horarios), menu_origen=tuple(menu_ids))

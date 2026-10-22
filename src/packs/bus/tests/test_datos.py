@@ -20,6 +20,7 @@ def test_cargar_resuelve_el_menu_por_nombre_normalizado() -> None:
     d = datos.cargar(HORARIOS_REAL, ["córdoba", "POZOBLANCO"])
     assert d.menu_origen == ("cordoba", "pozoblanco")
     assert d.horarios.localidad_viajes["cordoba"]
+    assert d.matcher.buscar("desde pozoblnco").localidades == ("pozoblanco",)
 
 
 def test_cargar_pueblo_desconocido_falla_con_su_nombre() -> None:
