@@ -85,7 +85,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1 y CI) |
+| F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
@@ -641,7 +641,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 
 ### ✅ Validación F3
 - [ ] Prueba de extremo a extremo en local: desde Telegram, `/start` → elegir el negocio de juguete → conversar → las respuestas llegan en orden.
-- [ ] Integración y aislamiento en verde en CI.
+- [x] Integración y aislamiento en verde en CI (run 39754808767 sobre `339b985`: `check` e `image` en verde).
 
 ---
 
