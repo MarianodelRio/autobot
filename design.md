@@ -973,7 +973,7 @@ Entrada `(origen, destino, fecha)`. Salida: salidas ordenadas con hora de salida
 #### 10.3 Conversación
 
 ```
-MENÚ        [🚌 Ver horarios] [ℹ️ Información]
+MENÚ        [🚌 Ver horarios] [ℹ️ Contacto] (muestra la información del negocio)
 ORIGEN      lista: start_menu_towns (8) + ✍️ Otro pueblo + ↩️ Volver al menú
 DESTINO     solo alcanzables y vendibles desde el origen; si son ≤ 9, la lista completa;
             si no, los 8 más relevantes (Córdoba primero) + ✍️ Otro destino + ↩️ Cambiar origen
@@ -1008,6 +1008,14 @@ Estados: `MENU`, `SEL_ORIGEN`, `SEL_DESTINO`, `SEL_DIA`, `RESULTADO`, `ESCRIBIR_
 - **Información:** teléfono, horario de oficina por días (solo se muestra; el bot nunca calcula si está abierta) y los enlaces que no estén vacíos.
 - **Textos no reconocidos** (pueblo o fecha): se registran con el texto normalizado y el paso, nunca con el identificador del contacto.
 - Sin avisos proactivos ni periódicas.
+- **Pegamento con la plataforma** (`packs/bus/conversation.py`):
+  - El estado es un dict JSON: `step` (sin él, `MENU`), `campo`, `origen`, `destino`, `fecha` (ISO) y `pendiente`.
+  - Caducidad, comandos globales, recuperación ante errores y comandos de administrador (los `/status`, `/logs`… de buscaBus) son de la plataforma (§7.2, §7.3, §15). El pack añade `hola` y `salir` como palabras que vuelven al menú, como hacía buscaBus.
+  - Un audio o una imagen recibe un texto y no pierde la consulta.
+  - Un id manipulado repite el paso, y un estado guardado incompleto o con ids que ya no existen (p. ej. tras cambiar el dataset) vuelve al menú.
+  - El resultado va en el cuerpo de los botones si cabe en 1.024 caracteres; si no, como texto aparte seguido de los botones con "¿Qué quieres hacer ahora?".
+  - Un texto que precede a un interactivo (p. ej. "sin trayecto de vuelta" antes del menú) llega dentro de su cuerpo (§7.4).
+  - El pie de los interactivos y la cabecera del menú llevan `business_name`.
 
 #### 10.4 Config
 
@@ -1024,6 +1032,8 @@ class BusConfig(BaseModel):
     start_menu_towns: list[str] = Field(max_length=8)    # nombres de localidades del dataset
     next_day_search_days: int = 45
 ```
+
+Validaciones (las de `buscaBus/config.yaml`): nombre y teléfono no vacíos; en `office_hours`, días conocidos y cada uno en un solo bloque, y franjas `HH:MM-HH:MM` con inicio anterior al fin y sin solapes dentro del bloque; de 1 a 8 `start_menu_towns` distintos (sin tildes ni mayúsculas). Sin `office_hours`, los textos dan solo el teléfono. `load_data` comprueba además que cada pueblo de `start_menu_towns` es una localidad del dataset con viajes; si no, el tenant queda `degraded`.
 
 #### 10.5 Pruebas obligatorias
 

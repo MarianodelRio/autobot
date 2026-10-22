@@ -86,12 +86,12 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
-| F4 | Pack `bus` | 6 | 3 | in_progress |
+| F4 | Pack `bus` | 6 | 4 | in_progress |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **27** | |
+| **Total** | | **52** | **28** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -686,14 +686,55 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests:** `test_matcher` (30; todos los del origen menos `test_paginar`, con la fixture `horarios_matcher`) y `test_fechas` (13), con anotaciones de tipos. `test_datos` comprueba que `Datos.matcher` encuentra un pueblo con relleno y errata.
 
 ### T-4.4 · Conversación, config y declaración del pack 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-4.2, T-4.3, T-1.5 · **Diseño:** §10.3, §10.4, §8
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-4.2, T-4.3, T-1.5 · **Diseño:** §10.3, §10.4, §8
 - **Hacer:**
   - Portar `flujo.py`, `messages.py` y los constructores de listas a la máquina de estados del pack sobre `PackContext`.
   - `BusConfig`, `load_data` (comprueba `start_menu_towns`) y `pack` en `packs/registry.py`.
   - Los textos no reconocidos se registran sin identificador de contacto.
 - **Acepta:** todos los escenarios de §10.5 en verde con el arnés, en los dos tipos de canal.
 - **Tests:** portados `test_conversation` y `test_interactive`; escenarios de §10.5.
-- **Notas:** —
+- **Notas:**
+  - **Módulos** (`packs/bus/`):
+    - `config.py`: `BusConfig` de §10.4, con las reglas de `buscaBus/app/config.py`.
+    - `messages.py`: portado tal cual; teléfono, horario y enlaces llegan como `cfg`.
+    - `interactive.py`: los constructores sobre `core.ui`; `build_lineas`/`build_linea` reciben la lista completa y paginan con `core.ui.paginate`.
+    - `conversation.py`: `flujo.py` y el despacho de `conversation.py`, función a función, sobre un `_Turno` que acumula respuestas y estado.
+    - `pack.py`: `load_data` lee `tenants/<slug>/datasets/timetable/` (§10.1) con `datos.cargar`.
+    - `registry.py`: `PACKS = {"bus": …}`.
+  - **Pegamento (añadido a §10.3 y §10.4):**
+    - Estado en un dict JSON.
+    - `hola` y `salir` vuelven al menú dentro del pack.
+    - Los comandos de administrador, la caducidad, el candado y el texto de reintento son de la plataforma.
+    - Un estado manipulado o con ids que ya no existen vuelve al menú, y un `loc:` desconocido repite el paso. En buscaBus las dos cosas daban una excepción y el texto de reintento.
+    - El resultado va dentro de los botones si cabe en 1.024 caracteres; si no, como `Text` (hasta 4.096) seguido de los botones con "¿Qué quieres hacer ahora?" (texto nuevo).
+    - El pie de los interactivos (`<business_name> · Horarios de autobús`) y la cabecera del menú (`🚌 <business_name> · Horarios`) salen de la config; buscaBus tenía "Autocares".
+    - Sin `office_hours`, solo el teléfono.
+    - `HttpUrl` normaliza una web sin ruta con la barra final (`…sansebastian.es/`).
+    - De la revisión de T-4.3: una página de pueblos de una línea que no existe vuelve a la lista de líneas, como en buscaBus.
+  - **Diferencias visibles con buscaBus**, todas por `plan_sends` (§7.4): un texto seguido de un interactivo llega en un solo mensaje. Es el caso de "sin trayecto de vuelta" antes del menú, que buscaBus mandaba en dos y su test lo lamentaba.
+  - **Tests portados casi tal cual** (`src/packs/bus/tests/compat.py`): un doble con la interfaz que usaban (`conv.handle_message`, `mock_wa[...]`, `freeze_calendario`, `datos_motor`…) conversa con el arnés y convierte las respuestas al payload de WhatsApp que leían.
+    - `conv` va parametrizado en los dos canales, así que cada test portado se ejecuta por WhatsApp y por Telegram, con el renderizado de los dos adaptadores.
+    - `test_conversation` (66 × 2). Cambian 5 tests:
+      - caducidad con el reloj del arnés;
+      - "sin trayecto de vuelta" en un mensaje;
+      - `demasiadas` con `monkeypatch`;
+      - `/status` del administrador sustituido por "no es un comando del pack";
+      - estado forzado con `conv.forzar`.
+    - `test_interactive` (30): envoltorios con las firmas de buscaBus; los tests de paginación usan la firma nueva con las mismas comprobaciones.
+    - `test_messages` (8).
+  - **Escenarios de §10.5** (`test_escenarios.py`, 26 × 2 canales con la API del arnés): todos los de la lista, con información, `menú`/`salir`, audio y estado manipulado.
+    - Los datos son los reales congelados, salvo en tres casos: paginación por línea (`datos_muchas_lineas`), localidad pendiente (`datos_pendientes`) y resultado de más de 4.096 caracteres (`datos_muchas_salidas`, nuevo: 228 salidas diarias; se corta y va aparte, y cabe también en Telegram).
+    - El texto no reconocido se registra como `[NO_RECONOCIDO] paso=origen texto=<numero>`, sin ids.
+  - **Más tests:**
+    - `test_pack.py` (6 + 17 casos de config inválida): `BusConfig`, `load_data` y declaración.
+    - `tests/integration/test_bus_pack.py` (6): el pack está registrado; el registro carga el dataset del tenant; un pueblo del menú desconocido degrada el tenant; consulta completa y "Ver la vuelta" por el **bot de pruebas** con el runtime real (sin tocar Meta); y la consulta por el webhook de WhatsApp.
+    - Un pack no puede importar `packs.registry` (import-linter), así que esa comprobación vive en `tests/`.
+  - **De la revisión:**
+    - consulta completa también por un canal `main` de Telegram en integración (por el bot del negocio, nunca el de pruebas ni Meta);
+    - el diagrama de §10.3 dice `ℹ️ Contacto`, como el botón;
+    - una localidad pendiente siempre tiene `ver` (lo exige el validador; ahora con `assert`).
+    - Anotado: `tests/integration/test_context.py::test_a_failed_unlock_closes_the_session_and_frees_the_lock` falló una vez en `make check` y pasó al repetirlo (posible carrera al soltar el candado de una conexión cerrada); no lo toca esta tarea.
+  - **Pendiente fuera de la tarea:** `docs/packs/bus.md` (§8.4), con T-7.5.
 
 ### T-4.5 · Herramientas de horarios 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-4.1 · **Diseño:** §10.1, §16.3
