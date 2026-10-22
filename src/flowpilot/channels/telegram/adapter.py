@@ -172,6 +172,33 @@ class TelegramAdapter:
         return outcome
 
 
+class TelegramApiError(Exception):
+    """A Bot API call other than sendMessage failed: status and error code only."""
+
+    def __init__(self, status: int, error_code: object) -> None:
+        super().__init__(f"HTTP {status}, error {error_code}")
+        self.status = status
+
+
+def call(
+    client: httpx.Client,
+    secrets: TelegramSecrets,
+    method: str,
+    params: dict[str, Any],
+    timeout_s: float = TIMEOUT_S,
+) -> Any:
+    """A Bot API method (getUpdates, setWebhook…) for the operation commands: its
+    `result`, or `TelegramApiError`. Never logs nor raises the URL (it holds the token)."""
+    try:
+        response = client.post(_url(secrets, method), json=params, timeout=timeout_s)
+    except httpx.HTTPError as e:
+        raise TelegramApiError(0, type(e).__name__) from None
+    data = _json(response)
+    if not response.is_success or data.get("ok") is not True:
+        raise TelegramApiError(response.status_code, data.get("error_code"))
+    return data.get("result")
+
+
 def classify(response: httpx.Response) -> SendOutcome:
     """Telegram's answer → `SendOutcome` (the table of design.md §6.4)."""
     status = response.status_code

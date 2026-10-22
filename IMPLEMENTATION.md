@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 8 | in_progress |
+| F3 | Canales y runtime | 10 | 9 | in_progress |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **22** | |
+| **Total** | | **52** | **23** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -586,14 +586,23 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests** (`tests/integration/test_test_bot.py`, 17): webhook (secreto, duplicado, grupo, apagado), trabajo solo con ids y candado con hash, usuario sin permiso, visibilidad para testers y operador, negocios no disponibles (offboarded, degraded, pack con calendario sin `test_calendar_id`; `paused` sí), paginación, elegir y conversar (contacto `test` sin teléfono, `answerCallbackQuery` del selector y del pack), `/negocio`, negocio que deja de estar disponible, elegir uno no visible y **aislamiento**: un negocio de WhatsApp probado por el bot de pruebas nunca llama a Meta, ni siquiera con un aviso proactivo; sus avisos al dueño van a ops; y el pack recibe solo el calendario de pruebas. El helper `wa_tenant` usa ya un `phone_number_id` distinto por slug.
 
 ### T-3.9 · Comandos de Telegram 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-3.8 · **Diseño:** §6.4, §16.3
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-3.8 · **Diseño:** §6.4, §16.3
 - **Hacer:**
   - `manage.py telegram_poll [<slug>]`: *long polling* que entra por el mismo camino que el webhook.
   - `manage.py telegram_set_webhook <slug|test>`.
   - Objetivo `make telegram-poll`.
 - **Acepta:** con el bot de desarrollo, un mensaje entra y el pack responde sin túnel.
 - **Tests:** unitario de que `telegram_poll` pasa por la misma función de entrada que el webhook.
-- **Notas:** —
+- **Notas:**
+  - **Misma entrada que el webhook:** `channels/views.accept(tenant, body, parse)` es lo que hace el webhook de un negocio tras verificar la firma (descartar `offboarded`, guardar y encolar); el bot de pruebas usa `test_bot.selector.store_update`. `channels/telegram/polling.source(slug)` elige una u otra y `poll` les pasa cada update.
+  - **`poll`:** `getUpdates` con 25 s de espera (cliente con 35 s) y solo `message` y `callback_query`. El `offset` avanza siempre; un update que falla se registra (solo el tipo de error) y no bloquea los siguientes; un fallo de `getUpdates` espera 3 s. Un 409 (el bot tiene webhook) para el comando y explica cómo quitarlo; no se borra el webhook solo, para no romper nunca un bot que use el servidor.
+  - **Bot API:** `telegram/adapter.call(client, secrets, method, params)` para los métodos de operación; `TelegramApiError` solo lleva estado y `error_code`, nunca la URL (lleva el token).
+  - **`telegram_set_webhook <slug|test> [--delete]`:** `setWebhook` con `PUBLIC_URL` (nuevo ajuste opcional, en `.env.example` y §5.3), `secret_token` y `allowed_updates`; `--delete` llama a `deleteWebhook`, útil para M-3.1 si el bot de desarrollo tuviera un webhook. Nunca escribe el token ni el secreto.
+  - **`make telegram-poll [SLUG=…]`:** `docker compose exec web python manage.py telegram_poll $(SLUG)`, con el `.env` del contenedor. Comprobado en local que, sin `TEST_BOT_TOKEN`, falla con un mensaje que remite a M-3.1. La prueba con el bot real queda para la validación de F3.
+  - **Pendiente de M-3.1:** el criterio "con el bot de desarrollo, un mensaje entra y el pack responde sin túnel" no se ha podido comprobar (no hay bot de desarrollo todavía). Está probado con dobles de la Bot API; la prueba real es la primera casilla de la Validación F3.
+  - **README:** sección "Bot de pruebas en local".
+  - **De la revisión:** `source(slug)` exige lo mismo que el webhook (`views.main_channel_tenant`, antes `_tenant`: canal habilitado y no ambiguo), así que ni el *polling* ni `telegram_set_webhook` usan el canal real de un negocio que no está activado. Un token inválido (401 o 404) para el *polling* con un mensaje claro. `Source` lleva el `public_id` del negocio para la URL del webhook. §6.4 anota que, en local, un update que falla al guardarse se pierde.
+  - **Tests** (`tests/integration/test_telegram_commands.py`): las fuentes son la entrada del webhook (identidad para el bot de pruebas; `views.accept` para un negocio), *polling* del bot de pruebas y del de un negocio guardando como el webhook, avance del `offset` con errores de red, de un update y 502, el 409, los mensajes de error del comando y `telegram_set_webhook` (bot de pruebas, negocio, `--delete` y errores, sin token ni secreto en la salida).
 
 ### T-3.10 · Integración de extremo a extremo del runtime 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.6, T-3.7, T-3.8 · **Diseño:** §7.7, §17.1

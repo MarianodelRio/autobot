@@ -32,3 +32,14 @@ make down
 ```
 
 La primera vez que arranca, `db` crea los roles `fp_owner` y `fp_app` y la base de pruebas (`deploy/postgres/init-roles.sh`). Ese script solo se ejecuta con un volumen vacío; para empezar de cero: `docker compose down -v` (borra los datos locales). La base de pruebas se reutiliza entre ejecuciones y solo aplica migraciones nuevas: si editas una migración ya aplicada, reinicia el volumen igual.
+
+### Bot de pruebas en local
+
+Con un bot de Telegram de desarrollo propio (M-3.1 en `IMPLEMENTATION.md`): pon su token en `TEST_BOT_TOKEN` y tu id de Telegram en `TEST_BOT_OPERATORS`, en `.env`, y después:
+
+```bash
+make up                # el worker procesa lo que llega; tras cambiar .env: docker compose up -d
+make telegram-poll     # long polling del bot de pruebas (sin túnel ni dominio); Ctrl+C para parar
+```
+
+En Telegram, escribe `/start` al bot: muestra los negocios que puedes probar. `make telegram-poll SLUG=<slug>` hace lo mismo con el bot propio de un negocio. Un bot con webhook no admite polling: `docker compose exec web python manage.py telegram_set_webhook test --delete` se lo quita (nunca a un bot que use el servidor).

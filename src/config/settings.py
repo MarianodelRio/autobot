@@ -130,6 +130,9 @@ if TEST_BOT_WEBHOOK_SECRET and len(TEST_BOT_WEBHOOK_SECRET) < 32:
     raise ImproperlyConfigured("TEST_BOT_WEBHOOK_SECRET must have 32 characters or more")
 TEST_BOT_OPERATORS = _ids("TEST_BOT_OPERATORS")  # they see every business
 
+# Public base of the webhooks (https://api.<dominio>), for `telegram_set_webhook`.
+PUBLIC_URL = os.environ.get("PUBLIC_URL", "")
+
 LANGUAGE_CODE = "es-es"
 TIME_ZONE = "UTC"
 USE_I18N = True

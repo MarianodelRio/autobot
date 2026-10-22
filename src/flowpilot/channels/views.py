@@ -41,7 +41,7 @@ limiter = WindowLimiter()  # invalid signatures per IP
 def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
     if limiter.blocked(client_ip(request)):
         return HttpResponse(status=429)
-    tenant = _tenant("whatsapp", public_id)
+    tenant = main_channel_tenant("whatsapp", public_id)
     if tenant is None:
         return HttpResponse(status=404)
     channel, secrets = tenant.file.channel, tenant.secrets
@@ -66,7 +66,7 @@ def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
 def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
     if limiter.blocked(client_ip(request)):
         return HttpResponse(status=429)
-    tenant = _tenant("telegram", public_id)
+    tenant = main_channel_tenant("telegram", public_id)
     if tenant is None:
         return HttpResponse(status=404)
     channel, secrets = tenant.file.channel, tenant.secrets
@@ -79,8 +79,9 @@ def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
     )
 
 
-def _tenant(kind: str, public_id: str) -> LoadedTenant | None:
-    """The tenant whose main channel this is, if that channel is enabled."""
+def main_channel_tenant(kind: str, public_id: str) -> LoadedTenant | None:
+    """The tenant whose main channel this is, if that channel is enabled (also what
+    `telegram_poll` requires: the same rules as the webhook)."""
     tenant = get_registry().by_public_id.get((kind, public_id))
     if tenant is None or not tenant.main_enabled or tenant.secrets is None:
         return None
@@ -110,11 +111,22 @@ def _receive(
         return HttpResponse(status=400)
     if not isinstance(body, dict):
         return HttpResponse(status=400)
-    if tenant.file.status == "offboarded":
-        return HttpResponse(status=200)
     try:
-        store(tenant, parse(body))
+        accept(tenant, body, parse)
     except (DatabaseError, ProcrastinateException) as e:  # the provider retries (§7.7)
         log.error("Webhook of tenant %s not saved: %s", tenant.slug, type(e).__name__)
         return HttpResponse(status=503)
     return HttpResponse(status=200)
+
+
+def accept(
+    tenant: LoadedTenant,
+    body: dict[str, Any],
+    parse: Callable[[dict[str, Any]], list[ParsedItem]],
+) -> None:
+    """What an authentic body of a tenant's main channel becomes: nothing if the tenant
+    is offboarded, otherwise its items saved and queued. The one entry shared by the
+    webhooks and `telegram_poll` (§6.4)."""
+    if tenant.file.status == "offboarded":
+        return
+    store(tenant, parse(body))
