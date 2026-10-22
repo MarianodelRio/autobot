@@ -31,6 +31,7 @@ def clean_jobs() -> Iterator[None]:
     EVENTS.clear()
     yield
     with connections["owner"].cursor() as cursor:
+        cursor.execute("DELETE FROM procrastinate_periodic_defers")  # they reference jobs
         cursor.execute("DELETE FROM procrastinate_jobs")
 
 
@@ -56,7 +57,10 @@ def run_worker(concurrency: int = 4) -> None:
 
 def job_statuses() -> list[str]:
     with connections["owner"].cursor() as cursor:
-        cursor.execute("SELECT status FROM procrastinate_jobs ORDER BY id")
+        # Only the test jobs: the worker also defers the platform's periodic tasks.
+        cursor.execute(
+            "SELECT status FROM procrastinate_jobs WHERE task_name = 'tests.record' ORDER BY id"
+        )
         return [status for (status,) in cursor.fetchall()]
 
 

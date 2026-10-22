@@ -163,6 +163,7 @@ def test_dispatch_and_run_through_the_worker(tenants: Any) -> None:
     with connections["owner"].cursor() as cursor:
         cursor.execute(
             "SELECT task_name, status FROM procrastinate_jobs WHERE queue_name = 'periodic'"
+            " AND task_name <> 'retry_stalled_jobs'"
         )
         statuses = dict(cursor.fetchall())
     assert statuses == {"dispatch_periodic": "succeeded", "run_periodic": "succeeded"}

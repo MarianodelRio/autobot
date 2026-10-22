@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 9 | in_progress |
+| F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1 y CI) |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **23** | |
+| **Total** | | **52** | **24** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -547,7 +547,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Casos límite:** un `payload` vaciado por la retención da `failed` sin enviar; un canal `main` sin secretos, `Rejected(other)`.
   - **Tests** (`tests/integration/test_send.py`, con los adaptadores reales y `httpx.MockTransport`): `pending` → `sent` (cuerpo con teléfono y `biz_opaque_callback_data`), `sent`/`unknown`/`failed` no se reenvían, `sending` huérfano → `unknown`, `sending` confirmado antes de la llamada (visto desde otra sesión), `RetryLater` → `pending` con `retry_after`, quinto intento → `failed`, `recipient` → `unreachable`, `auth` → alerta en el log, `Ambiguous` → `unknown`, `payload` vaciado, Telegram al `chat_id`, la estrategia de reintentos y, con el worker, que un `unknown` no bloquea el mensaje siguiente del contacto. `wa_text` y `wa_press` pasan a `tests/integration/helpers.py`.
   - **De la revisión:** `endpoint` y `render` antes de marcar `sending` (un error ahí deja el mensaje `pending`); si un estado de entrega adelanta a la respuesta HTTP, no se pisa; tests de las esperas exactas y, con el worker, de que un `RetryLater` retiene al siguiente mensaje del contacto.
-  - **Para T-3.10 (de la revisión):** comprobar con un test si Procrastinate 3.10 vuelve a encolar los trabajos de un worker caído. Parece que `prune_stalled_workers` solo borra el worker, y que hace falta `get_stalled_jobs` + `retry_job`, que nadie llama. Si es así, un `send_message` en `doing` retendría `out:<h>` y bloquearía al contacto, y §7.7 ("Procrastinate libera el trabajo") no se cumpliría.
+  - **Para T-3.10 (de la revisión; resuelto en T-3.10 con `retry_stalled_jobs`):** comprobar con un test si Procrastinate 3.10 vuelve a encolar los trabajos de un worker caído. Parece que `prune_stalled_workers` solo borra el worker, y que hace falta `get_stalled_jobs` + `retry_job`, que nadie llama. Si es así, un `send_message` en `doing` retendría `out:<h>` y bloquearía al contacto, y §7.7 ("Procrastinate libera el trabajo") no se cumpliría.
   - **Diseño:** §7.4 y §7.5 ampliados.
 
 ### T-3.7 · Periódicas y barridos 🤖
@@ -605,7 +605,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests** (`tests/integration/test_telegram_commands.py`): las fuentes son la entrada del webhook (identidad para el bot de pruebas; `views.accept` para un negocio), *polling* del bot de pruebas y del de un negocio guardando como el webhook, avance del `offset` con errores de red, de un update y 502, el 409, los mensajes de error del comando y `telegram_set_webhook` (bot de pruebas, negocio, `--delete` y errores, sin token ni secreto en la salida).
 
 ### T-3.10 · Integración de extremo a extremo del runtime 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-3.6, T-3.7, T-3.8 · **Diseño:** §7.7, §17.1
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-3.6, T-3.7, T-3.8 · **Diseño:** §7.7, §17.1
 - **Hacer:** batería de integración sobre la tabla de fallos de §7.7 con el pack de juguete:
   - Webhook → cola → worker → envío.
   - Orden de dos mensajes de un mismo contacto.
@@ -614,7 +614,23 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - Base de datos caída (503 en `web`).
 - **Acepta:** cada fila de §7.7 que no depende de Calendar tiene su test.
 - **Tests:** `tests/integration/`.
-- **Notas:** —
+- **Notas:**
+  - **Worker caído (lo anotado en T-3.6, confirmado):** Procrastinate 3.10 no reintenta solo los trabajos de un worker que muere: `prune_stalled_workers` borra el worker y su trabajo se queda `doing`, con el candado tomado, y bloquea al contacto para siempre. Nueva periódica `retry_stalled_jobs` en `flowpilot/jobs.py` (`*/5 * * * *`, cola `periodic`, `queueing_lock` propio): `get_stalled_jobs()` (trabajos `doing` de workers sin latido desde hace 30 s, o ya borrados) + `retry_job`. Comprobado en local: tras `docker compose restart worker`, su log muestra `retry_stalled_jobs` diferida por el deferrer periódico y terminada con éxito. §7.5 y §7.7 actualizados.
+  - **Batería** (`tests/integration/test_end_to_end.py`, con el worker real en las tres colas, concurrencia 4, el pack de juguete y Meta simulada con `MockTransport`). Filas de §7.7 que no dependen de Calendar:
+    - webhook → cola → worker → envío;
+    - orden de tres mensajes de un contacto que llegan antes de que el worker arranque;
+    - aviso duplicado;
+    - `web` caída (503) y el reintento del proveedor, sin pérdida;
+    - worker que muere a mitad de un `process_event` (trabajo `doing` de un worker sin latido: lo recupera una pasada de `retry_stalled_jobs`, que el test encola, y responde una vez y en orden) y a mitad de un `send_message` (`sending` → `unknown`, sin reenviar, y el siguiente mensaje sale);
+    - excepción del pack → texto de recuperación y evento `failed`;
+    - envío ambiguo → `unknown`, sin reenviar y sin bloquear el siguiente;
+    - token revocado → `failed` con `auth:` y la línea `ALERT` en el log;
+    - contacto que no puede recibir → `unreachable`, sin avisos proactivos (las respuestas a lo que escribe siguen saliendo);
+    - tenant `degraded` → texto genérico, y el otro tenant responde normal;
+    - BD caída de verdad (puerto sin servidor) → 503 en el webhook y en `/health`, y se recupera.
+  - **Fuera de esta tarea:** las filas de Calendar (T-5.x) y las de alertas y latido (T-6.x); "dataset inválido" queda cubierto por `degraded` (sin pack `bus` todavía). De "BD caída" se prueba el 503 de `web`; que el worker se reconecta lo da el *pool* de Procrastinate y `close_old_connections` en cada trabajo, sin test propio. "Se reintenta desde tx1" con un tx1 ya hecho lo cubre el test de T-3.5 de reintento entre tx1 y tx2.
+  - **Ajustes en tests anteriores:** `test_queue` y `test_periodic` solo miran sus trabajos, porque el worker difiere ahora `retry_stalled_jobs`, y su limpieza borra antes `procrastinate_periodic_defers`.
+  - **De la revisión:** el test del worker caído era inestable (1 de cada ~15): con `wait=False`, el worker de un test puede pararse antes de que su deferrer periódico encole `retry_stalled_jobs`. Ahora el test la encola él mismo, como haría la pasada siguiente (que el worker la difiere lo prueban el registro periódico y el arranque real en local), y admite varias pasadas. `retry_stalled_jobs` sigue con los demás trabajos si uno no se puede reintentar. Más aserciones: estado reiniciado tras la excepción del pack, y que el pack sí pidió el aviso al contacto `unreachable`. Tras los cambios, la batería con `test_queue` y `test_periodic` pasa 15 de 15 veces seguidas.
 
 ### 👤 M-3.1 · Bot de pruebas de desarrollo
 - **Cuándo:** antes de la validación de F3.

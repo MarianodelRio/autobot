@@ -652,12 +652,13 @@ outcome = adaptador.send(adaptador.render(payload), ...)
 |---|---|---|---|
 | `inbound` | `process_event`, `apply_status`, `route_test_update` | `conv:<h>` en `process_event`; `tg:<h>` en `route_test_update` | 3, con espera exponencial (2, 4 y 8 s), solo para `TransientError` |
 | `outbound` | `send_message`, `send_notification` | `out:<h>` y `owner:<tenant>` | Según `SendOutcome`: solo `RetryLater`, hasta 5 intentos por mensaje |
-| `periodic` | `run_periodic`, `ops_check`, `retention_cleanup` | `queueing_lock` por nombre y tenant (nunca dos iguales pendientes) | 2 |
+| `periodic` | `run_periodic`, `ops_check`, `retention_cleanup`, `retry_stalled_jobs` | `queueing_lock` por nombre y tenant (nunca dos iguales pendientes) | 2 |
 
 - El candado (`lock`) de Procrastinate garantiza que los trabajos con el mismo candado se ejecutan **de uno en uno y en orden de creación**. Así se ordenan los mensajes por conversación, sin candados propios.
 - Un solo `worker` atiende las tres colas, que permiten ver qué se atasca.
 - Los trabajos reciben solo ids: nunca datos personales en argumentos ni candados.
 - Un trabajo que agota sus reintentos queda `failed` en Procrastinate, aparece en el Admin con "Reintentar" y dispara una alerta (§15.3).
+- **Trabajos de un worker caído:** Procrastinate 3.10 no los reintenta por sí mismo (al arrancar, un worker solo borra los workers sin latido y sus trabajos se quedan `doing`, con su candado). La periódica `retry_stalled_jobs` (`*/5 * * * *`, `queueing_lock` propio) busca con `get_stalled_jobs` los trabajos `doing` cuyo worker lleva más de 30 s sin latido (o ya no existe) y los devuelve a `todo` con `retry_job` (si uno cambió entretanto, se registra y se sigue con los demás). Ella misma no tiene reintentos: vuelve a pasar a los 5 minutos.
 - **Parada ordenada:** al desplegar, el `worker` recibe SIGTERM, deja de coger trabajos y termina los que tiene, durante 50 s como máximo (`--shutdown-graceful-timeout 50`), dentro de los 60 s que Docker espera (`stop_grace_period: 60s`). Lo que se corta se reintenta, y todos los trabajos son idempotentes.
 - **Implementación:** `procrastinate.contrib.django` monta la app sobre el alias `default` (`fp_app`), y sus migraciones las aplica `fp_owner`. Los trabajos se declaran en `flowpilot/jobs.py` (`PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"`), con las constantes de las tres colas. El worker usa su propio *pool* de psycopg sobre el mismo alias, como hace `manage.py procrastinate worker`.
 
@@ -678,7 +679,7 @@ outcome = adaptador.send(adaptador.render(payload), ...)
 |---|---|
 | Aviso duplicado del proveedor | `ON CONFLICT DO NOTHING`; no se encola dos veces |
 | `web` caída unos minutos (despliegue, reinicio) | Meta y Telegram reintentan; nada se pierde |
-| `worker` muere a mitad de un evento | Procrastinate libera el trabajo y se reintenta desde tx1; idempotente |
+| `worker` muere a mitad de un evento | Su trabajo queda `doing` con el candado tomado; `retry_stalled_jobs` (cada 5 min) lo devuelve a `todo` cuando el worker lleva 30 s sin latido, y se reintenta desde tx1; idempotente. Un `send_message` cortado en `sending` termina `unknown` |
 | Pack lanza una excepción no prevista | Texto de recuperación al contacto, estado reiniciado, evento `failed`, Sentry |
 | Calendar caído o lento en una conversación | 2 reintentos rápidos en el cliente → `TransientError` → reintento del trabajo (3) → texto de recuperación |
 | Calendar caído al comprobar el límite de citas | Falla en abierto: se deja reservar (§9.1) |

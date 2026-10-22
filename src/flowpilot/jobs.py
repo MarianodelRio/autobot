@@ -10,6 +10,7 @@ Rules for every job (CLAUDE.md): arguments, locks and logs carry only ids, never
 numbers, user ids or personal data; every job is idempotent.
 """
 
+import logging
 import math
 from uuid import UUID
 
@@ -22,6 +23,8 @@ from procrastinate.tasks import Task
 
 from core.errors import TransientError
 from core.pack import Pack
+
+log = logging.getLogger(__name__)
 
 # One worker serves the three queues (§7.5); separate queues show what gets stuck.
 INBOUND = "inbound"  # process_event, apply_status, route_test_update
@@ -37,6 +40,7 @@ SEND_NOTIFICATION = "send_notification"  # (tenant_id, notification_id), lock ow
 ROUTE_TEST_UPDATE = "route_test_update"  # (event_id) of test_bot_event, lock tg:<h>
 DISPATCH_PERIODIC = "dispatch_periodic"  # (timestamp, pack, name): one per pack Periodic
 RUN_PERIODIC = "run_periodic"  # (tenant_id, name, scheduled_at), queueing lock per both
+RETRY_STALLED_JOBS = "retry_stalled_jobs"  # (timestamp): every 5 min
 
 # `inbound` jobs are retried 3 times, only on TransientError, after 2, 4 and 8 s (§7.5).
 INBOUND_RETRIES = 3
@@ -130,6 +134,24 @@ def run_periodic(tenant_id: str, name: str, scheduled_at: int) -> None:
         periodic.run_periodic(UUID(tenant_id), name, scheduled_at)
     finally:
         close_old_connections()
+
+
+@app.periodic(cron="*/5 * * * *", periodic_id=RETRY_STALLED_JOBS)
+@app.task(
+    queue=PERIODIC, name=RETRY_STALLED_JOBS, queueing_lock=RETRY_STALLED_JOBS, pass_context=True
+)
+async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
+    """Jobs left `doing` by a worker that died (no heartbeat for 30 s) keep their lock and
+    would block the contact for good: Procrastinate does not retry them by itself (§7.7).
+    They go back to `todo`; every job is idempotent, and a `send_message` cut while
+    `sending` ends `unknown`, never resent."""
+    manager = context.app.job_manager
+    for job in await manager.get_stalled_jobs():
+        log.warning("retrying stalled job %s (%s)", job.id, job.task_name)
+        try:
+            await manager.retry_job(job)
+        except Exception as e:  # it changed meanwhile (e.g. retried from the Admin)
+            log.warning("stalled job %s not retried: %s", job.id, type(e).__name__)
 
 
 def cron_for(every_min: int) -> str:
