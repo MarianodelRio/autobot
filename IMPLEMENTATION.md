@@ -86,12 +86,12 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
-| F4 | Pack `bus` | 6 | 1 | in_progress |
+| F4 | Pack `bus` | 6 | 2 | in_progress |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **25** | |
+| **Total** | | **52** | **26** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -664,11 +664,15 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests** (`src/packs/bus/tests/`): `test_formato`, `test_loader` y `test_calendario` portados (163), con `conftest.py` (`datos_muchas_lineas`, que devuelve los datos en vez de instalarlos) y `helpers.py` (`modelo_de`, `calendario_de`, para los tipos). Nuevo `test_datos` (6): menú por nombre normalizado, pueblo desconocido, sin prefijo ni errata, duplicado, sin viajes y dataset inválido.
 
 ### T-4.2 · Motor de consulta 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-4.1 · **Diseño:** §10.2
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-4.1 · **Diseño:** §10.2
 - **Hacer:** portar `query.py`.
 - **Acepta:** las pruebas doradas dan los mismos resultados que en buscaBus.
 - **Tests:** portado `test_query`.
-- **Notas:** —
+- **Notas:**
+  - **Port:** `packs/bus/query.py` casi tal cual (imports, anotaciones para `mypy --strict` y dos `if` anidados unidos por `ruff`, sin cambiar la lógica).
+  - **Único cambio de comportamiento:** `consultar(..., dias_siguiente=45)`. La ventana de búsqueda del siguiente día con salidas era la constante `SIGUIENTE_CON_SERVICIO_DIAS`; ahora la conversación (T-4.4) pasará `next_day_search_days` de la config (§10.4). La constante sigue siendo el valor por defecto.
+  - **Mismos resultados que buscaBus:** prueba diferencial (fuera del repo) de los dos motores sobre el dataset real y las cuatro fixtures de motor: todos los pares de localidades, 12 fechas al azar por par (incluidos 25/12, 01/01 y un festivo local) y, en un 30 %, con `ahora`. 53.040 consultas con `Consulta` idéntica, y `destinos_desde` idéntico para cada origen.
+  - **Tests:** `test_query` portado (81, sobre `horarios_real/` y las fixtures de T-4.1), con un helper `_info` para los tipos; nuevo `test_ventana_de_siguiente_con_servicio_configurable`.
 
 ### T-4.3 · Matcher y fechas 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-4.1 · **Diseño:** §10.3
