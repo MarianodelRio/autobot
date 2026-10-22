@@ -160,7 +160,14 @@ class Notification(TenantScoped):
         SENT = "sent"
         FAILED = "failed"
 
+    class Audience(models.TextChoices):
+        OWNER = "owner"  # the business owner's chat (owner.telegram_chat_id)
+        OPS = "ops"  # the operator's chat: notices born in the test channel (§6.5)
+
     idem_key = models.TextField()
+    audience = models.CharField(
+        max_length=8, choices=Audience, default=Audience.OWNER, db_default=Audience.OWNER
+    )
     kind = models.CharField(max_length=64)
     text = models.TextField()
     status = models.CharField(

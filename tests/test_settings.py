@@ -37,6 +37,20 @@ def test_manage_check_passes_without_database() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_test_bot_operators_must_be_ids() -> None:
+    code = "import sys; sys.path.insert(0, 'src'); import config.settings as s;"
+    code += " print(sorted(s.TEST_BOT_OPERATORS))"
+    ok = run("-c", code, TEST_BOT_OPERATORS="12, 34 56")
+    assert ok.stdout.strip() == "[12, 34, 56]", ok.stderr
+    bad = run("manage.py", "check", TEST_BOT_OPERATORS="12,abc")
+    assert bad.returncode != 0 and "TEST_BOT_OPERATORS" in bad.stderr
+
+
+def test_test_bot_webhook_secret_must_be_long() -> None:
+    result = run("manage.py", "check", TEST_BOT_WEBHOOK_SECRET="short")
+    assert result.returncode != 0 and "TEST_BOT_WEBHOOK_SECRET" in result.stderr
+
+
 def test_prod_requires_secret_key() -> None:
     result = run("manage.py", "check", ENVIRONMENT="prod")
     assert result.returncode != 0

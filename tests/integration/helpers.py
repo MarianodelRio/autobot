@@ -13,7 +13,7 @@ from django.db import connections
 from django.test import Client
 
 from flowpilot.runtime.models import InboundEvent
-from tests.tenancy.helpers import TG_SECRETS, WA_SECRETS, tenant_yaml
+from tests.tenancy.helpers import TG_SECRETS, WA_SECRETS, phone_number_id, tenant_yaml
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 PHONE_NUMBER_ID = "1122334455"  # the one in tests/fixtures/whatsapp
@@ -29,7 +29,7 @@ def wa_tenant(slug: str = "wa", **changes: Any) -> dict[str, Any]:
         "public_id": f"pub{slug}0000",
         "app_id": "1",
         "waba_id": "2",
-        "phone_number_id": PHONE_NUMBER_ID if slug == "wa" else str(len(slug) * 111),
+        "phone_number_id": PHONE_NUMBER_ID if slug == "wa" else phone_number_id(slug),
     }
     return doc
 

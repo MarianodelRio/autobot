@@ -34,6 +34,7 @@ PROCESS_EVENT = "process_event"  # (tenant_id, event_id), lock conv:<h>
 APPLY_STATUS = "apply_status"  # (tenant_id, event_id), no lock
 SEND_MESSAGE = "send_message"  # (tenant_id, outbound_id), lock out:<h> (T-3.6)
 SEND_NOTIFICATION = "send_notification"  # (tenant_id, notification_id), lock owner:<tenant> (T-6.1)
+ROUTE_TEST_UPDATE = "route_test_update"  # (event_id) of test_bot_event, lock tg:<h>
 DISPATCH_PERIODIC = "dispatch_periodic"  # (timestamp, pack, name): one per pack Periodic
 RUN_PERIODIC = "run_periodic"  # (tenant_id, name, scheduled_at), queueing lock per both
 
@@ -84,6 +85,17 @@ class SendRetryStrategy(BaseRetryStrategy):
             return None
         wait = exception.after_s if exception.after_s is not None else 2 ** (job.attempts + 1)
         return RetryDecision(retry_in={"seconds": math.ceil(wait)})
+
+
+@app.task(queue=INBOUND, name=ROUTE_TEST_UPDATE, retry=INBOUND_RETRY)
+def route_test_update(event_id: str) -> None:
+    from flowpilot.channels.test_bot import selector
+
+    close_old_connections()
+    try:
+        selector.route_test_update(UUID(event_id))
+    finally:
+        close_old_connections()
 
 
 @app.task(queue=OUTBOUND, name=SEND_MESSAGE, retry=SendRetryStrategy())

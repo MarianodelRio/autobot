@@ -1,15 +1,20 @@
 """The adapter, channel description and secrets of each conversation channel
 (design.md §6.2, §6.6): `main` is the tenant's own channel; `test` is the platform's
-test bot (§6.5), wired in T-3.8."""
+test bot (§6.5)."""
 
+import secrets
 from dataclasses import dataclass
+from functools import cache
 from typing import Any
+
+from django.conf import settings
 
 from flowpilot.channels.base import ChannelAdapter
 from flowpilot.channels.telegram import TelegramAdapter
 from flowpilot.channels.whatsapp import WhatsAppAdapter
 from flowpilot.runtime.models import Channel
 from flowpilot.tenancy.registry import LoadedTenant
+from flowpilot.tenancy.schema import TelegramSecrets
 
 WHATSAPP = WhatsAppAdapter()
 TELEGRAM = TelegramAdapter()
@@ -28,4 +33,20 @@ def endpoint(tenant: LoadedTenant, channel: str) -> Endpoint:
             WHATSAPP if tenant.file.channel.type == "whatsapp" else TELEGRAM
         )
         return Endpoint(adapter, tenant.file.channel, tenant.secrets)
-    raise NotImplementedError("the test bot channel arrives with T-3.8")
+    # The test channel always talks through the platform's test bot, whatever the
+    # tenant's main channel is: never WhatsApp nor the business's own bot (§6.5).
+    return Endpoint(TELEGRAM, None, test_bot_secrets())
+
+
+@cache
+def test_bot_secrets() -> TelegramSecrets | None:
+    """The test bot's secrets, or None if it has no token. Without a webhook secret the
+    webhook is off (the view checks the setting), so a random one fills the field."""
+    if not settings.TEST_BOT_TOKEN:
+        return None
+    return TelegramSecrets.model_validate(
+        {
+            "bot_token": settings.TEST_BOT_TOKEN,
+            "webhook_secret": settings.TEST_BOT_WEBHOOK_SECRET or secrets.token_urlsafe(32),
+        }
+    )

@@ -113,6 +113,23 @@ SECRETS_FILE = Path(env("SECRETS_FILE", str(BASE_DIR / "secrets.yaml")))
 # months, §16.4).
 WHATSAPP_GRAPH_VERSION = env("WHATSAPP_GRAPH_VERSION", "v23.0")
 
+
+def _ids(name: str) -> frozenset[int]:
+    raw = os.environ.get(name, "")
+    try:
+        return frozenset(int(part) for part in raw.replace(",", " ").split())
+    except ValueError:
+        raise ImproperlyConfigured(f"{name} must be Telegram user ids") from None
+
+
+# The platform's test bot (§6.5). Without a token it is off; without a webhook secret its
+# webhook is off (local development uses `telegram_poll`).
+TEST_BOT_TOKEN = os.environ.get("TEST_BOT_TOKEN", "")
+TEST_BOT_WEBHOOK_SECRET = os.environ.get("TEST_BOT_WEBHOOK_SECRET", "")
+if TEST_BOT_WEBHOOK_SECRET and len(TEST_BOT_WEBHOOK_SECRET) < 32:
+    raise ImproperlyConfigured("TEST_BOT_WEBHOOK_SECRET must have 32 characters or more")
+TEST_BOT_OPERATORS = _ids("TEST_BOT_OPERATORS")  # they see every business
+
 LANGUAGE_CODE = "es-es"
 TIME_ZONE = "UTC"
 USE_I18N = True

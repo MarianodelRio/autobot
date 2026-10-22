@@ -281,18 +281,24 @@ def _contact_by_phone(tenant: LoadedTenant, channel: str, phone: str) -> Contact
 
 
 def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> None:
-    """Queue the notice if the owner has a chat and wants this kind (§11). Delivery is
-    `send_notification` (T-6.1). Notices from the test channel go to ops (T-3.8): until
-    then they are only logged, so they never reach the owner."""
+    """Queue the notice if the owner has a chat and wants this kind (§11); otherwise it
+    is only logged. A notice born in the test channel never reaches the owner: it goes to
+    the ops chat with "🧪" (§6.5), whatever the owner settings. Delivery is
+    `send_notification` (T-6.1), which reads `audience`."""
     owner = tenant.file.owner
-    if channel != Channel.MAIN:
-        log.info("NotifyOwner %s from the test channel not queued", action.kind)
-        return
-    if owner is None or owner.telegram_chat_id is None or action.kind not in owner.notify:
-        log.info("NotifyOwner %s only logged: the owner does not receive it", action.kind)
-        return
+    if channel == Channel.MAIN:
+        if owner is None or owner.telegram_chat_id is None or action.kind not in owner.notify:
+            log.info("NotifyOwner %s only logged: the owner does not receive it", action.kind)
+            return
+        audience, text = Notification.Audience.OWNER, action.text
+    else:
+        audience, text = Notification.Audience.OPS, f"🧪 {tenant.file.name}: {action.text}"
     row = Notification(
-        tenant_id=tenant.id, idem_key=action.idem_key, kind=action.kind[:64], text=action.text
+        tenant_id=tenant.id,
+        idem_key=action.idem_key,
+        audience=audience,
+        kind=action.kind[:64],
+        text=text,
     )
     Notification.objects.bulk_create([row], ignore_conflicts=True)
     if Notification.objects.filter(id=row.id).exists():

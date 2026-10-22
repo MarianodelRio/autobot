@@ -287,7 +287,8 @@ GOOGLE_SERVICE_ACCOUNT_FILE=/run/secrets/google_sa.json
 SECRETS_FILE=/run/secrets/secrets.yaml
 WHATSAPP_GRAPH_VERSION=v23.0
 TEST_BOT_TOKEN, TEST_BOT_WEBHOOK_SECRET    (bot de pruebas, §6.5; en local, un bot de desarrollo distinto)
-TEST_BOT_OPERATORS                         (ids de Telegram del operador: ven todos los negocios)
+TEST_BOT_OPERATORS                         (ids de Telegram del operador, separados por comas o espacios: ven todos los negocios)
+                                           (sin TEST_BOT_TOKEN el bot de pruebas está apagado; sin TEST_BOT_WEBHOOK_SECRET, de 32+ caracteres, solo su webhook)
 NOTIFY_BOT_TOKEN, OPS_TELEGRAM_CHAT_ID     (bot de avisos, §11)
 SENTRY_DSN, HEALTHCHECKS_PING_URL, LOG_LEVEL
 ```
@@ -486,6 +487,17 @@ Un único bot de Telegram de la plataforma (`TEST_BOT_TOKEN`) para probar cualqu
 
 El barrido de Calendar (§9.6) recorre los dos calendarios por separado: el real con contactos `main` y el de pruebas con contactos `test`.
 
+**Implementación** (`flowpilot/channels/test_bot/`):
+
+- `selector.store_update(update)` guarda el update y encola `route_test_update(event_id)` con el candado `tg:<h>` (h = hash del id de usuario). La usan el webhook y `telegram_poll` (T-3.9). Los updates que no son de un chat privado con una persona ni se guardan.
+- El webhook comprueba lo mismo que el de un negocio (límite por IP, tamaño, `secret_token` antes de analizar el cuerpo, JSON) y está apagado (404) sin `TEST_BOT_WEBHOOK_SECRET`.
+- **Sin permiso** = ningún negocio visible (ni operador ni en ningún `testers.telegram`). **Disponible** = no `degraded`, `offboarded` ni ambiguo, y con un `test_calendar_id` propio si el pack necesita calendario. Los `paused` y `onboarding` se pueden probar.
+- La lista muestra 8 negocios por página (nombre y pack), con filas `fp_select:<slug>` y `fp_page:<n>` (64 bytes como máximo: un slug de más de 54 caracteres no se lista).
+- **Mensajes propios del selector** (lista, rechazo, "🧪 Pruebas · …"): no son de ningún tenant, así que no pasan por `outbound_message`; se envían directamente desde el trabajo y como mucho una vez (el update se marca `done` antes). Al elegir negocio, el aviso "🧪 Pruebas · …" sale antes de crear el `menu` sintético, para que llegue antes que el menú del pack; si el trabajo se corta, un reintento puede repetir el aviso, nunca el menú. El selector responde `answerCallbackQuery` a sus propios botones; los del pack, `process_event`.
+- Si el negocio elegido deja de estar disponible, se borra la `test_session` y se responde que no está disponible, con la lista.
+- Quien no tiene permiso recibe el rechazo como mucho 3 veces por hora (en memoria del worker); después se guarda el update y no se responde, para que nadie use el bot para enviar mensajes sin límite.
+- **Canal `test` en el runtime:** `channels/adapters.endpoint(tenant, "test")` es siempre el adaptador de Telegram con los secretos del bot de pruebas, sea cual sea el canal `main` del tenant. `runtime/inbound.store(tenant, items, channel)` guarda los eventos del canal `test` siempre `pending`. Un `NotifyOwner` del canal `test` se guarda con `audience = ops` y el texto `🧪 <negocio>: <texto>`, aunque el dueño no tenga chat o no quiera ese `kind`.
+
 #### 6.6 Contactos y canales
 
 - Un contacto se identifica por `(tenant, canal, external_id)`, con canal `main` o `test`. La misma persona en el canal `main` y en el bot de pruebas son dos contactos distintos, con conversaciones distintas.
@@ -525,7 +537,7 @@ POST /webhooks/<tipo>/<public_id>                  (canal main de un tenant)
 - Los webhooks no hacen ninguna llamada externa: solo leen el registro en memoria y escriben en la BD.
 - **Implementación** (`flowpilot/channels/views.py` y `flowpilot/runtime/inbound.py`):
   - `GET /webhooks/whatsapp/<public_id>` es la verificación de Meta (§6.3): devuelve `hub.challenge` o 403, y un `verify_token` erróneo cuenta para el límite por IP.
-  - `runtime/inbound.store(tenant, items)` guarda y encola; lo reutilizarán `telegram_poll` y el selector del bot de pruebas, para que todo entre por el mismo camino. El trabajo se encola por nombre (`flowpilot/jobs.py`: `PROCESS_EVENT`, `APPLY_STATUS`) dentro de la misma transacción que el `INSERT`.
+  - `runtime/inbound.store(tenant, items, channel="main")` guarda y encola; lo usan también el selector del bot de pruebas (canal `test`) y, a través de él, `telegram_poll`, para que todo entre por el mismo camino. El trabajo se encola por nombre (`flowpilot/jobs.py`: `PROCESS_EVENT`, `APPLY_STATUS`) dentro de la misma transacción que el `INSERT`.
   - En `onboarding`, un tester de WhatsApp se reconoce por su `external_id` o por su teléfono, porque con BSUID el `external_id` ya no es el teléfono. Los estados de entrega (de mensajes nuestros) no dependen de `testers.main`.
   - **Límite por IP:** en memoria y por proceso (cada *worker* de `web` cuenta por su cuenta): 20 peticiones con firma inválida en 60 s bloquean esa IP con 429 durante la ventana; las válidas nunca cuentan. La IP es la última entrada de `X-Forwarded-For`, la que pone Caddy (§14.3); sin proxy, `REMOTE_ADDR`.
 
@@ -580,7 +592,7 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
   - **Orden de decisión** (sin transacción): contacto por encima de su límite (más de 20 mensajes en 60 s, en memoria del worker, que es un solo proceso; un reintento no vuelve a contar) → nada, ni siquiera el texto de reinicio; tenant `degraded` → texto genérico; `baja`/`alta`; `menu` (estado `{}` y el pack recibe el mensaje vacío); el pack, con una copia del estado. `acknowledge` va antes y, si falla, se registra y se sigue. En los dos primeros casos la conversación no se toca, así que al arreglarse el tenant sigue donde estaba.
   - **Errores del pack:** `TransientError` se relanza para que Procrastinate reintente; en el último intento, y ante cualquier otra excepción, texto de recuperación, estado `{}` y evento `failed` con el error (solo el tipo). La excepción se registra con su traza, de donde la tomará Sentry (T-6.2).
   - **tx2** relee el evento con `SELECT … FOR UPDATE` y no hace nada si ya no está `pending`, así que dos ejecuciones del mismo evento nunca responden dos veces.
-  - **`apply_actions(tenant, channel, actions, contact, event, now)`:** `UpdateContact` actualiza nombre u `opt_out` (y `opt_out_at`). `SendProactive` solo se crea si el contacto existe, es del mismo canal que la acción, y no tiene `opt_out` ni `unreachable`; con `ContactRef(phone=…)` solo en un canal `main` de WhatsApp, buscando el contacto por teléfono (el de actividad más reciente) o creándolo con el teléfono como `external_id`, y sin enviar si cualquier contacto con ese teléfono tiene `opt_out` o `unreachable` (la misma persona puede tener un contacto con BSUID y otro creado desde el teléfono); la `idem_key` del pack es única, así que repetirla no crea otro aviso. `NotifyOwner` crea la `notification` (única por `idem_key`) y encola `send_notification` (candado `owner:<tenant>`) solo si el dueño tiene chat y quiere ese `kind`; si no, solo se registra. Las del canal `test` no se encolan hasta T-3.8.
+  - **`apply_actions(tenant, channel, actions, contact, event, now)`:** `UpdateContact` actualiza nombre u `opt_out` (y `opt_out_at`). `SendProactive` solo se crea si el contacto existe, es del mismo canal que la acción, y no tiene `opt_out` ni `unreachable`; con `ContactRef(phone=…)` solo en un canal `main` de WhatsApp, buscando el contacto por teléfono (el de actividad más reciente) o creándolo con el teléfono como `external_id`, y sin enviar si cualquier contacto con ese teléfono tiene `opt_out` o `unreachable` (la misma persona puede tener un contacto con BSUID y otro creado desde el teléfono); la `idem_key` del pack es única, así que repetirla no crea otro aviso. `NotifyOwner` crea la `notification` (única por `idem_key`) y encola `send_notification` (candado `owner:<tenant>`): en el canal `main`, solo si el dueño tiene chat y quiere ese `kind` (`audience = owner`), y si no, solo se registra; en el canal `test`, siempre, con `audience = ops` y el texto `🧪 <negocio>: <texto>` (§6.5).
   - **`apply_status`:** `sent`, `delivered` o `read` pasan a `sent` cualquier mensaje que no esté `failed` (incluido un `unknown`, o un `sending` al que el estado adelantó) y fijan `sent_at` y el `provider_message_id` si faltan; `failed` pasa a `failed` un mensaje `sent`, `unknown` o `sending`, con `last_error = "status failed: <códigos>"`. Un estado de un mensaje desconocido deja el evento `done`.
 
 #### 7.3 Conversación
@@ -1018,7 +1030,7 @@ Escenarios de conversación: consulta completa · Ver la vuelta · Otro día · 
 
 Un **bot de avisos de la plataforma** (`NOTIFY_BOT_TOKEN`), distinto de los bots de canal y **solo de salida**: no tiene webhook ni recibe mensajes en producción.
 
-- **`NotifyOwner(kind, text, idem_key)`:** si el tenant tiene `owner.telegram_chat_id` y `kind` está en `owner.notify`, se guarda en `notification` (única por `idem_key`) y se entrega con `send_notification` (cola `outbound`, candado `owner:<tenant>`, reintentos ante 429 y 5xx). Si no, solo se registra. Los avisos que nacen en el canal `test` van al chat de ops con el prefijo "🧪" (§6.5).
+- **`NotifyOwner(kind, text, idem_key)`:** si el tenant tiene `owner.telegram_chat_id` y `kind` está en `owner.notify`, se guarda en `notification` (única por `idem_key`, `audience = owner`) y se entrega con `send_notification` (cola `outbound`, candado `owner:<tenant>`, reintentos ante 429 y 5xx). Si no, solo se registra. Los avisos que nacen en el canal `test` se guardan con `audience = ops` y van al chat de ops con el prefijo "🧪" (§6.5).
 - **Vinculación:** `manage.py notify_link <slug>` genera un código; el dueño envía `/start <código>` al bot de avisos; el comando lee `getUpdates`, muestra su `chat_id` y el operador lo añade al `tenant.yaml`.
 - **Alertas de operación:** las envía `ops_check` (§15.3) con el mismo bot al chat `OPS_TELEGRAM_CHAT_ID`. No pasan por `notification`: se deduplican con un enfriamiento de 30 min por tipo y tenant, guardado en la caché de Django en BD.
 
@@ -1047,7 +1059,7 @@ outbound_message 🔒 id, tenant_id, contact_id, channel[main|test], idem_key, s
                     provider_message_id, pricing_category, billable, last_error,
                     inbound_event_id NULL, created_at, sent_at
                                                               UNIQUE(tenant_id, idem_key)
-notification 🔒     id, tenant_id, idem_key, kind, text, status[pending|sent|failed], created_at, sent_at
+notification 🔒     id, tenant_id, idem_key, audience[owner|ops], kind, text, status[pending|sent|failed], created_at, sent_at
                                                               UNIQUE(tenant_id, idem_key)
 ```
 

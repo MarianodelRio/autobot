@@ -1,6 +1,6 @@
 """Save what a channel received and queue its processing (design.md §7.1).
 
-Shared by the webhooks and, later, by `telegram_poll` and the test bot's selector, so
+Shared by the webhooks and the test bot's selector (and, through it, `telegram_poll`), so
 every entry takes the same path. No external calls: only the database.
 """
 
@@ -44,13 +44,14 @@ def initial_status(tenant: LoadedTenant, item: ParsedItem) -> InboundEvent.Statu
     return Status.PENDING
 
 
-def store(tenant: LoadedTenant, items: list[ParsedItem]) -> int:
-    """Save each item of the main channel as an inbound_event (a duplicate is skipped)
-    and queue its job in the same transaction, so the job exists only if the event was
-    committed. Returns how many events were new."""
+def store(tenant: LoadedTenant, items: list[ParsedItem], channel: Channel = Channel.MAIN) -> int:
+    """Save each item as an inbound_event of `channel` (a duplicate is skipped) and queue
+    its job in the same transaction, so the job exists only if the event was committed.
+    Returns how many events were new. On the `test` channel the selector already checked
+    who may talk to the tenant (§6.5), so its events are always pending."""
     created = 0
     for item in items:
-        status = initial_status(tenant, item)
+        status = initial_status(tenant, item) if channel == Channel.MAIN else Status.PENDING
         kind = (
             InboundEvent.Kind.MESSAGE if isinstance(item, InboundItem) else InboundEvent.Kind.STATUS
         )
@@ -60,7 +61,7 @@ def store(tenant: LoadedTenant, items: list[ParsedItem]) -> int:
                 [
                     uuid.uuid7(),
                     tenant.id,
-                    Channel.MAIN,
+                    channel,
                     kind,
                     item.provider_event_id,
                     json.dumps(item.payload),
@@ -76,7 +77,7 @@ def store(tenant: LoadedTenant, items: list[ParsedItem]) -> int:
                 continue
             ids = {"tenant_id": str(tenant.id), "event_id": str(row[0])}
             if isinstance(item, InboundItem):
-                lock = conversation_lock(tenant.id, Channel.MAIN, item.external_id)
+                lock = conversation_lock(tenant.id, channel, item.external_id)
                 app.configure_task(PROCESS_EVENT, queue=INBOUND, lock=lock).defer(**ids)
             else:
                 app.configure_task(APPLY_STATUS, queue=INBOUND).defer(**ids)

@@ -85,13 +85,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F0 | Base del proyecto | 4 | 4 | done |
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
-| F3 | Canales y runtime | 10 | 7 | in_progress |
+| F3 | Canales y runtime | 10 | 8 | in_progress |
 | F4 | Pack `bus` | 6 | 0 | pending |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **21** | |
+| **Total** | | **52** | **22** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -565,7 +565,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests** (`tests/integration/test_periodic.py`): `cron_for`, registro con el pack de juguete, reparto solo a tenants activos, `queueing_lock`, que Procrastinate difiere un instante una sola vez (`defer_periodic_job` dos veces), acciones aplicadas una vez gracias a la clave estable, descarte por retraso con su registro, tenant que deja de estar activo y el recorrido `dispatch_periodic` → `run_periodic` con el worker.
 
 ### T-3.8 · Selector del bot de pruebas 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-3.5, T-3.6 · **Diseño:** §6.5, §6.6
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-3.5, T-3.6 · **Diseño:** §6.5, §6.6
 - **Hacer:**
   - `POST /webhooks/telegram-test`, `test_bot_event` y `route_test_update` (candado `tg:<h>`).
   - Permisos (`TEST_BOT_OPERATORS` y `testers.telegram`), lista paginada, `fp_select:<slug>` y `test_session`.
@@ -574,7 +574,16 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - Reglas de aislamiento de la tabla de §6.5: `NotifyOwner` redirigido a ops con "🧪" y nunca envío por WhatsApp ni por el bot del negocio.
 - **Acepta:** se cumplen todas las reglas de §6.5.
 - **Tests:** integración (usuario sin permiso, selección, cambio con `/negocio`, negocio no disponible, **aislamiento**: el canal `test` nunca usa `calendar_id`, nunca envía por el canal `main` y sus avisos al dueño van a ops).
-- **Notas:** —
+- **Notas:**
+  - **Decidido por la persona (2026-10-21):** columna `notification.audience` (`owner` | `ops`, `db_default='owner'`) en la migración `0003_notification_audience`, que no toca RLS, roles ni borrados. `send_notification` (T-6.1) enviará los `ops` al chat de ops. §11 y §12.1 actualizados.
+  - **Ajustes:** `TEST_BOT_TOKEN`, `TEST_BOT_WEBHOOK_SECRET` (si se da, 32 caracteres o más) y `TEST_BOT_OPERATORS` (ids separados por comas o espacios), opcionales y añadidos a `.env.example`. Sin token el bot está apagado; sin secreto, solo su webhook (en local se usa `telegram_poll`, T-3.9).
+  - **Canal `test` en el runtime:** `channels/adapters.endpoint(tenant, "test")` devuelve el adaptador de Telegram con `test_bot_secrets()`, sea cual sea el canal `main`. Sin secreto de webhook se rellena uno aleatorio, porque la vista comprueba el ajuste y no ese valor. `runtime/inbound.store` admite el canal; en `test` los eventos van siempre `pending`. `NotifyOwner` del canal `test` → `notification` con `audience = ops` y `🧪 <negocio>: <texto>`, siempre.
+  - **Selector** (`flowpilot/channels/test_bot/selector.py`): `store_update` (lo reutilizará T-3.9), `route_test_update`, `is_available` (reutiliza `bound_calendar_id` de T-3.4 para el calendario de pruebas) y `business_list`. Sus mensajes propios no son de ningún tenant: se envían directamente y como mucho una vez, tras marcar el update `done`. El aviso "🧪 Pruebas · …" va antes de crear el `menu` sintético (`provider_event_id = select:<update_id>`, un update de Telegram con el texto `menu`), para llegar antes que el menú. Al dejar de estar disponible el negocio elegido, se borra la `test_session`.
+  - **Webhook** (`flowpilot/channels/test_bot/views.py`, `POST /webhooks/telegram-test`): las mismas comprobaciones que el de un negocio y el mismo limitador por IP; 404 sin `TEST_BOT_WEBHOOK_SECRET`. Añadido a las URL públicas.
+  - **Trabajo** `route_test_update(event_id)` en `inbound`, candado `tg:<h>` (`runtime/locks.telegram_user_lock`) y los mismos reintentos que `process_event`.
+  - **De la revisión:** §7.2 al día con los avisos del canal `test`; el `menu` sintético se construye parseando su propio `payload` (así cumple el contrato de §6.2); quien no tiene permiso recibe el rechazo como mucho 3 veces por hora (`selector.refusals`, en memoria del worker); tests nuevos: negocio con canal `main` de Telegram probado solo por el bot de pruebas (nunca con su `bot_token`), aviso a ops aunque el dueño no tenga chat y con `send_notification` encolado, límite de rechazos y validación de `TEST_BOT_OPERATORS` y `TEST_BOT_WEBHOOK_SECRET`.
+  - **Anotado, sin cambiar:** `tg:<h>` y `conv:<h>` son `sha256` sin clave de ids cortos, así que se podrían revertir por fuerza bruta. El diseño lo admite (la tabla de trabajos no la ve nadie de fuera); un HMAC con `SECRET_KEY` sería una mejora futura para los dos.
+  - **Tests** (`tests/integration/test_test_bot.py`, 17): webhook (secreto, duplicado, grupo, apagado), trabajo solo con ids y candado con hash, usuario sin permiso, visibilidad para testers y operador, negocios no disponibles (offboarded, degraded, pack con calendario sin `test_calendar_id`; `paused` sí), paginación, elegir y conversar (contacto `test` sin teléfono, `answerCallbackQuery` del selector y del pack), `/negocio`, negocio que deja de estar disponible, elegir uno no visible y **aislamiento**: un negocio de WhatsApp probado por el bot de pruebas nunca llama a Meta, ni siquiera con un aviso proactivo; sus avisos al dueño van a ops; y el pack recibe solo el calendario de pruebas. El helper `wa_tenant` usa ya un `phone_number_id` distinto por slug.
 
 ### T-3.9 · Comandos de Telegram 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.8 · **Diseño:** §6.4, §16.3
