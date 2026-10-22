@@ -1,0 +1,88 @@
+# horarios/calendario.yaml — festivos y periodo escolar (design.md, 2.3 y 3).
+#
+# Fuente de verdad editada a mano, validada por app/services/horarios/formato.py
+# como el resto de horarios/. Festivos de Andalucía (BOJA): Decreto 101/2025
+# para 2026 y Decreto 84/2026 para 2027.
+#
+# P03 (festivos), respuesta de negocio, implementada: a, b, c, d y f
+# confirmados; e (festivos locales por línea) y g (25/12 y 01/01 sin servicio
+# en ninguna línea) están más abajo, en `festivos_locales` y
+# `sin_servicio_todas_las_lineas`. P03 ya no está abierta. Sigue abierto P28
+# (días con horario especial: Nochebuena, Nochevieja, Semana Santa, feria),
+# a la espera de que negocio los fije; hasta entonces no se crea ningún día
+# especial.
+#
+# P04 (calendario escolar): Delegación de Educación de Córdoba (respuesta de
+# negocio); verificado contra la Resolución de 21/05/2026. El 07/01/2027 es no
+# lectivo provincial y por eso va dentro del rango de Navidad.
+
+# vigencia_fin no puede ir más allá de lo que realmente se conoce del curso
+# escolar. El curso cargado (2026-27) termina el 22/06/2027 y no dice nada
+# del curso 2027-28, así que la vigencia se cierra el 31/08/2027 (fin del
+# verano de ese curso). Ampliarla a 31/12/2027, como se hizo por error
+# durante la fase 2, habría dado por buenos 5 festivos de después del fin de
+# curso sin tener el calendario escolar 2027-28 — una suposición no
+# verificada, no algo confirmado por negocio. Corregido el 2026-09-27.
+#
+# Ciclo anual: cuando llegue el calendario escolar del curso siguiente,
+# añadir su bloque `curso`, descomentar los festivos ya conocidos que caigan
+# dentro y ampliar `vigencia` hasta el nuevo 31/08.
+vigencia: 01/01/2026 - 31/08/2027
+
+festivos:
+  # 2026 — Decreto 101/2025
+  01/01/2026: Año Nuevo
+  06/01/2026: Epifanía
+  28/02/2026: Día de Andalucía
+  02/04/2026: Jueves Santo
+  03/04/2026: Viernes Santo
+  01/05/2026: Fiesta del Trabajo
+  15/08/2026: Asunción
+  12/10/2026: Fiesta Nacional
+  02/11/2026: Todos los Santos (trasladado)
+  07/12/2026: Constitución (trasladado)
+  08/12/2026: Inmaculada
+  25/12/2026: Navidad
+  # 2027 — Decreto 84/2026
+  01/01/2027: Año Nuevo
+  06/01/2027: Epifanía
+  01/03/2027: Día de Andalucía (trasladado)
+  25/03/2027: Jueves Santo
+  26/03/2027: Viernes Santo
+  01/05/2027: Fiesta del Trabajo
+  16/08/2027: Asunción (trasladado)
+  # Los siguientes caen después del fin de vigencia (31/08/2027, ver arriba)
+  # porque el curso 2027-28 todavía no está cargado. Se reactivan cuando se
+  # amplíe la vigencia con ese curso.
+  # 12/10/2027: Fiesta Nacional
+  # 01/11/2027: Todos los Santos
+  # 06/12/2027: Constitución
+  # 08/12/2027: Inmaculada
+  # 25/12/2027: Navidad
+
+curso:
+  inicio_clases: 10/09/2026
+  fin_clases: 22/06/2027
+  vacaciones:
+    - 23/12/2026 - 07/01/2027   # Navidad
+    - 22/03/2027 - 28/03/2027   # Semana Santa
+  no_lectivos: [26/02/2027]
+
+# P03g (respuesta de negocio): el 25/12 y el 01/01 no hay servicio en ninguna
+# línea, todos los años. Ambas fechas siguen en `festivos:` (para el nombre
+# del festivo). Tiene prioridad sobre la vigencia y sobre las líneas.
+sin_servicio_todas_las_lineas: [25/12, 01/01]
+
+# P03e (respuesta de negocio): las líneas con alguna parada en una localidad
+# aplican los festivos locales de esa localidad como clase de día "festivos".
+# Córdoba 2026: Resolución de 6/10/2025, de la Dirección General de Trabajo,
+# Seguridad y Salud Laboral (BOJA n.º 197, de 14/10/2025).
+# Los de 2027 quedan pendientes de la resolución de 2027 y caerían después de
+# vigencia_fin (31/08/2027); se añaden al ampliar la vigencia con el curso
+# 2027-28.
+festivos_locales:
+  cordoba:
+    08/09/2026: Virgen de la Fuensanta
+    24/10/2026: San Rafael
+
+pendientes: [P28]

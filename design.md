@@ -301,7 +301,11 @@ dm-barber:                     # canal whatsapp
   app_secret: "…"              # verifica la firma de los webhooks
   access_token: "…"            # token permanente de System User
   verify_token: "…"            # verificación inicial del webhook de Meta
-autocares-ss:                  # canal telegram
+autocares-ss:                  # canal whatsapp (M-8.3)
+  app_secret: "…"
+  access_token: "…"
+  verify_token: "…"
+otro-negocio:                  # un canal telegram
   bot_token: "…"
   webhook_secret: "…"          # secret_token de setWebhook (aleatorio, 32+ caracteres)
 ```

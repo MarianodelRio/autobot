@@ -1,0 +1,48 @@
+# horarios/observaciones.yaml — catálogo de observaciones y el texto exacto
+# que ve el cliente (design.md, 2.3).
+#
+# tipo: condicion | aviso
+#   - condicion: cambia si el autobús sale o si para. Conjunto cerrado que
+#     el motor de consulta conoce (app/services/horarios/query.py, fase 2).
+#     El validador rechaza una condición que el código no sepa aplicar.
+#   - aviso: solo informa. Se puede añadir libremente.
+#
+# ambitos: parada | viaje | linea — dónde se puede usar esta observación.
+
+a_demanda:
+  letra: D
+  tipo: condicion
+  ambitos: [parada]
+  texto: "A demanda: llama al {telefono} con 24 horas laborables de antelación."
+
+solo_viernes_lectivo:
+  letra: V
+  tipo: condicion
+  ambitos: [parada, viaje]
+  texto: "Solo viernes en periodo escolar."
+
+solo_si_viajeros_desde_cordoba:
+  letra: C
+  tipo: condicion
+  ambitos: [parada]
+  texto: "Llega hasta aquí solo si el autobús sale de Córdoba con viajeros para este destino."
+
+solo_virgen_remedios:
+  letra: R
+  tipo: aviso
+  ambitos: [parada]
+  texto: "Solo para en la parada de Virgen de los Remedios."
+
+hora_aproximada:
+  letra: A
+  tipo: aviso
+  ambitos: [linea, parada]
+  texto: "Horarios de paso aproximados."
+
+# P16: solo aparece con origen o destino Posadas; la letra E va siempre en la
+# celda de Posadas.
+no_para_en_el_pedrera:
+  letra: E
+  tipo: aviso
+  ambitos: [parada]
+  texto: "No para en la parada de Pedrera (Posadas)."

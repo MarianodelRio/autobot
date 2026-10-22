@@ -1,0 +1,48 @@
+# tenants/autocares-ss/tenant.yaml — Autocares San Sebastián (pack bus, design.md §10).
+# La config se porta de buscaBus/config.yaml. Decisiones con negocio (2026-10-08):
+# operador Autocares San Sebastián (D9); en "Información", solo la web oficial por ahora
+# (D10); los 8 pueblos del menú se quedan como están y se cambiarán si hace falta (D7).
+id: 01a163fd-bed0-7002-80df-8f2acdc7778b
+slug: autocares-ss
+name: Autocares San Sebastián
+status: onboarding
+timezone: Europe/Madrid
+pack: bus
+
+channel:
+  # Canal main de WhatsApp (decidido, IMPLEMENTATION.md M-4.1): número propio y app de
+  # Meta en el portfolio de la empresa. Los ids se rellenan en M-8.3; mientras falten,
+  # el canal main está deshabilitado y el negocio solo se prueba por el bot de pruebas.
+  type: whatsapp
+  public_id: zhhvht2eksq80vqa
+  app_id: null
+  waba_id: null
+  phone_number_id: null
+
+testers:
+  telegram: []   # ids de Telegram de la empresa: M-4.1
+  main: []
+
+config:
+  business_name: Autocares San Sebastián
+  contact_phone: "957 42 90 30"
+  office_hours:
+    # Solo se muestra al cliente; el bot nunca calcula si la oficina está abierta (P19c).
+    - days: [lunes, martes, miercoles]
+      ranges: ["08:00-15:00", "17:00-19:00"]
+    - days: [jueves, viernes]
+      ranges: ["08:00-15:00"]
+  links:
+    web: https://www.autocaressansebastian.es   # D10
+  # Los 8 pueblos de la lista de inicio (D7). No usar el ranking de servicios del Excel
+  # tal cual: sobrevalora paradas de paso como Cruce de Villaharta o El Vacar.
+  start_menu_towns:
+    - Córdoba
+    - Pozoblanco
+    - Peñarroya-Pueblonuevo
+    - Villanueva de Córdoba
+    - Hinojosa del Duque
+    - Belalcázar
+    - Adamuz
+    - Fuente Palmera
+  next_day_search_days: 45

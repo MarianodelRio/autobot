@@ -1,0 +1,51 @@
+# horarios/lineas/belalcazar-pozoblanco.yaml
+# Horarios actualizados por negocio el 07/10/2026. El "desde 01/10/2026" de los
+# títulos del Excel se lee como la fecha desde la que rigen, no como un cambio
+# de temporada (P37).
+# Fuente: Excel de negocio del 07/10/2026 («2026-10-07 ACTUALIZACION HORARIOS.xlsx», ya fuera del repo), hojas BELAL - POZ INV y BELAL - POZ VER.
+#
+# Las filas ocultas del Excel (INV 10, 12, 16 y 18; VER 11, 13, 17 y 19) y el
+# régimen interno no se publican (P06). Esta línea no se une con
+# Belalcázar – Córdoba (P08). Hoy invierno y verano tienen los mismos
+# datos; se conservan las dos temporadas para que un cambio de verano sea
+# una edición y no una reestructuración.
+nombre: Belalcázar – Pozoblanco
+avisos: [hora_aproximada]
+no_circula: []
+
+temporadas:
+  invierno: 15/09 - 22/06
+  verano: 23/06 - 14/09
+
+dias:
+  invierno: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+  verano:   { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  # ── INVIERNO — lunes a viernes ──────────────────────────────────────────
+  - temporada: invierno
+    dias: lunes-viernes
+    tabla: |
+      BLZ    HIN    FLA    VDU    ALC    POZ
+      09:20  09:30  09:40  09:45  10:05  10:15
+
+  - temporada: invierno
+    dias: lunes-viernes
+    tabla: |
+      POZ    ALC    VDU    FLA    HIN    BLZ
+      13:00  13:15  13:30  13:35  13:45  14:00
+
+  # ── VERANO — lunes a viernes ────────────────────────────────────────────
+  - temporada: verano
+    dias: lunes-viernes
+    tabla: |
+      BLZ    HIN    FLA    VDU    ALC    POZ
+      09:20  09:30  09:40  09:45  10:05  10:15
+
+  - temporada: verano
+    dias: lunes-viernes
+    tabla: |
+      POZ    ALC    VDU    FLA    HIN    BLZ
+      13:00  13:15  13:30  13:35  13:45  14:00
+
+pendientes: []

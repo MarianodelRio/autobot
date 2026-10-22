@@ -1,0 +1,159 @@
+# horarios/paradas.yaml — localidades y paradas.
+#
+# Fuente de verdad editada a mano (design.md, 2.3). Solo se incluyen las
+# localidades y paradas que usan las 15 líneas (Ochavillos-Córdoba,
+# Pozoblanco-Córdoba, Belalcázar-Córdoba, Adamuz-Córdoba, Badajoz-Córdoba,
+# Fuente Carreteros-Córdoba, Villaviciosa-Córdoba, Belalcázar-Pozoblanco, las
+# 4 líneas de la hoja TORR, Peñarroya-Córdoba, Los Blázquez y
+# Hornachuelos-Córdoba). Ninguna línea queda pendiente de migrar.
+#
+# Los pueblos se agrupan por línea, no por comarcas (P18): el bot deduce la lista
+# de pueblos de cada línea a partir de sus viajes. Lo que sigue abierto está
+# declarado en `pendientes:`, al final (P37).
+
+localidades:                             # lo que elige el usuario
+  cordoba: { nombre: Córdoba }
+  campus-de-rabanales: { nombre: Campus de Rabanales }
+  alcolea: { nombre: Alcolea }
+  ochavillos: { nombre: Ochavillos }
+  la-herreria: { nombre: La Herrería }
+  fuente-palmera: { nombre: Fuente Palmera }
+  la-ventilla: { nombre: La Ventilla }
+  fuencubierta: { nombre: Fuencubierta }
+  conquista: { nombre: Conquista }
+  villanueva-de-cordoba: { nombre: Villanueva de Córdoba }
+  pozoblanco: { nombre: Pozoblanco, alias: [pozo] }
+  alcaracejos: { nombre: Alcaracejos }
+  villaharta: { nombre: Villaharta }
+  cruce-de-villaharta: { nombre: Cruce de Villaharta, alias: [el cruce] }
+  el-vacar: { nombre: El Vacar }
+  cabeza-del-buey: { nombre: Cabeza del Buey }
+  belalcazar: { nombre: Belalcázar }
+  hinojosa-del-duque: { nombre: Hinojosa del Duque }
+  fuente-la-lancha: { nombre: Fuente La Lancha }
+  villanueva-del-duque: { nombre: Villanueva del Duque }
+  villaralto: { nombre: Villaralto }
+  algallarin: { nombre: Algallarín }
+  adamuz: { nombre: Adamuz }
+  villafranca-de-cordoba: { nombre: Villafranca de Córdoba, alias: [villafranca] }
+  aquasierra: { nombre: Aquasierra }
+  espiel: { nombre: Espiel }
+  villanueva-del-rey: { nombre: Villanueva del Rey }
+  belmez: { nombre: Belmez }
+  penarroya-pueblonuevo: { nombre: Peñarroya-Pueblonuevo }
+  fuente-obejuna: { nombre: Fuente Obejuna }
+  coronada: { nombre: Coronada }
+  granja-de-torrehermosa: { nombre: Granja de Torrehermosa }
+  azuaga: { nombre: Azuaga }
+  berlanga: { nombre: Berlanga }
+  ahillones: { nombre: Ahillones }
+  llerena: { nombre: Llerena }
+  villagarcia-de-la-torre: { nombre: Villagarcía de la Torre }
+  zafra: { nombre: Zafra }
+  villafranca-de-los-barros: { nombre: Villafranca de los Barros, alias: [villafranca] }
+  almendralejo: { nombre: Almendralejo }
+  merida: { nombre: Mérida }
+  badajoz: { nombre: Badajoz }
+  fuente-carreteros: { nombre: Fuente Carreteros }
+  silillos: { nombre: Silillos }
+  guadalcazar: { nombre: Guadalcázar }
+  villaviciosa-de-cordoba: { nombre: Villaviciosa de Córdoba }
+  pantano: { nombre: Pantano }
+  torrecampo: { nombre: Torrecampo }
+  pedroche: { nombre: Pedroche }
+  santa-eufemia: { nombre: Santa Eufemia }
+  el-viso: { nombre: El Viso }
+  dos-torres: { nombre: Dos Torres }
+  anora: { nombre: Añora }
+  cardena: { nombre: Cardeña }
+  estacion-ave-villanueva: { nombre: Estación AVE Villanueva de Córdoba }
+  el-porvenir: { nombre: El Porvenir }
+  la-granjuela: { nombre: La Granjuela }
+  valsequillo: { nombre: Valsequillo }
+  los-blazquez: { nombre: Los Blázquez }
+  hornachuelos: { nombre: Hornachuelos }
+  posadas: { nombre: Posadas }
+  almodovar-del-rio: { nombre: Almodóvar del Río }
+  rivero-de-posadas: { nombre: Rivero de Posadas }   # P32: misma hora que Posadas
+  los-mochos: { nombre: Los Mochos }                 # P32: misma hora que Almodóvar
+
+paradas:                                 # lo que muestra el resultado
+  COR: { nombre: Córdoba, localidad: cordoba }
+  RAB: { nombre: Campus de Rabanales, localidad: campus-de-rabanales }
+  ACL: { nombre: Alcolea, localidad: alcolea }
+  OCH: { nombre: Ochavillos, localidad: ochavillos }
+  HER: { nombre: La Herrería, localidad: la-herreria }
+  FPA: { nombre: Fuente Palmera, localidad: fuente-palmera }
+  VEN: { nombre: La Ventilla, localidad: la-ventilla }
+  FCU: { nombre: Fuencubierta, localidad: fuencubierta }
+  CON: { nombre: Conquista, localidad: conquista }
+  VVC: { nombre: Villanueva de Córdoba, localidad: villanueva-de-cordoba }
+  POZ: { nombre: Pozoblanco, localidad: pozoblanco }
+  PZH: { nombre: Pozoblanco (Hospital), localidad: pozoblanco }
+  ALC: { nombre: Alcaracejos, localidad: alcaracejos }
+  VHA: { nombre: Villaharta, localidad: villaharta }
+  CVH: { nombre: Cruce de Villaharta, localidad: cruce-de-villaharta }
+  VAC: { nombre: El Vacar, localidad: el-vacar }
+  CBU: { nombre: Cabeza del Buey, localidad: cabeza-del-buey }
+  BLZ: { nombre: Belalcázar, localidad: belalcazar }
+  HIN: { nombre: Hinojosa del Duque, localidad: hinojosa-del-duque }
+  FLA: { nombre: Fuente La Lancha, localidad: fuente-la-lancha }
+  VDU: { nombre: Villanueva del Duque, localidad: villanueva-del-duque }
+  VRT: { nombre: Villaralto, localidad: villaralto }
+  ALG: { nombre: Algallarín, localidad: algallarin }
+  ADA: { nombre: Adamuz, localidad: adamuz }
+  VFC: { nombre: Villafranca de Córdoba, localidad: villafranca-de-cordoba }
+  AQU: { nombre: Aquasierra, localidad: aquasierra }
+  ESP: { nombre: Espiel, localidad: espiel }
+  VRE: { nombre: Villanueva del Rey (pueblo), localidad: villanueva-del-rey }
+  VRC: { nombre: "Villanueva del Rey (cruce, gasolinera)", localidad: villanueva-del-rey }   # P20
+  BEL: { nombre: Belmez, localidad: belmez }
+  PNR: { nombre: Peñarroya-Pueblonuevo, localidad: penarroya-pueblonuevo }
+  FOB: { nombre: Fuente Obejuna, localidad: fuente-obejuna }
+  CRN: { nombre: Coronada, localidad: coronada }
+  GRA: { nombre: Granja de Torrehermosa, localidad: granja-de-torrehermosa }
+  AZU: { nombre: Azuaga, localidad: azuaga }
+  BER: { nombre: Berlanga, localidad: berlanga }
+  AHI: { nombre: Ahillones, localidad: ahillones }
+  LLE: { nombre: Llerena, localidad: llerena }
+  VGT: { nombre: Villagarcía de la Torre, localidad: villagarcia-de-la-torre }
+  ZAF: { nombre: Zafra, localidad: zafra }
+  VFB: { nombre: Villafranca de los Barros, localidad: villafranca-de-los-barros }
+  ALM: { nombre: Almendralejo, localidad: almendralejo }
+  MER: { nombre: Mérida, localidad: merida }
+  BAD: { nombre: Badajoz, localidad: badajoz }
+  FCA: { nombre: Fuente Carreteros, localidad: fuente-carreteros }
+  SIL: { nombre: Silillos, localidad: silillos }
+  GDZ: { nombre: Guadalcázar, localidad: guadalcazar }
+  VVS: { nombre: Villaviciosa de Córdoba, localidad: villaviciosa-de-cordoba }
+  PAN: { nombre: Pantano, localidad: pantano }
+  TOR: { nombre: Torrecampo, localidad: torrecampo }
+  PED: { nombre: Pedroche, localidad: pedroche }
+  STE: { nombre: Santa Eufemia, localidad: santa-eufemia }
+  VIS: { nombre: El Viso, localidad: el-viso }
+  DTO: { nombre: Dos Torres, localidad: dos-torres }
+  ANO: { nombre: Añora, localidad: anora }
+  CAR: { nombre: Cardeña, localidad: cardena }
+  EAV: { nombre: Estación AVE Villanueva de Córdoba, localidad: estacion-ave-villanueva }
+  PVN: { nombre: El Porvenir, localidad: el-porvenir }
+  GRJ: { nombre: La Granjuela, localidad: la-granjuela }
+  VSQ: { nombre: Valsequillo, localidad: valsequillo }
+  BLQ: { nombre: Los Blázquez, localidad: los-blazquez }
+  HOR: { nombre: Hornachuelos, localidad: hornachuelos }
+  POS: { nombre: Posadas, localidad: posadas }
+  ADR: { nombre: Almodóvar del Río, localidad: almodovar-del-rio }
+  RIV: { nombre: Rivero de Posadas, localidad: rivero-de-posadas }   # P32
+  MOC: { nombre: Los Mochos, localidad: los-mochos }                 # P32
+
+# Preguntas abiertas que afectan a localidades o paradas de este fichero
+# (Pnn): P37 (lectura de "desde 01/10/2026" en los
+# títulos del Excel; afecta a las temporadas de todas las líneas).
+pendientes: [P37]
+
+# Pares de localidades entre los que la empresa no vende billetes, en ninguno
+# de los dos sentidos (P12b, respuesta de negocio). El bot no ofrece esos
+# destinos y, si el usuario los escribe, lo dice con un mensaje propio.
+no_vendibles:
+  - [cordoba, campus-de-rabanales]
+  - [cordoba, alcolea]
+  - [campus-de-rabanales, alcolea]

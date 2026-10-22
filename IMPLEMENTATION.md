@@ -86,12 +86,12 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
-| F4 | Pack `bus` | 6 | 5 | in_progress |
+| F4 | Pack `bus` | 6 | 6 | validación pendiente |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **29** | |
+| **Total** | | **52** | **30** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -758,14 +758,22 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Tests:** `test_diff` portado en `src/packs/bus/tests/` (43). `test_formatear` y `test_revision` portados en `tests/tools/` (40), con el dataset en `tenants/demo/datasets/timetable` y tags `datos/demo/…`; vuelven las fixtures `paradas_ancha` y `paradas_con_pendientes`. Nuevo `tests/tools/test_bus_tools.py` (12) y un test de `--desde` en `test_revision`: `TENANT` obligatorio y válido en las tres herramientas, validar y formatear el dataset real, `bus-publicar` (tag del día, no mover un tag, dataset sin confirmar o inválido) y revisión con HTML y PDF.
 
 ### T-4.6 · Tenant de Autocares San Sebastián 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-4.4, T-2.4 · **Diseño:** §5.2, §10.1
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-4.4, T-2.4 · **Diseño:** §5.2, §10.1
 - **Hacer:**
   - `tenants/autocares-ss/` con `tenant.yaml` (canal `main` de **WhatsApp**, decidido; los ids de Meta se rellenan en M-8.3), `status: onboarding`, `testers` y la config portada de `buscaBus/config.yaml`.
   - El dataset copiado de `buscaBus/horarios/` sin cambios, con los comentarios de las preguntas abiertas (P28, P30, P37).
   - Tag inicial `datos/autocares-ss/<fecha>` equivalente al último publicado.
 - **Acepta:** el tenant valida en CI y `make bus-validar TENANT=autocares-ss` no da errores.
 - **Tests:** la validación de tenants de CI.
-- **Notas:** —
+- **Notas:**
+  - **`tenants/autocares-ss/tenant.yaml`:** generado con `manage.py new_tenant autocares-ss --pack bus --channel whatsapp` (UUIDv7 y `public_id` aleatorios) y completado.
+    - `status: onboarding`; canal `main` de WhatsApp con `app_id`, `waba_id` y `phone_number_id` a `null` hasta M-8.3, así que el canal `main` queda deshabilitado y el negocio solo se prueba por el bot de pruebas.
+    - `testers` vacío hasta M-4.1.
+    - `config` portada de `buscaBus/config.yaml`: nombre, teléfono, horario de oficina, solo la web (D10) y los 8 pueblos del menú (D7), con sus comentarios.
+  - **Dataset:** `datasets/timetable/` es `buscaBus/horarios/` sin cambios (`diff -r` vacío, commit `3125dba`), con los comentarios de las preguntas abiertas P28, P30 y P37.
+  - **Comprobado:** `make bus-validar TENANT=autocares-ss` da "Sin errores." y los 11 avisos del origen (Villafranca, P28, P30, P37 y siete "posible mismo autobús"). El registro carga el tenant sin `degraded` y con el menú resuelto; el canal `main` está deshabilitado (faltan los ids y los secretos). `tests/test_tenants.py` (puerta de CI) en verde.
+  - **Tag inicial:** buscaBus no tiene tags de publicación. El último cambio de su dataset es del 2026-10-08 (`3125dba`), así que el tag equivalente es `datos/autocares-ss/2026-10-08`, sobre el commit de esta tarea. Se crea a mano tras el commit, con el árbol limpio (`git tag datos/autocares-ss/2026-10-08 <commit de T-4.6>`), porque `bus-publicar` siempre pone la fecha de hoy. Es local; subirlo (`git push origin datos/autocares-ss/2026-10-08`) espera a la persona.
+  - **De la revisión:** el ejemplo de `secrets.yaml` de §5.3 ponía `autocares-ss` con canal Telegram; ahora con claves de WhatsApp, y el de Telegram con otro slug.
 
 ### 👤 M-4.1 · Autocares San Sebastián: personas de prueba y verificación en Meta
 - **Decidido:** su canal de producción es **WhatsApp**, con un número propio y la app de Meta en el portfolio de la empresa (§6.3).
