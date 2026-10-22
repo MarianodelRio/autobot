@@ -955,6 +955,7 @@ El formato completo es el de `buscaBus/horarios/` y se documenta en `docs/packs/
   3. `make bus-revision TENANT=<slug>` genera `revision/<slug>/horarios.html` y `.pdf` (no se versionan), con los **cambios desde la versión publicada** en lenguaje de negocio.
   4. La empresa confirma.
   5. Commit, despliegue y `make bus-publicar TENANT=<slug>`, que crea el tag `datos/<slug>/AAAA-MM-DD`, la base del siguiente diff.
+     El tag es local, sobre `HEAD`, con la fecha de hoy en Madrid. La herramienta se niega si el dataset no valida, si tiene cambios sin confirmar o si el tag de ese día ya apunta a otro commit. No hace `git push`: lo imprime para que lo haga la persona.
 - Los cambios con fecha futura se publican el día que entran en vigor.
 
 #### 10.2 Motor de consulta

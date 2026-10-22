@@ -1,0 +1,32 @@
+# Fixture con 13 paradas (por encima del límite de 12 columnas de
+# tools/revision.py) para probar la tabla trasponida (design.md 8,
+# "Correcciones de la fase 1", punto 2).
+localidades:
+  loc-aaa: { nombre: Localidad AAA }
+  loc-bbb: { nombre: Localidad BBB }
+  loc-ccc: { nombre: Localidad CCC }
+  loc-ddd: { nombre: Localidad DDD }
+  loc-eee: { nombre: Localidad EEE }
+  loc-fff: { nombre: Localidad FFF }
+  loc-ggg: { nombre: Localidad GGG }
+  loc-hhh: { nombre: Localidad HHH }
+  loc-iii: { nombre: Localidad III }
+  loc-jjj: { nombre: Localidad JJJ }
+  loc-kkk: { nombre: Localidad KKK }
+  loc-lll: { nombre: Localidad LLL }
+  loc-mmm: { nombre: Localidad MMM }
+
+paradas:
+  AAA: { nombre: Parada AAA, localidad: loc-aaa }
+  BBB: { nombre: Parada BBB, localidad: loc-bbb }
+  CCC: { nombre: Parada CCC, localidad: loc-ccc }
+  DDD: { nombre: Parada DDD, localidad: loc-ddd }
+  EEE: { nombre: Parada EEE, localidad: loc-eee }
+  FFF: { nombre: Parada FFF, localidad: loc-fff }
+  GGG: { nombre: Parada GGG, localidad: loc-ggg }
+  HHH: { nombre: Parada HHH, localidad: loc-hhh }
+  III: { nombre: Parada III, localidad: loc-iii }
+  JJJ: { nombre: Parada JJJ, localidad: loc-jjj }
+  KKK: { nombre: Parada KKK, localidad: loc-kkk }
+  LLL: { nombre: Parada LLL, localidad: loc-lll }
+  MMM: { nombre: Parada MMM, localidad: loc-mmm }

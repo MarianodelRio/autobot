@@ -37,14 +37,14 @@ package = false
 [tool.ruff]
 line-length = 100
 target-version = "py314"
-src = ["src", "tests"]
+src = ["src", "tests", "tools"]
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "DJ"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["core", "integrations", "packs", "flowpilot", "config"]
+known-first-party = ["core", "integrations", "packs", "flowpilot", "config", "tools"]
 
 [tool.mypy]
 python_version = "3.14"
@@ -52,7 +52,7 @@ mypy_path = "src"
 strict = true
 plugins = ["mypy_django_plugin.main"]
 explicit_package_bases = true
-files = ["src", "tests", "manage.py"]
+files = ["src", "tests", "tools", "manage.py"]
 
 [tool.django-stubs]
 django_settings_module = "config.settings"

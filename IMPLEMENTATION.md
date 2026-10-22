@@ -86,12 +86,12 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
-| F4 | Pack `bus` | 6 | 4 | in_progress |
+| F4 | Pack `bus` | 6 | 5 | in_progress |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **28** | |
+| **Total** | | **52** | **29** | |
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -737,13 +737,25 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - **Pendiente fuera de la tarea:** `docs/packs/bus.md` (§8.4), con T-7.5.
 
 ### T-4.5 · Herramientas de horarios 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-4.1 · **Diseño:** §10.1, §16.3
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-4.1 · **Diseño:** §10.1, §16.3
 - **Hacer:**
   - Portar `validar`, `formatear`, `revision` (HTML y PDF) y `diff`, como `tools/bus_*.py` con el parámetro `TENANT`.
   - Objetivos `make bus-validar`, `bus-formatear`, `bus-revision` y `bus-publicar` (este crea el tag `datos/<slug>/AAAA-MM-DD`).
 - **Acepta:** el PDF de revisión de los datos reales muestra los cambios desde el último tag.
 - **Tests:** portados `test_formatear`, `test_diff` y `test_revision`.
-- **Notas:** —
+- **Notas:**
+  - **Dependencia real:** `bus_revision` usa `descripcion_linea` y `msg_no_vendible` del pack (T-4.4), así que se hizo después de cerrar T-4.4.
+  - **`packs/bus/diff.py`:** portado tal cual, con anotaciones (`tuple[Any, ...]`) y tres `assert` donde un lado de la comparación existe seguro.
+  - **`tools/`** (nuevo paquete en la raíz, comprobado por `ruff` y `mypy`; se ejecuta con `PYTHONPATH=src`):
+    - `bus_tenant.py`: rutas `tenants/<slug>/datasets/timetable/`, slug validado y prefijo de tag.
+    - `bus_validar.py`, `bus_formatear.py` y `bus_revision.py`: los de buscaBus, con el slug como argumento y `repo_root` inyectable para los tests.
+    - `bus_revision` busca el último tag `datos/<slug>/*` (no `horarios-*`), extrae con `git archive` solo el dataset del tenant y escribe `revision/<slug>/horarios.{html,pdf}` (ya en `.gitignore`). Si WeasyPrint no puede cargar Pango al importarse (`OSError`), sale con el mismo mensaje claro que ya tenía para el fallo al escribir.
+    - `bus_publicar.py` (nuevo): crea el tag local del día sobre `HEAD`. Se niega con el dataset inválido, con cambios sin confirmar o con un tag de ese día que apunta a otro commit; repetirlo sobre el mismo commit no hace nada. No hace `git push`, lo imprime (§10.1 ampliado).
+  - **`Makefile`:** `bus-validar`, `bus-formatear`, `bus-revision` (con `ARGS="--solo-html"` o `ARGS="--desde <ref>"`) y `bus-publicar`, todos con `TENANT=<slug>`. Comprobado en local: sin `TENANT`, o con un tenant sin dataset, terminan con un mensaje claro y código 2.
+  - **Criterio de aceptación:** `test_revision_genera_el_pdf_de_los_datos_reales` crea un repositorio git desechable con el dataset real congelado, publica, cambia una hora y genera el PDF; `test_revision_compara_con_el_ultimo_tag_del_tenant` comprueba que el HTML trae ese cambio desde el tag del tenant (y no el de otro). Sobre el dataset vivo, con su tag inicial, se comprobará en T-4.6.
+  - **De la revisión:** el slug se comprueba con `fullmatch` (un `\n` final ya no pasa); `--desde` no admite una referencia que empiece por `-` (git la tomaría por una opción); el test de PDF portado se salta también si falta Pango (`OSError`), no solo WeasyPrint.
+  - **PDF en CI:** el test del PDF se salta si WeasyPrint o Pango no están disponibles (en local sí lo están: WeasyPrint 70). Los demás tests de revisión usan `--solo-html`.
+  - **Tests:** `test_diff` portado en `src/packs/bus/tests/` (43). `test_formatear` y `test_revision` portados en `tests/tools/` (40), con el dataset en `tenants/demo/datasets/timetable` y tags `datos/demo/…`; vuelven las fixtures `paradas_ancha` y `paradas_con_pendientes`. Nuevo `tests/tools/test_bus_tools.py` (12) y un test de `--desde` en `test_revision`: `TENANT` obligatorio y válido en las tres herramientas, validar y formatear el dataset real, `bus-publicar` (tag del día, no mover un tag, dataset sin confirmar o inválido) y revisión con HTML y PDF.
 
 ### T-4.6 · Tenant de Autocares San Sebastián 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-4.4, T-2.4 · **Diseño:** §5.2, §10.1

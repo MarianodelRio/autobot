@@ -1,0 +1,16 @@
+# Variante de paradas_base.yaml con el campo `pendientes:` (design.md 8,
+# "Correcciones de la fase 1", punto 6). "cabeza-del-buey" no lo usa ninguna
+# línea (aparece en "Localidades que ninguna línea usa" de la revisión).
+localidades:
+  pueblo-a: { nombre: Pueblo A }
+  pueblo-b: { nombre: Pueblo B }
+  pueblo-c: { nombre: Pueblo C }
+  cabeza-del-buey: { nombre: Cabeza del Buey }
+
+paradas:
+  AAA: { nombre: Pueblo A, localidad: pueblo-a }
+  BBB: { nombre: Pueblo B, localidad: pueblo-b }
+  CCC: { nombre: Pueblo C, localidad: pueblo-c }
+  CDB: { nombre: Cabeza del Buey, localidad: cabeza-del-buey }
+
+pendientes: [P32]
