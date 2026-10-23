@@ -91,8 +91,8 @@ class CalendarClient:
         if self._api is None:
             try:
                 self._api = service(self._credentials_file)
-            except (OSError, ValueError) as exc:
-                raise CalendarPermanentError("Calendar credentials unavailable") from exc
+            except OSError, ValueError:
+                raise CalendarPermanentError("Calendar credentials unavailable") from None
         return self._api
 
     def _call(self, operation: str, **kwargs: Any) -> Any:
@@ -116,7 +116,7 @@ class CalendarClient:
         try:
             return self._call(operation, **kwargs)
         except HttpError as exc:
-            raise CalendarPermanentError(f"Calendar request refused ({exc.resp.status})") from exc
+            raise CalendarPermanentError(f"Calendar request refused ({exc.resp.status})") from None
 
     def _event(self, raw: Mapping[str, Any]) -> Event:
         def moment(value: Mapping[str, str]) -> datetime:
@@ -141,8 +141,8 @@ class CalendarClient:
                 str(raw.get("status", "confirmed")),
                 dict(raw.get("extendedProperties", {}).get("private", {})),
             )
-        except (KeyError, TypeError, ValueError) as exc:
-            raise CalendarPermanentError("Invalid Calendar event response") from exc
+        except KeyError, TypeError, ValueError:
+            raise CalendarPermanentError("Invalid Calendar event response") from None
 
     def list_events(self, start: datetime, end: datetime) -> list[Event]:
         if start.tzinfo is None or end.tzinfo is None or end <= start:
@@ -172,7 +172,7 @@ class CalendarClient:
         except HttpError as exc:
             if exc.resp.status in (404, 410):
                 return None
-            raise CalendarPermanentError(f"Calendar request refused ({exc.resp.status})") from exc
+            raise CalendarPermanentError(f"Calendar request refused ({exc.resp.status})") from None
         if raw.get("status") == "cancelled":
             return None
         return self._event(raw)
@@ -185,7 +185,7 @@ class CalendarClient:
                 existing = self.get_event(gcal_id)
                 if existing is not None:
                     return existing
-            raise CalendarPermanentError(f"Calendar insert refused ({exc.resp.status})") from exc
+            raise CalendarPermanentError(f"Calendar insert refused ({exc.resp.status})") from None
         result = self._event(raw)
         if result.gcal_id != gcal_id or result.status == "cancelled":
             raise CalendarPermanentError("Calendar did not confirm insertion")
@@ -228,7 +228,7 @@ class CalendarClient:
             if exc.resp.status not in (404, 410):
                 raise CalendarPermanentError(
                     f"Calendar delete refused ({exc.resp.status})"
-                ) from exc
+                ) from None
         if self.get_event(gcal_id) is not None:
             raise CalendarPermanentError("Calendar did not confirm cancellation")
 

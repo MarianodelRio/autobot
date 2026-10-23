@@ -138,6 +138,8 @@ class Turn:
 
     def proactive(self, value: str) -> PackResult:
         operation, _, gcal_id = value.partition(":")
+        if not gcal_id or len(value.encode()) > 64:
+            return self.result(ui.back(self.cfg.texts.missing), reset=True)
         if operation != "reminder_confirm":
             return self.cancel(gcal_id)
         event = booking.calendar(self.ctx).get_event(gcal_id)
@@ -328,8 +330,12 @@ def valid_state(turn: Turn) -> bool:
     if step in ("MENU", "BOOK_SERVICE", "VIEW"):
         return True
     if step in ("MOVE_SELECT", "CANCEL_SELECT"):
-        return isinstance(state.get("appointments"), list) and isinstance(
-            state.get("appointment_labels"), list
+        return (
+            isinstance(state.get("appointments"), list)
+            and isinstance(state.get("appointment_labels"), list)
+            and len(state["appointments"]) == len(state["appointment_labels"])
+            and all(isinstance(item, str) for item in state["appointments"])
+            and all(isinstance(item, str) for item in state["appointment_labels"])
         )
     if step not in ("BOOK_DAY", "BOOK_PERIOD", "BOOK_HOUR", "BOOK_NAME"):
         return False

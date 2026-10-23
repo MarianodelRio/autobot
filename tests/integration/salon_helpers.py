@@ -35,10 +35,13 @@ def salon_setup(
     monkeypatch.setattr(context, "CalendarClient", calendars)
 
     def setup(*, channel: str = "whatsapp", **changes: Any) -> Any:
+        slug = changes.pop("slug", "salon")
         config_changes = changes.pop("config", {})
         cfg = configuration(**config_changes).model_dump(mode="json")
         builder = wa_tenant if channel == "whatsapp" else tg_tenant
-        tenants(builder("salon", pack="salon", config=cfg, **changes))
-        return get_registry().by_slug["salon"]
+        doc = builder(slug, pack="salon", config=cfg, **changes)
+        doc.setdefault("testers", {})["telegram"] = [111]
+        tenants(doc)
+        return get_registry().by_slug[slug]
 
     yield setup, calendars

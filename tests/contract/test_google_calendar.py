@@ -129,3 +129,12 @@ def test_description_and_metadata_patches_preserve_other_fields() -> None:
         "fp_contact": "contact",
         "fp_key": "key",
     }
+
+
+def test_the_real_client_satisfies_the_pack_protocol() -> None:
+    from packs.salon.ports import CalendarPort
+
+    cal, api = client({"items": []})
+    port: CalendarPort = cal
+    port.check_access()
+    assert api.events().list.call_args.kwargs["maxResults"] == 1

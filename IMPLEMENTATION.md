@@ -862,13 +862,13 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementada; revisión independiente pendiente. Barrido de 15 min, una lectura por calendario y acciones con claves estables, confirmaciones solo desde la fecha configurada y `Estado: pendiente` solo si falta. `pack.health` comprueba acceso sin exponer detalles del error. Runtime recorre main/test de forma independiente; main exige activo y habilitado, test permite onboarding/paused si tiene calendario distinto y bot configurado. Desactiva confirmaciones manuales para test y para main Telegram, prefija claves de test para evitar colisiones de ids entre calendarios y continúa con el otro canal si uno falla. Tests de barrido y BD prueban deduplicación real, opt-out y aislamiento.
 
 ### T-5.7 · Reserva por los dos tipos de canal 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-5.6, T-3.8 · **Diseño:** §9.8, §6.6
+- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.6, T-3.8 · **Diseño:** §9.8, §6.6
 - **Hacer:** escenarios e integración de la reserva completa con canal `main` de WhatsApp, canal `main` de Telegram y bot de pruebas.
   - Con WhatsApp, las confirmaciones manuales a un teléfono salen.
   - Con Telegram, se registran y no salen.
 - **Acepta:** se cumplen las reglas de §6.6 y los escenarios están en verde.
 - **Tests:** escenarios e integración.
-- **Notas:** —
+- **Notas:** implementada; revisión independiente pendiente. Integración por webhook → runtime → outbox → adaptador con Calendar y proveedores simulados: main WhatsApp, main Telegram y bot de pruebas sobre ambos tipos de tenant. Se comprueba que el calendario y el proveedor ajenos no reciben llamadas, que el aviso del bot de pruebas va a ops y que las confirmaciones manuales solo salen por main WhatsApp. Revisión propia adicional: rechazo de callbacks proactivos vacíos/largos sin E/S y errores esperados de Google sin encadenar detalles del proveedor; comprobación estática del protocolo del cliente real.
 
 ### T-5.8 · Migración de citas existentes ⚠️ 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-5.1, T-5.2 · **Diseño:** §9.3

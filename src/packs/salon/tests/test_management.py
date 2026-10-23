@@ -159,3 +159,13 @@ def test_contact_information(salon: Conversation) -> None:
     salon.config = configuration(info_text="Estamos en la plaza. " * 100)
     salon.send("hola").expect(list_includes="Contacto")
     salon.press("menu_info").expect(text_contains="Estamos en la plaza.")
+
+
+def test_empty_or_oversized_proactive_id_is_rejected_without_calendar_io(
+    salon: Conversation,
+) -> None:
+    salon.send("hola")
+    before = list(salon.calendar.calls)
+    salon.press("reminder_confirm:", check=False).expect(text_contains="No se encontró")
+    salon.press("reminder_cancel:" + "a" * 100, check=False).expect(text_contains="No se encontró")
+    assert salon.calendar.calls == before
