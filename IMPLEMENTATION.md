@@ -880,11 +880,11 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** código y tests implementados; revisión independiente y aprobación humana ⚠️ pendientes antes de cerrar. Escribe en el calendario real del negocio, así que solo lo ejecuta el operador (M-8.1); no se ha ejecutado sobre servicios reales. CLI con `--dry-run` sin escrituras ni en BD ni Calendar, lectura de todas las citas futuras (sin horizonte artificial, paginación acotada), contactos main bajo RLS y metadatos `fp_contact`, `fp_key` estable y `fp_service`. Conserva descripción, fechas y metadatos ajenos; no sobrescribe otra propiedad ni migra servicios desconocidos. Tests con FakeCalendar y BD: segunda pasada no escribe, fallo parcial se puede reintentar sin duplicar contactos, dry-run no escribe, aislamiento respecto a test y ausencia de datos personales en el informe.
 
 ### T-5.9 · Concurrencia de reservas 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-5.4, T-3.4 · **Diseño:** §9.5, §17.1
+- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.4, T-3.4 · **Diseño:** §9.5, §17.1
 - **Hacer:** integración con BD real: dos contactos reservan el mismo hueco a la vez.
 - **Acepta:** una reserva se confirma y la otra recibe `SlotTaken`; un reintento de una reserva ya creada no duplica.
 - **Tests:** `tests/integration/`.
-- **Notas:** —
+- **Notas:** implementada; revisión independiente pendiente. Dos hilos con sesiones reales de PostgreSQL compiten por el mismo día y un FakeCalendar compartido que fuerza la ventana de carrera. Solo una reserva se crea y la otra recibe `SlotTaken`; reprocesar el evento ganador devuelve la misma cita. Otro test comprueba que main/test pueden reservar el mismo hueco en sus calendarios distintos. Sin cambios en roles, RLS ni esquema.
 
 ### 👤 M-5.1 · Google Cloud de la plataforma
 - **Cuándo:** antes de la validación de F5.
