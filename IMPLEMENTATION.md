@@ -852,14 +852,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementada; revisión independiente pendiente. Menú completo y pack registrado. Ver/mover/cancelar con propiedad comprobada de nuevo al actuar, `fp_contact` prioritario y compatibilidad con `WaId:`/teléfono. Mover crea antes de cancelar; si falla la cancelación conserva la nueva y devuelve `move_cancel_failed`, con reintento idempotente. Evento especial (también si se desactiva durante el flujo), contacto y botones proactivos desde cualquier estado. Listas paginadas con índices en vez de ids externos en callbacks. 190 tests de pack en verde, con renderizado de ambos canales.
 
 ### T-5.6 · Barrido, plantillas y salud del pack 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-5.5, T-3.7 · **Diseño:** §9.6, §9.7, §6.5
+- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.5, T-3.7 · **Diseño:** §9.6, §9.7, §6.5
 - **Hacer:**
   - `calendar_sweep` ejecutado **por calendario**: el real con contactos `main` y el de pruebas con contactos `test`, este último sin confirmaciones manuales.
   - Recordatorios y confirmaciones con sus claves estables.
   - `pack.health` (acceso al calendario).
 - **Acepta:** un recordatorio sale una sola vez en dos barridos; no hay confirmaciones de citas anteriores a `manual_confirmations_since`; el barrido del calendario de pruebas nunca envía por el canal `main`.
 - **Tests:** escenarios e integración del barrido (los casos de §9.8 y el aislamiento por calendario).
-- **Notas:** —
+- **Notas:** implementada; revisión independiente pendiente. Barrido de 15 min, una lectura por calendario y acciones con claves estables, confirmaciones solo desde la fecha configurada y `Estado: pendiente` solo si falta. `pack.health` comprueba acceso sin exponer detalles del error. Runtime recorre main/test de forma independiente; main exige activo y habilitado, test permite onboarding/paused si tiene calendario distinto y bot configurado. Desactiva confirmaciones manuales para test y para main Telegram, prefija claves de test para evitar colisiones de ids entre calendarios y continúa con el otro canal si uno falla. Tests de barrido y BD prueban deduplicación real, opt-out y aislamiento.
 
 ### T-5.7 · Reserva por los dos tipos de canal 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-5.6, T-3.8 · **Diseño:** §9.8, §6.6

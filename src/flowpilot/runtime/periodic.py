@@ -11,15 +11,24 @@ and applies its actions in one. A run later than `max_delay_min` is dropped and 
 """
 
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from django.conf import settings
 from django.utils import timezone
 from procrastinate.exceptions import AlreadyEnqueued
 
+from core.actions import NotifyOwner, SendProactive
 from core.pack import Pack, Periodic
 from flowpilot.jobs import PERIODIC, RUN_PERIODIC, app
-from flowpilot.runtime.context import CalendarFactory, build_context, google_calendar
+from flowpilot.runtime.context import (
+    CalendarFactory,
+    CalendarUnavailable,
+    bound_calendar_id,
+    build_context,
+    google_calendar,
+)
 from flowpilot.runtime.models import Channel
 from flowpilot.runtime.outbound import defer_sends
 from flowpilot.runtime.process import apply_actions
@@ -30,8 +39,21 @@ log = logging.getLogger(__name__)
 
 
 def active_tenants(pack: str) -> list[LoadedTenant]:
-    """Tenants of `pack` whose main channel works for real (`is_active`)."""
-    return [t for t in get_registry().serving(pack) if is_active(t)]
+    """Tenants of `pack` with at least one eligible main or test periodic context."""
+    return [t for t in get_registry().serving(pack) if channels_for(t)]
+
+
+def channels_for(tenant: LoadedTenant) -> list[Channel]:
+    if tenant.is_degraded or tenant.file.status == "offboarded":
+        return []
+    channels = [Channel.MAIN] if is_active(tenant) else []
+    if tenant.pack is not None and tenant.pack.needs_calendar and settings.TEST_BOT_TOKEN:
+        try:
+            if bound_calendar_id(tenant, Channel.TEST) is not None:
+                channels.append(Channel.TEST)
+        except CalendarUnavailable:
+            pass
+    return channels
 
 
 def is_active(tenant: LoadedTenant) -> bool:
@@ -72,7 +94,7 @@ def run_periodic(
 ) -> None:
     tenant = get_registry().by_id.get(tenant_id)
     periodic = _periodic(tenant.pack, name) if tenant is not None else None
-    if tenant is None or periodic is None or not is_active(tenant):
+    if tenant is None or periodic is None or not channels_for(tenant):
         log.info("periodic %s for tenant %s no longer applies: skipped", name, tenant_id)
         return
     due = datetime.fromtimestamp(scheduled_at, UTC)
@@ -86,15 +108,42 @@ def run_periodic(
             periodic.max_delay_min,
         )
         return
-    ctx = build_context(
-        tenant, Channel.MAIN, contact=None, state={}, event_id=None, calendars=calendars
-    )
-    actions = periodic.handler(ctx)  # no transaction: it may call Calendar
-    with tenant_tx(tenant.id):
-        messages = apply_actions(
-            tenant, Channel.MAIN, actions, contact=None, event=None, now=timezone.now()
-        )
-        defer_sends(tenant.id, messages)
+    failures: list[Exception] = []
+    for channel in channels_for(tenant):
+        try:
+            ctx = build_context(
+                tenant, channel, contact=None, state={}, event_id=None, calendars=calendars
+            )
+            # The pack never knows the channel. Manual confirmation by phone only
+            # applies to the real WhatsApp calendar; a test context must not mutate it.
+            if (
+                tenant.pack is not None
+                and tenant.pack.needs_calendar
+                and (channel == Channel.TEST or tenant.file.channel.type != "whatsapp")
+            ):
+                ctx = replace(
+                    ctx,
+                    config=ctx.config.model_copy(update={"manual_confirmations_enabled": False}),
+                )
+            actions = periodic.handler(ctx)  # no transaction during Calendar calls
+            if channel == Channel.TEST:
+                actions = [
+                    replace(a, idem_key=f"test:{a.idem_key}")
+                    if isinstance(a, (SendProactive, NotifyOwner))
+                    else a
+                    for a in actions
+                ]
+            with tenant_tx(tenant.id):
+                messages = apply_actions(
+                    tenant, channel, actions, contact=None, event=None, now=timezone.now()
+                )
+                defer_sends(tenant.id, messages)
+        except Exception as exc:
+            # A failed real calendar must not prevent a test-calendar sweep (or vice versa).
+            log.warning("periodic %s of tenant %s failed on channel %s", name, tenant.slug, channel)
+            failures.append(exc)
+    if failures:
+        raise failures[0]
 
 
 def _periodic(pack: Pack | None, name: str) -> Periodic | None:

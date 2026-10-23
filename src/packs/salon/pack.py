@@ -1,6 +1,7 @@
-"""Salon pack declaration (periodic and health handlers added in T-5.6)."""
+"""Salon pack declaration: booking, management and per-calendar sweep."""
 
-from core.pack import Pack
+from core.pack import Pack, Periodic
+from packs.salon import health, sweep
 from packs.salon.config import SalonConfig
 from packs.salon.conversation import handle
 from packs.salon.messages import TEMPLATE_CONFIRMATION, TEMPLATE_REMINDER
@@ -11,5 +12,7 @@ pack = Pack(
     state_version=1,
     handle_message=handle,
     needs_calendar=True,
+    periodic=[Periodic("calendar_sweep", every_min=15, handler=sweep.run, max_delay_min=60)],
+    health=health.check,
     templates=[TEMPLATE_CONFIRMATION, TEMPLATE_REMINDER],
 )

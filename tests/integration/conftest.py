@@ -48,3 +48,6 @@ def clean_jobs() -> Iterator[None]:
         # Periodic defers reference their job: they go first.
         cursor.execute("DELETE FROM procrastinate_periodic_defers")
         cursor.execute("DELETE FROM procrastinate_jobs")
+
+
+from tests.integration.salon_helpers import salon_setup  # noqa: F401, E402

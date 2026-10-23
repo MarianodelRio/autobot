@@ -908,7 +908,7 @@ Una cita que el dueño cree a mano en ese mismo segundo puede solaparse: se acep
 
 #### 9.6 Barrido de Calendar (`calendar_sweep`, cada 15 min por tenant)
 
-Se ejecuta una vez por calendario: el real (contactos `main`) y, si existe, el de pruebas (contactos `test`, sin confirmaciones de citas manuales). Cada ejecución hace una lectura de `[now, now + booking_window_days + 1]` con dos pasadas:
+Se ejecuta una vez por calendario: el real (contactos `main`) y, si existe, el de pruebas (contactos `test`, sin confirmaciones de citas manuales). El reparto encola un trabajo por tenant; este construye un contexto por calendario elegible. El real exige tenant activo y canal habilitado; el de pruebas permite onboarding/paused, exige un calendario distinto y el bot de pruebas configurado. El runtime desactiva `manual_confirmations_enabled` en el contexto de test y en main Telegram. Si un calendario falla, ejecuta el otro y después propaga el error para reintentar; las claves estables evitan repetir avisos ya guardados. Cada ejecución hace una lectura de `[now, now + booking_window_days + 1]` con dos pasadas:
 
 | Pasada | Condición | Acción |
 |---|---|---|
@@ -916,7 +916,7 @@ Se ejecuta una vez por calendario: el real (contactos `main`) y, si existe, el d
 | **Confirmaciones de citas manuales** (si `manual_confirmations_enabled`) | Cita manual con `created ≥ manual_confirmations_since` que empieza en el futuro | `SendProactive(TEMPLATE_CONFIRMATION, [nombre, fecha, hora], [booking_cancel:<id>])` con clave `confirm:<gcal_id>`. Después escribe `Estado: pendiente` en la descripción si no lo tenía |
 
 - **Destinatario:** en citas del bot, el contacto de `fp_contact` por su canal (§6.6). En citas manuales, el teléfono de la descripción por el canal `main` si es WhatsApp, creando el contacto si no existe; si el canal `main` es Telegram, se registra y no se envía.
-- Las claves estables son únicas en `outbound_message`: aunque el barrido corra muchas veces, cada aviso sale una sola vez.
+- Las claves estables son únicas en `outbound_message`: aunque el barrido corra muchas veces, cada aviso sale una sola vez. En el calendario de pruebas el runtime antepone `test:` a la clave antes de persistir, porque dos calendarios pueden contener el mismo id de evento.
 
 #### 9.7 Plantillas
 
