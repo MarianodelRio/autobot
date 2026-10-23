@@ -1,0 +1,41 @@
+# Config pública de Peluqueria 6e22f4a; ids de calendario sintéticos, solo para tests.
+business_name: DM Barber Shop
+contact_phone: +34 682 21 44 69
+calendar_id: salon-main@example.invalid
+test_calendar_id: salon-test@example.invalid
+services:
+  corte:
+    name: Corte de pelo
+    price_eur: 10
+    duration_min: 30
+    client_presence_min: 30
+  corte_barba:
+    name: Corte de pelo + barba
+    price_eur: 12
+    duration_min: 30
+    client_presence_min: 30
+  mechas:
+    name: Mechas
+    price_eur: 30
+    duration_min: 60
+    client_presence_min: 180
+  tinte:
+    name: Tinte
+    price_eur: 50
+    duration_min: 60
+    client_presence_min: 180
+opening_hours:
+  martes:
+  - 10:00-14:00
+  - 16:00-21:00
+  miercoles:
+  - 10:00-14:00
+  - 16:00-21:00
+  jueves:
+  - 10:00-14:00
+  - 16:00-21:00
+  viernes:
+  - 10:00-14:00
+  - 16:00-21:00
+  sabado:
+  - 10:00-14:00

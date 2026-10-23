@@ -825,11 +825,11 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementada; revisión independiente pendiente. Parser portado desde `6e22f4a`, sin config global y con nombres en inglés; usa `core.text.fold` y `strip_html`. Motor puro sobre eventos estructurales y zona del reloj, con cierres, vacaciones (fin exclusivo), horario especial, ocupación frente a presencia, antelación y separación mañana/tarde. 114 tests del parser y motor en verde (todos los tests originales del parser y casos de slots/calendar adaptados al contrato nuevo).
 
 ### T-5.3 · Config del pack 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-1.1 · **Diseño:** §9.2
+- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-1.1 · **Diseño:** §9.2
 - **Hacer:** `SalonConfig` con sus validaciones (incluidas `test_calendar_id` distinto de `calendar_id` y `manual_confirmations_since` obligatorio), `SalonTexts` con los textos de Peluquería y `TemplateSpec` de las dos plantillas (§9.7).
 - **Acepta:** la config real de Peluquería, convertida, valida.
 - **Tests:** unitarios de cada validación.
-- **Notas:** —
+- **Notas:** implementada; revisión independiente pendiente. Config y textos del pack, dos plantillas de §9.7, validación de rangos, servicios, ventana de avisos, ids de calendarios distintos y fecha inicial consciente de zona para confirmaciones manuales. Config pública de origen convertida en fixture con calendarios sintéticos. Rangos canónicos `HH:MM-HH:MM`; textos sobrescribibles limitados a 512 caracteres para los interactivos.
 
 ### T-5.4 · `FakeCalendar` y flujo de reserva 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-5.2, T-5.3, T-1.5 · **Diseño:** §9.1, §9.5, §9.3

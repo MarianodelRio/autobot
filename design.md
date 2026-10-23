@@ -835,7 +835,7 @@ class SalonConfig(BaseModel):
     texts: SalonTexts = SalonTexts()        # textos sobrescribibles, con los de messages.py por defecto
 ```
 
-Validaciones: franjas con formato `HH:MM` y sin solapes; `duration_min ≤ client_presence_min`; claves de servicio `^[a-z0-9_]+$` (van en `id` de botones); fechas del evento especial válidas; `manual_confirmations_since` obligatorio si `manual_confirmations_enabled`; `test_calendar_id` distinto de `calendar_id`. La ventana de búsqueda de citas del contacto se deriva: `booking_window_days + 1`.
+Validaciones: franjas con formato `HH:MM` y sin solapes; `duration_min ≤ client_presence_min`; claves de servicio `^[a-z0-9_]+$` (van en `id` de botones); fechas del evento especial válidas; `manual_confirmations_since` obligatorio si `manual_confirmations_enabled`; `test_calendar_id` distinto de `calendar_id`. La ventana de búsqueda de citas del contacto se deriva: `booking_window_days + 1`. Los rangos de config se escriben como `HH:MM-HH:MM`; los textos sobrescribibles tienen un máximo de 512 caracteres para caber en los interactivos.
 
 #### 9.3 Google Calendar
 
