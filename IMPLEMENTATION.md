@@ -813,7 +813,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementada; revisión independiente pendiente. Cliente ligado al calendario y fábrica real del runtime, sin red al construirla. Contrato estructural en `packs/salon/ports.py` (sin imports cruzados), `patch_private` para T-5.8 y `external_id` para citas heredadas; §9.3 actualizado. Origen consultado: `MarianodelRio/Peluqueria`, commit `6e22f4a`, copia de solo consulta en `/tmp/flowpilot-Peluqueria` (la ruta `~/Desktop/Peluqueria` no existe en esta máquina). `make check`: 1.338 tests correctos; los 13 tests de contrato, incluida una comprobación posterior de parches, pasan. Sin usar credenciales reales.
 
 ### T-5.2 · Huecos y lectura del calendario 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-1.3 · **Diseño:** §9.3, §9.4
+- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-1.3 · **Diseño:** §9.3, §9.4
 - **Hacer:** portar a `packs/salon/`:
   - `compute_slots`.
   - El lector de `[CFG]`.
@@ -822,7 +822,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - La partición mañana/tarde.
 - **Acepta:** los tests portados de `slots`, `parser` y `calendar` de Peluquería pasan.
 - **Tests:** unitarios portados y casos de §9.4 (presencia larga cerca del cierre, antelación mínima).
-- **Notas:** el parser usa `core.text.fold` (conserva la puntuación), no `normalize`.
+- **Notas:** implementada; revisión independiente pendiente. Parser portado desde `6e22f4a`, sin config global y con nombres en inglés; usa `core.text.fold` y `strip_html`. Motor puro sobre eventos estructurales y zona del reloj, con cierres, vacaciones (fin exclusivo), horario especial, ocupación frente a presencia, antelación y separación mañana/tarde. 114 tests del parser y motor en verde (todos los tests originales del parser y casos de slots/calendar adaptados al contrato nuevo).
 
 ### T-5.3 · Config del pack 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-1.1 · **Diseño:** §9.2
