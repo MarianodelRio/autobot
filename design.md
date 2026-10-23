@@ -753,7 +753,7 @@ UpdateContact(display_name: str | None = None, opt_out: bool | None = None)
 
 - Un pack **nunca** toca la BD, los canales ni las APIs directamente: todo lo externo le llega por `ctx`. Tampoco elige calendario ni sabe si la conversación es de pruebas.
 - Los handlers periódicos (`Periodic.handler: (ctx) -> list[Action]`) reciben `ctx` con `contact=None` y `state={}`, y solo devuelven acciones.
-- **`build_context`** (`flowpilot/runtime/context.py`): `build_context(tenant, channel, *, contact, state, event_id, calendars)`. `event_id=None` en las periódicas, y entonces `ctx.idem.event()` falla. `calendars` es una fábrica `calendar_id → CalendarPort` inyectable; hasta T-5.1 la de por defecto falla con `CalendarUnavailable`.
+- **`build_context`** (`flowpilot/runtime/context.py`): `build_context(tenant, channel, *, contact, state, event_id, calendars)`. `event_id=None` en las periódicas, y entonces `ctx.idem.event()` falla. `calendars` es una fábrica `calendar_id → CalendarPort` inyectable. La de por defecto construye un cliente de Google ligado al calendario; las credenciales se cargan al hacer la primera llamada, nunca al cargar un tenant.
   - **Calendario:** solo si `pack.needs_calendar`. En `main` se liga a `config.calendar_id`; en `test`, a `config.test_calendar_id`. Si falta el de pruebas, o es igual al real (sin distinguir mayúsculas ni espacios), lanza `CalendarUnavailable` sin llamar a la fábrica: en el canal `test` es imposible obtener el calendario real.
   - **`ctx.lock(key)`:** la clave real es `<tenant_id>:<calendar_id ligado o ->:<key>`, y a PostgreSQL solo llega su hash de 64 bits. `pg_try_advisory_lock` cada 100 ms durante 10 s como máximo, en la conexión `default` sin transacción abierta (dentro de una, falla), y `pg_advisory_unlock` en `finally`; si el desbloqueo falla, se cierra la conexión, y con ella el candado.
   - **`ctx.log`:** un `LoggerAdapter` de `packs.<pack>` con `tenant`, `channel` y `event_id`. El enmascarado de teléfonos es el filtro de logs de §13.
@@ -853,6 +853,8 @@ class CalendarPort(Protocol):
     def check_access(self) -> None
 # CalEvent: gcal_id, summary, description (texto sin HTML), start, end, all_day, created, status, private
 ```
+
+- **Contrato estructural:** `CalEvent` es un protocolo de lectura y las consultas devuelven `Sequence[CalEvent]`; así la integración y el doble de pruebas lo cumplen sin importar el pack. `NewEvent` es un mapping con el cuerpo de la API. `list_contact_events` acepta además `external_id` para reconocer `WaId:` heredados; `fp_contact` tiene prioridad si existe. `patch_private(gcal_id, fields)` añade metadatos conservando los existentes (migración T-5.8). Los errores permanentes y transitorios derivan de los errores externos genéricos de `core.errors`.
 
 - **`FakeCalendar`** (`packs/salon/testing.py`): implementación en memoria de `CalendarPort` para escenarios y tests, con huecos ocupados, errores programables y registro de lo creado o cancelado.
 - **Errores:** `CalendarTransientError` (red, timeout, 5xx, 429; el cliente hace 2 reintentos rápidos antes de lanzarlo) y `CalendarPermanentError` (403/404). Timeout de 10 s por llamada.

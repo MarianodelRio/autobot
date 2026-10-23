@@ -42,7 +42,7 @@ from flowpilot.channels.adapters import endpoint
 from flowpilot.channels.base import InboundItem, StatusItem, parse_stored
 from flowpilot.channels.ratelimit import WindowLimiter
 from flowpilot.jobs import OUTBOUND, SEND_NOTIFICATION, app
-from flowpilot.runtime.context import CalendarFactory, build_context, no_calendar_integration
+from flowpilot.runtime.context import CalendarFactory, build_context, google_calendar
 from flowpilot.runtime.models import (
     Channel,
     Contact,
@@ -75,7 +75,7 @@ def process_event(
     *,
     last_attempt: bool,
     first_attempt: bool = True,
-    calendars: CalendarFactory = no_calendar_integration,
+    calendars: CalendarFactory = google_calendar,
 ) -> None:
     tenant = get_registry().by_id.get(tenant_id)
     if tenant is None:  # removed from tenants/ after the event was saved

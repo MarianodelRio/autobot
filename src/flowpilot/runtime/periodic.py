@@ -19,7 +19,7 @@ from procrastinate.exceptions import AlreadyEnqueued
 
 from core.pack import Pack, Periodic
 from flowpilot.jobs import PERIODIC, RUN_PERIODIC, app
-from flowpilot.runtime.context import CalendarFactory, build_context, no_calendar_integration
+from flowpilot.runtime.context import CalendarFactory, build_context, google_calendar
 from flowpilot.runtime.models import Channel
 from flowpilot.runtime.outbound import defer_sends
 from flowpilot.runtime.process import apply_actions
@@ -68,7 +68,7 @@ def run_periodic(
     name: str,
     scheduled_at: int,
     *,
-    calendars: CalendarFactory = no_calendar_integration,
+    calendars: CalendarFactory = google_calendar,
 ) -> None:
     tenant = get_registry().by_id.get(tenant_id)
     periodic = _periodic(tenant.pack, name) if tenant is not None else None

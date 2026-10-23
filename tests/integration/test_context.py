@@ -137,9 +137,11 @@ def test_the_test_channel_never_gets_the_real_calendar(config: CalendarConfig) -
     assert calendars.bound == []  # the factory never saw calendar_id
 
 
-def test_without_integration_a_calendar_pack_cannot_run() -> None:
-    with pytest.raises(CalendarUnavailable):
-        build_context(loaded(CALENDAR_PACK), Channel.MAIN, contact=None, state={}, event_id=None)
+def test_the_default_factory_builds_a_lazy_google_client() -> None:
+    from integrations.google_calendar import CalendarClient
+
+    ctx = build_context(loaded(CALENDAR_PACK), Channel.MAIN, contact=None, state={}, event_id=None)
+    assert isinstance(ctx.calendar, CalendarClient)
 
 
 def test_lock_key_is_prefixed_with_tenant_and_bound_calendar(

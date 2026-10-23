@@ -87,7 +87,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
-| F5 | Pack `salon` | 9 | 0 | pending |
+| F5 | Pack `salon` | 9 | 0 | in_progress |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
@@ -804,13 +804,13 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** la reserva completa funciona en el bot de pruebas contra un **calendario de pruebas real** de Google, y nunca contra el calendario del negocio.
 
 ### T-5.1 · Cliente de Google Calendar 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-0.4 · **Diseño:** §9.3
+- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-0.4 · **Diseño:** §9.3
 - **Hacer:**
   - `integrations/google_calendar/` con la implementación de `CalendarPort` ligada a un calendario: cuenta de servicio, timeout de 10 s, 2 reintentos rápidos, errores transitorios y permanentes, paginación con tope, 409 → `get_event`, limpieza de HTML y comprobación de cada escritura.
   - Fábrica para `ctx.calendar` (T-3.4).
 - **Acepta:** el cliente no recibe nunca un `calendar_id` del pack.
 - **Tests:** contrato con respuestas grabadas (409, paginación, día completo, 403, 404, 5xx).
-- **Notas:** el `Protocol` vive en `packs/salon/ports.py`, y el cliente lo cumple sin importarlo.
+- **Notas:** implementada; revisión independiente pendiente. Cliente ligado al calendario y fábrica real del runtime, sin red al construirla. Contrato estructural en `packs/salon/ports.py` (sin imports cruzados), `patch_private` para T-5.8 y `external_id` para citas heredadas; §9.3 actualizado. Origen consultado: `MarianodelRio/Peluqueria`, commit `6e22f4a`, copia de solo consulta en `/tmp/flowpilot-Peluqueria` (la ruta `~/Desktop/Peluqueria` no existe en esta máquina). `make check`: 1.338 tests correctos; los 13 tests de contrato, incluida una comprobación posterior de parches, pasan. Sin usar credenciales reales.
 
 ### T-5.2 · Huecos y lectura del calendario 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-1.3 · **Diseño:** §9.3, §9.4

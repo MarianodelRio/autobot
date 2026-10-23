@@ -149,3 +149,5 @@ LOGGING = {
     # httpx logs every request URL at INFO, and Telegram's carries the bot token (§13).
     "loggers": {"httpx": {"level": "WARNING"}, "httpcore": {"level": "WARNING"}},
 }
+
+GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "")

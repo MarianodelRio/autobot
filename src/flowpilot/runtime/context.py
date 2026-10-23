@@ -18,6 +18,7 @@ from contextlib import contextmanager, suppress
 from typing import Any
 from uuid import UUID
 
+from django.conf import settings
 from django.db import Error as DatabaseError
 from django.db import connections
 
@@ -27,14 +28,13 @@ from core.idem import IdemKeys
 from core.pack import ContactInfo, PackContext
 from flowpilot.runtime.models import Channel
 from flowpilot.tenancy.registry import LoadedTenant
+from integrations.google_calendar import CalendarClient
 
 log = logging.getLogger(__name__)
 
 LOCK_TIMEOUT_S = 10.0
 LOCK_POLL_S = 0.1
 
-# Builds the CalendarPort of a calendar id. The real one (Google Calendar) arrives with
-# T-5.1; tests inject a fake.
 type CalendarFactory = Callable[[str], Any]
 
 
@@ -42,8 +42,10 @@ class CalendarUnavailable(RuntimeError):
     """The pack needs a calendar and this channel has none it may use."""
 
 
-def no_calendar_integration(calendar_id: str) -> Any:
-    raise CalendarUnavailable("no Calendar integration yet (T-5.1)")
+def google_calendar(calendar_id: str, *, timezone: str = "Europe/Madrid") -> CalendarClient:
+    return CalendarClient(
+        calendar_id, credentials_file=settings.GOOGLE_SERVICE_ACCOUNT_FILE, timezone=timezone
+    )
 
 
 def build_context(
@@ -53,7 +55,7 @@ def build_context(
     contact: ContactInfo | None,
     state: Mapping[str, Any],
     event_id: UUID | None,
-    calendars: CalendarFactory = no_calendar_integration,
+    calendars: CalendarFactory = google_calendar,
 ) -> PackContext:
     """A context for one pack call: a message (`event_id` set) or a periodic handler
     (`contact=None`, `state={}`, `event_id=None`)."""
@@ -69,7 +71,13 @@ def build_context(
         contact=contact,
         state=state,
         clock=SystemClock(info.timezone),
-        calendar=calendars(calendar_id) if calendar_id is not None else None,
+        calendar=(
+            google_calendar(calendar_id, timezone=str(info.timezone))
+            if calendar_id is not None and calendars is google_calendar
+            else calendars(calendar_id)
+            if calendar_id is not None
+            else None
+        ),
         lock=lambda key: advisory_lock(f"{info.id}:{calendar_id or '-'}:{key}"),
         idem=IdemKeys(event_id),
         log=logging.LoggerAdapter(logging.getLogger(f"packs.{tenant.pack.name}"), extra),
