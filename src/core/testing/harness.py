@@ -315,6 +315,7 @@ class Conversation:
             lock=self._lock,
             idem=idem,
             log=logging.getLogger(f"packs.{self.pack.name}"),
+            can_contact_by_phone=self.channel == "whatsapp",
         )
 
     def _apply(self, actions: list[Action]) -> None:

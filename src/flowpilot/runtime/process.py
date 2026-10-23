@@ -20,6 +20,7 @@ import re
 from typing import Any
 from uuid import UUID
 
+from django.conf import settings
 from django.db.models import F, Q
 from django.utils import timezone
 
@@ -242,6 +243,13 @@ def _proactive_target(tenant: LoadedTenant, channel: str, action: SendProactive)
     if target.channel != channel:
         log.warning("proactive %s not sent: contact of another channel", action.template.name)
         return None
+    if channel == Channel.TEST:
+        allowed = {str(user) for user in settings.TEST_BOT_OPERATORS} | {
+            str(user) for user in tenant.file.testers.telegram
+        }
+        if target.external_id not in allowed:
+            log.info("test proactive not sent: contact no longer has access to this tenant")
+            return None
     if target.opt_out or target.unreachable:
         log.info("proactive %s not sent: contact opted out or unreachable", action.template.name)
         return None

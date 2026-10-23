@@ -133,3 +133,28 @@ def test_main_failure_does_not_stop_the_test_sweep(salon_setup: Any, settings: S
         periodic.run_periodic(tenant.id, "calendar_sweep", int(time.time()))
     (row,) = OutboundMessage.objects.using("owner").all()
     assert row.channel == Channel.TEST and row.contact_id == contact.id
+
+
+def test_revoked_test_contact_gets_no_reminder(salon_setup: Any, settings: Settings) -> None:
+    from django.utils import timezone
+
+    settings.TEST_BOT_TOKEN = "999:TEST-TOKEN"
+    setup, calendars = salon_setup
+    tenant = setup(status="onboarding", config={"reminders_enabled": True})
+    with tenant_tx(tenant.id):
+        contact = Contact.objects.create(
+            tenant_id=tenant.id, channel=Channel.TEST, external_id="222"
+        )
+    now = timezone.now()
+    calendars.test.add(
+        CalendarEvent(
+            "revoked",
+            "Corte - Lucía",
+            "",
+            now + timedelta(hours=24),
+            now + timedelta(hours=24, minutes=30),
+            private={"fp_key": "key", "fp_contact": str(contact.id)},
+        )
+    )
+    periodic.run_periodic(tenant.id, "calendar_sweep", int(time.time()))
+    assert not OutboundMessage.objects.using("owner").exists()

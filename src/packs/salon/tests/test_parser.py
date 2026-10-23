@@ -70,7 +70,7 @@ class TestStripHtml:
         assert _strip_html("") == ""
 
 
-class TestParseNombre:
+class TestParseName:
     def test_basic(self) -> None:
         assert parse_name("Nombre: Juan García") == "Juan García"
 
@@ -94,7 +94,7 @@ class TestParseNombre:
         assert parse_name(desc) == "Luis"
 
 
-class TestParseTel:
+class TestParsePhone:
     def test_telefono_field(self) -> None:
         assert parse_phone("Telefono: 34600000001") == "34600000001"
 
@@ -139,7 +139,7 @@ class TestParseTel:
         assert parse_phone("Telefono: 34600000001<br>Estado: confirmada") == "34600000001"
 
 
-class TestParseWaId:
+class TestParseExternalId:
     def test_basic_extraction(self) -> None:
         assert parse_external_id("WaId: ES.1A2B3C4D5E6F") == "ES.1A2B3C4D5E6F"
 
@@ -164,7 +164,7 @@ class TestParseWaId:
         assert parse_external_id(desc) == "ES.1A2B3C"
 
 
-class TestParseEstado:
+class TestParseStatus:
     def test_confirmada(self) -> None:
         assert parse_status("Estado: confirmada") == "confirmada"
 
@@ -257,7 +257,7 @@ class TestParseCfg:
         assert result == {"type": "horario", "start": "9:00", "end": "13:00"}
 
 
-class TestParseServicioFromTitle:
+class TestParseServiceFromTitle:
     def test_basic_corte(self) -> None:
         result = parse_service_title("Corte - Juan Garcia")
         assert result == ("corte", "Juan Garcia")
@@ -298,9 +298,9 @@ class TestParseServicioFromTitle:
         assert parse_service_title("Méchas - Ángela") == ("mechas", "Ángela")
 
     def test_nombre_original_casing_preserved(self) -> None:
-        key, nombre = parse_service_title("Corte - María José")
+        key, name = parse_service_title("Corte - María José")
         assert key == "corte"
-        assert nombre == "María José"
+        assert name == "María José"
 
     def test_no_separator_returns_none(self) -> None:
         assert parse_service_title("Corte Juan Garcia") == (None, None)

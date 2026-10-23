@@ -50,6 +50,10 @@ def test_manual_confirmation_cutoff_and_status(salon: Conversation) -> None:
     )
     recent = upcoming(salon, manual=True)
     upcoming(salon, manual=True, created_hours_ago=3, gcal_id="old")
+    if salon.channel == "telegram":
+        assert salon.run_periodic("calendar_sweep") == []
+        assert "patch_description" not in salon.calendar.calls
+        return
     actions = salon.run_periodic("calendar_sweep")
     assert len(actions) == 1 and salon.proactive[-1].idem_key == "confirm:upcoming"
     assert "Estado: pendiente" in salon.calendar.events[recent.gcal_id].description

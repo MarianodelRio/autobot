@@ -114,17 +114,6 @@ def run_periodic(
             ctx = build_context(
                 tenant, channel, contact=None, state={}, event_id=None, calendars=calendars
             )
-            # The pack never knows the channel. Manual confirmation by phone only
-            # applies to the real WhatsApp calendar; a test context must not mutate it.
-            if (
-                tenant.pack is not None
-                and tenant.pack.needs_calendar
-                and (channel == Channel.TEST or tenant.file.channel.type != "whatsapp")
-            ):
-                ctx = replace(
-                    ctx,
-                    config=ctx.config.model_copy(update={"manual_confirmations_enabled": False}),
-                )
             actions = periodic.handler(ctx)  # no transaction during Calendar calls
             if channel == Channel.TEST:
                 actions = [

@@ -80,6 +80,7 @@ def build_context(
         ),
         lock=lambda key: advisory_lock(f"{info.id}:{calendar_id or '-'}:{key}"),
         idem=IdemKeys(event_id),
+        can_contact_by_phone=(channel == Channel.MAIN and tenant.file.channel.type == "whatsapp"),
         log=logging.LoggerAdapter(logging.getLogger(f"packs.{tenant.pack.name}"), extra),
     )
 

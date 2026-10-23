@@ -56,6 +56,8 @@ class PackContext:
     lock: Callable[[str], AbstractContextManager[None]]  # key prefixed with tenant and calendar
     idem: IdemKeys
     log: logging.Logger | logging.LoggerAdapter[logging.Logger]
+    # Communication capability, without exposing which channel the pack runs on.
+    can_contact_by_phone: bool = False
 
 
 @dataclass

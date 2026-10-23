@@ -55,7 +55,12 @@ def test_booking_over_every_channel(
     is_test = mode.startswith("test-")
     channel = mode.removeprefix("test-")
     slug = "salon" if is_test else "wa" if channel == "whatsapp" else "tg"
-    tenant = setup(channel=channel, slug=slug, status="onboarding" if is_test else "active")
+    tenant = setup(
+        channel=channel,
+        slug=slug,
+        status="onboarding" if is_test else "active",
+        config={"reminders_enabled": True, "reminder_window_hours": [0, 2]},
+    )
     if is_test:
         say(TESTER, "/start")
         drain()
@@ -99,9 +104,17 @@ def test_booking_over_every_channel(
     else:
         assert providers.meta and providers.telegram == []
 
+    send("baja")
+    periodic.run_periodic(tenant.id, "calendar_sweep", int(time.time()))
+    assert Contact.objects.using("owner").get().opt_out
+    assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
+
 
 @pytest.mark.parametrize("channel", ["whatsapp", "telegram"])
-def test_manual_confirmations_only_use_whatsapp(salon_setup: Any, channel: str) -> None:
+def test_manual_confirmations_only_use_whatsapp(
+    salon_setup: Any, channel: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("INFO")
     setup, calendars = salon_setup
     tenant = setup(
         channel=channel,
@@ -126,6 +139,8 @@ def test_manual_confirmations_only_use_whatsapp(salon_setup: Any, channel: str) 
     messages = list(OutboundMessage.objects.using("owner").all())
     assert len(messages) == (1 if channel == "whatsapp" else 0)
     assert calendars.test.calls == []  # Manual confirmations disabled: no test-calendar I/O.
+    if channel == "telegram":
+        assert "Manual confirmations skipped" in caplog.text
     if messages:
         assert messages[0].payload is not None
         assert messages[0].payload["template"]["name"] == "confirmacion_cita"

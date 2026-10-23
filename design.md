@@ -319,7 +319,7 @@ otro-negocio:                  # un canal telegram
 
 - Al arrancar, `web` y `worker` leen `tenants/*/tenant.yaml`, validan la parte común, la `config` con el esquema del pack y los secretos, cargan los datasets (`pack.load_data`) y construyen índices en memoria: `(tipo, public_id) → tenant`, `phone_number_id → tenant`, `slug → tenant`, tenants activos por pack y tenants visibles por cada id de Telegram en el bot de pruebas.
 - **Un tenant inválido no afecta a los demás.** CI lo habría bloqueado (§17.3); si aun así falla al arrancar, queda `degraded`: sus mensajes se guardan como siempre y `process_event`, sin llamar al pack (ni resolver comandos globales), responde a cada uno con un texto genérico de plataforma ("Ahora mismo no puedo atenderte; inténtalo más tarde"), y salta una alerta 🔴.
-- **Estados:** `onboarding` (el canal `main` solo responde a `testers.main`), `active`, `paused` (el canal `main` guarda y no responde), `offboarded` (contesta 200 sin guardar). El bot de pruebas funciona en `onboarding`, `active` y `paused`.
+- **Estados:** `onboarding` (el canal `main` solo responde a `testers.main`), `active`, `paused` (el canal `main` guarda y no responde), `offboarded` (contesta 200 sin guardar). El bot de pruebas funciona en `onboarding`, `active` y `paused`. Al crear un aviso proactivo para un contacto de pruebas se vuelve a comprobar que sigue en `testers.telegram` o en `TEST_BOT_OPERATORS`.
 - **`sync_tenants`** (tras `migrate`, §14.6) hace *upsert* de la tabla `tenant` (id, slug, name, pack, status, timezone) para las claves foráneas y RLS. Esa tabla es un reflejo y nunca se edita a mano.
 - **Implementación** (`flowpilot/tenancy/schema.py` y `registry.py`):
   - **Qué pasa ante cada fallo:**
@@ -737,6 +737,7 @@ class PackContext:
     lock: Callable[[str], ContextManager]   # advisory lock de PostgreSQL; la clave se prefija con tenant y calendario (§9.5)
     idem: IdemKeys                      # .event(name) = "<name>:<event_id>" (evento actual); .stable(name) = name, para barridos
     log: Logger                         # con tenant y event_id; enmascara teléfonos
+    can_contact_by_phone: bool = False   # capacidad de resolver un destinatario por teléfono (§6.6), sin exponer el canal
 
 @dataclass
 class PackResult:
@@ -788,7 +789,7 @@ Estados: `MENU`, `BOOK_SERVICE`, `BOOK_DAY`, `BOOK_PERIOD`, `BOOK_HOUR`, `BOOK_N
 | Opción del menú | Flujo |
 |---|---|
 | **Pedir cita** | Comprueba el límite de citas futuras (`max_active_bookings`; si Calendar falla, deja continuar) → servicio (lista de hasta 9 + volver) → día (solo días **con huecos** en `booking_window_days`, calculados con una sola lectura de Calendar por rango) → **mañana / tarde** si las horas no caben en una lista → hora → nombre (texto de hasta 100 caracteres; si ya se conoce, botón "Usar <nombre>") → crea la cita (§9.5) → confirmación con servicio, precio, día y hora |
-| **Ver mis citas** | Citas futuras del contacto |
+| **Ver mis citas** | Citas futuras del contacto, ocho por página y «Ver más» cuando quedan más |
 | **Mover cita** | Elegir cita → servicio → día → hora → **crea la nueva y después cancela la antigua**. Si la cancelación falla, la nueva se queda, se avisa al dueño (`move_cancel_failed`) y se registra |
 | **Cancelar cita** | Elegir cita → cancelada al momento |
 | **Cita {evento}** (solo con `special_event.active`) | Como Pedir cita, pero días y franjas salen de `special_event.days` |
@@ -908,7 +909,7 @@ Una cita que el dueño cree a mano en ese mismo segundo puede solaparse: se acep
 
 #### 9.6 Barrido de Calendar (`calendar_sweep`, cada 15 min por tenant)
 
-Se ejecuta una vez por calendario: el real (contactos `main`) y, si existe, el de pruebas (contactos `test`, sin confirmaciones de citas manuales). El reparto encola un trabajo por tenant; este construye un contexto por calendario elegible. El real exige tenant activo y canal habilitado; el de pruebas permite onboarding/paused, exige un calendario distinto y el bot de pruebas configurado. El runtime desactiva `manual_confirmations_enabled` en el contexto de test y en main Telegram. Si un calendario falla, ejecuta el otro y después propaga el error para reintentar; las claves estables evitan repetir avisos ya guardados. Cada ejecución hace una lectura de `[now, now + booking_window_days + 1]` con dos pasadas:
+Se ejecuta una vez por calendario: el real (contactos `main`) y, si existe, el de pruebas (contactos `test`, sin confirmaciones de citas manuales). El reparto encola un trabajo por tenant; este construye un contexto por calendario elegible. El real exige tenant activo y canal habilitado; el de pruebas permite onboarding/paused, exige un calendario distinto y el bot de pruebas configurado. `ctx.can_contact_by_phone` solo es verdadero en main WhatsApp; el pack usa esa capacidad para habilitar las confirmaciones manuales, sin conocer el canal ni alterar su configuración. Si un calendario falla, ejecuta el otro y después propaga el error para reintentar; las claves estables evitan repetir avisos ya guardados. Cada ejecución hace una lectura de `[now, now + booking_window_days + 1]` con dos pasadas:
 
 | Pasada | Condición | Acción |
 |---|---|---|

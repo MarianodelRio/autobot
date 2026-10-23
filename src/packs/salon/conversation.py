@@ -57,16 +57,17 @@ class Turn:
     ) -> PackResult:
         day = date.fromisoformat(self.state["day"])
         if refresh:
-            self.state["all_slots"] = [
-                s.strftime("%H:%M")
-                for s in booking.day_slots(
-                    self.ctx, day, self.state["service"], event=self.event_mode()
-                )
-            ]
+            available, ranges = booking.availability(
+                self.ctx, day, self.state["service"], event=self.event_mode()
+            )
+            self.state["all_slots"] = [slot.strftime("%H:%M") for slot in available]
+            self.state["ranges"] = ranges
         slots = [time.fromisoformat(s) for s in self.state.get("all_slots", [])]
         if not slots:
             return self.days(refresh=True)
-        morning, afternoon = split_periods(slots, self.cfg.spans(day, event=self.event_mode()))
+        morning, afternoon = split_periods(
+            slots, self.state.get("ranges", self.cfg.spans(day, event=self.event_mode()))
+        )
         if len(slots) > 8 and morning and afternoon and period is None:
             self.state["step"] = "BOOK_PERIOD"
             return self.result(
@@ -111,8 +112,14 @@ class Turn:
         if not self.state["appointments"]:
             return self.result(ui.back(self.cfg.texts.no_bookings), reset=True)
         if mode == "view":
-            text = "Tus próximas citas:\n" + "\n".join(self.state["appointment_labels"][:8])
-            return self.result(ui.back(text))
+            labels = self.state["appointment_labels"]
+            if page < 0 or page * 8 >= len(labels):
+                page = 0
+            text = "Tus próximas citas:\n" + "\n".join(labels[page * 8 : (page + 1) * 8])
+            buttons = [button("back_to_menu", "↩️ Volver al menú")]
+            if (page + 1) * 8 < len(labels):
+                buttons.insert(0, button(f"view_page:{page + 1}", "➡️ Ver más"))
+            return self.result(buttons_msg(text, buttons, footer=ui.FOOTER))
         rows = [
             row(f"{mode}_appt:{i}", label)
             for i, label in enumerate(self.state["appointment_labels"])
@@ -253,6 +260,8 @@ class Turn:
                 "mode": "event" if value == "menu_book_event" else "book",
             }
             return self.result(ui.services(self.cfg))
+        if step == "VIEW" and value.startswith("view_page:"):
+            return self.appointments("view", int(value.rsplit(":", 1)[1]), refresh=False)
         if step in ("CANCEL_SELECT", "MOVE_SELECT"):
             mode = "cancel" if step == "CANCEL_SELECT" else "move"
             if value.startswith(f"{mode}_page:"):
@@ -327,9 +336,9 @@ class Turn:
 def valid_state(turn: Turn) -> bool:
     state = turn.state
     step = state.get("step", "MENU")
-    if step in ("MENU", "BOOK_SERVICE", "VIEW"):
+    if step in ("MENU", "BOOK_SERVICE"):
         return True
-    if step in ("MOVE_SELECT", "CANCEL_SELECT"):
+    if step in ("VIEW", "MOVE_SELECT", "CANCEL_SELECT"):
         return (
             isinstance(state.get("appointments"), list)
             and isinstance(state.get("appointment_labels"), list)

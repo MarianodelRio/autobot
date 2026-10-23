@@ -87,11 +87,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
-| F5 | Pack `salon` | 9 | 0 | in_progress |
+| F5 | Pack `salon` | 9 | 0 | 9 implementadas; revisión independiente y validación manual pendientes |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
 | **Total** | | **52** | **30** | |
+
+En F5, «Hechas» cuenta los cierres formales: las nueve tareas tienen implementación y tests en sus commits, pero esperan la revisión por otro agente de §1.3. T-5.8 espera además la aprobación humana ⚠️. La revisión propia y la validación automatizada están completadas; no sustituyen esa revisión independiente.
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -859,7 +861,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - `pack.health` (acceso al calendario).
 - **Acepta:** un recordatorio sale una sola vez en dos barridos; no hay confirmaciones de citas anteriores a `manual_confirmations_since`; el barrido del calendario de pruebas nunca envía por el canal `main`.
 - **Tests:** escenarios e integración del barrido (los casos de §9.8 y el aislamiento por calendario).
-- **Notas:** implementada; revisión independiente pendiente. Barrido de 15 min, una lectura por calendario y acciones con claves estables, confirmaciones solo desde la fecha configurada y `Estado: pendiente` solo si falta. `pack.health` comprueba acceso sin exponer detalles del error. Runtime recorre main/test de forma independiente; main exige activo y habilitado, test permite onboarding/paused si tiene calendario distinto y bot configurado. Desactiva confirmaciones manuales para test y para main Telegram, prefija claves de test para evitar colisiones de ids entre calendarios y continúa con el otro canal si uno falla. Tests de barrido y BD prueban deduplicación real, opt-out y aislamiento.
+- **Notas:** implementada; revisión independiente pendiente. Barrido de 15 min, una lectura por calendario y acciones con claves estables, confirmaciones solo desde la fecha configurada y `Estado: pendiente` solo si falta. `pack.health` comprueba acceso sin exponer detalles del error. Runtime recorre main/test de forma independiente; main exige activo y habilitado, test permite onboarding/paused si tiene calendario distinto y bot configurado. El pack usa la capacidad genérica `ctx.can_contact_by_phone` para no confirmar manuales en test ni en main Telegram; el runtime prefija claves de test para evitar colisiones de ids entre calendarios y continúa con el otro canal si uno falla. Tests de barrido y BD prueban deduplicación real, opt-out y aislamiento.
 
 ### T-5.7 · Reserva por los dos tipos de canal 🤖
 - **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.6, T-3.8 · **Diseño:** §9.8, §6.6
@@ -901,13 +903,22 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Verificar:** el tenant `dev-salon` valida; al reservar desde el bot de pruebas, la cita aparece en "FlowPilot dev (pruebas)" y no en "FlowPilot dev (real)".
 
 ### ✅ Validación F5
-- [ ] Escenarios de §9.8 en verde.
+- [x] Escenarios de §9.8 en verde.
+- [x] `make check` final (2026-10-23): 1.570 tests correctos, Ruff, formato, mypy e import-linter en verde. Sin migraciones pendientes, linter de migraciones sin errores ni avisos y auditoría completa sin vulnerabilidades conocidas.
 - [ ] Prueba de extremo a extremo en local con calendario real de pruebas:
   - [ ] Reservar desde el bot de pruebas; la cita aparece en el calendario de pruebas con el formato de §9.3.
   - [ ] Moverla y cancelarla.
   - [ ] Un evento `[CFG] CERRADO` quita ese día.
   - [ ] Con un recordatorio forzado (ventana ajustada), llega por el bot de pruebas y "Confirmar" escribe `Estado: confirmada`.
   - [ ] "FlowPilot dev (real)" no se toca en ningún momento.
+
+
+**Notas para retomar (2026-10-23):**
+- Implementadas T-5.1 a T-5.9, cada una en su commit. Revisión propia por tarea y revisión final de arquitectura, idempotencia, propiedad de citas y límites de los canales; revisión independiente de §1.3 pendiente (no se ha registrado una aprobación inexistente).
+- Remates de la revisión propia: capacidad genérica `can_contact_by_phone` en vez de cambiar config del pack desde el runtime; comprobar acceso vigente del destinatario de avisos de pruebas; paginar también «Ver mis citas»; partición mañana/tarde sobre el horario efectivo de Calendar; cubrir `baja` tras reservar en los cuatro recorridos de integración. `design.md` actualizado con el contrato estructural, la migración y el barrido por calendario.
+- El barrido omite con aviso los ids de Google cuyo callback excedería los 64 bytes comunes; nunca los trunca. Los ids nuevos deterministas tienen 32 caracteres.
+- La persona ha pospuesto las pruebas manuales para el final. M-5.1/M-5.2 siguen pendientes: no se han usado credenciales reales, creado calendarios reales, ejecutado la migración real ni activado ningún negocio. Las casillas manuales de F3/F4/F5 siguen pendientes.
+- Para el cierre formal: revisión independiente de los nueve commits y del remate final; corregir lo que encuentre; aprobación humana de T-5.8; actualizar estados y contadores tras esas aprobaciones. F6 no se ha empezado.
 
 ---
 

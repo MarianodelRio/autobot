@@ -169,3 +169,22 @@ def test_empty_or_oversized_proactive_id_is_rejected_without_calendar_io(
     salon.press("reminder_confirm:", check=False).expect(text_contains="No se encontró")
     salon.press("reminder_cancel:" + "a" * 100, check=False).expect(text_contains="No se encontró")
     assert salon.calendar.calls == before
+
+
+def test_view_pages_include_every_appointment(salon: Conversation) -> None:
+    start = datetime.fromisoformat("2026-03-25T10:00:00+01:00")
+    for index in range(10):
+        at = start + timedelta(minutes=30 * index)
+        salon.calendar.add(
+            CalendarEvent(
+                str(index),
+                "Corte - Lucía",
+                "",
+                at,
+                at + timedelta(minutes=30),
+                private={"fp_contact": str(salon.contact.id)},
+            )
+        )
+    salon.send("hola")
+    salon.press("menu_view").expect(text_contains="13:30")
+    salon.press("view_page:1").expect(text_contains="14:00").expect(text_contains="14:30")

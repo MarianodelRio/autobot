@@ -223,7 +223,7 @@ class CalendarClient:
                 "patch", eventId=gcal_id, body={"extendedProperties": {"private": private}}
             )
         )
-        if result.private != private:
+        if any(result.private.get(key) != value for key, value in private.items()):
             raise CalendarPermanentError("Calendar did not confirm metadata")
         return result
 

@@ -137,3 +137,40 @@ def test_text_outside_name_returns_to_menu(salon: Conversation) -> None:
     salon.press("menu_book")
     salon.send("corte").expect(list_includes="Pedir cita")
     assert salon.state == {}
+
+
+def test_days_and_hours_are_paginated_without_losing_choices(salon: Conversation) -> None:
+    from packs.salon.config import DAYS
+
+    salon.config = configuration(
+        opening_hours={day: ["10:00-12:00"] for day in DAYS}, slot_step_min=5
+    )
+    salon.send("hola")
+    salon.press("menu_book")
+    salon.press("service_corte")
+    salon.press("days_page:1")
+    salon.press("day_2026-04-01")
+    salon.press("hours_page:1")
+    salon.press("hour_10:40")
+    salon.send("Lucía").expect(text_contains="confirmada")
+    assert salon.calendar.created[0].start.isoformat() == "2026-04-01T10:40:00+02:00"
+
+
+def test_periods_follow_the_effective_calendar_schedule(salon: Conversation) -> None:
+    start = datetime.fromisoformat("2026-03-24T00:00:00+01:00")
+    salon.calendar.add(
+        CalendarEvent(
+            "special-hours",
+            "[CFG] HORARIO 10:00-21:00",
+            "",
+            start,
+            start + timedelta(days=1),
+            all_day=True,
+        )
+    )
+    salon.send("hola")
+    salon.press("menu_book")
+    salon.press("service_corte")
+    salon.press("day_2026-03-24")
+    salon.press("period_morning")
+    assert "13:30" in salon.state["slots"] and "14:00" not in salon.state["slots"]

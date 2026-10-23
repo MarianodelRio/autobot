@@ -27,7 +27,7 @@ from flowpilot.runtime.context import (
 )
 from flowpilot.runtime.models import Channel
 from flowpilot.tenancy.registry import LoadedTenant
-from flowpilot.tenancy.schema import TenantFile
+from flowpilot.tenancy.schema import TelegramChannel, TenantFile
 from tests.tenancy.helpers import tenant_yaml
 from tests.toy_pack import pack as toy
 
@@ -245,3 +245,40 @@ def test_a_degraded_tenant_has_no_context() -> None:
 def test_lock_refuses_an_open_transaction() -> None:
     with transaction.atomic(), pytest.raises(RuntimeError), advisory_lock("t:x"):
         pass
+
+
+def test_phone_contact_capability_is_only_for_main_whatsapp() -> None:
+    main = build_context(
+        loaded(CALENDAR_PACK),
+        Channel.MAIN,
+        contact=None,
+        state={},
+        event_id=None,
+        calendars=Calendars(),
+    )
+    test = build_context(
+        loaded(CALENDAR_PACK),
+        Channel.TEST,
+        contact=None,
+        state={},
+        event_id=None,
+        calendars=Calendars(),
+    )
+    assert main.can_contact_by_phone and not test.can_contact_by_phone
+    tenant = loaded(CALENDAR_PACK)
+    file = tenant.file.model_copy(
+        update={
+            "channel": TelegramChannel(
+                type="telegram", public_id="telegrampublic", bot_username="salon_bot"
+            )
+        }
+    )
+    telegram = build_context(
+        dataclasses.replace(tenant, file=file),
+        Channel.MAIN,
+        contact=None,
+        state={},
+        event_id=None,
+        calendars=Calendars(),
+    )
+    assert not telegram.can_contact_by_phone

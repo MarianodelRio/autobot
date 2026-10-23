@@ -14,7 +14,10 @@ from packs.salon.slots import classify
 
 def run(ctx: PackContext) -> list[Action]:
     cfg, now = booking.configuration(ctx), ctx.clock.now()
-    if not cfg.reminders_enabled and not cfg.manual_confirmations_enabled:
+    manual_enabled = cfg.manual_confirmations_enabled and ctx.can_contact_by_phone
+    if cfg.manual_confirmations_enabled and not ctx.can_contact_by_phone:
+        ctx.log.info("Manual confirmations skipped: phone recipients unavailable in this context")
+    if not cfg.reminders_enabled and not manual_enabled:
         return []
     events = booking.calendar(ctx).list_events(
         now, now + timedelta(days=cfg.booking_window_days + 1)
@@ -60,7 +63,7 @@ def run(ctx: PackContext) -> list[Action]:
             )
         if (
             kind == "manual"
-            and cfg.manual_confirmations_enabled
+            and manual_enabled
             and event.created is not None
             and cfg.manual_confirmations_since is not None
             and event.created >= cfg.manual_confirmations_since

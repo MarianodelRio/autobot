@@ -10,6 +10,7 @@ from core.errors import PermanentError
 from core.pack import PackContext
 from packs.salon.config import SalonConfig
 from packs.salon.ownership import belongs
+from packs.salon.parser import parse_cfg
 from packs.salon.ports import CalendarPort, CalEvent
 from packs.salon.slots import compute_slots
 
@@ -27,6 +28,31 @@ def configuration(ctx: PackContext) -> SalonConfig:
     return ctx.config
 
 
+def availability(
+    ctx: PackContext,
+    day: date,
+    service_key: str,
+    *,
+    event: bool = False,
+    busy: Sequence[CalEvent] | None = None,
+) -> tuple[list[time], list[tuple[str, str]]]:
+    cfg = configuration(ctx)
+    now = ctx.clock.now()
+    start = datetime.combine(day, time(), now.tzinfo)
+    end = datetime.combine(day + timedelta(days=1), time(), now.tzinfo)
+    events = calendar(ctx).list_events(start, end) if busy is None else busy
+    ranges = cfg.spans(day, event=event)
+    slots = compute_slots(day, cfg.services[service_key], ranges, events, now, cfg)
+    for item in events:
+        if item.status == "cancelled" or item.start >= end or item.end <= start:
+            continue
+        schedule = parse_cfg(item.summary)
+        if schedule and schedule["type"] == "horario":
+            ranges = [(schedule["start"], schedule["end"])]
+            break
+    return slots, ranges
+
+
 def day_slots(
     ctx: PackContext,
     day: date,
@@ -35,14 +61,7 @@ def day_slots(
     event: bool = False,
     busy: Sequence[CalEvent] | None = None,
 ) -> list[time]:
-    cfg = configuration(ctx)
-    now = ctx.clock.now()
-    start = datetime.combine(day, time(), now.tzinfo)
-    end = datetime.combine(day + timedelta(days=1), time(), now.tzinfo)
-    events = calendar(ctx).list_events(start, end) if busy is None else busy
-    return compute_slots(
-        day, cfg.services[service_key], cfg.spans(day, event=event), events, now, cfg
-    )
+    return availability(ctx, day, service_key, event=event, busy=busy)[0]
 
 
 def available_days(ctx: PackContext, service_key: str, *, event: bool = False) -> list[date]:
