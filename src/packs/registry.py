@@ -4,5 +4,6 @@ T-5.x); tests register the toy pack themselves."""
 
 from core.pack import Pack
 from packs.bus import pack as bus
+from packs.salon import pack as salon
 
-PACKS: dict[str, Pack] = {p.name: p for p in (bus.pack,)}
+PACKS: dict[str, Pack] = {p.name: p for p in (bus.pack, salon.pack)}

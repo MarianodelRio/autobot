@@ -14,10 +14,22 @@ def back(text: str) -> Buttons:
 
 
 def menu(cfg: SalonConfig) -> List:
-    return listing(
+    rows = [
+        row("menu_book", "📅 Pedir cita"),
+        row("menu_view", "📋 Ver mis citas"),
+        row("menu_move", "📦 Mover cita"),
+        row("menu_cancel", "❌ Cancelar cita"),
+    ]
+    if cfg.special_event.active:
+        rows.append(row("menu_book_event", f"🌟 Cita {cfg.special_event.name}"))
+    if cfg.info_text:
+        rows.append(row("menu_info", "ℹ️ Contacto"))
+    return list_msg(
         cfg.texts.welcome + f"\n📞 {cfg.contact_phone}",
-        [row("menu_book", "📅 Pedir cita")],
+        "Ver opciones",
+        [section(None, rows)],
         header=trunc(f"✂️ {cfg.business_name}", 60),
+        footer=FOOTER,
     )
 
 

@@ -841,7 +841,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementada; revisión independiente pendiente. `FakeCalendar` comprueba el protocolo y permite errores programables. Flujo de reserva con lectura por rango para días, paginación de días y horas, mañana/tarde si no caben, nombre conocido y validación de estado guardado. `reserve` toma el candado por día, comprueba idempotencia antes de disponibilidad y verifica el evento creado. Aviso `booking_created` y actualización del nombre. Calendario real aún sin conectar ni probar; escenarios en ambos canales.
 
 ### T-5.5 · Ver, mover, cancelar, evento especial y botones 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-5.4 · **Diseño:** §9.1
+- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.4 · **Diseño:** §9.1
 - **Hacer:**
   - Ver mis citas, mover (crea la nueva y después cancela la antigua, `move_cancel_failed`) y cancelar.
   - Evento especial y "Contacto".
@@ -849,7 +849,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - `NotifyOwner` de cada tipo.
 - **Acepta:** escenarios de §9.8 correspondientes en verde.
 - **Tests:** escenarios (mover, cancelar, evento activo e inactivo, botón sobre una cita ajena, cita antigua con `WaId:`).
-- **Notas:** —
+- **Notas:** implementada; revisión independiente pendiente. Menú completo y pack registrado. Ver/mover/cancelar con propiedad comprobada de nuevo al actuar, `fp_contact` prioritario y compatibilidad con `WaId:`/teléfono. Mover crea antes de cancelar; si falla la cancelación conserva la nueva y devuelve `move_cancel_failed`, con reintento idempotente. Evento especial (también si se desactiva durante el flujo), contacto y botones proactivos desde cualquier estado. Listas paginadas con índices en vez de ids externos en callbacks. 190 tests de pack en verde, con renderizado de ambos canales.
 
 ### T-5.6 · Barrido, plantillas y salud del pack 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-5.5, T-3.7 · **Diseño:** §9.6, §9.7, §6.5

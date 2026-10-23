@@ -92,11 +92,7 @@ def reserve(
     cfg = configuration(ctx)
     svc = cfg.services[service_key]
     key = ctx.idem.event(operation)
-    gcal_id = (
-        base64.b32hexencode(hashlib.sha256(f"{ctx.tenant.id}:{key}".encode()).digest())
-        .decode()
-        .lower()[:32]
-    )
+    gcal_id = event_id(ctx, operation)
     with ctx.lock(f"cal:{day.isoformat()}"):
         existing = calendar(ctx).get_event(gcal_id)
         if existing is not None:
@@ -135,3 +131,8 @@ def reserve(
         ):
             raise PermanentError("Calendar did not confirm booking")
         return result
+
+
+def event_id(ctx: PackContext, operation: str = "booking") -> str:
+    digest = hashlib.sha256(f"{ctx.tenant.id}:{ctx.idem.event(operation)}".encode()).digest()
+    return base64.b32hexencode(digest).decode().lower()[:32]

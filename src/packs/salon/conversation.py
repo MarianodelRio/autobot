@@ -8,11 +8,13 @@ from core.dates import format_date_es
 from core.errors import PermanentError, TransientError
 from core.messages import IncomingMessage
 from core.pack import PackContext, PackResult
-from core.replies import Reply
+from core.replies import Reply, Text
 from core.ui import button, buttons_msg, row
 from packs.salon import booking
 from packs.salon import interactive as ui
 from packs.salon.messages import booking_text
+from packs.salon.ownership import belongs
+from packs.salon.parser import parse_name, parse_service_title
 from packs.salon.slots import split_periods
 
 
@@ -89,29 +91,117 @@ class Turn:
             )
         )
 
+    def owns(self, event: Any) -> bool:
+        contact = self.ctx.contact
+        assert contact is not None
+        return bool(
+            event is not None
+            and not event.all_day
+            and belongs(event, str(contact.id), contact.phone, contact.external_id)
+        )
+
+    def appointments(self, mode: str, page: int = 0, *, refresh: bool = True) -> PackResult:
+        if refresh:
+            events = booking.contact_events(self.ctx)
+            self.state = {
+                "step": "VIEW" if mode == "view" else f"{mode.upper()}_SELECT",
+                "appointments": [e.gcal_id for e in events],
+                "appointment_labels": [f"{e.start:%d/%m/%Y %H:%M}" for e in events],
+            }
+        if not self.state["appointments"]:
+            return self.result(ui.back(self.cfg.texts.no_bookings), reset=True)
+        if mode == "view":
+            text = "Tus próximas citas:\n" + "\n".join(self.state["appointment_labels"][:8])
+            return self.result(ui.back(text))
+        rows = [
+            row(f"{mode}_appt:{i}", label)
+            for i, label in enumerate(self.state["appointment_labels"])
+        ]
+        return self.result(
+            ui.listing("¿Qué cita quieres elegir?", rows, page=page, prefix=f"{mode}_page")
+        )
+
+    def cancel(self, gcal_id: str) -> PackResult:
+        event = booking.calendar(self.ctx).get_event(gcal_id)
+        if not self.owns(event):
+            return self.result(ui.back(self.cfg.texts.missing), reset=True)
+        booking.calendar(self.ctx).cancel_event(gcal_id)
+        result = self.result(ui.back(self.cfg.texts.cancelled), reset=True)
+        result.actions.append(
+            NotifyOwner(
+                "booking_cancelled",
+                "Cita cancelada",
+                self.ctx.idem.event("notify:booking_cancelled"),
+            )
+        )
+        return result
+
+    def proactive(self, value: str) -> PackResult:
+        operation, _, gcal_id = value.partition(":")
+        if operation != "reminder_confirm":
+            return self.cancel(gcal_id)
+        event = booking.calendar(self.ctx).get_event(gcal_id)
+        if not self.owns(event):
+            return self.result(ui.back(self.cfg.texts.missing), reset=True)
+        booking.calendar(self.ctx).patch_description(gcal_id, {"Estado": "confirmada"})
+        return self.result(ui.back(self.cfg.texts.confirmed), reset=True)
+
     def create(self, name: str) -> PackResult:
         day, slot = date.fromisoformat(self.state["day"]), time.fromisoformat(self.state["slot"])
+        moving = self.state.get("move_source")
+        if moving:
+            source = booking.calendar(self.ctx).get_event(moving)
+            if source is not None and not self.owns(source):
+                return self.result(ui.back(self.cfg.texts.missing), reset=True)
+            if (
+                source is None
+                and booking.calendar(self.ctx).get_event(booking.event_id(self.ctx, "move")) is None
+            ):
+                return self.result(ui.back(self.cfg.texts.missing), reset=True)
         try:
             event = booking.reserve(
-                self.ctx, day, slot, self.state["service"], name, event=self.event_mode()
+                self.ctx,
+                day,
+                slot,
+                self.state["service"],
+                name,
+                event=self.event_mode(),
+                operation="move" if moving else "booking",
             )
         except booking.SlotTaken:
             result = self.hours(refresh=True)
             result.replies.insert(0, ui.back(self.cfg.texts.slot_taken))
             return result
+        prefix = self.cfg.texts.moved if moving else self.cfg.texts.confirmed
+        kind = "booking_moved" if moving else "booking_created"
+        cancel_failed = False
+        if moving:
+            try:
+                booking.calendar(self.ctx).cancel_event(moving)
+            except PermanentError, TransientError:
+                cancel_failed = True
+                self.ctx.log.warning("Move created; source cancellation failed")
         svc = self.cfg.services[self.state["service"]]
         result = self.result(
-            ui.back(booking_text(self.cfg.texts.confirmed, svc.name, svc.price_eur, event.start)),
-            reset=True,
+            ui.back(booking_text(prefix, svc.name, svc.price_eur, event.start)), reset=True
         )
         result.actions = [
             UpdateContact(display_name=name),
             NotifyOwner(
-                "booking_created",
-                f"Nueva cita: {svc.name}, {event.start:%d/%m %H:%M}",
-                self.ctx.idem.event("notify:booking_created"),
+                kind,
+                f"{svc.name}, {event.start:%d/%m %H:%M}",
+                self.ctx.idem.event(f"notify:{kind}"),
             ),
         ]
+        if cancel_failed:
+            result.replies.append(Text(self.cfg.texts.move_cancel_failed))
+            result.actions.append(
+                NotifyOwner(
+                    "move_cancel_failed",
+                    "Nueva cita creada; revisar cancelación de la anterior",
+                    self.ctx.idem.event("notify:move_cancel_failed"),
+                )
+            )
         return result
 
     def handle(self, message: IncomingMessage) -> PackResult:
@@ -135,7 +225,15 @@ class Turn:
             return self.create(name)
         if message.type == "text":
             return self.menu()
-        if step == "MENU" and value == "menu_book":
+        if step == "MENU" and value in ("menu_view", "menu_cancel", "menu_move"):
+            return self.appointments(value.removeprefix("menu_"))
+        if step == "MENU" and value == "menu_info" and self.cfg.info_text:
+            result = self.result(ui.back("¿Necesitas algo más?"), reset=True)
+            result.replies.insert(0, Text(self.cfg.info_text))
+            return result
+        if step == "MENU" and value in ("menu_book", "menu_book_event"):
+            if value == "menu_book_event" and not self.cfg.special_event.active:
+                return self.menu()
             try:
                 count = len(booking.contact_events(self.ctx))
             except TransientError, PermanentError:
@@ -148,7 +246,42 @@ class Turn:
                     ),
                     reset=True,
                 )
-            self.state = {"step": "BOOK_SERVICE", "mode": "book"}
+            self.state = {
+                "step": "BOOK_SERVICE",
+                "mode": "event" if value == "menu_book_event" else "book",
+            }
+            return self.result(ui.services(self.cfg))
+        if step in ("CANCEL_SELECT", "MOVE_SELECT"):
+            mode = "cancel" if step == "CANCEL_SELECT" else "move"
+            if value.startswith(f"{mode}_page:"):
+                return self.appointments(mode, int(value.rsplit(":", 1)[1]), refresh=False)
+            if not value.startswith(f"{mode}_appt:"):
+                return self.menu()
+            raw_index = value.rsplit(":", 1)[1]
+            if not raw_index.isdecimal() or len(raw_index) > 4:
+                return self.menu()
+            index = int(raw_index)
+            if index >= len(self.state["appointments"]):
+                return self.menu()
+            gcal_id = self.state["appointments"][index]
+            if mode == "cancel":
+                return self.cancel(gcal_id)
+            source = booking.calendar(self.ctx).get_event(gcal_id)
+            if not self.owns(source):
+                return self.result(ui.back(self.cfg.texts.missing), reset=True)
+            assert source is not None
+            _, title_name = parse_service_title(
+                source.summary, {k: s.name for k, s in self.cfg.services.items()}
+            )
+            self.state = {
+                "step": "BOOK_SERVICE",
+                "mode": "event"
+                if source.start.date() in self.cfg.special_event.days
+                and self.cfg.special_event.active
+                else "move",
+                "move_source": gcal_id,
+                "move_name": parse_name(source.description) or title_name or "Cliente",
+            }
             return self.result(ui.services(self.cfg))
         if step == "BOOK_SERVICE" and value.startswith("service_"):
             key = value.removeprefix("service_")
@@ -175,6 +308,8 @@ class Turn:
             if slot not in self.state.get("slots", []):
                 return self.menu()
             self.state.update(step="BOOK_NAME", slot=slot)
+            if self.state.get("move_source"):
+                return self.create(self.state.get("move_name", "Cliente"))
             if self.ctx.contact.display_name and 2 <= len(self.ctx.contact.display_name) <= 100:
                 return self.result(
                     buttons_msg(
@@ -190,8 +325,12 @@ class Turn:
 def valid_state(turn: Turn) -> bool:
     state = turn.state
     step = state.get("step", "MENU")
-    if step in ("MENU", "BOOK_SERVICE"):
+    if step in ("MENU", "BOOK_SERVICE", "VIEW"):
         return True
+    if step in ("MOVE_SELECT", "CANCEL_SELECT"):
+        return isinstance(state.get("appointments"), list) and isinstance(
+            state.get("appointment_labels"), list
+        )
     if step not in ("BOOK_DAY", "BOOK_PERIOD", "BOOK_HOUR", "BOOK_NAME"):
         return False
     try:
@@ -217,6 +356,14 @@ def valid_state(turn: Turn) -> bool:
 
 def handle(ctx: PackContext, message: IncomingMessage) -> PackResult:
     turn = Turn(ctx)
+    if message.payload and message.payload.partition(":")[0] in (
+        "reminder_confirm",
+        "reminder_cancel",
+        "booking_cancel",
+    ):
+        return turn.proactive(message.payload)
+    if turn.state.get("mode") == "event" and not turn.cfg.special_event.active:
+        return turn.menu()
     if not valid_state(turn):
         return turn.menu()
     # Parse callback pages separately: service failures and programming errors must
