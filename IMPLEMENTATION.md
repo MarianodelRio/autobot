@@ -832,13 +832,13 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementada; revisión independiente pendiente. Config y textos del pack, dos plantillas de §9.7, validación de rangos, servicios, ventana de avisos, ids de calendarios distintos y fecha inicial consciente de zona para confirmaciones manuales. Config pública de origen convertida en fixture con calendarios sintéticos. Rangos canónicos `HH:MM-HH:MM`; textos sobrescribibles limitados a 512 caracteres para los interactivos.
 
 ### T-5.4 · `FakeCalendar` y flujo de reserva 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-5.2, T-5.3, T-1.5 · **Diseño:** §9.1, §9.5, §9.3
+- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.2, T-5.3, T-1.5 · **Diseño:** §9.1, §9.5, §9.3
 - **Hacer:**
   - `packs/salon/testing.py` (`FakeCalendar`).
   - Máquina de estados de Pedir cita: límite (falla en abierto), servicio, día, mañana/tarde, hora, nombre, creación con `ctx.lock` e id determinista, confirmación y `SlotTaken`.
 - **Acepta:** los escenarios de reserva de §9.8 en verde.
 - **Tests:** escenarios (reserva completa, día sin huecos, mañana/tarde, `SlotTaken`, límite, Calendar caído al pedir cita y al crear, reintento sin duplicado).
-- **Notas:** —
+- **Notas:** implementada; revisión independiente pendiente. `FakeCalendar` comprueba el protocolo y permite errores programables. Flujo de reserva con lectura por rango para días, paginación de días y horas, mañana/tarde si no caben, nombre conocido y validación de estado guardado. `reserve` toma el candado por día, comprueba idempotencia antes de disponibilidad y verifica el evento creado. Aviso `booking_created` y actualización del nombre. Calendario real aún sin conectar ni probar; escenarios en ambos canales.
 
 ### T-5.5 · Ver, mover, cancelar, evento especial y botones 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-5.4 · **Diseño:** §9.1
