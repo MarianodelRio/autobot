@@ -793,6 +793,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 
 **Notas para retomar (2026-10-23):**
 - Corregidos los dos fallos del CI de `10d92fa`: faltaba el directorio vacío `horarios_matcher/lineas/`, requerido por el validador. `.gitkeep` lo conserva al clonar; no cambia el comportamiento del motor ni del validador.
+- El CI de `bf0d378` confirmó todos los tests y migraciones, pero detectó `PYSEC-2026-4322` en `brotli 1.2.0` (dependencia de las herramientas PDF). Actualizado solo `brotli` a `1.2.1` en `uv.lock`, con la versión de uv de CI; auditoría completa sin vulnerabilidades conocidas, 53 tests de herramientas y generación del PDF real correctos tras actualizar.
 - Las seis tareas de F4 están implementadas; el tag inicial está en `origin` y la revisión HTML/PDF del dataset real se genera correctamente. Las preguntas de negocio P28, P30 y P37 siguen abiertas en el dataset.
 - La validación manual sigue pendiente de M-3.1 (bot de desarrollo y operador configurados; no hay `.env` local en esta sesión). Las personas de la empresa se incorporarán en M-4.1; no se ha activado el canal real ni se ha dado por hecha ninguna prueba real. F5 permanece sin empezar.
 
