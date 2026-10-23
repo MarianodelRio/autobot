@@ -871,13 +871,13 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementada; revisión independiente pendiente. Integración por webhook → runtime → outbox → adaptador con Calendar y proveedores simulados: main WhatsApp, main Telegram y bot de pruebas sobre ambos tipos de tenant. Se comprueba que el calendario y el proveedor ajenos no reciben llamadas, que el aviso del bot de pruebas va a ops y que las confirmaciones manuales solo salen por main WhatsApp. Revisión propia adicional: rechazo de callbacks proactivos vacíos/largos sin E/S y errores esperados de Google sin encadenar detalles del proveedor; comprobación estática del protocolo del cliente real.
 
 ### T-5.8 · Migración de citas existentes ⚠️ 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-5.1, T-5.2 · **Diseño:** §9.3
+- **Estado:** blocked · **Revisión:** pendiente · **Depende de:** T-5.1, T-5.2 · **Diseño:** §9.3
 - **Hacer:** `tools/migrate_salon_events.py <slug> [--dry-run]`.
   - Recorre las citas futuras con `WaId:`, crea sus contactos y añade `fp_contact`, `fp_key` y `fp_service`.
   - Es idempotente y muestra un informe.
 - **Acepta:** ejecutado dos veces, la segunda no cambia nada; `--dry-run` no escribe nada.
 - **Tests:** con `FakeCalendar`.
-- **Notas:** escribe en el calendario real del negocio, así que solo lo ejecuta el operador (M-8.1).
+- **Notas:** código y tests implementados; revisión independiente y aprobación humana ⚠️ pendientes antes de cerrar. Escribe en el calendario real del negocio, así que solo lo ejecuta el operador (M-8.1); no se ha ejecutado sobre servicios reales. CLI con `--dry-run` sin escrituras ni en BD ni Calendar, lectura de todas las citas futuras (sin horizonte artificial, paginación acotada), contactos main bajo RLS y metadatos `fp_contact`, `fp_key` estable y `fp_service`. Conserva descripción, fechas y metadatos ajenos; no sobrescribe otra propiedad ni migra servicios desconocidos. Tests con FakeCalendar y BD: segunda pasada no escribe, fallo parcial se puede reintentar sin duplicar contactos, dry-run no escribe, aislamiento respecto a test y ausencia de datos personales en el informe.
 
 ### T-5.9 · Concurrencia de reservas 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-5.4, T-3.4 · **Diseño:** §9.5, §17.1

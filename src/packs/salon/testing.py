@@ -42,6 +42,13 @@ class FakeCalendar:
             key=lambda e: e.start,
         )
 
+    def list_future_events(self, start: datetime) -> list[CalendarEvent]:
+        self._check("list_future_events")
+        return sorted(
+            [e for e in self.events.values() if e.status != "cancelled" and e.end > start],
+            key=lambda e: e.start,
+        )
+
     def get_event(self, gcal_id: str) -> CalendarEvent | None:
         self._check("get_event")
         event = self.events.get(gcal_id)

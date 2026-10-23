@@ -147,16 +147,22 @@ class CalendarClient:
     def list_events(self, start: datetime, end: datetime) -> list[Event]:
         if start.tzinfo is None or end.tzinfo is None or end <= start:
             raise ValueError("Calendar window needs ordered aware datetimes")
+        return self._list(start, end)
+
+    def list_future_events(self, start: datetime) -> list[Event]:
+        if start.tzinfo is None:
+            raise ValueError("Calendar window needs an aware datetime")
+        return self._list(start, None)
+
+    def _list(self, start: datetime, end: datetime | None) -> list[Event]:
         events: list[Event] = []
         token = None
         for _ in range(10):
+            bounds = {"timeMin": start.isoformat()}
+            if end is not None:
+                bounds["timeMax"] = end.isoformat()
             raw = self._request(
-                "list",
-                timeMin=start.isoformat(),
-                timeMax=end.isoformat(),
-                singleEvents=True,
-                orderBy="startTime",
-                pageToken=token,
+                "list", **bounds, singleEvents=True, orderBy="startTime", pageToken=token
             )
             events.extend(
                 self._event(e) for e in raw.get("items", []) if e.get("status") != "cancelled"

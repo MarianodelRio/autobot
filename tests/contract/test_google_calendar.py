@@ -138,3 +138,9 @@ def test_the_real_client_satisfies_the_pack_protocol() -> None:
     port: CalendarPort = cal
     port.check_access()
     assert api.events().list.call_args.kwargs["maxResults"] == 1
+
+
+def test_future_events_for_migration_have_no_artificial_horizon() -> None:
+    cal, api = client({"items": [EVENT]})
+    assert len(cal.list_future_events(START)) == 1
+    assert "timeMax" not in api.events().list.call_args.kwargs
