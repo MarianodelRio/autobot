@@ -2,7 +2,7 @@
 
 Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de Telegram compartido para probar cualquier negocio. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). El diseño completo está en [`design.md`](design.md); este fichero resume las reglas para trabajar en el repo.
 
-**Estado:** diseño cerrado; implementación sin empezar. `design.md` es la especificación e `IMPLEMENTATION.md` el plan.
+**Estado:** implementación en curso; el avance y los pendientes se consultan en `IMPLEMENTATION.md`. `design.md` es la especificación.
 
 ## Idioma
 

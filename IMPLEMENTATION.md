@@ -86,7 +86,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F1 | Núcleo puro (`core`) | 5 | 5 | done |
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
-| F4 | Pack `bus` | 6 | 6 | validación pendiente |
+| F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 0 | pending |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
@@ -772,7 +772,8 @@ Cada acción está detallada en su fase, con cómo verificarla.
     - `config` portada de `buscaBus/config.yaml`: nombre, teléfono, horario de oficina, solo la web (D10) y los 8 pueblos del menú (D7), con sus comentarios.
   - **Dataset:** `datasets/timetable/` es `buscaBus/horarios/` sin cambios (`diff -r` vacío, commit `3125dba`), con los comentarios de las preguntas abiertas P28, P30 y P37.
   - **Comprobado:** `make bus-validar TENANT=autocares-ss` da "Sin errores." y los 11 avisos del origen (Villafranca, P28, P30, P37 y siete "posible mismo autobús"). El registro carga el tenant sin `degraded` y con el menú resuelto; el canal `main` está deshabilitado (faltan los ids y los secretos). `tests/test_tenants.py` (puerta de CI) en verde.
-  - **Tag inicial:** buscaBus no tiene tags de publicación. El último cambio de su dataset es del 2026-10-08 (`3125dba`), así que el tag equivalente es `datos/autocares-ss/2026-10-08`, sobre el commit de esta tarea. Se crea a mano tras el commit, con el árbol limpio (`git tag datos/autocares-ss/2026-10-08 <commit de T-4.6>`), porque `bus-publicar` siempre pone la fecha de hoy. Es local; subirlo (`git push origin datos/autocares-ss/2026-10-08`) espera a la persona.
+  - **Tag inicial:** buscaBus no tiene tags de publicación. El último cambio de su dataset es del 2026-10-08 (`3125dba`), así que el tag equivalente es `datos/autocares-ss/2026-10-08`, sobre `10d92fa` (T-4.6). Creado con esa fecha histórica, porque `bus-publicar` siempre pone la fecha de hoy; subido a `origin` el 2026-10-23 por petición de la persona.
+  - **Remate (2026-10-23):** `make bus-revision TENANT=autocares-ss` genera HTML y PDF con los datos vivos (15 líneas, 224 viajes), reconoce ese tag y muestra «Sin cambios desde la versión publicada». El dataset vivo sigue siendo idéntico a la copia congelada de las pruebas.
   - **De la revisión:** el ejemplo de `secrets.yaml` de §5.3 ponía `autocares-ss` con canal Telegram; ahora con claves de WhatsApp, y el de Telegram con otro slug.
 
 ### 👤 M-4.1 · Autocares San Sebastián: personas de prueba y verificación en Meta
@@ -785,8 +786,15 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Verificar:** los ids están en `testers.telegram` del tenant, la SIM está disponible y la verificación figura como enviada en Meta Business Manager.
 
 ### ✅ Validación F4
-- [ ] Pasan todas las pruebas portadas de buscaBus.
+- [x] Pasan todas las pruebas portadas de buscaBus.
+- [x] `make check` completo en local con PostgreSQL 18: 1.326 tests, todos correctos; Ruff, formato, mypy e import-linter en verde (2026-10-23). Django sin incidencias, sin migraciones pendientes y linter de migraciones en verde.
+- [x] Integración automatizada del runtime: consulta Pozoblanco → Córdoba y «Ver la vuelta» por el bot de pruebas; consulta por los canales `main` de WhatsApp y Telegram. Proveedores simulados, sin tráfico real.
 - [ ] Prueba de extremo a extremo en local con el bot de pruebas: elegir Autocares → Pozoblanco → Córdoba → un día → resultado correcto (comparado con buscaBus) → "Ver la vuelta".
+
+**Notas para retomar (2026-10-23):**
+- Corregidos los dos fallos del CI de `10d92fa`: faltaba el directorio vacío `horarios_matcher/lineas/`, requerido por el validador. `.gitkeep` lo conserva al clonar; no cambia el comportamiento del motor ni del validador.
+- Las seis tareas de F4 están implementadas; el tag inicial está en `origin` y la revisión HTML/PDF del dataset real se genera correctamente. Las preguntas de negocio P28, P30 y P37 siguen abiertas en el dataset.
+- La validación manual sigue pendiente de M-3.1 (bot de desarrollo y operador configurados; no hay `.env` local en esta sesión). Las personas de la empresa se incorporarán en M-4.1; no se ha activado el canal real ni se ha dado por hecha ninguna prueba real. F5 permanece sin empezar.
 
 ---
 
