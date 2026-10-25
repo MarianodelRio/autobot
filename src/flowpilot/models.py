@@ -6,6 +6,7 @@ from flowpilot.runtime.models import (
     InboundEvent,
     Notification,
     OutboundMessage,
+    PlatformCache,
     TestBotEvent,
     TestSession,
 )
@@ -17,6 +18,7 @@ __all__ = [
     "InboundEvent",
     "Notification",
     "OutboundMessage",
+    "PlatformCache",
     "Tenant",
     "TestBotEvent",
     "TestSession",

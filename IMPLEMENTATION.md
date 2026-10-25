@@ -929,14 +929,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** las alertas llegan al chat de ops, el latido externo detecta un worker parado y el Admin muestra el estado.
 
 ### T-6.1 · Bot de avisos 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-3.6 · **Diseño:** §11, §6.5
+- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-3.6 · **Diseño:** §11, §6.5
 - **Hacer:**
   - Entrega de `NotifyOwner` (`notification` y `send_notification`), incluida la redirección a ops del canal `test`.
   - `manage.py notify_link <slug>`.
   - Envío de alertas de operación con enfriamiento de 30 min en la caché de Django en BD.
 - **Acepta:** un aviso se entrega una sola vez; sin `telegram_chat_id` solo se registra; una alerta no se repite antes de 30 min.
 - **Tests:** integración con Telegram simulado.
-- **Notas:** —
+- **Notas:** implementados `send_notification` (cola outbound y candado `owner:<tenant>`), bot separado por `NOTIFY_BOT_TOKEN`, selección de destinatario por `audience` y `notify_link` con código efímero, validación de chat privado y rechazo de webhook activo; el comando muestra el id, sin modificar YAML. Las alertas `send_ops_alert` usan `DatabaseCache` sobre `platform_cache` (migración aditiva 0005, sin RLS, roles ni borrados), con candado transaccional por tipo/tenant para evitar carreras al expirar y enfriamiento de 30 min conservado ante errores. Entrega conservadora documentada en §11: se confirma `failed` antes del HTTP, éxito pasa a `sent`, solo `RetryLater` permite reintentar hasta cinco veces; interrupciones y resultados ambiguos no se reenvían. 20 tests de integración con PostgreSQL local y Telegram simulado cubren entrega única, RLS, aislamiento test/ops, suscripciones, errores, interrupciones, concurrencia/expiración/presión de caché y vinculación. `make check` en verde: Ruff, formato, mypy, import-linter y 1.609 tests (96,39 s); `makemigrations --check --dry-run`, `lintmigrations` y `git diff --check` pasan. Revisión independiente pendiente; M-6.1 sigue pendiente y no se han usado servicios ni credenciales reales.
 
 ### T-6.2 · Comprobación de operación y salud 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-6.1, T-5.6, T-4.4 · **Diseño:** §15.3, §15.1, §15.2

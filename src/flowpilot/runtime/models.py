@@ -224,3 +224,17 @@ class TestSession(models.Model):
 
     def __str__(self) -> str:
         return f"test_session {self.tenant_id}"  # never the Telegram user id
+
+
+class PlatformCache(models.Model):
+    """Django DatabaseCache's platform table (no customer data or tenant scope)."""
+
+    cache_key = models.CharField(max_length=255, primary_key=True)
+    value = models.TextField()
+    expires = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "platform_cache"
+
+    def __str__(self) -> str:
+        return self.cache_key

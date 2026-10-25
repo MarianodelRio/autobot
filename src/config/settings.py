@@ -151,3 +151,13 @@ LOGGING = {
 }
 
 GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "")
+
+# Outbound-only notification bot (§11); unconfigured locally until M-6.1.
+NOTIFY_BOT_TOKEN = os.environ.get("NOTIFY_BOT_TOKEN", "")
+OPS_TELEGRAM_CHAT_ID = os.environ.get("OPS_TELEGRAM_CHAT_ID", "")
+CACHES = {
+    "default": {
+        "BACKEND": "flowpilot.cache.CooldownCache",
+        "LOCATION": "platform_cache",
+    }
+}

@@ -113,6 +113,22 @@ def send_message(tenant_id: str, outbound_id: str) -> None:
         close_old_connections()
 
 
+@app.task(queue=OUTBOUND, name=SEND_NOTIFICATION, retry=SendRetryStrategy(), pass_context=True)
+def send_notification(context: JobContext, tenant_id: str, notification_id: str) -> None:
+    from flowpilot.runtime import notifications
+    from flowpilot.runtime.outbound import MAX_SEND_ATTEMPTS
+
+    close_old_connections()
+    try:
+        notifications.send_notification(
+            UUID(tenant_id),
+            UUID(notification_id),
+            last_attempt=context.job.attempts >= MAX_SEND_ATTEMPTS - 1,
+        )
+    finally:
+        close_old_connections()
+
+
 @app.task(queue=PERIODIC, name=DISPATCH_PERIODIC)
 def dispatch_periodic(timestamp: int, pack: str, name: str) -> None:
     from flowpilot.runtime import periodic
