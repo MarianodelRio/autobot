@@ -145,3 +145,49 @@ def test_manual_confirmations_only_use_whatsapp(
         assert messages[0].payload is not None
         assert messages[0].payload["template"]["name"] == "confirmacion_cita"
         assert Contact.objects.using("owner").get().channel == "main"
+
+
+def test_delete_then_transient_failure_retries_with_owner_notice(
+    salon_setup: Any, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from django.db import connections
+
+    from core.errors import TransientError
+    from flowpilot.runtime.models import InboundEvent
+
+    request.getfixturevalue("recorded_providers")
+    setup, calendars = salon_setup
+    tenant = setup(
+        slug="wa", owner={"telegram_chat_id": 987654321, "notify": ["booking_cancelled"]}
+    )
+    for value in [
+        "hola",
+        "menu_book",
+        "service_corte",
+        "day_2026-03-24",
+        "period_morning",
+        "hour_10:00",
+        "Lucía",
+        "back_to_menu",
+        "menu_cancel",
+    ]:
+        assert post_wa((wa_text if value in ("hola", "Lucía") else wa_press)(value)) == 200
+        drain()
+    original = calendars.main.cancel_event
+
+    def delete_then_fail(gcal_id: str) -> None:
+        assert not connections["default"].in_atomic_block
+        original(gcal_id)
+        raise TransientError("verification temporarily unavailable")
+
+    monkeypatch.setattr(calendars.main, "cancel_event", delete_then_fail)
+    assert post_wa(wa_press("cancel_appt:0")) == 200
+    with pytest.raises(TransientError):
+        drain()
+    event = InboundEvent.objects.using("owner").get(status="pending", tenant_id=tenant.id)
+    assert event.effect_state
+    monkeypatch.setattr(calendars.main, "cancel_event", original)
+    drain()
+    assert InboundEvent.objects.using("owner").get(id=event.id).status == "done"
+    assert Notification.objects.using("owner").filter(kind="booking_cancelled").count() == 1
+    assert len(calendars.main.cancelled) == 1

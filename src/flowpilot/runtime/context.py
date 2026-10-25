@@ -26,6 +26,7 @@ from core.clock import SystemClock
 from core.errors import TransientError
 from core.idem import IdemKeys
 from core.pack import ContactInfo, PackContext
+from flowpilot.runtime.effects import StoredEffects
 from flowpilot.runtime.models import Channel
 from flowpilot.tenancy.registry import LoadedTenant
 from integrations.google_calendar import CalendarClient
@@ -80,6 +81,9 @@ def build_context(
         ),
         lock=lambda key: advisory_lock(f"{info.id}:{calendar_id or '-'}:{key}"),
         idem=IdemKeys(event_id),
+        effects=StoredEffects(info.id, event_id, contact.id, str(channel), calendar_id)
+        if event_id is not None and contact is not None
+        else None,
         can_contact_by_phone=(channel == Channel.MAIN and tenant.file.channel.type == "whatsapp"),
         log=logging.LoggerAdapter(logging.getLogger(f"packs.{tenant.pack.name}"), extra),
     )

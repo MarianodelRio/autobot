@@ -33,6 +33,7 @@ from core.proactive import ProactiveMessage
 from core.replies import Buttons, List, Reply, Text
 from core.serialization import Outbound, dump_outbound, load_outbound
 from core.testing.clock import FixedClock
+from core.testing.effects import MemoryEffects
 
 type ChannelType = Literal["whatsapp", "telegram"]
 
@@ -177,6 +178,7 @@ class Conversation:
         self._event_ids = (
             UUID(int=0x0192_0000_0000_7000_8000_0000_0000_0000 + n) for n in itertools.count(1)
         )
+        self._effects: dict[str, dict[str, Any]] = {}
         self._pressable: set[str] = set()
         self._last: _Snapshot | None = None
 
@@ -314,6 +316,15 @@ class Conversation:
             calendar=self.calendar if self.pack.needs_calendar else None,
             lock=self._lock,
             idem=idem,
+            effects=MemoryEffects(
+                self._effects,
+                (
+                    f"{self.tenant.id}:{idem.event_id}:{contact.id if contact else None}:"
+                    f"{self.channel}:{id(self.calendar)}"
+                ),
+            )
+            if idem.event_id is not None
+            else None,
             log=logging.getLogger(f"packs.{self.pack.name}"),
             can_contact_by_phone=self.channel == "whatsapp",
         )

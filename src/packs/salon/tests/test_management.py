@@ -188,3 +188,30 @@ def test_view_pages_include_every_appointment(salon: Conversation) -> None:
     salon.send("hola")
     salon.press("menu_view").expect(text_contains="13:30")
     salon.press("view_page:1").expect(text_contains="14:00").expect(text_contains="14:30")
+
+
+def test_replayed_cancellation_keeps_confirmation_and_owner_notice(salon: Conversation) -> None:
+    gcal_id = book(salon)
+    salon.press("back_to_menu")
+    salon.press("menu_cancel")
+    salon.press("cancel_appt:0").expect(text_contains="cancelada")
+    salon.replay().expect(text_contains="cancelada")
+    assert salon.calendar.cancelled == [gcal_id]
+    assert len([n for n in salon.notifications if n.kind == "booking_cancelled"]) == 1
+
+
+def test_global_cancellation_replay_and_current_ownership(salon: Conversation) -> None:
+    gcal_id = book(salon)
+    original = salon.calendar.events[gcal_id]
+    salon.press(f"booking_cancel:{gcal_id}", check=False).expect(text_contains="cancelada")
+    salon.replay().expect(text_contains="cancelada")
+    salon.calendar.add(replace(original, private=original.private | {"fp_contact": "foreign"}))
+    salon.replay().expect(text_contains="No se encontró")
+    assert salon.calendar.cancelled == [gcal_id]
+
+
+def test_a_new_inbound_cannot_reuse_cancellation_evidence(salon: Conversation) -> None:
+    gcal_id = book(salon)
+    salon.press(f"booking_cancel:{gcal_id}", check=False).expect(text_contains="cancelada")
+    salon.press(f"booking_cancel:{gcal_id}", check=False).expect(text_contains="No se encontró")
+    assert len([n for n in salon.notifications if n.kind == "booking_cancelled"]) == 1

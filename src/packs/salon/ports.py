@@ -42,5 +42,6 @@ class CalendarPort(Protocol):
         end: datetime,
         *,
         external_id: str | None = None,
+        alias_ids: Sequence[str] = (),
     ) -> Sequence[CalEvent]: ...
     def check_access(self) -> None: ...

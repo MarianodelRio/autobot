@@ -98,7 +98,13 @@ class Turn:
         return bool(
             event is not None
             and not event.all_day
-            and belongs(event, str(contact.id), contact.phone, contact.external_id)
+            and belongs(
+                event,
+                str(contact.id),
+                contact.phone,
+                contact.external_id,
+                [str(key) for key in contact.alias_ids],
+            )
         )
 
     def appointments(self, mode: str, page: int = 0, *, refresh: bool = True) -> PackResult:
@@ -129,10 +135,19 @@ class Turn:
         )
 
     def cancel(self, gcal_id: str) -> PackResult:
+        if self.ctx.effects is None:
+            raise PermanentError("Cancellation requires an effect journal")
+        key, authorization = f"cancel:{gcal_id}", {"target": gcal_id}
+        previous = self.ctx.effects.get(key)
         event = booking.calendar(self.ctx).get_event(gcal_id)
-        if not self.owns(event):
+        if event is not None:
+            if not self.owns(event):
+                return self.result(ui.back(self.cfg.texts.missing), reset=True)
+            # Record verified ownership before deletion, in a separate short transaction.
+            self.ctx.effects.put(key, authorization)
+            booking.calendar(self.ctx).cancel_event(gcal_id)
+        elif previous != authorization:
             return self.result(ui.back(self.cfg.texts.missing), reset=True)
-        booking.calendar(self.ctx).cancel_event(gcal_id)
         result = self.result(ui.back(self.cfg.texts.cancelled), reset=True)
         result.actions.append(
             NotifyOwner(

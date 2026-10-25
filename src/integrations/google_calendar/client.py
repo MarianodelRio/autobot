@@ -2,7 +2,7 @@
 
 import re
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from datetime import time as day_time
@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 import google_auth_httplib2  # type: ignore[import-untyped]
 import httplib2  # type: ignore[import-untyped]
-from google.auth.exceptions import TransportError
+from google.auth.exceptions import RefreshError, TransportError
 from google.oauth2 import service_account
 from googleapiclient.discovery import build  # type: ignore[import-untyped]
 from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
@@ -58,9 +58,15 @@ def _phone(value: str) -> str:
     return "34" + digits if len(digits) == 9 else digits
 
 
-def owned(event: Event, contact_id: str, phone: str | None, external_id: str | None) -> bool:
+def owned(
+    event: Event,
+    contact_id: str,
+    phone: str | None,
+    external_id: str | None,
+    alias_ids: Sequence[str] = (),
+) -> bool:
     if event.private.get("fp_contact"):
-        return event.private["fp_contact"] == contact_id
+        return event.private["fp_contact"] in (contact_id, *alias_ids)
     description = strip_html(event.description)
     wa = re.search(r"(?im)^\s*waid\s*:\s*([^\s]+)", description)
     tel = re.search(r"(?im)^\s*tel(?:[eé]fono)?\s*:\s*([+\d][\d -]*)", description)
@@ -106,6 +112,11 @@ class CalendarClient:
                 status = int(exc.resp.status)
                 if status not in (429, 500, 502, 503, 504):
                     raise
+            except RefreshError as exc:
+                if not exc.retryable:
+                    raise CalendarPermanentError(
+                        "Calendar credentials could not be refreshed"
+                    ) from None
             except OSError, TimeoutError, TransportError:
                 pass
             if attempt < 2:
@@ -246,12 +257,13 @@ class CalendarClient:
         end: datetime,
         *,
         external_id: str | None = None,
+        alias_ids: Sequence[str] = (),
     ) -> list[Event]:
         return [
             event
             for event in self.list_events(start, end)
             if not fold(event.summary).startswith("[cfg]")
-            and owned(event, contact_id, phone, external_id)
+            and owned(event, contact_id, phone, external_id, alias_ids)
             and not event.all_day
         ]
 

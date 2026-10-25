@@ -91,7 +91,12 @@ def contact_events(ctx: PackContext) -> Sequence[CalEvent]:
     return [
         e
         for e in calendar(ctx).list_contact_events(
-            str(ctx.contact.id), ctx.contact.phone, now, end, external_id=ctx.contact.external_id
+            str(ctx.contact.id),
+            ctx.contact.phone,
+            now,
+            end,
+            external_id=ctx.contact.external_id,
+            alias_ids=[str(key) for key in ctx.contact.alias_ids],
         )
         if e.start >= now
     ]

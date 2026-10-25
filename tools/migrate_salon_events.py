@@ -24,8 +24,10 @@ def main(
     from django.db import DatabaseError
 
     from flowpilot.runtime.context import build_context, google_calendar
+    from flowpilot.runtime.identity import phone_group, phone_key
     from flowpilot.runtime.models import Channel, Contact
     from flowpilot.tenancy.registry import get_registry
+    from flowpilot.tenancy.schema import BSUID
     from flowpilot.tenancy.tx import tenant_tx
     from packs.salon.booking import calendar, configuration
     from packs.salon.migration import migrate
@@ -58,13 +60,43 @@ def main(
     def contact_for(external_id: str, phone: str | None) -> str:
         try:
             with tenant_tx(tenant.id):
-                contact, _ = Contact.objects.get_or_create(
-                    tenant_id=tenant.id,
-                    channel=Channel.MAIN,
-                    external_id=external_id,
-                    defaults={"phone_e164": f"+{phone}" if phone else None},
+                number = phone_key(phone or (external_id if external_id.isdecimal() else ""))
+                group = phone_group(tenant.id, number, lock=True) if number else []
+                exact = (
+                    Contact.objects.select_for_update()
+                    .filter(tenant_id=tenant.id, channel=Channel.MAIN, external_id=external_id)
+                    .first()
                 )
-                return str(contact.id)
+                if exact is not None and all(c.id != exact.id for c in group):
+                    group.append(exact)
+                bsuid = [c for c in group if BSUID.fullmatch(c.external_id)]
+                explicit_bsuid = bool(BSUID.fullmatch(external_id))
+                if len(bsuid) > 1 or (
+                    explicit_bsuid and any(c.external_id != external_id for c in bsuid)
+                ):
+                    raise PermanentError("Ambiguous legacy contact identity")
+                # A scoped user id is explicit identity, unlike a legacy phone id.
+                # A phone match must never replace that explicit identity.
+                selected = (
+                    exact
+                    if explicit_bsuid
+                    else (bsuid[0] if bsuid else exact or (group[0] if group else None))
+                )
+                if selected is None:
+                    selected = Contact.objects.create(
+                        tenant_id=tenant.id,
+                        channel=Channel.MAIN,
+                        external_id=external_id,
+                        phone_e164=f"+{number}"
+                        if number and not BSUID.fullmatch(external_id)
+                        else None,
+                    )
+                opted_out = selected.opt_out or any(c.opt_out for c in group)
+                unreachable = selected.unreachable or any(c.unreachable for c in group)
+                if (selected.opt_out, selected.unreachable) != (opted_out, unreachable):
+                    selected.opt_out, selected.unreachable = opted_out, unreachable
+                    selected.save(update_fields=["opt_out", "unreachable"])
+                return str(selected.id)
         except DatabaseError:
             raise PermanentError("Contact could not be prepared") from None
 

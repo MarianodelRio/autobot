@@ -144,3 +144,14 @@ def test_future_events_for_migration_have_no_artificial_horizon() -> None:
     cal, api = client({"items": [EVENT]})
     assert len(cal.list_future_events(START)) == 1
     assert "timeMax" not in api.events().list.call_args.kwargs
+
+
+@pytest.mark.parametrize("retryable", [True, False])
+def test_refresh_failure_is_classified(retryable: bool) -> None:
+    from google.auth.exceptions import RefreshError
+
+    failure = RefreshError("token endpoint unavailable", retryable=retryable)  # type: ignore[no-untyped-call]
+    cal, api = client(*[failure] * 3)
+    with pytest.raises(CalendarTransientError if retryable else CalendarPermanentError):
+        cal.list_events(START, END)
+    assert api.events().list.call_count == (3 if retryable else 1)

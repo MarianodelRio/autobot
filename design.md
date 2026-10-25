@@ -600,7 +600,7 @@ def process_event(tenant_id, event_id):                     # el trabajo recibe 
   - **Orden de decisión** (sin transacción): contacto por encima de su límite (más de 20 mensajes en 60 s, en memoria del worker, que es un solo proceso; un reintento no vuelve a contar) → nada, ni siquiera el texto de reinicio; tenant `degraded` → texto genérico; `baja`/`alta`; `menu` (estado `{}` y el pack recibe el mensaje vacío); el pack, con una copia del estado. `acknowledge` va antes y, si falla, se registra y se sigue. En los dos primeros casos la conversación no se toca, así que al arreglarse el tenant sigue donde estaba.
   - **Errores del pack:** `TransientError` se relanza para que Procrastinate reintente; en el último intento, y ante cualquier otra excepción, texto de recuperación, estado `{}` y evento `failed` con el error (solo el tipo). La excepción se registra con su traza, de donde la tomará Sentry (T-6.2).
   - **tx2** relee el evento con `SELECT … FOR UPDATE` y no hace nada si ya no está `pending`, así que dos ejecuciones del mismo evento nunca responden dos veces.
-  - **`apply_actions(tenant, channel, actions, contact, event, now)`:** `UpdateContact` actualiza nombre u `opt_out` (y `opt_out_at`). `SendProactive` solo se crea si el contacto existe, es del mismo canal que la acción, y no tiene `opt_out` ni `unreachable`; con `ContactRef(phone=…)` solo en un canal `main` de WhatsApp, buscando el contacto por teléfono (el de actividad más reciente) o creándolo con el teléfono como `external_id`, y sin enviar si cualquier contacto con ese teléfono tiene `opt_out` o `unreachable` (la misma persona puede tener un contacto con BSUID y otro creado desde el teléfono); la `idem_key` del pack es única, así que repetirla no crea otro aviso. `NotifyOwner` crea la `notification` (única por `idem_key`) y encola `send_notification` (candado `owner:<tenant>`): en el canal `main`, solo si el dueño tiene chat y quiere ese `kind` (`audience = owner`), y si no, solo se registra; en el canal `test`, siempre, con `audience = ops` y el texto `🧪 <negocio>: <texto>` (§6.5).
+  - **`apply_actions(tenant, channel, actions, contact, event, now)`:** `UpdateContact` actualiza nombre u `opt_out` (y `opt_out_at`). `SendProactive` solo se crea si el contacto existe, es del mismo canal que la acción, y no tiene `opt_out` ni `unreachable`; con `ContactRef(phone=…)` solo en un canal `main` de WhatsApp, buscando el contacto por teléfono (el de actividad más reciente) o creándolo con el teléfono como `external_id`, y sin enviar si cualquier contacto con ese teléfono tiene `opt_out` o `unreachable` (la misma persona puede tener un contacto con BSUID y otro creado desde el teléfono); el veto `opt_out`/`unreachable` de ese grupo telefónico también se comprueba al resolver `ContactRef(contact_id=…)` en main WhatsApp, incluyendo identidades numéricas sin `phone_e164`; la `idem_key` del pack es única, así que repetirla no crea otro aviso. `NotifyOwner` crea la `notification` (única por `idem_key`) y encola `send_notification` (candado `owner:<tenant>`): en el canal `main`, solo si el dueño tiene chat y quiere ese `kind` (`audience = owner`), y si no, solo se registra; en el canal `test`, siempre, con `audience = ops` y el texto `🧪 <negocio>: <texto>` (§6.5).
   - **`apply_status`:** `sent`, `delivered` o `read` pasan a `sent` cualquier mensaje que no esté `failed` (incluido un `unknown`, o un `sending` al que el estado adelantó) y fijan `sent_at` y el `provider_message_id` si faltan; `failed` pasa a `failed` un mensaje `sent`, `unknown` o `sending`, con `last_error = "status failed: <códigos>"`. Un estado de un mensaje desconocido deja el evento `done`.
 
 #### 7.3 Conversación
@@ -730,7 +730,7 @@ class PackContext:
     tenant: TenantInfo                  # id, slug, name, timezone
     config: BaseModel                   # config validada del pack
     data: object | None                 # lo que devolvió load_data
-    contact: ContactInfo | None         # id, external_id, phone (puede ser None), display_name, opt_out
+    contact: ContactInfo | None         # id, external_id, phone (puede ser None), display_name, opt_out, alias_ids (UUIDs validados por el runtime)
     state: Mapping[str, Any]            # estado actual (solo lectura)
     clock: Clock                        # Protocol con now() en la zona del tenant; SystemClock en producción, reloj fijo en tests
     calendar: Any                       # CalendarPort | None del pack (packs/salon/ports.py), que core no puede importar; solo si needs_calendar; ya ligado al calendario del canal (§6.5)
@@ -738,6 +738,7 @@ class PackContext:
     idem: IdemKeys                      # .event(name) = "<name>:<event_id>" (evento actual); .stable(name) = name, para barridos
     log: Logger                         # con tenant y event_id; enmascara teléfonos
     can_contact_by_phone: bool = False   # capacidad de resolver un destinatario por teléfono (§6.6), sin exponer el canal
+    effects: EffectJournal | None = None  # diario de autorización ligado al evento entrante; get/put de objetos JSON
 
 @dataclass
 class PackResult:
@@ -798,7 +799,7 @@ Estados: `MENU`, `BOOK_SERVICE`, `BOOK_DAY`, `BOOK_PERIOD`, `BOOK_HOUR`, `BOOK_N
 - **Texto libre** fuera del paso de nombre → vuelve al menú. Los interactivos llevan el pie "Cualquier texto te llevará de vuelta al menú principal".
 - **Botones de avisos proactivos** (válidos en cualquier estado): `reminder_confirm:<gcal_id>`, `reminder_cancel:<gcal_id>`, `booking_cancel:<gcal_id>`. Antes de actuar se comprueba que **la cita es de ese contacto** (por `fp_contact`; en citas manuales, por teléfono). Si no lo es, se responde "No se encontró esa cita".
   - Confirmar → escribe `Estado: confirmada` en la descripción del evento (lo ve el dueño) y responde "¡Tu cita está confirmada! ✅".
-  - Cancelar → cancela (idempotente), responde con el mensaje de cancelación y avisa al dueño si procede.
+  - Cancelar → cancela (idempotente), responde con el mensaje de cancelación y avisa al dueño si procede. Antes del borrado, tras comprobar la propiedad actual, guarda evidencia de autorización mediante `ctx.effects`. Si el worker falla después del borrado, el mismo evento puede recuperar su confirmación y aviso; otro evento, contacto, tenant, canal o calendario no puede reutilizar esa evidencia. Si la cita aún existe se comprueba de nuevo su propietario. El runtime conserva el diario en `inbound_event.effect_state` mediante transacciones breves bajo RLS, cerradas antes de llamar a Calendar.
 - **Hueco recién ocupado** (`SlotTaken`): "Ese horario ya no está disponible" y vuelve a ofrecer las horas libres de ese día.
 - **Avisos al dueño** (`NotifyOwner`): `booking_created`, `booking_cancelled`, `booking_moved` y `move_cancel_failed`, con clave `ctx.idem.event("notify:<kind>")`.
 
@@ -855,7 +856,7 @@ class CalendarPort(Protocol):
 # CalEvent: gcal_id, summary, description (texto sin HTML), start, end, all_day, created, status, private
 ```
 
-- **Contrato estructural:** `CalEvent` es un protocolo de lectura y las consultas devuelven `Sequence[CalEvent]`; así la integración y el doble de pruebas lo cumplen sin importar el pack. `NewEvent` es un mapping con el cuerpo de la API. `list_contact_events` acepta además `external_id` para reconocer `WaId:` heredados; `fp_contact` tiene prioridad si existe. `patch_private(gcal_id, fields)` añade metadatos conservando los existentes (migración T-5.8). `list_future_events(start)` permite leer todas las citas futuras para esa migración sin un `timeMax` artificial, con el mismo límite de diez páginas antes de devolver resultados. La clave de citas migradas es `legacy:<sha256(gcal_id)>`, para caber también con ids largos de Google. Los errores permanentes y transitorios derivan de los errores externos genéricos de `core.errors`.
+- **Contrato estructural:** `CalEvent` es un protocolo de lectura y las consultas devuelven `Sequence[CalEvent]`; así la integración y el doble de pruebas lo cumplen sin importar el pack. `NewEvent` es un mapping con el cuerpo de la API. `list_contact_events` acepta además `external_id` para reconocer `WaId:` heredados; `fp_contact` tiene prioridad si existe. El parámetro opcional `alias_ids` contiene solo UUIDs serializados anteriores validados por el runtime: mismo tenant y canal main, identidad numérica coincidente con el teléfono recibido del proveedor para el BSUID actual y un único BSUID asociado. No se acepta una coincidencia telefónica contra un `fp_contact` ajeno. Ante ambigüedad no se publican alias. `patch_private(gcal_id, fields)` añade metadatos conservando los existentes (migración T-5.8). `list_future_events(start)` permite leer todas las citas futuras para esa migración sin un `timeMax` artificial, con el mismo límite de diez páginas antes de devolver resultados. La clave de citas migradas es `legacy:<sha256(gcal_id)>`, para caber también con ids largos de Google. Los errores permanentes y transitorios derivan de los errores externos genéricos de `core.errors`.
 
 - **`FakeCalendar`** (`packs/salon/testing.py`): implementación en memoria de `CalendarPort` para escenarios y tests, con huecos ocupados, errores programables y registro de lo creado o cancelado.
 - **Errores:** `CalendarTransientError` (red, timeout, 5xx, 429; el cliente hace 2 reintentos rápidos antes de lanzarlo) y `CalendarPermanentError` (403/404). Timeout de 10 s por llamada.
@@ -882,7 +883,7 @@ id:           determinista (§9.5)
 - **Cita manual:** no tiene `fp_key` y lleva `Telefono:` en la descripción. El servicio sale del título `<Servicio> - <Nombre>`: se compara con el nombre o la clave de cada servicio (sin tildes ni mayúsculas) y gana el patrón más largo; se aceptan los alias heredados ("corte y barba" → `corte_barba`).
 - **Bloqueo:** cualquier otro evento. Ocupa tiempo y no genera avisos.
 - Las descripciones editadas a mano se limpian de HTML (`<br>`, `<p>`, entidades) antes de leer campos, de forma tolerante a mayúsculas, tildes y espacios.
-- **Citas creadas por la versión anterior del bot:** llevan `WaId:` y `Telefono:` en la descripción y no tienen `extendedProperties`. `list_contact_events` y la comprobación de propiedad también aceptan coincidencia por `WaId:` (= `external_id`) o `Telefono:`. `tools/migrate_salon_events.py` les añade `fp_contact`, `fp_key` y `fp_service`.
+- **Citas creadas por la versión anterior del bot:** llevan `WaId:` y `Telefono:` en la descripción y no tienen `extendedProperties`. `list_contact_events` y la comprobación de propiedad también aceptan coincidencia por `WaId:` (= `external_id`) o `Telefono:`. `tools/migrate_salon_events.py` les añade `fp_contact`, `fp_key` y `fp_service`. Para un `WaId` numérico prefiere el BSUID actual inequívoco asociado al teléfono y conserva los vetos `opt_out`/`unreachable` del grupo. Un BSUID explícito nunca se sustituye por otro contacto por coincidencia telefónica; un conflicto o varios BSUID se rechazan. Un BSUID creado desde Calendar no recibe `phone_e164`: esa asociación requiere un mensaje autenticado del proveedor. La migración no borra contactos ni modifica fechas o descripciones.
 
 #### 9.4 Huecos
 
@@ -1076,7 +1077,7 @@ contact 🔒          id, tenant_id, channel[main|test], external_id, phone_e164
 conversation 🔒     id, tenant_id, contact_id, state jsonb, state_version, last_inbound_at, updated_at
                                                               UNIQUE(tenant_id, contact_id)
 
-inbound_event 🔒    id, tenant_id, channel[main|test], kind[message|status], provider_event_id, payload jsonb,
+inbound_event 🔒    id, tenant_id, channel[main|test], kind[message|status], provider_event_id, payload jsonb, effect_state jsonb,
                     status[pending|done|failed|ignored], error, received_at, processed_at
                                                               UNIQUE(tenant_id, channel, provider_event_id)
 outbound_message 🔒 id, tenant_id, contact_id, channel[main|test], idem_key, seq, kind[reply|proactive],
@@ -1135,7 +1136,7 @@ CREATE POLICY tenant_isolation ON contact
 
 | Dato | Retención | Cómo |
 |---|---|---|
-| `inbound_event.payload`, `outbound_message.payload` | 30 días | `retention_cleanup` nocturno, por lotes de 1.000: vacía el payload y conserva los metadatos |
+| `inbound_event.payload`, `inbound_event.effect_state`, `outbound_message.payload` | 30 días | `retention_cleanup` nocturno, por lotes de 1.000: vacía el payload y conserva los metadatos |
 | Filas de `inbound_event` | 90 días | Borrado |
 | `test_bot_event` | 7 días | Borrado |
 | `test_session` | 30 días sin uso | Borrado |

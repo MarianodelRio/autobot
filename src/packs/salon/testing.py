@@ -1,6 +1,6 @@
 """An isolated CalendarPort in memory, with programmable errors and effects."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
 from typing import Any
@@ -103,6 +103,7 @@ class FakeCalendar:
         end: datetime,
         *,
         external_id: str | None = None,
+        alias_ids: Sequence[str] = (),
     ) -> list[CalendarEvent]:
         self._check("list_contact_events")
         return [
@@ -110,7 +111,7 @@ class FakeCalendar:
             for e in self.list_events(start, end)
             if not e.all_day
             and "[cfg]" not in e.summary.lower()
-            and belongs(e, contact_id, phone, external_id)
+            and belongs(e, contact_id, phone, external_id, alias_ids)
         ]
 
     def check_access(self) -> None:

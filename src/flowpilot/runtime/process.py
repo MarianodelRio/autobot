@@ -44,6 +44,7 @@ from flowpilot.channels.base import InboundItem, StatusItem, parse_stored
 from flowpilot.channels.ratelimit import WindowLimiter
 from flowpilot.jobs import OUTBOUND, SEND_NOTIFICATION, app
 from flowpilot.runtime.context import CalendarFactory, build_context, google_calendar
+from flowpilot.runtime.identity import aliases_for, phone_group, phone_key
 from flowpilot.runtime.models import (
     Channel,
     Contact,
@@ -250,6 +251,13 @@ def _proactive_target(tenant: LoadedTenant, channel: str, action: SendProactive)
         if target.external_id not in allowed:
             log.info("test proactive not sent: contact no longer has access to this tenant")
             return None
+    if channel == Channel.MAIN and tenant.file.channel.type == "whatsapp":
+        number = phone_key(
+            target.phone_e164 or (target.external_id if target.external_id.isdecimal() else "")
+        )
+        if number and any(c.opt_out or c.unreachable for c in phone_group(tenant.id, number)):
+            log.info("proactive not sent: linked phone identity opted out or is unreachable")
+            return None
     if target.opt_out or target.unreachable:
         log.info("proactive %s not sent: contact opted out or unreachable", action.template.name)
         return None
@@ -426,12 +434,15 @@ def _effective_state(tenant: LoadedTenant, conversation: Conversation, now: Any)
 
 
 def _contact_info(contact: Contact) -> ContactInfo:
+    with tenant_tx(contact.tenant_id):
+        aliases = aliases_for(contact)
     return ContactInfo(
         id=contact.id,
         external_id=contact.external_id,
         phone=contact.phone_e164,
         display_name=contact.display_name or None,
         opt_out=contact.opt_out,
+        alias_ids=aliases,
     )
 
 

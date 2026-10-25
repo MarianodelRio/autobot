@@ -87,13 +87,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
-| F5 | Pack `salon` | 9 | 0 | 9 implementadas; revisión independiente y validación manual pendientes |
+| F5 | Pack `salon` | 9 | 8 | revisión técnica aprobada; aprobación T-5.8 y validación manual pendientes |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **30** | |
+| **Total** | | **52** | **38** | |
 
-En F5, «Hechas» cuenta los cierres formales: las nueve tareas tienen implementación y tests en sus commits, pero esperan la revisión por otro agente de §1.3. T-5.8 espera además la aprobación humana ⚠️. La revisión propia y la validación automatizada están completadas; no sustituyen esa revisión independiente.
+En F5, «Hechas» cuenta los cierres formales: ocho tareas tienen revisión independiente aprobada. T-5.8 está implementada y aprobada técnicamente, pero espera la aprobación humana ⚠️. Las pruebas manuales se han pospuesto al final por indicación de la persona.
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -806,16 +806,16 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** la reserva completa funciona en el bot de pruebas contra un **calendario de pruebas real** de Google, y nunca contra el calendario del negocio.
 
 ### T-5.1 · Cliente de Google Calendar 🤖
-- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-0.4 · **Diseño:** §9.3
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-0.4 · **Diseño:** §9.3
 - **Hacer:**
   - `integrations/google_calendar/` con la implementación de `CalendarPort` ligada a un calendario: cuenta de servicio, timeout de 10 s, 2 reintentos rápidos, errores transitorios y permanentes, paginación con tope, 409 → `get_event`, limpieza de HTML y comprobación de cada escritura.
   - Fábrica para `ctx.calendar` (T-3.4).
 - **Acepta:** el cliente no recibe nunca un `calendar_id` del pack.
 - **Tests:** contrato con respuestas grabadas (409, paginación, día completo, 403, 404, 5xx).
-- **Notas:** implementada; revisión independiente pendiente. Cliente ligado al calendario y fábrica real del runtime, sin red al construirla. Contrato estructural en `packs/salon/ports.py` (sin imports cruzados), `patch_private` para T-5.8 y `external_id` para citas heredadas; §9.3 actualizado. Origen consultado: `MarianodelRio/Peluqueria`, commit `6e22f4a`, copia de solo consulta en `/tmp/flowpilot-Peluqueria` (la ruta `~/Desktop/Peluqueria` no existe en esta máquina). `make check`: 1.338 tests correctos; los 13 tests de contrato, incluida una comprobación posterior de parches, pasan. Sin usar credenciales reales.
+- **Notas:** implementada y aprobada por revisión independiente (2026-10-25). Cliente ligado al calendario y fábrica real del runtime, sin red al construirla. Contrato estructural en `packs/salon/ports.py` (sin imports cruzados), `patch_private` para T-5.8 y `external_id` para citas heredadas; §9.3 actualizado. Origen consultado: `MarianodelRio/Peluqueria`, commit `6e22f4a`, copia de solo consulta en `/tmp/flowpilot-Peluqueria` (la ruta `~/Desktop/Peluqueria` no existe en esta máquina). `make check`: 1.338 tests correctos; los 13 tests de contrato, incluida una comprobación posterior de parches, pasan. Sin usar credenciales reales.
 
 ### T-5.2 · Huecos y lectura del calendario 🤖
-- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-1.3 · **Diseño:** §9.3, §9.4
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-1.3 · **Diseño:** §9.3, §9.4
 - **Hacer:** portar a `packs/salon/`:
   - `compute_slots`.
   - El lector de `[CFG]`.
@@ -824,26 +824,26 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - La partición mañana/tarde.
 - **Acepta:** los tests portados de `slots`, `parser` y `calendar` de Peluquería pasan.
 - **Tests:** unitarios portados y casos de §9.4 (presencia larga cerca del cierre, antelación mínima).
-- **Notas:** implementada; revisión independiente pendiente. Parser portado desde `6e22f4a`, sin config global y con nombres en inglés; usa `core.text.fold` y `strip_html`. Motor puro sobre eventos estructurales y zona del reloj, con cierres, vacaciones (fin exclusivo), horario especial, ocupación frente a presencia, antelación y separación mañana/tarde. 114 tests del parser y motor en verde (todos los tests originales del parser y casos de slots/calendar adaptados al contrato nuevo).
+- **Notas:** implementada y aprobada por revisión independiente (2026-10-25). Parser portado desde `6e22f4a`, sin config global y con nombres en inglés; usa `core.text.fold` y `strip_html`. Motor puro sobre eventos estructurales y zona del reloj, con cierres, vacaciones (fin exclusivo), horario especial, ocupación frente a presencia, antelación y separación mañana/tarde. 114 tests del parser y motor en verde (todos los tests originales del parser y casos de slots/calendar adaptados al contrato nuevo).
 
 ### T-5.3 · Config del pack 🤖
-- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-1.1 · **Diseño:** §9.2
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-1.1 · **Diseño:** §9.2
 - **Hacer:** `SalonConfig` con sus validaciones (incluidas `test_calendar_id` distinto de `calendar_id` y `manual_confirmations_since` obligatorio), `SalonTexts` con los textos de Peluquería y `TemplateSpec` de las dos plantillas (§9.7).
 - **Acepta:** la config real de Peluquería, convertida, valida.
 - **Tests:** unitarios de cada validación.
-- **Notas:** implementada; revisión independiente pendiente. Config y textos del pack, dos plantillas de §9.7, validación de rangos, servicios, ventana de avisos, ids de calendarios distintos y fecha inicial consciente de zona para confirmaciones manuales. Config pública de origen convertida en fixture con calendarios sintéticos. Rangos canónicos `HH:MM-HH:MM`; textos sobrescribibles limitados a 512 caracteres para los interactivos.
+- **Notas:** implementada y aprobada por revisión independiente (2026-10-25). Config y textos del pack, dos plantillas de §9.7, validación de rangos, servicios, ventana de avisos, ids de calendarios distintos y fecha inicial consciente de zona para confirmaciones manuales. Config pública de origen convertida en fixture con calendarios sintéticos. Rangos canónicos `HH:MM-HH:MM`; textos sobrescribibles limitados a 512 caracteres para los interactivos.
 
 ### T-5.4 · `FakeCalendar` y flujo de reserva 🤖
-- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.2, T-5.3, T-1.5 · **Diseño:** §9.1, §9.5, §9.3
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-5.2, T-5.3, T-1.5 · **Diseño:** §9.1, §9.5, §9.3
 - **Hacer:**
   - `packs/salon/testing.py` (`FakeCalendar`).
   - Máquina de estados de Pedir cita: límite (falla en abierto), servicio, día, mañana/tarde, hora, nombre, creación con `ctx.lock` e id determinista, confirmación y `SlotTaken`.
 - **Acepta:** los escenarios de reserva de §9.8 en verde.
 - **Tests:** escenarios (reserva completa, día sin huecos, mañana/tarde, `SlotTaken`, límite, Calendar caído al pedir cita y al crear, reintento sin duplicado).
-- **Notas:** implementada; revisión independiente pendiente. `FakeCalendar` comprueba el protocolo y permite errores programables. Flujo de reserva con lectura por rango para días, paginación de días y horas, mañana/tarde si no caben, nombre conocido y validación de estado guardado. `reserve` toma el candado por día, comprueba idempotencia antes de disponibilidad y verifica el evento creado. Aviso `booking_created` y actualización del nombre. Calendario real aún sin conectar ni probar; escenarios en ambos canales.
+- **Notas:** implementada y aprobada por revisión independiente (2026-10-25). `FakeCalendar` comprueba el protocolo y permite errores programables. Flujo de reserva con lectura por rango para días, paginación de días y horas, mañana/tarde si no caben, nombre conocido y validación de estado guardado. `reserve` toma el candado por día, comprueba idempotencia antes de disponibilidad y verifica el evento creado. Aviso `booking_created` y actualización del nombre. Calendario real aún sin conectar ni probar; escenarios en ambos canales.
 
 ### T-5.5 · Ver, mover, cancelar, evento especial y botones 🤖
-- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.4 · **Diseño:** §9.1
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-5.4 · **Diseño:** §9.1
 - **Hacer:**
   - Ver mis citas, mover (crea la nueva y después cancela la antigua, `move_cancel_failed`) y cancelar.
   - Evento especial y "Contacto".
@@ -851,42 +851,42 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - `NotifyOwner` de cada tipo.
 - **Acepta:** escenarios de §9.8 correspondientes en verde.
 - **Tests:** escenarios (mover, cancelar, evento activo e inactivo, botón sobre una cita ajena, cita antigua con `WaId:`).
-- **Notas:** implementada; revisión independiente pendiente. Menú completo y pack registrado. Ver/mover/cancelar con propiedad comprobada de nuevo al actuar, `fp_contact` prioritario y compatibilidad con `WaId:`/teléfono. Mover crea antes de cancelar; si falla la cancelación conserva la nueva y devuelve `move_cancel_failed`, con reintento idempotente. Evento especial (también si se desactiva durante el flujo), contacto y botones proactivos desde cualquier estado. Listas paginadas con índices en vez de ids externos en callbacks. 190 tests de pack en verde, con renderizado de ambos canales.
+- **Notas:** implementada y aprobada por revisión independiente (2026-10-25). Menú completo y pack registrado. Ver/mover/cancelar con propiedad comprobada de nuevo al actuar, `fp_contact` prioritario y compatibilidad con `WaId:`/teléfono. Mover crea antes de cancelar; si falla la cancelación conserva la nueva y devuelve `move_cancel_failed`, con reintento idempotente. Evento especial (también si se desactiva durante el flujo), contacto y botones proactivos desde cualquier estado. Listas paginadas con índices en vez de ids externos en callbacks. 190 tests de pack en verde, con renderizado de ambos canales.
 
 ### T-5.6 · Barrido, plantillas y salud del pack 🤖
-- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.5, T-3.7 · **Diseño:** §9.6, §9.7, §6.5
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-5.5, T-3.7 · **Diseño:** §9.6, §9.7, §6.5
 - **Hacer:**
   - `calendar_sweep` ejecutado **por calendario**: el real con contactos `main` y el de pruebas con contactos `test`, este último sin confirmaciones manuales.
   - Recordatorios y confirmaciones con sus claves estables.
   - `pack.health` (acceso al calendario).
 - **Acepta:** un recordatorio sale una sola vez en dos barridos; no hay confirmaciones de citas anteriores a `manual_confirmations_since`; el barrido del calendario de pruebas nunca envía por el canal `main`.
 - **Tests:** escenarios e integración del barrido (los casos de §9.8 y el aislamiento por calendario).
-- **Notas:** implementada; revisión independiente pendiente. Barrido de 15 min, una lectura por calendario y acciones con claves estables, confirmaciones solo desde la fecha configurada y `Estado: pendiente` solo si falta. `pack.health` comprueba acceso sin exponer detalles del error. Runtime recorre main/test de forma independiente; main exige activo y habilitado, test permite onboarding/paused si tiene calendario distinto y bot configurado. El pack usa la capacidad genérica `ctx.can_contact_by_phone` para no confirmar manuales en test ni en main Telegram; el runtime prefija claves de test para evitar colisiones de ids entre calendarios y continúa con el otro canal si uno falla. Tests de barrido y BD prueban deduplicación real, opt-out y aislamiento.
+- **Notas:** implementada y aprobada por revisión independiente (2026-10-25). Barrido de 15 min, una lectura por calendario y acciones con claves estables, confirmaciones solo desde la fecha configurada y `Estado: pendiente` solo si falta. `pack.health` comprueba acceso sin exponer detalles del error. Runtime recorre main/test de forma independiente; main exige activo y habilitado, test permite onboarding/paused si tiene calendario distinto y bot configurado. El pack usa la capacidad genérica `ctx.can_contact_by_phone` para no confirmar manuales en test ni en main Telegram; el runtime prefija claves de test para evitar colisiones de ids entre calendarios y continúa con el otro canal si uno falla. Tests de barrido y BD prueban deduplicación real, opt-out y aislamiento.
 
 ### T-5.7 · Reserva por los dos tipos de canal 🤖
-- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.6, T-3.8 · **Diseño:** §9.8, §6.6
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-5.6, T-3.8 · **Diseño:** §9.8, §6.6
 - **Hacer:** escenarios e integración de la reserva completa con canal `main` de WhatsApp, canal `main` de Telegram y bot de pruebas.
   - Con WhatsApp, las confirmaciones manuales a un teléfono salen.
   - Con Telegram, se registran y no salen.
 - **Acepta:** se cumplen las reglas de §6.6 y los escenarios están en verde.
 - **Tests:** escenarios e integración.
-- **Notas:** implementada; revisión independiente pendiente. Integración por webhook → runtime → outbox → adaptador con Calendar y proveedores simulados: main WhatsApp, main Telegram y bot de pruebas sobre ambos tipos de tenant. Se comprueba que el calendario y el proveedor ajenos no reciben llamadas, que el aviso del bot de pruebas va a ops y que las confirmaciones manuales solo salen por main WhatsApp. Revisión propia adicional: rechazo de callbacks proactivos vacíos/largos sin E/S y errores esperados de Google sin encadenar detalles del proveedor; comprobación estática del protocolo del cliente real.
+- **Notas:** implementada y aprobada por revisión independiente (2026-10-25). Integración por webhook → runtime → outbox → adaptador con Calendar y proveedores simulados: main WhatsApp, main Telegram y bot de pruebas sobre ambos tipos de tenant. Se comprueba que el calendario y el proveedor ajenos no reciben llamadas, que el aviso del bot de pruebas va a ops y que las confirmaciones manuales solo salen por main WhatsApp. Revisión propia adicional: rechazo de callbacks proactivos vacíos/largos sin E/S y errores esperados de Google sin encadenar detalles del proveedor; comprobación estática del protocolo del cliente real.
 
 ### T-5.8 · Migración de citas existentes ⚠️ 🤖
-- **Estado:** blocked · **Revisión:** pendiente · **Depende de:** T-5.1, T-5.2 · **Diseño:** §9.3
+- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-5.1, T-5.2 · **Diseño:** §9.3
 - **Hacer:** `tools/migrate_salon_events.py <slug> [--dry-run]`.
   - Recorre las citas futuras con `WaId:`, crea sus contactos y añade `fp_contact`, `fp_key` y `fp_service`.
   - Es idempotente y muestra un informe.
 - **Acepta:** ejecutado dos veces, la segunda no cambia nada; `--dry-run` no escribe nada.
 - **Tests:** con `FakeCalendar`.
-- **Notas:** código y tests implementados; revisión independiente y aprobación humana ⚠️ pendientes antes de cerrar. Escribe en el calendario real del negocio, así que solo lo ejecuta el operador (M-8.1); no se ha ejecutado sobre servicios reales. CLI con `--dry-run` sin escrituras ni en BD ni Calendar, lectura de todas las citas futuras (sin horizonte artificial, paginación acotada), contactos main bajo RLS y metadatos `fp_contact`, `fp_key` estable y `fp_service`. Conserva descripción, fechas y metadatos ajenos; no sobrescribe otra propiedad ni migra servicios desconocidos. Tests con FakeCalendar y BD: segunda pasada no escribe, fallo parcial se puede reintentar sin duplicar contactos, dry-run no escribe, aislamiento respecto a test y ausencia de datos personales en el informe.
+- **Notas:** código y tests implementados; revisión independiente aprobada (2026-10-25), aprobación humana ⚠️ pendiente antes de cerrar. Escribe en el calendario real del negocio, así que solo lo ejecuta el operador (M-8.1); no se ha ejecutado sobre servicios reales. CLI con `--dry-run` sin escrituras ni en BD ni Calendar, lectura de todas las citas futuras (sin horizonte artificial, paginación acotada), contactos main bajo RLS y metadatos `fp_contact`, `fp_key` estable y `fp_service`. Conserva descripción, fechas y metadatos ajenos; no sobrescribe otra propiedad ni migra servicios desconocidos. Tests con FakeCalendar y BD: segunda pasada no escribe, fallo parcial se puede reintentar sin duplicar contactos, dry-run no escribe, aislamiento respecto a test y ausencia de datos personales en el informe.
 
 ### T-5.9 · Concurrencia de reservas 🤖
-- **Estado:** in_progress · **Revisión:** pendiente · **Depende de:** T-5.4, T-3.4 · **Diseño:** §9.5, §17.1
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-5.4, T-3.4 · **Diseño:** §9.5, §17.1
 - **Hacer:** integración con BD real: dos contactos reservan el mismo hueco a la vez.
 - **Acepta:** una reserva se confirma y la otra recibe `SlotTaken`; un reintento de una reserva ya creada no duplica.
 - **Tests:** `tests/integration/`.
-- **Notas:** implementada; revisión independiente pendiente. Dos hilos con sesiones reales de PostgreSQL compiten por el mismo día y un FakeCalendar compartido que fuerza la ventana de carrera. Solo una reserva se crea y la otra recibe `SlotTaken`; reprocesar el evento ganador devuelve la misma cita. Otro test comprueba que main/test pueden reservar el mismo hueco en sus calendarios distintos. Sin cambios en roles, RLS ni esquema.
+- **Notas:** implementada y aprobada por revisión independiente (2026-10-25). Dos hilos con sesiones reales de PostgreSQL compiten por el mismo día y un FakeCalendar compartido que fuerza la ventana de carrera. Solo una reserva se crea y la otra recibe `SlotTaken`; reprocesar el evento ganador devuelve la misma cita. Otro test comprueba que main/test pueden reservar el mismo hueco en sus calendarios distintos. Sin cambios en roles, RLS ni esquema.
 
 ### 👤 M-5.1 · Google Cloud de la plataforma
 - **Cuándo:** antes de la validación de F5.
@@ -904,7 +904,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 
 ### ✅ Validación F5
 - [x] Escenarios de §9.8 en verde.
-- [x] `make check` final (2026-10-23): 1.570 tests correctos, Ruff, formato, mypy e import-linter en verde. Sin migraciones pendientes, linter de migraciones sin errores ni avisos y auditoría completa sin vulnerabilidades conocidas.
+- [x] `make check` final tras revisión independiente (2026-10-25): 1.589 tests correctos, Ruff, formato, mypy e import-linter en verde. Sin migraciones pendientes, linter de migraciones sin errores ni avisos y auditoría completa sin vulnerabilidades conocidas.
 - [ ] Prueba de extremo a extremo en local con calendario real de pruebas:
   - [ ] Reservar desde el bot de pruebas; la cita aparece en el calendario de pruebas con el formato de §9.3.
   - [ ] Moverla y cancelarla.
@@ -913,12 +913,13 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - [ ] "FlowPilot dev (real)" no se toca en ningún momento.
 
 
-**Notas para retomar (2026-10-23):**
-- Implementadas T-5.1 a T-5.9, cada una en su commit. Revisión propia por tarea y revisión final de arquitectura, idempotencia, propiedad de citas y límites de los canales; revisión independiente de §1.3 pendiente (no se ha registrado una aprobación inexistente).
+**Notas para retomar (2026-10-25):**
+- Implementadas T-5.1 a T-5.9, cada una en su commit. Revisión independiente por tres agentes en sesiones nuevas: `review_calendar` (T-5.1–3), `review_conversation` (T-5.4–5 y T-5.9) y `review_runtime_migration` (T-5.6–8). Los tres aprueban técnicamente los cambios corregidos. Los commits originales conservaron la revisión pendiente; este commit registra la revisión y sus correcciones sin reescribir main.
 - Remates de la revisión propia: capacidad genérica `can_contact_by_phone` en vez de cambiar config del pack desde el runtime; comprobar acceso vigente del destinatario de avisos de pruebas; paginar también «Ver mis citas»; partición mañana/tarde sobre el horario efectivo de Calendar; cubrir `baja` tras reservar en los cuatro recorridos de integración. `design.md` actualizado con el contrato estructural, la migración y el barrido por calendario.
 - El barrido omite con aviso los ids de Google cuyo callback excedería los 64 bytes comunes; nunca los trunca. Los ids nuevos deterministas tienen 32 caracteres.
 - La persona ha pospuesto las pruebas manuales para el final. M-5.1/M-5.2 siguen pendientes: no se han usado credenciales reales, creado calendarios reales, ejecutado la migración real ni activado ningún negocio. Las casillas manuales de F3/F4/F5 siguen pendientes.
-- Para el cierre formal: revisión independiente de los nueve commits y del remate final; corregir lo que encuentre; aprobación humana de T-5.8; actualizar estados y contadores tras esas aprobaciones. F6 no se ha empezado.
+- Correcciones de revisión independiente: horas de un dígito de `[CFG] HORARIO`; reintento de `RefreshError` temporal de Google; diario genérico `EffectJournal` para recuperar confirmación y aviso tras borrar una cita y fallar antes de tx2 (migración aditiva `0004`, sin cambios en RLS/roles ni borrados); resolución conservadora de identidades heredadas, alias verificados y respeto de bajas/no alcanzables en el grupo telefónico. Regresiones en contratos, escenarios y BD; `design.md` actualizado.
+- Para cerrar T-5.8 solo falta aprobación humana de la implementación. Esto no ejecuta ni autoriza una migración real: corresponde al operador en M-8.1 y al ensayo de T-8.2. F6 no se ha empezado.
 
 ---
 
@@ -953,7 +954,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Hacer:** `retention_cleanup` nocturno por lotes y los comandos `export_contact`, `forget_contact`, `export_tenant` y `purge_tenant` (este último pide escribir el slug para confirmar).
 - **Acepta:** cada plazo de §12.3 se aplica; `purge_tenant` no toca otros tenants.
 - **Tests:** integración con fechas simuladas.
-- **Notas:** añadir los índices de retención anotados en T-2.2.
+- **Notas:** añadir los índices de retención anotados en T-2.2. Vaciar también `inbound_event.effect_state` junto a su payload a los 30 días (§12.3); diario añadido en la revisión de F5.
 
 ### T-6.4 · Django Admin 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-6.2 · **Diseño:** §12.2, §13, §15.4, §7.4

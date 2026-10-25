@@ -22,10 +22,15 @@ class SlotRules(Protocol):
     def min_notice_min(self) -> int: ...
 
 
+def read_time(value: str) -> time:
+    hour, minute = value.split(":")
+    return time(int(hour), int(minute))
+
+
 def generate_slots(start: str, end: str, presence_min: int = 30, step_min: int = 30) -> list[time]:
     if min(presence_min, step_min) <= 0:
         raise ValueError("slot lengths must be positive")
-    begin, finish = time.fromisoformat(start), time.fromisoformat(end)
+    begin, finish = read_time(start), read_time(end)
     minute = begin.hour * 60 + begin.minute
     last = finish.hour * 60 + finish.minute
     slots: list[time] = []
@@ -91,5 +96,5 @@ def split_periods(
     slots: Sequence[time], spans: Sequence[tuple[str, str]]
 ) -> tuple[list[time], list[time]]:
     ranges = sorted(spans)
-    boundary = time.fromisoformat(ranges[1][0]) if len(ranges) > 1 else time(14)
+    boundary = read_time(ranges[1][0]) if len(ranges) > 1 else time(14)
     return [s for s in slots if s < boundary], [s for s in slots if s >= boundary]

@@ -174,3 +174,23 @@ def test_periods_follow_the_effective_calendar_schedule(salon: Conversation) -> 
     salon.press("day_2026-03-24")
     salon.press("period_morning")
     assert "13:30" in salon.state["slots"] and "14:00" not in salon.state["slots"]
+
+
+def test_one_digit_calendar_hour_reaches_the_booking_flow(salon: Conversation) -> None:
+    start = datetime.fromisoformat("2026-03-24T00:00:00+01:00")
+    salon.calendar.add(
+        CalendarEvent(
+            "single-digit",
+            "[CFG] HORARIO 9:00-19:00",
+            "",
+            start,
+            start + timedelta(days=1),
+            all_day=True,
+        )
+    )
+    salon.send("hola")
+    salon.press("menu_book")
+    salon.press("service_corte")
+    salon.press("day_2026-03-24")
+    salon.press("period_morning")
+    assert "09:00" in salon.state["slots"]

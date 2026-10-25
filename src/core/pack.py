@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from core.actions import Action
 from core.clock import Clock
+from core.effects import EffectJournal
 from core.idem import IdemKeys
 from core.messages import IncomingMessage
 from core.proactive import TemplateSpec
@@ -34,6 +35,7 @@ class ContactInfo:
     phone: str | None
     display_name: str | None
     opt_out: bool
+    alias_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,7 @@ class PackContext:
     log: logging.Logger | logging.LoggerAdapter[logging.Logger]
     # Communication capability, without exposing which channel the pack runs on.
     can_contact_by_phone: bool = False
+    effects: EffectJournal | None = None
 
 
 @dataclass

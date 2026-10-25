@@ -86,6 +86,7 @@ class InboundEvent(TenantScoped):
     channel = models.CharField(max_length=8, choices=Channel)
     kind = models.CharField(max_length=8, choices=Kind)
     provider_event_id = models.CharField(max_length=200)
+    effect_state = models.JSONField(default=dict, db_default={})
     payload = models.JSONField(null=True)  # emptied after 30 days (§12.3)
     status = models.CharField(max_length=8, choices=Status)
     error = models.TextField(blank=True, default="", db_default="")
