@@ -42,3 +42,6 @@ bus-revision:
 # Tags HEAD as datos/<slug>/<today>, after commit and deploy. It does not push the tag.
 bus-publicar:
 	$(BUS_TOOL).bus_publicar $(TENANT)
+
+tenant-health:
+	docker compose exec web python manage.py tenant_health $(SLUG)

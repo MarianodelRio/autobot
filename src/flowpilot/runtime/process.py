@@ -43,6 +43,8 @@ from flowpilot.channels.adapters import endpoint
 from flowpilot.channels.base import InboundItem, StatusItem, parse_stored
 from flowpilot.channels.ratelimit import WindowLimiter
 from flowpilot.jobs import OUTBOUND, SEND_NOTIFICATION, app
+from flowpilot.ops.logging import bind, contextual
+from flowpilot.ops.state import record
 from flowpilot.runtime.context import CalendarFactory, build_context, google_calendar
 from flowpilot.runtime.identity import aliases_for, phone_group, phone_key
 from flowpilot.runtime.models import (
@@ -71,6 +73,7 @@ Status = InboundEvent.Status
 Sent = OutboundMessage.Status
 
 
+@contextual
 def process_event(
     tenant_id: UUID,
     event_id: UUID,
@@ -90,6 +93,7 @@ def process_event(
         event = InboundEvent.objects.filter(id=event_id).first()
         if event is None or event.status != Status.PENDING:
             return  # already processed: a retry after tx2 committed
+        bind(tenant=tenant.slug, channel=event.channel, event_id=str(event.id))
         ep = endpoint(tenant, event.channel)
         item = parse_stored(ep.adapter, _payload(event), ep.channel)
         if not isinstance(item, InboundItem):
@@ -179,13 +183,17 @@ def _run_pack(
             event_id=event.id,
             calendars=calendars,
         )
-        return tenant.pack.handle_message(ctx, message), ""
+        result = tenant.pack.handle_message(ctx, message)
+        record(tenant.id, event.channel, failed=False)
+        return result, ""
     except TransientError:
+        record(tenant.id, event.channel, failed=True)
         if not last_attempt:
             raise
         log.warning("event %s: transient error on the last attempt", event.id)
         return recovery_result(), "TransientError on the last attempt"
     except Exception as e:
+        record(tenant.id, event.channel, failed=True)
         # Sentry, once configured (T-6.2), takes it from this log record.
         log.exception("event %s: unexpected error in pack %s", event.id, tenant.pack.name)
         return recovery_result(), type(e).__name__
@@ -323,6 +331,7 @@ def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> No
         )
 
 
+@contextual
 def apply_status(tenant_id: UUID, event_id: UUID) -> None:
     """A delivery status from the provider updates its outbound_message (§7.2): found by
     `outbound_ref` (our id) or by the provider's id."""
@@ -334,6 +343,7 @@ def apply_status(tenant_id: UUID, event_id: UUID) -> None:
         event = InboundEvent.objects.select_for_update().filter(id=event_id).first()
         if event is None or event.status != Status.PENDING:
             return
+        bind(tenant=tenant.slug, channel=event.channel, event_id=str(event.id))
         ep = endpoint(tenant, event.channel)
         item = parse_stored(ep.adapter, _payload(event), ep.channel)
         if not isinstance(item, StatusItem):

@@ -1,0 +1,160 @@
+"""Five-minute worker checks; external calls happen after tenant transactions."""
+
+import logging
+import shutil
+from datetime import timedelta
+
+import httpx
+from django.conf import settings
+from django.core.cache import cache
+from django.db import connection
+from django.db.models import Q
+from django.utils import timezone
+
+from flowpilot.ops import health, state
+from flowpilot.runtime.models import Channel, OutboundMessage
+from flowpilot.runtime.notifications import send_ops_alert
+from flowpilot.runtime.periodic import channels_for
+from flowpilot.tenancy.registry import get_registry
+from flowpilot.tenancy.tx import tenant_tx
+
+log = logging.getLogger(__name__)
+
+
+def run() -> None:
+    now = timezone.now()
+    # Query the platform tables as fp_app: no customer data and no owner bypass.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT EXISTS(SELECT 1 FROM procrastinate_jobs
+            WHERE queue_name = 'inbound' AND status = 'todo'
+            AND (scheduled_at < %s OR (scheduled_at IS NULL AND
+            (SELECT MAX(at) FROM procrastinate_events WHERE job_id = procrastinate_jobs.id
+             AND type IN ('deferred', 'deferred_for_retry', 'scheduled')) < %s))),
+            EXISTS(SELECT 1 FROM procrastinate_events e
+            JOIN procrastinate_jobs j ON j.id = e.job_id
+            WHERE e.type = 'failed' AND e.at >= %s AND j.status = 'failed')""",
+            [now - timedelta(minutes=2), now - timedelta(minutes=2), now - timedelta(minutes=10)],
+        )
+        oldest, failed = cursor.fetchone() or (False, False)
+    if oldest:
+        send_ops_alert(
+            "inbound_delay", None, "🔴 Trabajo inbound listo desde hace más de 2 minutos."
+        )
+    if failed:
+        send_ops_alert("failed_jobs", None, "🟠 Hay trabajos fallidos en los últimos 10 minutos.")
+    registry = get_registry()
+    if registry.errors or registry.secrets_error:
+        send_ops_alert("registry", None, "🔴 Hay configuraciones de tenants o secretos ilegibles.")
+    for tenant in registry.tenants:
+        if tenant.file.status == "offboarded":
+            continue
+        pending: list[tuple[str, str]] = []
+        if tenant.is_degraded or not tenant.main_enabled:
+            pending.append(
+                ("tenant_unavailable", "🔴 Tenant degradado o canal sin secretos/configuración.")
+            )
+        with tenant_tx(tenant.id):
+            messages = OutboundMessage.objects.all()
+            # Messages already unknown before this version have no transition time.
+            # First observation establishes a conservative lower bound, never creation.
+            messages.filter(status="unknown", unknown_at__isnull=True).update(unknown_at=now)
+            if messages.filter(
+                Q(status="failed") | Q(status="unknown", unknown_at__lt=now - timedelta(minutes=10))
+            ).exists():
+                pending.append(
+                    (
+                        "outbound_failed",
+                        "🟠 Hay envíos fallidos o ambiguos desde hace más de 10 minutos.",
+                    )
+                )
+            # A test-channel rejection belongs to the platform test bot, not the
+            # tenant's configured main-channel credentials.
+            auth_channels = list(
+                messages.filter(last_error__startswith="auth:")
+                .values_list("channel", flat=True)
+                .distinct()
+            )
+            channel = tenant.file.channel
+            if channel.type == "whatsapp":
+                local_now = now.astimezone(tenant.info.timezone)
+                start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                count = messages.filter(
+                    channel=Channel.MAIN, billable=True, sent_at__gte=start
+                ).count()
+                if count > channel.monthly_alert_threshold:
+                    pending.append(
+                        (
+                            "billing",
+                            "🟡 Mensajes facturables de WhatsApp por encima del umbral mensual.",
+                        )
+                    )
+        for auth_channel in auth_channels:
+            send_ops_alert(
+                "auth:test" if auth_channel == Channel.TEST else "auth",
+                None if auth_channel == Channel.TEST else tenant.id,
+                "🔴 Envío rechazado por autenticación del bot de pruebas."
+                if auth_channel == Channel.TEST
+                else "🔴 Envío del canal principal rechazado por autenticación.",
+            )
+        for bound_channel in channels_for(tenant):
+            signal = state.read(tenant.id, bound_channel)
+            if signal.get("calendar_unavailable") or signal.get("calendar_errors", 0) >= 3:
+                pending.append(
+                    (
+                        f"calendar:{bound_channel}",
+                        "🔴 Calendar sin acceso o con tres errores seguidos.",
+                    )
+                )
+            if signal.get("errors", 0) >= 3:
+                pending.append(
+                    (f"errors:{bound_channel}", "🔴 El tenant acumula tres errores seguidos.")
+                )
+            if tenant.pack and any(p.name == "calendar_sweep" for p in tenant.pack.periodic):
+                baseline = state.sweep_baseline(tenant.id, bound_channel, now)
+                if now - baseline > timedelta(hours=1):
+                    pending.append(
+                        (
+                            f"sweep:{bound_channel}",
+                            "🟠 Barrido sin completarse desde hace más de una hora.",
+                        )
+                    )
+        issues = health.daily(tenant.id, lambda t=tenant: health.tenant_health(t))
+        for issue in issues:
+            pending.append((f"health:{issue.code}", f"{issue.severity} {issue.message}"))
+        for kind, text in pending:
+            send_ops_alert(kind, tenant.id, f"{tenant.slug}: {text}")
+    if cache.get("bot:test:auth"):
+        send_ops_alert("auth:test", None, "🔴 Bot de pruebas: envío rechazado por autenticación.")
+    if cache.get("bot:notify:auth"):
+        send_ops_alert(
+            "bot:notify:auth", None, "🔴 Bot de avisos: envío rechazado por autenticación."
+        )
+    for name, token, outbound_only in (
+        ("test", settings.TEST_BOT_TOKEN, False),
+        ("notify", settings.NOTIFY_BOT_TOKEN, True),
+    ):
+        if token:
+            issues = health.daily(
+                f"bot:{name}",
+                lambda token=token, outbound_only=outbound_only: health.telegram_health(
+                    token, outbound_only=outbound_only
+                ),
+            )
+            for issue in issues:
+                send_ops_alert(
+                    f"bot:{name}:{issue.code}",
+                    None,
+                    f"{issue.severity} Bot {name}: {issue.message}",
+                )
+    disk = shutil.disk_usage(settings.BASE_DIR)
+    if disk.used / disk.total > 0.85:
+        send_ops_alert("disk", None, "🟠 Disco por encima del 85 %.")
+    # No finally: a failed DB/global check must prevent a success heartbeat.
+    if settings.HEALTHCHECKS_PING_URL:
+        try:
+            response = httpx.get(settings.HEALTHCHECKS_PING_URL, timeout=10)
+            if not response.is_success:
+                log.warning("healthchecks heartbeat rejected (HTTP %s)", response.status_code)
+        except httpx.HTTPError:
+            log.warning("healthchecks heartbeat unavailable")

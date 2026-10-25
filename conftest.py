@@ -55,3 +55,62 @@ def _render_scenarios_with_both_adapters() -> Iterator[None]:
     RENDER_CHECKS.append(check_rendering)
     yield
     RENDER_CHECKS.remove(check_rendering)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _block_external_network() -> Iterator[None]:
+    """No real provider calls in CI, even when a worker starts platform periodics.
+
+    Keep loopback/Unix sockets for PostgreSQL; MockTransport and other service doubles
+    do not reach these functions. pytest.fail escapes application's except Exception,
+    so an accidental external call cannot turn into a silently accepted health issue.
+    """
+    import ipaddress
+    import socket
+    from typing import Any
+
+    def check_host(host: Any) -> None:
+        if host is None or host in ("", "localhost", b"localhost"):
+            return
+        try:
+            if ipaddress.ip_address(host.decode() if isinstance(host, bytes) else host).is_loopback:
+                return
+        except ValueError:
+            pass
+        pytest.fail("External network disabled in tests", pytrace=False)
+
+    original_resolve = socket.getaddrinfo
+    original_lookup = socket.gethostbyname
+    original_lookup_ex = socket.gethostbyname_ex
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
+
+    def resolve(host: Any, *args: Any, **kwargs: Any) -> Any:
+        check_host(host)
+        return original_resolve(host, *args, **kwargs)
+
+    def lookup(host: str) -> str:
+        check_host(host)
+        return original_lookup(host)
+
+    def lookup_ex(host: str) -> tuple[str, list[str], list[str]]:
+        check_host(host)
+        return original_lookup_ex(host)
+
+    def connect(sock: socket.socket, address: Any) -> None:
+        if sock.family in (socket.AF_INET, socket.AF_INET6):
+            check_host(address[0])
+        original_connect(sock, address)
+
+    def connect_ex(sock: socket.socket, address: Any) -> int:
+        if sock.family in (socket.AF_INET, socket.AF_INET6):
+            check_host(address[0])
+        return original_connect_ex(sock, address)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(socket, "getaddrinfo", resolve)
+        patch.setattr(socket, "gethostbyname", lookup)
+        patch.setattr(socket, "gethostbyname_ex", lookup_ex)
+        patch.setattr(socket.socket, "connect", connect)
+        patch.setattr(socket.socket, "connect_ex", connect_ex)
+        yield

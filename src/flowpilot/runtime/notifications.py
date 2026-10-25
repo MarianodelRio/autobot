@@ -12,7 +12,8 @@ from pydantic import SecretStr
 
 from core.replies import Text
 from flowpilot.channels.adapters import TELEGRAM
-from flowpilot.channels.base import RetryLater, SendOutcome, Sent
+from flowpilot.channels.base import Rejected, RetryLater, SendOutcome, Sent
+from flowpilot.ops.logging import bind, contextual
 from flowpilot.runtime.models import Notification
 from flowpilot.runtime.outbound import SendRetry
 from flowpilot.tenancy.registry import get_registry
@@ -36,9 +37,15 @@ def deliver(text: str, chat_id: str, reference: UUID) -> SendOutcome | None:
     secrets = bot_secrets()
     if secrets is None:
         return None
-    return TELEGRAM.send(TELEGRAM.render(Text(text), None), chat_id, None, secrets, reference)
+    outcome = TELEGRAM.send(TELEGRAM.render(Text(text), None), chat_id, None, secrets, reference)
+    if isinstance(outcome, Rejected) and outcome.kind == "auth":
+        cache.set("bot:notify:auth", True, timeout=None)
+    elif isinstance(outcome, Sent):
+        cache.delete("bot:notify:auth")
+    return outcome
 
 
+@contextual
 def send_notification(
     tenant_id: UUID, notification_id: UUID, *, last_attempt: bool = False
 ) -> None:
@@ -48,6 +55,7 @@ def send_notification(
         return
     with tenant_tx(tenant_id):
         row = Notification.objects.select_for_update().filter(id=notification_id).first()
+        bind(tenant=tenant.slug, channel="notification", event_id="")
         if row is None or row.status != Notification.Status.PENDING:
             return
         if row.audience == Notification.Audience.OPS:

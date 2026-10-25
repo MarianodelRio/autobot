@@ -26,6 +26,7 @@ from core.clock import SystemClock
 from core.errors import TransientError
 from core.idem import IdemKeys
 from core.pack import ContactInfo, PackContext
+from flowpilot.ops.state import record_calendar
 from flowpilot.runtime.effects import StoredEffects
 from flowpilot.runtime.models import Channel
 from flowpilot.tenancy.registry import LoadedTenant
@@ -43,9 +44,17 @@ class CalendarUnavailable(RuntimeError):
     """The pack needs a calendar and this channel has none it may use."""
 
 
-def google_calendar(calendar_id: str, *, timezone: str = "Europe/Madrid") -> CalendarClient:
+def google_calendar(
+    calendar_id: str,
+    *,
+    timezone: str = "Europe/Madrid",
+    observe: Callable[[str], None] | None = None,
+) -> CalendarClient:
     return CalendarClient(
-        calendar_id, credentials_file=settings.GOOGLE_SERVICE_ACCOUNT_FILE, timezone=timezone
+        calendar_id,
+        credentials_file=settings.GOOGLE_SERVICE_ACCOUNT_FILE,
+        timezone=timezone,
+        observe=observe,
     )
 
 
@@ -73,7 +82,11 @@ def build_context(
         state=state,
         clock=SystemClock(info.timezone),
         calendar=(
-            google_calendar(calendar_id, timezone=str(info.timezone))
+            google_calendar(
+                calendar_id,
+                timezone=str(info.timezone),
+                observe=lambda status: record_calendar(tenant.id, str(channel), status),
+            )
             if calendar_id is not None and calendars is google_calendar
             else calendars(calendar_id)
             if calendar_id is not None

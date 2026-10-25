@@ -85,7 +85,9 @@ class CalendarClient:
         timezone: str = "Europe/Madrid",
         api: Any = None,
         sleep: Callable[[float], None] = time.sleep,
+        observe: Callable[[str], None] | None = None,
     ) -> None:
+        self._observe = observe or (lambda status: None)
         self._calendar_id = calendar_id
         self._credentials_file = credentials_file
         self._api = api
@@ -107,20 +109,31 @@ class CalendarClient:
                 request = getattr(self.api.events(), operation)(
                     calendarId=self._calendar_id, **kwargs
                 )
-                return request.execute(num_retries=0)
+                result = request.execute(num_retries=0)
+                self._observe("ok")
+                return result
             except HttpError as exc:
                 status = int(exc.resp.status)
                 if status not in (429, 500, 502, 503, 504):
+                    # An event-level 404/410 can mean either a missing event or no
+                    # access, so it is no evidence of recovery from a prior denial.
+                    if status not in (404, 410) or operation == "list":
+                        self._observe("denied" if status in (401, 403, 404) else "error")
                     raise
             except RefreshError as exc:
                 if not exc.retryable:
+                    self._observe("denied")
                     raise CalendarPermanentError(
                         "Calendar credentials could not be refreshed"
                     ) from None
+            except CalendarPermanentError:
+                self._observe("denied")
+                raise
             except OSError, TimeoutError, TransportError:
                 pass
             if attempt < 2:
                 self._sleep(0.2 * (2**attempt))
+        self._observe("error")
         raise CalendarTransientError("Calendar temporarily unavailable")
 
     def _request(self, operation: str, **kwargs: Any) -> Any:

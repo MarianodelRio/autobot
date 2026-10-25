@@ -1,5 +1,6 @@
 """Calendar API contract, with response shapes from the source bot's tests."""
 
+import contextlib
 import json
 from copy import deepcopy
 from datetime import datetime
@@ -155,3 +156,30 @@ def test_refresh_failure_is_classified(retryable: bool) -> None:
     with pytest.raises(CalendarTransientError if retryable else CalendarPermanentError):
         cal.list_events(START, END)
     assert api.events().list.call_count == (3 if retryable else 1)
+
+
+@pytest.mark.parametrize("missing_status", [404, 410])
+def test_observer_retains_denial_when_caller_catches_it(missing_status: int) -> None:
+    from unittest.mock import Mock
+
+    from googleapiclient.errors import HttpError
+    from httplib2 import Response
+
+    from integrations.google_calendar.client import CalendarClient, CalendarPermanentError
+
+    service = Mock()
+    service.events.return_value.list.return_value.execute.side_effect = HttpError(
+        Response({"status": "403"}), b'{"error":{"message":"private"}}'
+    )
+    seen: list[str] = []
+    client = CalendarClient("calendar", api=service, observe=seen.append)
+    with contextlib.suppress(CalendarPermanentError):
+        client.check_access()
+    assert seen == ["denied"]
+    service.events.return_value.get.return_value.execute.side_effect = error(missing_status)
+    assert client.get_event("missing-event") is None
+    assert seen == ["denied"]
+    service.events.return_value.list.return_value.execute.side_effect = None
+    service.events.return_value.list.return_value.execute.return_value = {"items": []}
+    client.check_access()
+    assert seen == ["denied", "ok"]

@@ -88,10 +88,10 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
-| F6 | Avisos, operación y observabilidad | 5 | 1 | in_progress |
+| F6 | Avisos, operación y observabilidad | 5 | 2 | in_progress |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **40** | |
+| **Total** | | **52** | **41** | |
 
 En F5, las nueve tareas tienen revisión independiente aprobada. La persona aprobó expresamente T-5.8 el 2026-10-25. Las pruebas manuales se han pospuesto al final por indicación de la persona; la aprobación de la implementación no implica ejecutar la migración sobre datos reales.
 
@@ -939,7 +939,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementados `send_notification` (cola outbound y candado `owner:<tenant>`), bot separado por `NOTIFY_BOT_TOKEN`, selección de destinatario por `audience` y `notify_link` con código efímero, validación de chat privado y rechazo de webhook activo; el comando muestra el id, sin modificar YAML. Las alertas `send_ops_alert` usan `DatabaseCache` sobre `platform_cache` (migración aditiva 0005, sin RLS, roles ni borrados), con candado transaccional por tipo/tenant para evitar carreras al expirar y enfriamiento de 30 min conservado ante errores. Entrega conservadora documentada en §11: se confirma `failed` antes del HTTP, éxito pasa a `sent`, solo `RetryLater` permite reintentar hasta cinco veces; interrupciones y resultados ambiguos no se reenvían. 20 tests de integración con PostgreSQL local y Telegram simulado cubren entrega única, RLS, aislamiento test/ops, suscripciones, errores, interrupciones, concurrencia/expiración/presión de caché y vinculación. `make check` en verde: Ruff, formato, mypy, import-linter y 1.609 tests (96,39 s); `makemigrations --check --dry-run`, `lintmigrations` y `git diff --check` pasan. Revisión independiente aprobada por `review_61` (make check propio: 1.609 tests, 99,48 s); M-6.1 sigue pendiente y no se han usado servicios ni credenciales reales. El cierre documental va en un commit corrector: falló la actualización automática del estado antes del commit de implementación; no se reescribe main.
 
 ### T-6.2 · Comprobación de operación y salud 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-6.1, T-5.6, T-4.4 · **Diseño:** §15.3, §15.1, §15.2
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-6.1, T-5.6, T-4.4 · **Diseño:** §15.3, §15.1, §15.2
 - **Hacer:**
   - `ops_check` cada 5 min con todas las comprobaciones de §15.3 y latido a `HEALTHCHECKS_PING_URL`.
   - Salud diaria de canales: plantillas aprobadas y token de WhatsApp, y `getWebhookInfo` de los bots.
@@ -948,7 +948,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - Sentry.
 - **Acepta:** cada fila de §15.3 dispara su alerta en un test; los logs no contienen teléfonos completos.
 - **Tests:** unitarios e integración por comprobación; test del filtro de logs.
-- **Notas:** —
+- **Notas:** implementados chequeos de todas las filas, salud diaria cacheada y `tenant_health`, señales persistentes en `platform_cache` (barrido, errores y acceso Calendar, también si el pack captura el error), latido solo tras completar el chequeo, logs JSON y Sentry con contexto y filtrado conservador. `unknown_at` (migración aditiva 0006, sin RLS/roles/borrados) mide desde la transición; los heredados sin fecha se empiezan a medir en su primera observación. Los bots test/notify tienen señales de autenticación separadas del canal del negocio. Comprobación final: `make check` verde con barrera de red global, 1.668 tests (108,99 s), Ruff, formato, mypy e import-linter; `makemigrations --check --dry-run`, `lintmigrations` y `git diff --check` pasan. Revisión independiente aprobada por `review_62` (make check propio: 1.668 tests, 109,23 s). En la primera ejecución, un worker de prueba inició el nuevo periódico e hizo involuntariamente una consulta a Meta con un token falso de fixtures: fue rechazada, sin credenciales reales, envíos ni cambios en cuentas. Corregido aislando el periódico de los workers de otras pruebas y añadiendo una barrera global de sockets/DNS externos (permite loopback/Unix de PostgreSQL y transportes simulados), con tests propios. M-6.1/M-6.2 y verificaciones reales siguen pendientes. Sin commits/push ni producción.
 
 ### T-6.3 · Retención y RGPD ⚠️ 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-3.6 · **Diseño:** §12.3, §16.2

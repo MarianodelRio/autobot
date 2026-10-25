@@ -328,3 +328,34 @@ def test_send_recipient_prefers_the_phone() -> None:
     with_phone = Contact(external_id="ES.1", phone_e164="+34600000001")
     assert outbound._recipient(with_phone) == "+34600000001"
     assert outbound._recipient(Contact(external_id="ES.1")) == "ES.1"
+
+
+def test_unknown_time_and_original_event_context(tenants: Any, meta: Any, monkeypatch: Any) -> None:
+    from datetime import timedelta
+
+    from flowpilot.ops.logging import before_send
+
+    tenants(wa_tenant())
+    row = a_reply()
+    OutboundMessage.objects.using("owner").filter(id=row.id).update(
+        created_at=timezone.now() - timedelta(days=2)
+    )
+    contexts = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        contexts.append(before_send({}, {}))
+        raise httpx.ReadTimeout("secret")
+
+    monkeypatch.setattr(
+        adapters.WHATSAPP, "client", httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    send(row)
+    saved = reload(row)
+    assert saved.status == "unknown" and saved.unknown_at is not None
+    assert timezone.now() - saved.unknown_at < timedelta(seconds=10)
+    assert contexts[0]["tags"] == {
+        "tenant": "wa",
+        "channel": "main",
+        "event_id": str(row.inbound_event_id),
+        "job": "send_message",
+    }

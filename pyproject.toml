@@ -16,6 +16,7 @@ dependencies = [
     "django-otp>=1.7,<2",
     "dj-database-url>=3",
     "pyyaml>=6.0,<7",
+    "sentry-sdk>=2,<3",
 ]
 
 [dependency-groups]

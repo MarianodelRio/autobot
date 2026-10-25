@@ -127,6 +127,7 @@ class OutboundMessage(TenantScoped):
     status = models.CharField(
         max_length=8, choices=Status, default=Status.PENDING, db_default=Status.PENDING
     )
+    unknown_at = models.DateTimeField(null=True, blank=True)
     attempts = models.IntegerField(default=0, db_default=0)
     # NULL until the provider answers (§12.1)
     provider_message_id = models.CharField(max_length=200, null=True, blank=True)  # noqa: DJ001

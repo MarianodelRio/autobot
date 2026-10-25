@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from flowpilot.channels.base import InboundItem, ParsedItem
 from flowpilot.jobs import APPLY_STATUS, INBOUND, PROCESS_EVENT, app
+from flowpilot.ops.logging import bind
 from flowpilot.runtime.locks import conversation_lock
 from flowpilot.runtime.models import Channel, InboundEvent
 from flowpilot.tenancy.registry import LoadedTenant
@@ -55,11 +56,13 @@ def store(tenant: LoadedTenant, items: list[ParsedItem], channel: Channel = Chan
         kind = (
             InboundEvent.Kind.MESSAGE if isinstance(item, InboundItem) else InboundEvent.Kind.STATUS
         )
+        event_id = uuid.uuid7()
+        bind(tenant=tenant.slug, channel=str(channel), event_id=str(event_id))
         with tenant_tx(tenant.id), connections["default"].cursor() as cursor:
             cursor.execute(
                 INSERT_EVENT,
                 [
-                    uuid.uuid7(),
+                    event_id,
                     tenant.id,
                     channel,
                     kind,

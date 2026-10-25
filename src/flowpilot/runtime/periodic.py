@@ -22,6 +22,8 @@ from procrastinate.exceptions import AlreadyEnqueued
 from core.actions import NotifyOwner, SendProactive
 from core.pack import Pack, Periodic
 from flowpilot.jobs import PERIODIC, RUN_PERIODIC, app
+from flowpilot.ops.logging import bind, contextual
+from flowpilot.ops.state import record
 from flowpilot.runtime.context import (
     CalendarFactory,
     CalendarUnavailable,
@@ -85,6 +87,7 @@ def dispatch(pack: str, name: str, timestamp: int) -> int:
     return queued
 
 
+@contextual
 def run_periodic(
     tenant_id: UUID,
     name: str,
@@ -111,6 +114,7 @@ def run_periodic(
     failures: list[Exception] = []
     for channel in channels_for(tenant):
         try:
+            bind(tenant=tenant.slug, channel=str(channel))
             ctx = build_context(
                 tenant, channel, contact=None, state={}, event_id=None, calendars=calendars
             )
@@ -127,7 +131,9 @@ def run_periodic(
                     tenant, channel, actions, contact=None, event=None, now=timezone.now()
                 )
                 defer_sends(tenant.id, messages)
+            record(tenant.id, channel, failed=False, sweep=name == "calendar_sweep")
         except Exception as exc:
+            record(tenant.id, channel, failed=True)
             # A failed real calendar must not prevent a test-calendar sweep (or vice versa).
             log.warning("periodic %s of tenant %s failed on channel %s", name, tenant.slug, channel)
             failures.append(exc)

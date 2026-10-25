@@ -41,8 +41,14 @@ def tenants(tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.fixture
-def clean_jobs() -> Iterator[None]:
+def clean_jobs(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """The flush does not reach Procrastinate's tables (unmanaged models)."""
+    from flowpilot.jobs import app
+
+    # Worker tests may cross a five-minute boundary and automatically enqueue this
+    # new platform periodic. Its service checks have their own mocked integration
+    # tests; unrelated runtime workers must never query external health endpoints.
+    monkeypatch.setattr(app.tasks["ops_check"], "func", lambda timestamp: None)
     yield
     with connections["owner"].cursor() as cursor:
         # Periodic defers reference their job: they go first.

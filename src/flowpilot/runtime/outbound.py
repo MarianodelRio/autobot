@@ -16,6 +16,7 @@ from core.serialization import dump_outbound, load_outbound
 from flowpilot.channels.adapters import endpoint
 from flowpilot.channels.base import Ambiguous, Rejected, RetryLater, SendOutcome, Sent
 from flowpilot.jobs import OUTBOUND, SEND_MESSAGE, app
+from flowpilot.ops.logging import bind, contextual
 from flowpilot.runtime.locks import contact_hash
 from flowpilot.runtime.models import Contact, InboundEvent, OutboundMessage
 from flowpilot.tenancy.registry import get_registry
@@ -93,6 +94,7 @@ class SendRetry(Exception):
         self.after_s = after_s
 
 
+@contextual
 def send_message(tenant_id: UUID, outbound_id: UUID) -> None:
     """Send one outbound message, never twice: the attempt is committed as `sending`
     before calling the provider, so a run cut in the middle is found as `sending` and
@@ -104,18 +106,25 @@ def send_message(tenant_id: UUID, outbound_id: UUID) -> None:
 
     with tenant_tx(tenant.id):
         message = OutboundMessage.objects.select_for_update().filter(id=outbound_id).first()
+        if message is not None:
+            bind(
+                tenant=tenant.slug,
+                channel=message.channel,
+                event_id=str(message.inbound_event_id or ""),
+            )
         if message is None or message.status in (Status.SENT, Status.UNKNOWN, Status.FAILED):
             return  # done, or never resent blindly
         if message.status == Status.SENDING:
             message.status = Status.UNKNOWN
+            message.unknown_at = timezone.now()
             message.last_error = "interrupted while sending"
-            message.save(update_fields=["status", "last_error"])
+            message.save(update_fields=["status", "last_error", "unknown_at"])
             log.warning("message %s was cut while sending: left unknown", message.id)
             return
         contact = message.contact
         if message.payload is None:
             message.status, message.last_error = Status.FAILED, "other: payload expired"
-            message.save(update_fields=["status", "last_error"])
+            message.save(update_fields=["status", "last_error", "unknown_at"])
             return
         # Everything that may fail before the call happens while still `pending`: an error
         # here rolls back and leaves the message as it was (the job fails, ops sees it).
@@ -146,7 +155,7 @@ def send_message(tenant_id: UUID, outbound_id: UUID) -> None:
 
 def _record(slug: str, message: OutboundMessage, outcome: SendOutcome) -> SendRetry | None:
     """Save the outcome; returns the exception that makes the job retry, if any."""
-    fields = ["status", "last_error"]
+    fields = ["status", "last_error", "unknown_at"]
     match outcome:
         case Sent():
             message.status = Status.SENT
@@ -172,6 +181,7 @@ def _record(slug: str, message: OutboundMessage, outcome: SendOutcome) -> SendRe
             message.last_error = f"other: still refused after {message.attempts} attempts"
         case Ambiguous():
             message.status = Status.UNKNOWN
+            message.unknown_at = timezone.now()
             message.last_error = outcome.reason
     message.save(update_fields=fields)
     return None

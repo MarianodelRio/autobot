@@ -23,6 +23,7 @@ from procrastinate.tasks import Task
 
 from core.errors import TransientError
 from core.pack import Pack
+from flowpilot.ops.logging import async_contextual, contextual
 
 log = logging.getLogger(__name__)
 
@@ -130,6 +131,7 @@ def send_notification(context: JobContext, tenant_id: str, notification_id: str)
 
 
 @app.task(queue=PERIODIC, name=DISPATCH_PERIODIC)
+@contextual
 def dispatch_periodic(timestamp: int, pack: str, name: str) -> None:
     from flowpilot.runtime import periodic
 
@@ -156,6 +158,7 @@ def run_periodic(tenant_id: str, name: str, scheduled_at: int) -> None:
 @app.task(
     queue=PERIODIC, name=RETRY_STALLED_JOBS, queueing_lock=RETRY_STALLED_JOBS, pass_context=True
 )
+@async_contextual
 async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
     """Jobs left `doing` by a worker that died (no heartbeat for 30 s) keep their lock and
     would block the contact for good: Procrastinate does not retry them by itself (§7.7).
@@ -209,3 +212,16 @@ def is_last_attempt(context: JobContext) -> bool:
     """`job.attempts` counts the runs that already failed: with 3 retries, the fourth run
     is the last one."""
     return context.job.attempts >= INBOUND_RETRIES
+
+
+@app.periodic(cron="*/5 * * * *", periodic_id="ops_check")
+@app.task(queue=PERIODIC, name="ops_check", queueing_lock="ops_check", lock="ops_check")
+@contextual
+def ops_check(timestamp: int) -> None:
+    from flowpilot.ops.check import run
+
+    close_old_connections()
+    try:
+        run()
+    finally:
+        close_old_connections()

@@ -52,6 +52,7 @@ if importlib.util.find_spec("django_migration_linter"):
     MIGRATION_LINTER_OPTIONS = {"exclude_apps": ["procrastinate"]}
 
 MIDDLEWARE = [
+    "flowpilot.ops.logging.LogContextMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -144,7 +145,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "filters": {"privacy": {"()": "flowpilot.ops.logging.PrivacyFilter"}},
+    "formatters": {"json": {"()": "flowpilot.ops.logging.JsonFormatter"}},
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+            "formatter": "json",
+            "filters": ["privacy"],
+        }
+    },
     "root": {"handlers": ["console"], "level": os.environ.get("LOG_LEVEL", "INFO")},
     # httpx logs every request URL at INFO, and Telegram's carries the bot token (§13).
     "loggers": {"httpx": {"level": "WARNING"}, "httpcore": {"level": "WARNING"}},
@@ -161,3 +171,9 @@ CACHES = {
         "LOCATION": "platform_cache",
     }
 }
+
+
+HEALTHCHECKS_PING_URL = os.environ.get("HEALTHCHECKS_PING_URL", "")
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+RELEASE_SHA = os.environ.get("RELEASE_SHA", os.environ.get("SHA", ""))
+SERVICE_NAME = os.environ.get("SERVICE_NAME", "web")

@@ -20,6 +20,7 @@ from procrastinate.exceptions import ProcrastinateException
 from flowpilot.channels.adapters import TELEGRAM, WHATSAPP
 from flowpilot.channels.base import ParsedItem
 from flowpilot.channels.ratelimit import WindowLimiter, client_ip
+from flowpilot.ops.logging import bind
 from flowpilot.runtime.inbound import store
 from flowpilot.tenancy.registry import LoadedTenant, get_registry
 from flowpilot.tenancy.schema import (
@@ -44,6 +45,7 @@ def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
     tenant = main_channel_tenant("whatsapp", public_id)
     if tenant is None:
         return HttpResponse(status=404)
+    bind(tenant=tenant.slug, channel="main")
     channel, secrets = tenant.file.channel, tenant.secrets
     assert isinstance(channel, WhatsAppChannel) and isinstance(secrets, WhatsAppSecrets)
     if request.method == "GET":  # Meta's subscription handshake
@@ -69,6 +71,7 @@ def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
     tenant = main_channel_tenant("telegram", public_id)
     if tenant is None:
         return HttpResponse(status=404)
+    bind(tenant=tenant.slug, channel="main")
     channel, secrets = tenant.file.channel, tenant.secrets
     assert isinstance(channel, TelegramChannel) and isinstance(secrets, TelegramSecrets)
     return _receive(

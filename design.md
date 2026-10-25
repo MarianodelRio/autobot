@@ -1084,7 +1084,7 @@ inbound_event 🔒    id, tenant_id, channel[main|test], kind[message|status], p
 outbound_message 🔒 id, tenant_id, contact_id, channel[main|test], idem_key, seq, kind[reply|proactive],
                     payload jsonb, status[pending|sending|sent|failed|unknown], attempts,
                     provider_message_id, pricing_category, billable, last_error,
-                    inbound_event_id NULL, created_at, sent_at
+                    inbound_event_id NULL, created_at, sent_at, unknown_at NULL
                                                               UNIQUE(tenant_id, idem_key)
 notification 🔒     id, tenant_id, idem_key, audience[owner|ops], kind, text, status[pending|sent|failed], created_at, sent_at
                                                               UNIQUE(tenant_id, idem_key)
@@ -1279,9 +1279,13 @@ Quedan ~10 € de margen hasta el objetivo de 20 € para una VPS de 8 GB si hic
 - Campos: `ts`, `level`, `msg`, `service`, `tenant`, `channel`, `event_id` (hace de `trace_id`: se propaga a envíos y llamadas a Calendar) y `job`.
 - Sin datos sensibles (§13).
 
+Los identificadores de contexto se ligan al recibir cada evento y al cargar cada trabajo. Los envíos conservan el `event_id` entrante; los barridos y trabajos de plataforma no inventan uno. `SERVICE_NAME` distingue `web` y `worker`.
+
 #### 15.2 Errores
 
 Sentry (plan gratuito): excepciones de `web` y `worker` con `tenant` y `event_id`; la versión es el SHA desplegado.
+
+Sentry usa `SENTRY_DSN` y `RELEASE_SHA` (o `SHA`). No envía cuerpos HTTP, usuarios, breadcrumbs, variables locales ni texto de excepciones: conserva tipo y posiciones de pila junto a las etiquetas de contexto, con filtrado de secretos. La captura del worker ocurre antes de salir del contexto del trabajo.
 
 #### 15.3 `ops_check` (cada 5 min, en el worker)
 
@@ -1298,6 +1302,9 @@ Sentry (plan gratuito): excepciones de `web` y `worker` con `tenant` y `event_id
 | Mensajes facturables de WhatsApp del mes > `monthly_alert_threshold` | 1 | 🟡 |
 | Disco > 85 % | 1 | 🟠 |
 
+- Las señales de ejecución (errores consecutivos y último barrido completo por tenant/canal) y los resultados diarios de salud se guardan en `platform_cache`, sin caducidad automática; una fecha de comprobación controla la renovación de salud cada 24 h, conservando el resultado anterior si la renovación se interrumpe. El primer seguimiento de un barrido establece la referencia para detectar uno que nunca termina. Un éxito reinicia la racha de errores; los reintentos que vuelven a fallar cuentan como errores consecutivos. El cliente Calendar informa al runtime mediante un callback sin dependencias de Django: una denegación de acceso se conserva aunque el pack capture la excepción, y se alerta sin esperar al siguiente chequeo diario. Solo una llamada Calendar exitosa limpia esa señal; un 404/410 de evento inexistente es neutral. Los errores Calendar y sus recuperaciones se cuentan por separado de los resultados del pack.
+- `outbound_message.unknown_at` se fija al entrar en `unknown`, incluso al recuperar un `sending` interrumpido. Los mensajes heredados sin esa fecha se empiezan a medir en su primera observación por `ops_check`, sin usar su fecha de creación.
+- Salud de WhatsApp: lectura autorizada del número y listado paginado de plantillas, comprobando `APPROVED` por nombre e idioma declarados en el pack. Salud de Telegram: `getWebhookInfo` del canal, el bot de pruebas y el de avisos; errores recientes (últimas 24 h), fallo de autenticación y webhook activo en el bot de avisos se señalan sin registrar descripciones ni URLs externas. El bot de avisos puede tener webhook vacío y el bot de desarrollo usar polling. Los rechazos de autenticación de los bots de plataforma se alertan sin atribuirlos al canal principal del negocio.
 - Las alertas van al chat de ops (§11) y se repiten como mucho cada 30 min por tipo y tenant.
 - Al terminar, `ops_check` envía un **latido a healthchecks.io**. Si el worker, la BD o la VPS caen, el latido deja de llegar y healthchecks.io avisa por email y Telegram, sin depender de la plataforma.
 - **Uptime externo** (UptimeRobot o Better Stack) comprueba `https://api.<dominio>/health` cada 5 min. Detecta caídas de Caddy o `web`, fallos de DNS y la caducidad del certificado.

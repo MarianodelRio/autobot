@@ -19,6 +19,7 @@ from flowpilot.channels import views as webhooks
 from flowpilot.channels.adapters import TELEGRAM, test_bot_secrets
 from flowpilot.channels.ratelimit import client_ip
 from flowpilot.channels.test_bot.selector import store_update
+from flowpilot.ops.logging import bind
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ log = logging.getLogger(__name__)
 @csrf_exempt
 @require_POST
 def telegram_test(request: HttpRequest) -> HttpResponse:
+    bind(channel="test")
     ip = client_ip(request)
     if webhooks.limiter.blocked(ip):
         return HttpResponse(status=429)

@@ -25,6 +25,7 @@ from typing import Any
 from uuid import UUID
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import connections, transaction
 from django.utils import timezone
 
@@ -32,9 +33,10 @@ from core.limits import MAX_ID_BYTES, plan_sends
 from core.replies import Reply, Text
 from core.ui import list_msg, paginate, row, section
 from flowpilot.channels.adapters import TELEGRAM, test_bot_secrets
-from flowpilot.channels.base import InboundItem, Sent
+from flowpilot.channels.base import InboundItem, Rejected, Sent
 from flowpilot.channels.ratelimit import WindowLimiter
 from flowpilot.jobs import INBOUND, ROUTE_TEST_UPDATE, app
+from flowpilot.ops.logging import bind, contextual
 from flowpilot.runtime.context import CalendarUnavailable, bound_calendar_id
 from flowpilot.runtime.inbound import store
 from flowpilot.runtime.locks import telegram_user_lock
@@ -72,10 +74,12 @@ def store_update(update: dict[str, Any]) -> bool:
         return False
     (item,) = items
     assert isinstance(item, InboundItem)
+    event_id = uuid.uuid7()
+    bind(channel="test", event_id=str(event_id))
     with transaction.atomic(using="default"), connections["default"].cursor() as cursor:
         cursor.execute(
             INSERT_EVENT,
-            [uuid.uuid7(), int(item.provider_event_id), json.dumps(update), timezone.now()],
+            [event_id, int(item.provider_event_id), json.dumps(update), timezone.now()],
         )
         row_ = cursor.fetchone()
         if row_ is None:
@@ -86,7 +90,9 @@ def store_update(update: dict[str, Any]) -> bool:
     return True
 
 
+@contextual
 def route_test_update(event_id: UUID) -> None:
+    bind(channel="test", event_id=str(event_id))
     event = TestBotEvent.objects.filter(id=event_id).first()
     if event is None or event.status != TestBotEvent.Status.PENDING:
         return
@@ -239,6 +245,10 @@ def _reply(user_id: int, replies: list[Reply]) -> None:
         outcome = TELEGRAM.send(
             TELEGRAM.render(reply, None), str(user_id), None, secrets, uuid.uuid7()
         )
+        if isinstance(outcome, Rejected) and outcome.kind == "auth":
+            cache.set("bot:test:auth", True, timeout=None)
+        elif isinstance(outcome, Sent):
+            cache.delete("bot:test:auth")
         if not isinstance(outcome, Sent):
             log.warning("test bot selector message not sent: %s", type(outcome).__name__)
 
