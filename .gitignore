@@ -17,6 +17,7 @@ __pycache__/
 # Generados
 staticfiles/
 revision/
+qr/
 backups/
 
 # Claves y credenciales

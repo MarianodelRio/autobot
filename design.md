@@ -1356,6 +1356,12 @@ La persona operadora registra la fecha efectiva de baja y ejecuta el borrado en 
 
 `make deploy SHA=…` · `make status` · `make logs SERVICE=…` · `make admin-tunnel` · `make backup-now` · `make restore-test` · `make shell` · `make tenant-health SLUG=…` · `make telegram-poll [SLUG=…]` · `make bus-validar | bus-formatear | bus-revision | bus-publicar TENANT=…`.
 
+`make status` y `make logs SERVICE=…` consultan el Compose local. `make qr SLUG=…`
+ejecuta `tools/qr.py <slug>` en la máquina de desarrollo: lee solo `tenant.yaml` y
+genera `qr/<slug>.svg` (o `--output` por `ARGS`). WhatsApp usa `channel.display_phone`
+con prefijo internacional, nunca `phone_number_id`; Telegram usa `channel.bot_username`.
+No consulta proveedores ni necesita secretos. El SVG tiene fondo blanco para impresión.
+
 #### 16.4 Runbooks (`docs/runbooks/`)
 
 1. El bot no responde a nadie.

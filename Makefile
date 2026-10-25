@@ -1,10 +1,17 @@
 .PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
+.PHONY: status logs tenant-health qr
 
 up:
 	docker compose up -d --build
 
 down:
 	docker compose down
+
+status:
+	docker compose ps
+
+logs:
+	docker compose logs --tail=100 --follow $(SERVICE)
 
 test:
 	uv run pytest
@@ -45,3 +52,7 @@ bus-publicar:
 
 tenant-health:
 	docker compose exec web python manage.py tenant_health $(SLUG)
+
+# Public QR generated on the developer machine, without containers or secrets.
+qr:
+	PYTHONPATH=src uv run python -m tools.qr "$(SLUG)" $(ARGS)

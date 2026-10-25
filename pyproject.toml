@@ -30,6 +30,7 @@ dev = [
     "import-linter>=2.15,<3",
     "django-migration-linter>=6,<7",
     "types-pyyaml>=6",
+    "qrcode>=8.2,<9",
 ]
 
 [tool.uv]

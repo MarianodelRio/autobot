@@ -33,6 +33,22 @@ make down
 
 La primera vez que arranca, `db` crea los roles `fp_owner` y `fp_app` y la base de pruebas (`deploy/postgres/init-roles.sh`). Ese script solo se ejecuta con un volumen vacío; para empezar de cero: `docker compose down -v` (borra los datos locales). La base de pruebas se reutiliza entre ejecuciones y solo aplica migraciones nuevas: si editas una migración ya aplicada, reinicia el volumen igual.
 
+`make status` muestra los servicios locales y `make logs SERVICE=worker` sigue sus logs
+(sin `SERVICE`, los de todos los servicios). `make tenant-health SLUG=<slug>` comprueba
+el negocio desde `web`; este último necesita las credenciales de los servicios que usa.
+
+Para generar el QR público del negocio sin contenedores, credenciales ni acceso de red:
+
+```bash
+make qr SLUG=<slug>                         # qr/<slug>.svg
+make qr SLUG=<slug> ARGS="--output /ruta/qr.svg"
+# Equivalente: PYTHONPATH=src uv run python -m tools.qr <slug>
+```
+
+El canal debe declarar `display_phone` internacional (WhatsApp) o `bot_username`
+(Telegram). El QR apunta al canal del negocio y se guarda como SVG con fondo blanco,
+apto para imprimir. Los archivos de `qr/` son generados y no se suben a git.
+
 ### Bot de pruebas en local
 
 Con un bot de Telegram de desarrollo propio (M-3.1 en `IMPLEMENTATION.md`): pon su token en `TEST_BOT_TOKEN` y tu id de Telegram en `TEST_BOT_OPERATORS`, en `.env`, y después:

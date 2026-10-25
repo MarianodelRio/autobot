@@ -64,15 +64,17 @@ def logged(operator: tuple[Any, Any]) -> Client:
 
 def test_real_otp_owner_only_and_replay(operator: tuple[Any, Any]) -> None:
     client = Client()
+    # Replay the exact same code even if the requests cross a TOTP time window.
+    token = str(totp(operator[1].bin_key)).zfill(operator[1].digits)
     with CaptureQueriesContext(connections["default"]) as runtime:
-        assert login(client, operator[1]).status_code == 302
+        assert login(client, operator[1], otp_token=token).status_code == 302
         index = client.get("/admin/")
         assert index.status_code == 200
         assert "/admin/estado/" in index.content.decode()
         assert client.get("/admin/estado/").status_code == 200
     assert list(runtime) == []
     assert not admin_request.get()
-    assert login(Client(), operator[1]).status_code == 200  # consumed TOTP cannot replay
+    assert login(Client(), operator[1], otp_token=token).status_code == 200
     assert login(Client(), operator[1], otp_token="").status_code == 200
     assert login(Client(), operator[1], otp_token="invalid").status_code == 200
 

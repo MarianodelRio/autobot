@@ -88,10 +88,10 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
-| F6 | Avisos, operación y observabilidad | 5 | 3 | in_progress; T-6.3 revisada y bloqueada por aprobación humana |
+| F6 | Avisos, operación y observabilidad | 5 | 4 | implementación y revisión técnica completas; aprobación T-6.3 y validación manual pendientes |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **42** | |
+| **Total** | | **52** | **43** | |
 
 En F5, las nueve tareas tienen revisión independiente aprobada. La persona aprobó expresamente T-5.8 el 2026-10-25. Las pruebas manuales se han pospuesto al final por indicación de la persona; la aprobación de la implementación no implica ejecutar la migración sobre datos reales.
 
@@ -965,14 +965,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
   - Vista "Estado" de §15.4.
 - **Acepta:** el Admin solo es accesible por las URLs no públicas; cada cambio queda en `LogEntry`.
 - **Tests:** integración de las acciones y de que las URLs de admin no están en el conjunto público.
-- **Notas:** Admin OTP/TOTP interno con contexto `owner` para ORM, auth, sesiones, dispositivos y auditoría; runtime mantiene `default` y RLS. Acciones confirmadas y auditadas bajo bloqueo para resolver `unknown`; reenvío conserva identidad y crea job nuevo en la misma transacción. Integración Procrastinate de consulta/reintento conservador y panel Estado sin llamadas externas, con mes local y facturables por `sent_at`. Alta local documentada en `docs/runbooks/admin.md`. 18 tests de integración focalizados pasan (TOTP real/replay/throttle, alias, permisos/CSRF, acciones, rollback, envío simulado único, panel/TZ). Las migraciones upstream de `otp_totp` se excluyen de `lintmigrations`, como Procrastinate (su `0002` de 2019 añade NOT NULL); las propias siguen auditadas. `makemigrations --check` sin cambios. `make check` completo pasa: Ruff, mypy, contratos y 1.712 tests. `lintmigrations`: siete propias válidas, cero errores. Pendiente revisión independiente.
+- **Notas:** Admin OTP/TOTP interno con contexto `owner` para ORM, auth, sesiones, dispositivos y auditoría; runtime mantiene `default` y RLS. Acciones confirmadas y auditadas bajo bloqueo para resolver `unknown`; reenvío conserva identidad y crea job nuevo en la misma transacción. Integración Procrastinate de consulta/reintento conservador y panel Estado sin llamadas externas, con mes local y facturables por `sent_at`. Alta local documentada en `docs/runbooks/admin.md`. 18 tests de integración focalizados pasan (TOTP real/replay/throttle, alias, permisos/CSRF, acciones, rollback, envío simulado único, panel/TZ). Las migraciones upstream de `otp_totp` se excluyen de `lintmigrations`, como Procrastinate (su `0002` de 2019 añade NOT NULL); las propias siguen auditadas. `makemigrations --check` sin cambios. `make check` completo pasa: Ruff, mypy, contratos y 1.712 tests. `lintmigrations`: siete propias válidas, cero errores. Revisión independiente aprobada por `review_64` (make check propio: 1.712 tests, 138,60 s).
 
 ### T-6.5 · QR y comandos de operación 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-2.4 · **Diseño:** §16.3
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-2.4 · **Diseño:** §16.3
 - **Hacer:** `tools/qr.py <slug>` (enlace `wa.me` o `t.me` según el canal) y los objetivos del `Makefile` que no dependen del servidor.
 - **Acepta:** el QR se genera para los dos tipos de canal.
 - **Tests:** unitario del enlace generado.
-- **Notas:** —
+- **Notas:** implementado generador SVG local con fondo blanco, enlaces wa.me desde display_phone internacional y t.me desde el bot del negocio, sin secretos, Django, BD ni proveedores. Validación de configuración y slug, salida configurable, qrcode fijado como dependencia de desarrollo. Makefile añade status/logs del Compose local y qr; tenant-health figura como phony. README y §16.3 documentan uso; no se añaden objetivos de servidor de F7. 16 tests específicos pasan para ambos canales, formatos, configuración incompleta, slug/directorio y archivos SVG reales; mypy completo en verde. Make check completo verde: 1.728 tests (137,82 s), Ruff, formato, mypy y cuatro contratos. Revisión independiente aprobada por `review_65` con make check propio: 1.728 tests, 138,83 s. Remate de validación: la prueba de replay TOTP de T-6.4 reutiliza el mismo código al cruzar la ventana; confirmado por `review_64` y `review_65`, con 34 focalizados finales y suite independiente completos en verde. Makemigrations sin cambios, linter de migraciones sin errores/avisos, auditoría completa sin vulnerabilidades conocidas y comandos locales comprobados en seco.
 
 ### 👤 M-6.1 · Bot de avisos y chat de ops
 - **Cuándo:** antes de la validación de F6.
@@ -989,9 +989,17 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Verificar:** una excepción forzada aparece en Sentry; el check "worker" se pone verde con el worker en marcha.
 
 ### ✅ Validación F6
+- [x] Validación automática completa y revisiones independientes: 1.728 tests correctos, Ruff, formato, mypy, import-linter, comprobación y linter de migraciones, auditoría de dependencias.
 - [ ] Parar el worker en local → healthchecks.io avisa en ≤ 15 min.
 - [ ] Una alerta 🔴 simulada (por ejemplo, un tenant `degraded`) llega al chat de ops una sola vez.
 - [ ] El Admin funciona con 2FA y la vista "Estado" muestra datos.
+
+
+**Notas para retomar (2026-10-25):**
+- T-6.1, T-6.2, T-6.4 y T-6.5 cerradas tras revisión independiente; T-6.3 tiene implementación y revisión técnica aprobadas, pero permanece `blocked` por la aprobación humana explícita de borrados exigida por `CLAUDE.md`. No se ha inventado esa aprobación. `RETENTION_CLEANUP_ENABLED` sigue desactivado por defecto; no activarlo hasta obtenerla.
+- Verificación final local: 1.728 tests y revisión independiente completos, migraciones coherentes y sin errores ni avisos del linter, auditoría sin vulnerabilidades conocidas. La suite bloquea red externa y usa PostgreSQL local y proveedores simulados. La consulta involuntaria inicial con token falso y su corrección están documentadas en T-6.2.
+- M-6.1 y M-6.2 siguen pendientes. También las comprobaciones manuales de F3–F6, aplazadas por la persona: no se han creado cuentas, bots, calendarios ni credenciales reales ni se ha actuado sobre producción. La puesta en servicio local del Admin y los comandos RGPD están descritos en `docs/runbooks/admin.md` y `docs/runbooks/retencion-rgpd.md`.
+- F7 no se ha empezado. Los objetivos del servidor, Caddy, despliegue, backups y activación de canales reales quedan para sus fases; los nuevos objetivos de F6 son locales.
 
 ---
 
