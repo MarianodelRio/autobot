@@ -1,0 +1,11 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h2>Colas pendientes</h2><table><tr><th>Cola</th><th>Pendientes</th><th>Antigüedad del más antiguo</th></tr>{% for queue in queues %}<tr><td>{{ queue.queue_name }}</td><td>{{ queue.pending }}</td><td>{{ queue.age|default:"Sin fecha" }}</td></tr>{% empty %}<tr><td>Sin trabajos pendientes</td></tr>{% endfor %}</table>
+<h2>Trabajos fallidos</h2>{% for job in failed_jobs %}<p><a href="{% url 'admin:procrastinate_procrastinatejob_change' job.pk %}">{{ job.pk }} · {{ job.task_name }}</a></p>{% empty %}<p>Ninguno</p>{% endfor %}
+<h2>Envíos unknown o failed</h2>{% for message in messages %}<p><a href="{% url 'admin:flowpilot_outboundmessage_change' message.pk %}">{{ message.pk }}</a> · {{ message.status }}</p>{% empty %}<p>Ninguno</p>{% endfor %}
+<h2>Mensajes del mes por tenant y canal</h2>
+<table><tr><th>Tenant</th><th>Canal</th><th>Estado</th><th>Entrantes</th><th>Salientes</th><th>Facturables</th><th>Último barrido</th><th>Salud almacenada</th></tr>
+{% for row in rows %}<tr><td>{{ row.tenant }}</td><td>{{ row.channel }}</td><td>{{ row.status }}</td><td>{{ row.incoming }}</td><td>{{ row.outgoing }}</td><td>{{ row.billable }}</td><td>{{ row.last_sweep|default:"Sin datos" }}</td><td>{% if row.health %}{% if row.health.stale %}Desactualizada · {% endif %}Comprobada: {{ row.health.checked_at }} · {{ row.health.issues|length }} incidencias{% for issue in row.health.issues %}<p>{{ issue.code }}: {{ issue.message }}</p>{% endfor %}{% else %}Sin comprobación{% endif %}</td></tr>{% endfor %}
+</table>
+<p>Las comprobaciones se ejecutan en el worker; esta vista muestra la última observación disponible.</p>
+{% endblock %}

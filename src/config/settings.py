@@ -43,21 +43,27 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "procrastinate.contrib.django",
+    "django_otp",
+    "django_otp.plugins.otp_totp",
     "flowpilot",
 ]
 # Development-only: provides `lintmigrations` for CI (design.md §17.3); absent from the image.
 if importlib.util.find_spec("django_migration_linter"):
     INSTALLED_APPS.append("django_migration_linter")
-    # Third-party migrations (Procrastinate) are not ours to fix; every app of ours is linted.
-    MIGRATION_LINTER_OPTIONS = {"exclude_apps": ["procrastinate"]}
+    # Third-party migrations are not ours to fix; every app of ours is linted.
+    MIGRATION_LINTER_OPTIONS = {"exclude_apps": ["procrastinate", "otp_totp"]}
+
+DATABASE_ROUTERS = ["flowpilot.admin_db.AdminDatabaseRouter"]
 
 MIDDLEWARE = [
+    "flowpilot.admin_db.AdminDatabaseMiddleware",
     "flowpilot.ops.logging.LogContextMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

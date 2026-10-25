@@ -88,10 +88,10 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
-| F6 | Avisos, operación y observabilidad | 5 | 2 | in_progress; T-6.3 revisada y bloqueada por aprobación humana |
+| F6 | Avisos, operación y observabilidad | 5 | 3 | in_progress; T-6.3 revisada y bloqueada por aprobación humana |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **41** | |
+| **Total** | | **52** | **42** | |
 
 En F5, las nueve tareas tienen revisión independiente aprobada. La persona aprobó expresamente T-5.8 el 2026-10-25. Las pruebas manuales se han pospuesto al final por indicación de la persona; la aprobación de la implementación no implica ejecutar la migración sobre datos reales.
 
@@ -958,14 +958,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementados `retention_cleanup` (03:00 UTC; lotes de 1.000 y `tenant_tx` corto), vaciado conjunto de payload/effect_state a 30 días, plazos de §12.3 y doce meses de calendario, comandos RGPD con selección de canal ante external_id ambiguo, exportación exclusiva a archivo 0600 y confirmación literal del slug para purge. Los originales del bot de pruebas se vinculan por update_id/select:update_id; los eventos de plataforma sin negocio atribuido conservan su plazo de 7 días. Refrescado selected_at al usar la sesión. Migración 0007 solo añade siete índices concurrentes (atomic=False), incluidos los anotados en T-2.2; rollback/reaplicación verificados en test_flowpilot local y siete índices válidos. `docs/runbooks/retencion-rgpd.md` documenta baja y borrado por operador en ≤30 días antes de retirar YAML, sin usar synced_at, y excluye calendarios/backups. Limpieza destructiva desactivada por defecto con RETENTION_CLEANUP_ENABLED=false, comprobado también al ejecutar trabajos ya encolados; falta aprobación humana explícita de T-6.3, no se ha activado ni usado producción. 26 tests específicos cubren fechas, lotes, aislamiento, eventos WhatsApp/Telegram, sesión, archivos privados y confirmación; make check definitivo verde (Ruff/formato/mypy, cuatro contratos, 1.694 tests en 121,69 s). makemigrations --check, lintmigrations (0 errores/0 avisos) y git diff --check limpios. Revisión técnica independiente aprobada por `review_63` (make check propio: 1.694 tests, 120,81 s), con los hallazgos corregidos. Bloqueada únicamente por la aprobación humana explícita de los borrados exigida por CLAUDE.md; no se marca done ni se activa la limpieza. Se conserva el resultado revisado en main para revisión humana; las tareas independientes continúan.
 
 ### T-6.4 · Django Admin 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-6.2 · **Diseño:** §12.2, §13, §15.4, §7.4
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-6.2 · **Diseño:** §12.2, §13, §15.4, §7.4
 - **Hacer:**
   - Admin sobre el alias `owner`, con 2FA (`django-otp`) e integración de Procrastinate.
   - Acciones "Marcar enviado" y "Reenviar" para mensajes `unknown`.
   - Vista "Estado" de §15.4.
 - **Acepta:** el Admin solo es accesible por las URLs no públicas; cada cambio queda en `LogEntry`.
 - **Tests:** integración de las acciones y de que las URLs de admin no están en el conjunto público.
-- **Notas:** —
+- **Notas:** Admin OTP/TOTP interno con contexto `owner` para ORM, auth, sesiones, dispositivos y auditoría; runtime mantiene `default` y RLS. Acciones confirmadas y auditadas bajo bloqueo para resolver `unknown`; reenvío conserva identidad y crea job nuevo en la misma transacción. Integración Procrastinate de consulta/reintento conservador y panel Estado sin llamadas externas, con mes local y facturables por `sent_at`. Alta local documentada en `docs/runbooks/admin.md`. 18 tests de integración focalizados pasan (TOTP real/replay/throttle, alias, permisos/CSRF, acciones, rollback, envío simulado único, panel/TZ). Las migraciones upstream de `otp_totp` se excluyen de `lintmigrations`, como Procrastinate (su `0002` de 2019 añade NOT NULL); las propias siguen auditadas. `makemigrations --check` sin cambios. `make check` completo pasa: Ruff, mypy, contratos y 1.712 tests. `lintmigrations`: siete propias válidas, cero errores. Pendiente revisión independiente.
 
 ### T-6.5 · QR y comandos de operación 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-2.4 · **Diseño:** §16.3

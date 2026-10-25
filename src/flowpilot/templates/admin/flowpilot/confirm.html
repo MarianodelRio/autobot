@@ -1,0 +1,9 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>{% if resend %}El proveedor podría haber entregado ya estos mensajes. Confirmar puede duplicar el envío.{% else %}Confirma que has verificado su entrega.{% endif %}</p>
+<form method="post">{% csrf_token %}
+{% for object in objects %}<p>{{ object.pk }}</p><input type="hidden" name="_selected_action" value="{{ object.pk }}">{% endfor %}
+<input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="confirm" value="yes">
+<button type="submit">Confirmar conscientemente</button>
+</form>
+{% endblock %}

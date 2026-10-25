@@ -5,9 +5,9 @@ Public routes are the only ones Caddy forwards (design.md §13, §14.3): the web
 through the SSH tunnel to 127.0.0.1:8000.
 """
 
-from django.contrib import admin
 from django.urls import URLPattern, URLResolver, path
 
+from flowpilot.admin import site
 from flowpilot.channels import views as webhooks
 from flowpilot.channels.test_bot.views import telegram_test
 from flowpilot.ops.views import health
@@ -20,7 +20,7 @@ public: list[URLPattern | URLResolver] = [
 ]
 
 internal: list[URLPattern | URLResolver] = [
-    path("admin/", admin.site.urls),
+    path("admin/", site.urls),
 ]
 
 urlpatterns = public + internal

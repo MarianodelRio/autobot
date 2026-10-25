@@ -643,6 +643,7 @@ outcome = adaptador.send(adaptador.render(payload), ...)
 - Un `unknown` o `failed` **no bloquea** los siguientes mensajes del contacto.
 - WhatsApp: un estado posterior con ese `outbound_ref` pasa un `unknown` a `sent`. Los que siguen en `unknown` más de 10 min aparecen en el Admin con "Marcar enviado" y "Reenviar", y en la alerta de §15.3.
 - Telegram no envía estados: un `unknown` queda así hasta que lo revise el operador.
+- Las acciones del Admin exigen permiso de cambio y confirmación expresa, vuelven a comprobar `unknown` y su antigüedad (> 10 min) bajo bloqueo y registran el resultado en `LogEntry` usando `owner`. «Marcar enviado» registra una entrega confirmada, incluso si el payload ya caducó o el negocio se dio de baja. «Reenviar» advierte del posible duplicado, exige payload y canal disponibles y tenant no dado de baja; pone la misma fila en `pending` y crea un trabajo nuevo con el mismo `outbound_id`, clave idempotente y candado del contacto. Estado, trabajo y auditoría se confirman juntos.
 - **Implementación** (`flowpilot/runtime/outbound.py`; trabajo en `flowpilot/jobs.py`):
   - El destinatario es el teléfono del contacto si se conoce y, si no, su `external_id` (BSUID en WhatsApp, id de usuario en Telegram).
   - `last_error` empieza por el tipo de rechazo (`auth: …`, `recipient: …`, `other: …`), solo con estado HTTP y códigos; `ops_check` (§15.3) buscará los `auth:` para la alerta 🔴, y hasta T-6.1 se registra un `ALERT` en el log.
@@ -1126,7 +1127,7 @@ CREATE POLICY tenant_isolation ON contact
 
 - **El tenant solo se fija con `tenant_tx(tenant_id)`** (`flowpilot/tenancy/tx.py`): abre una transacción corta en `default` y ejecuta `set_config('app.tenant_id', …, true)` (equivale a `SET LOCAL`). Nunca se anida: es un `transaction.atomic(durable=True)`, que falla dentro de otro bloque atómico salvo el de un test. Si sale bien, vacía el ajuste, de modo que ni siquiera dentro de la transacción de un test queda un tenant fijado; ante un error lo deshace el rollback. Sin tenant fijado se leen 0 filas, así que un olvido falla de forma segura.
 - `NULLIF(…, '')` es necesario: con conexiones persistentes, tras un `SET LOCAL` las transacciones siguientes ven `''` en lugar de NULL.
-- Django tiene dos alias: `default` (`fp_app`) y `owner` (`fp_owner`). El Admin usa `owner` mediante una clase base de `ModelAdmin` (`using = "owner"`). Las URL `/admin/` solo se montan en `web` y Caddy no las expone (§13).
+- Django tiene dos alias: `default` (`fp_app`) y `owner` (`fp_owner`). El Admin usa `owner` mediante una clase base de `ModelAdmin` (`using = "owner"`). El contexto de petición del Admin también enruta a `owner` autenticación, permisos, sesiones, dispositivos OTP, formularios, relaciones, inlines y `LogEntry`; se restablece al terminar la respuesta. La verificación OTP bloquea el dispositivo en una transacción `owner`. Sin alias `owner` el acceso falla cerrado. Las URL `/admin/` solo se montan en `web` y Caddy no las expone (§13).
 - **Roles:** los crea `deploy/postgres/init-roles.sh` (idempotente) al inicializar el volumen de `db`. `fp_app` tiene `CONNECT`, `USAGE` sobre `public` y `SELECT/INSERT/UPDATE/DELETE` (y secuencias) sobre las tablas de `fp_owner` mediante `ALTER DEFAULT PRIVILEGES` (sobre `tenant`, solo `SELECT`; migración `0002`); no tiene `TEMP`, `TRUNCATE` ni `CREATE`, ni puede conectarse a `postgres` ni a `template1`. El script lee las contraseñas con `\getenv`; no se activa `log_statement` para DDL, porque las registraría. `manage.py migrate` usa `owner` por defecto.
 - **Tests:** la base `test_flowpilot` existe de antemano (el mismo script con `POSTGRES_TEST_DB`, solo en local y CI); el `conftest.py` raíz apunta los dos alias a ella y migra como `fp_owner`, así que los tests consultan como `fp_app`, bajo RLS.
 - Los trabajos que recorren tenants (repartos, retención, `ops_check`) obtienen la lista del registro en memoria y abren un `tenant_tx` por tenant.
@@ -1317,9 +1318,9 @@ Sentry usa `SENTRY_DSN` y `RELEASE_SHA` (o `SHA`). No envía cuerpos HTTP, usuar
 Una vista "Estado" en el Admin muestra:
 
 - Colas: trabajos pendientes y antigüedad del más antiguo.
-- Trabajos fallidos.
+- Trabajos fallidos. La acción propia «Reintentar» solo acepta trabajos `failed` registrados e idempotentes; no reinicia trabajos `doing` ni los envíos de mensajes o avisos, que requieren revisar su resultado externo. Cada reintento queda auditado.
 - Envíos en `unknown` o `failed`.
-- Por tenant y canal: mensajes del mes (entrantes, salientes y facturables), último barrido, estado del tenant y resultado de `pack.health`.
+- Por tenant y canal: mensajes del mes (entrantes por `received_at`, salientes por `created_at` y facturables por `sent_at`, desde el inicio del mes en la zona del tenant), último barrido, estado del tenant y la última salud del pack almacenada por `ops_check`. Se indica si falta la comprobación o tiene más de 24 h; la vista no llama a servicios externos.
 
 ---
 
