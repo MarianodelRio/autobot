@@ -177,3 +177,6 @@ HEALTHCHECKS_PING_URL = os.environ.get("HEALTHCHECKS_PING_URL", "")
 SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 RELEASE_SHA = os.environ.get("RELEASE_SHA", os.environ.get("SHA", ""))
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "web")
+
+# Human approval of T-6.3 is required before enabling destructive periodic retention.
+RETENTION_CLEANUP_ENABLED = os.environ.get("RETENTION_CLEANUP_ENABLED", "false").lower() == "true"

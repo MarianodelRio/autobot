@@ -48,6 +48,11 @@ class Contact(TenantScoped):
 
     class Meta:
         db_table = "contact"
+        indexes = [
+            models.Index(
+                fields=["tenant", "last_activity_at", "created_at"], name="contact_retention_idx"
+            )
+        ]
         constraints = [
             _tenant_and_id("contact"),
             models.UniqueConstraint(
@@ -95,6 +100,7 @@ class InboundEvent(TenantScoped):
 
     class Meta:
         db_table = "inbound_event"
+        indexes = [models.Index(fields=["tenant", "received_at"], name="inbound_retention_idx")]
         constraints = [
             _tenant_and_id("inbound_event"),
             models.UniqueConstraint(
@@ -151,6 +157,12 @@ class OutboundMessage(TenantScoped):
             models.UniqueConstraint(fields=["tenant", "idem_key"], name="outbound_idem_key_uniq"),
         ]
         indexes = [
+            models.Index(fields=["tenant", "created_at"], name="outbound_retention_idx"),
+            models.Index(
+                fields=["tenant", "unknown_at"],
+                condition=models.Q(status="unknown"),
+                name="outbound_unknown_idx",
+            ),
             # apply_status looks a message up by the provider id (§7.2)
             models.Index(fields=["tenant", "provider_message_id"], name="outbound_provider_id_idx"),
         ]
@@ -180,6 +192,7 @@ class Notification(TenantScoped):
 
     class Meta:
         db_table = "notification"
+        indexes = [models.Index(fields=["tenant", "created_at"], name="notification_retention_idx")]
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "idem_key"], name="notification_idem_key_uniq"
@@ -208,6 +221,7 @@ class TestBotEvent(models.Model):
 
     class Meta:
         db_table = "test_bot_event"
+        indexes = [models.Index(fields=["received_at"], name="test_bot_retention_idx")]
 
     def __str__(self) -> str:
         return f"test_bot_event {self.update_id}"
@@ -222,6 +236,7 @@ class TestSession(models.Model):
 
     class Meta:
         db_table = "test_session"
+        indexes = [models.Index(fields=["selected_at"], name="test_session_retention_idx")]
 
     def __str__(self) -> str:
         return f"test_session {self.tenant_id}"  # never the Telegram user id

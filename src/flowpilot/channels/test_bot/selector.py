@@ -143,6 +143,7 @@ def route_test_update(event_id: UUID) -> None:
                 event, user_id, [Text(NOT_AVAILABLE_TEXT), business_list(available, 0)]
             )
         else:
+            TestSession.objects.filter(telegram_user_id=user_id).update(selected_at=timezone.now())
             store(tenant, [item], Channel.TEST)
             _finish(event)
 

@@ -225,3 +225,15 @@ def ops_check(timestamp: int) -> None:
         run()
     finally:
         close_old_connections()
+
+
+@app.periodic(cron="0 3 * * *", periodic_id="retention_cleanup")
+@app.task(queue=PERIODIC, name="retention_cleanup", queueing_lock="retention_cleanup")
+def retention_cleanup(timestamp: int) -> None:
+    from flowpilot.runtime.retention import cleanup
+
+    close_old_connections()
+    try:
+        cleanup()
+    finally:
+        close_old_connections()

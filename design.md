@@ -1147,7 +1147,9 @@ CREATE POLICY tenant_isolation ON contact
 | Backups | 6 meses | Política de restic (§14.4) |
 | Tenant dado de baja | ≤ 30 días | §16.2 |
 
-Derechos RGPD: `manage.py export_contact <slug> <external_id>` y `manage.py forget_contact <slug> <external_id>`, que borra contacto, conversación, eventos y mensajes. Las citas del calendario pertenecen al negocio. Estos plazos se recogen en el contrato de encargo con cada negocio.
+La limpieza queda desactivada de forma predeterminada (`RETENTION_CLEANUP_ENABLED=false`) hasta aprobación humana explícita; el trabajo de las 03:00 UTC comprueba la habilitación también al ejecutarse. Los doce meses son de calendario; un contacto sin actividad registrada cuenta desde su creación. `test_session.selected_at` se refresca al seleccionar y al remitir mensajes al negocio. Operación y límites de los datos de plataforma: [`docs/runbooks/retencion-rgpd.md`](docs/runbooks/retencion-rgpd.md).
+
+Derechos RGPD: `manage.py export_contact <slug> <external_id>` y `manage.py forget_contact <slug> <external_id>`, que borra contacto, conversación, eventos y mensajes. Si el identificador coincide entre canales, estos comandos exigen `--channel main|test`. Los comandos de exportación requieren `--output` y crean un archivo privado nuevo (0600). Las citas del calendario pertenecen al negocio. Estos plazos se recogen en el contrato de encargo con cada negocio.
 
 #### 12.4 Migraciones
 
@@ -1339,6 +1341,8 @@ Una vista "Estado" en el Admin muestra:
 10. `status: active`, commit y despliegue. `tools/qr.py <slug>` genera el QR de `wa.me` para el local.
 
 #### 16.2 Baja de un negocio
+
+La persona operadora registra la fecha efectiva de baja y ejecuta el borrado en ≤ 30 días; `synced_at` no es una fecha de baja. La entrada del tenant se conserva hasta comprobar el borrado.
 
 1. `status: offboarded` y despliegue: los webhooks se contestan con 200 sin guardar nada.
 2. `manage.py export_tenant <slug>`, si se acordó con el negocio.
