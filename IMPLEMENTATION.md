@@ -87,13 +87,13 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F2 | Datos, tenants y aislamiento | 5 | 5 | done |
 | F3 | Canales y runtime | 10 | 10 | validación pendiente (M-3.1) |
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
-| F5 | Pack `salon` | 9 | 8 | revisión técnica aprobada; aprobación T-5.8 y validación manual pendientes |
+| F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
 | F6 | Avisos, operación y observabilidad | 5 | 0 | pending |
 | F7 | Infraestructura y despliegue | 5 | 0 | pending |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
-| **Total** | | **52** | **38** | |
+| **Total** | | **52** | **39** | |
 
-En F5, «Hechas» cuenta los cierres formales: ocho tareas tienen revisión independiente aprobada. T-5.8 está implementada y aprobada técnicamente, pero espera la aprobación humana ⚠️. Las pruebas manuales se han pospuesto al final por indicación de la persona.
+En F5, las nueve tareas tienen revisión independiente aprobada. La persona aprobó expresamente T-5.8 el 2026-10-25. Las pruebas manuales se han pospuesto al final por indicación de la persona; la aprobación de la implementación no implica ejecutar la migración sobre datos reales.
 
 Dependencias entre fases: F0 → F1 → F2 → F3 → (F4 y F5, en cualquier orden o en paralelo) → F6 → F7 → F8. Mandan las dependencias de cada tarea: cualquier tarea con sus dependencias cumplidas puede hacerse, aunque una fase anterior tenga pendiente una acción manual o una casilla de validación (apartado 1.6).
 
@@ -873,13 +873,13 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** implementada y aprobada por revisión independiente (2026-10-25). Integración por webhook → runtime → outbox → adaptador con Calendar y proveedores simulados: main WhatsApp, main Telegram y bot de pruebas sobre ambos tipos de tenant. Se comprueba que el calendario y el proveedor ajenos no reciben llamadas, que el aviso del bot de pruebas va a ops y que las confirmaciones manuales solo salen por main WhatsApp. Revisión propia adicional: rechazo de callbacks proactivos vacíos/largos sin E/S y errores esperados de Google sin encadenar detalles del proveedor; comprobación estática del protocolo del cliente real.
 
 ### T-5.8 · Migración de citas existentes ⚠️ 🤖
-- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-5.1, T-5.2 · **Diseño:** §9.3
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-5.1, T-5.2 · **Diseño:** §9.3
 - **Hacer:** `tools/migrate_salon_events.py <slug> [--dry-run]`.
   - Recorre las citas futuras con `WaId:`, crea sus contactos y añade `fp_contact`, `fp_key` y `fp_service`.
   - Es idempotente y muestra un informe.
 - **Acepta:** ejecutado dos veces, la segunda no cambia nada; `--dry-run` no escribe nada.
 - **Tests:** con `FakeCalendar`.
-- **Notas:** código y tests implementados; revisión independiente aprobada (2026-10-25), aprobación humana ⚠️ pendiente antes de cerrar. Escribe en el calendario real del negocio, así que solo lo ejecuta el operador (M-8.1); no se ha ejecutado sobre servicios reales. CLI con `--dry-run` sin escrituras ni en BD ni Calendar, lectura de todas las citas futuras (sin horizonte artificial, paginación acotada), contactos main bajo RLS y metadatos `fp_contact`, `fp_key` estable y `fp_service`. Conserva descripción, fechas y metadatos ajenos; no sobrescribe otra propiedad ni migra servicios desconocidos. Tests con FakeCalendar y BD: segunda pasada no escribe, fallo parcial se puede reintentar sin duplicar contactos, dry-run no escribe, aislamiento respecto a test y ausencia de datos personales en el informe.
+- **Notas:** código y tests implementados; revisión independiente y aprobación humana explícita ⚠️ completadas (2026-10-25). Escribe en el calendario real del negocio, así que solo lo ejecuta el operador (M-8.1); no se ha ejecutado sobre servicios reales. CLI con `--dry-run` sin escrituras ni en BD ni Calendar, lectura de todas las citas futuras (sin horizonte artificial, paginación acotada), contactos main bajo RLS y metadatos `fp_contact`, `fp_key` estable y `fp_service`. Conserva descripción, fechas y metadatos ajenos; no sobrescribe otra propiedad ni migra servicios desconocidos. Tests con FakeCalendar y BD: segunda pasada no escribe, fallo parcial se puede reintentar sin duplicar contactos, dry-run no escribe, aislamiento respecto a test y ausencia de datos personales en el informe.
 
 ### T-5.9 · Concurrencia de reservas 🤖
 - **Estado:** done · **Revisión:** aprobada · **Depende de:** T-5.4, T-3.4 · **Diseño:** §9.5, §17.1
@@ -919,7 +919,8 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - El barrido omite con aviso los ids de Google cuyo callback excedería los 64 bytes comunes; nunca los trunca. Los ids nuevos deterministas tienen 32 caracteres.
 - La persona ha pospuesto las pruebas manuales para el final. M-5.1/M-5.2 siguen pendientes: no se han usado credenciales reales, creado calendarios reales, ejecutado la migración real ni activado ningún negocio. Las casillas manuales de F3/F4/F5 siguen pendientes.
 - Correcciones de revisión independiente: horas de un dígito de `[CFG] HORARIO`; reintento de `RefreshError` temporal de Google; diario genérico `EffectJournal` para recuperar confirmación y aviso tras borrar una cita y fallar antes de tx2 (migración aditiva `0004`, sin cambios en RLS/roles ni borrados); resolución conservadora de identidades heredadas, alias verificados y respeto de bajas/no alcanzables en el grupo telefónico. Regresiones en contratos, escenarios y BD; `design.md` actualizado.
-- Para cerrar T-5.8 solo falta aprobación humana de la implementación. Esto no ejecuta ni autoriza una migración real: corresponde al operador en M-8.1 y al ensayo de T-8.2. F6 no se ha empezado.
+- T-5.8 cerrada tras aprobación humana explícita de la implementación (2026-10-25: «sí, aprobamos todo»). Las nueve tareas de F5 quedan done. La migración real corresponde al operador en M-8.1 y al ensayo de T-8.2; no se ha ejecutado. F6 no se ha empezado.
+- CI del código revisado y corregido (`cf1dfe3`): controles e imagen en verde, https://github.com/MarianodelRio/flowpilot/actions/runs/40183624747. El cierre de aprobación posterior solo modifica este documento.
 
 ---
 
