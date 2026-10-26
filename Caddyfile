@@ -1,0 +1,13 @@
+{$PUBLIC_HOST} {
+    request_body {
+        max_size 64KB
+    }
+
+    @public path /webhooks/whatsapp/* /webhooks/telegram/* /webhooks/telegram-test /health
+    handle @public {
+        reverse_proxy web:8000
+    }
+    handle {
+        respond 404
+    }
+}

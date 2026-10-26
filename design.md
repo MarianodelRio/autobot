@@ -1192,7 +1192,8 @@ Derechos RGPD: `manage.py export_contact <slug> <external_id>` y `manage.py forg
 # compose.prod.yaml (resumen)
 x-app: &app
   image: ghcr.io/marianodelrio/flowpilot:${SHA}
-  env_file: .env
+  environment: { ... }  # variables seleccionadas desde .env; el worker no recibe DB_OWNER_URL
+  user: ${DEPLOY_UID}  # uid no root del dueño de los secretos 0600 montados
   volumes: ["./secrets.yaml:/run/secrets/secrets.yaml:ro", "./google_sa.json:/run/secrets/google_sa.json:ro"]
   read_only: true
   tmpfs: [/tmp]
@@ -1200,7 +1201,7 @@ x-app: &app
   logging: {driver: json-file, options: {max-size: 20m, max-file: "5"}}
 
 services:
-  caddy:  image: caddy:2 · ports 80, 443 · volúmenes caddy_data, caddy_config · ./Caddyfile
+  caddy:  image: caddy:2 · uid deploy no root · ports 80, 443 · ./state/caddy-data, ./state/caddy-config · ./Caddyfile
   web:    <<: *app · command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4 --no-control-socket
           ports: ["127.0.0.1:8000:8000"]    (solo para el túnel del Admin)
           healthcheck: GET /health
@@ -1210,12 +1211,23 @@ services:
           (shared_buffers 512MB, max_connections 100, log_min_duration_statement 1s)
 ```
 
-`compose.yaml` (local): los mismos `web`, `worker` y `db`, con la imagen construida en local, código montado y `runserver` (con recarga automática); sin Caddy. El worker no se recarga solo: tras cambiar código, `docker compose restart worker`. `db` se publica en `127.0.0.1:5433` para los tests desde el host. En local se conversa con los packs mediante el bot de pruebas de desarrollo y `telegram_poll` (§6.4).
+`compose.prod.yaml` distribuye las variables de `.env` por servicio: `db` solo recibe
+las contraseñas de arranque, `worker` no recibe la URL del rol propietario y Caddy
+solo recibe `PUBLIC_HOST`. El proceso de la imagen se ejecuta como usuario no root;
+en producción su UID coincide con el del usuario `deploy` del host para leer los
+ficheros montados con modo 0600. Caddy usa también ese UID y directorios
+persistentes del host propiedad de `deploy` para certificados y configuración.
+`compose.yaml` (local): los mismos `web`, `worker` y
+`db`, con la imagen construida en local, código montado y `runserver` (con recarga
+automática); sin Caddy. El worker no se recarga solo: tras cambiar código,
+`docker compose restart worker`. `db` se publica en `127.0.0.1:5433` para los
+tests desde el host. En local se conversa con los packs mediante el bot de pruebas
+de desarrollo y `telegram_poll` (§6.4).
 
 #### 14.3 Caddy
 
 ```
-api.<dominio> {
+{$PUBLIC_HOST} {
     request_body { max_size 64KB }
     @public path /webhooks/whatsapp/* /webhooks/telegram/* /webhooks/telegram-test /health
     handle @public { reverse_proxy web:8000 }
@@ -1230,12 +1242,12 @@ Caddy obtiene y renueva los certificados de Let's Encrypt. Django solo confía e
 | Qué | Cómo | Cuándo | Retención |
 |---|---|---|---|
 | PostgreSQL | `pg_dump -Fc` → `restic backup` a almacenamiento S3 de **otro proveedor** (Backblaze B2 o Cloudflare R2), cifrado por restic | Cada 6 h (timer de systemd en el host, `deploy/backup.sh`) | 7 diarias, 4 semanales, 6 mensuales |
-| `.env`, `secrets.yaml`, `google_sa.json`, `Caddyfile` | En el mismo `restic backup` | Cada 6 h | Igual |
+| `.env`, `.deployed-sha`, `secrets.yaml`, `google_sa.json`, `Caddyfile` | En el mismo `restic backup` | Cada 6 h | Igual |
 | Config y datasets | Git (GitHub) | Siempre | Indefinida |
 | Contraseña de restic y credenciales del almacenamiento | Gestor de contraseñas del operador (no van en el backup) | — | — |
 
 - El backup termina con un ping a healthchecks.io: si no llega en 7 h, salta una alerta.
-- **`deploy/restore.sh`:** VPS nueva → Docker → clonar el repositorio → restaurar ficheros con restic → `pg_restore` → `docker compose up` → apuntar el DNS. Objetivo: menos de 2 h.
+- **`deploy/restore.sh`:** VPS nueva → Docker → clonar el repositorio → restaurar ficheros con restic → `pg_restore` → `docker compose up` → apuntar el DNS. Exige destino vacío; una marca local permite reintentar una restauración parcial sin tocar una instalación existente. Objetivo: menos de 2 h.
 - **Simulacro trimestral:** restaurar el último backup en una VPS temporal o en local, comprobar los conteos por tenant y anotar el resultado y el tiempo (runbook 6).
 
 #### 14.5 Costes [estimación; VERIFICAR precios]
@@ -1256,11 +1268,11 @@ Quedan ~10 € de margen hasta el objetivo de 20 € para una VPS de 8 GB si hic
 - **CI** (`ci.yml`): en cada push a `main` ejecuta las puertas de §17.3 y, si pasan, construye y publica la imagen.
 - **Despliegue** (`deploy.yml`, lanzado a mano con `workflow_dispatch`): `ssh deploy@vps "deploy/deploy.sh <sha>"`, con una clave SSH limitada a ese script:
   1. `docker compose pull`
-  2. `docker compose run --rm web manage.py migrate && manage.py sync_tenants`. Si falla, se para aquí y no cambia nada.
+  2. `docker compose run --rm web manage.py migrate && manage.py sync_tenants --strict`. Si falla, se para aquí y no cambia la imagen en servicio.
   3. `docker compose up -d web worker`
-  4. Espera a que `/health` devuelva 200 (máximo 60 s). Si no llega, `deploy.sh` vuelve a desplegar el SHA anterior y avisa a ops.
+  4. Espera a que `/health` devuelva 200 sin tenants degradados o ilegibles (máximo 60 s). Si no llega, `deploy.sh` vuelve a desplegar el SHA anterior y avisa a ops.
 - Durante los segundos en que `web` se recrea, Caddy devuelve 502 y Meta y Telegram reintentan. El `worker` termina sus trabajos antes de parar.
-- **Vuelta atrás:** volver a desplegar el SHA anterior. Las migraciones no se revierten, porque son compatibles hacia atrás.
+- **Vuelta atrás:** volver a desplegar el SHA anterior y su configuración Git. Las migraciones no se revierten, porque son compatibles hacia atrás. La clave SSH de CI usa un comando forzado; para un repositorio privado, la VPS tiene una deploy key de GitHub de solo lectura y la huella del host fijada por el operador. El paquete GHCR debe ser público o el usuario `deploy` debe tener autenticación de lectura configurada. El entorno `production` de GitHub requiere aprobación humana cuando la cuenta permite esa protección.
 - Se despliega preferiblemente fuera de las horas punta de los negocios (antes de las 9:00 o después de las 21:00).
 
 #### 14.7 Crecimiento

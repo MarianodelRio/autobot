@@ -89,7 +89,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
 | F6 | Avisos, operación y observabilidad | 5 | 5 | implementación, revisiones y aprobación completas; validación manual pendiente |
-| F7 | Infraestructura y despliegue | 5 | 0 | pending |
+| F7 | Infraestructura y despliegue | 5 | 0 | 1/5 implementaciones preparadas; cierres bloqueados |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
 | **Total** | | **52** | **44** | |
 
@@ -1008,14 +1008,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** FlowPilot corriendo en la VPS con HTTPS, desplegado desde GitHub, con backups externos y una restauración probada.
 
 ### T-7.1 · Compose de producción y Caddy ⚠️ 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-6.4 · **Diseño:** §14.2, §14.3, §13
+- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-6.4 · **Diseño:** §14.2, §14.3, §13
 - **Hacer:**
   - `compose.prod.yaml`: imagen de GHCR por `SHA`, `read_only`, `tmpfs`, secretos montados de solo lectura, logs rotados y `web` publicado solo en `127.0.0.1:8000`.
   - `Caddyfile` con solo las rutas públicas de §14.3.
   - `.env.example` y `secrets.example.yaml` de producción.
 - **Acepta:** en local, con la configuración de producción, las rutas no públicas devuelven 404 a través de Caddy.
 - **Tests:** script de comprobación de rutas incluido en `make check-prod-config`.
-- **Notas:** —
+- **Notas:** Compose de producción con UID no root que lee secretos 0600, variables separadas por servicio, GHCR por SHA, BD privada y Caddy con solo las cuatro rutas públicas; WhiteNoise y estáticos en la imagen. `make check-prod-config` pasó con Caddy local y backend de prueba (rutas internas 404). Revisión técnica independiente aprobada por `review_71`, incluido el ajuste de UID. Aprobación humana de infraestructura solicitada y pendiente; no se ha ejecutado en VPS.
 
 ### T-7.2 · Despliegue 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-7.1, T-0.3 · **Diseño:** §14.6

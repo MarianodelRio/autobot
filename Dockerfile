@@ -23,6 +23,12 @@ WORKDIR /app
 COPY manage.py ./
 COPY src ./src
 COPY tenants ./tenants
+# Build the manifest for the production staticfiles backend. These values exist only
+# for collectstatic and never become image environment variables.
+RUN ENVIRONMENT=prod DJANGO_SECRET_KEY=build-only-staticfiles \
+    DJANGO_ALLOWED_HOSTS=localhost DB_APP_URL=postgres://build:build@localhost/build \
+    SECRETS_FILE=/run/secrets/secrets.yaml WHATSAPP_GRAPH_VERSION=v23.0 \
+    python manage.py collectstatic --noinput
 USER app
 EXPOSE 8000
 CMD ["gunicorn", "config.wsgi", "-b", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--no-control-socket"]
