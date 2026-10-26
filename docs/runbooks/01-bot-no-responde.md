@@ -13,4 +13,4 @@ Si el fallo empezó con un despliegue, sigue el runbook 7. Reinicia solo el serv
 averiado después de identificarlo; si la BD está caída, no fuerces reenvíos.
 
 **Verificación:** `/health` vuelve a 200, el worker completa su latido, una consulta
-del bot de pruebas termina y el backlog deja de crecer. Registra causa y duración.
+por el bot de demo termina y el backlog deja de crecer. Registra causa y duración.

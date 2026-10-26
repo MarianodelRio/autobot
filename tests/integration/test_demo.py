@@ -2,8 +2,9 @@
 real database and Telegram answered by a mock transport. Covers who may use it (the
 closed `DEMO_TELEGRAM_USERS` list), picking and switching demo businesses, businesses
 that stop being available, and the isolation of demo doors: never a real tenant's main
-channel, and the owner's notices reach it like a real tenant's. The WhatsApp door is
-completed in a later step of docs/mejoras/01-bot-de-demo.md; it is always off here."""
+channel, and the owner's notices reach it like a real tenant's. The WhatsApp door
+(always off in this file, since its settings are never configured here) has its own
+scenarios in test_demo_whatsapp.py."""
 
 import json
 from collections.abc import Iterator

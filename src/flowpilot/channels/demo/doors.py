@@ -1,9 +1,6 @@
 """The demo bot's two doors: Telegram and WhatsApp. Each is a channel of the
 platform (not of any tenant) with its own secrets and closed user list; the demo
 selector of `selector.py` picks the tenant once a person has gone through a door.
-
-The WhatsApp door is completed in a later step of docs/mejoras/01-bot-de-demo.md:
-`door(Channel.DEMO_WA)` always returns None until then, so that channel stays off.
 """
 
 import secrets as random_secrets
@@ -15,7 +12,7 @@ from django.conf import settings
 
 from flowpilot.channels.base import ChannelAdapter, InboundItem
 from flowpilot.runtime.models import Channel
-from flowpilot.tenancy.schema import TelegramSecrets
+from flowpilot.tenancy.schema import TelegramSecrets, WhatsAppChannel, WhatsAppSecrets
 
 
 @dataclass(frozen=True)
@@ -48,12 +45,46 @@ def _telegram_door() -> Door | None:
     )
 
 
+def _whatsapp_door() -> Door | None:
+    from flowpilot.channels.adapters import WHATSAPP
+
+    required = (
+        settings.DEMO_WHATSAPP_PHONE_NUMBER_ID,
+        settings.DEMO_WHATSAPP_WABA_ID,
+        settings.DEMO_WHATSAPP_APP_SECRET,
+        settings.DEMO_WHATSAPP_ACCESS_TOKEN,
+        settings.DEMO_WHATSAPP_VERIFY_TOKEN,
+    )
+    if not all(required):
+        return None
+    return Door(
+        channel=Channel.DEMO_WA,
+        adapter=WHATSAPP,
+        description=WhatsAppChannel(
+            type="whatsapp",
+            public_id="demowhatsapp",
+            app_id=None,
+            waba_id=settings.DEMO_WHATSAPP_WABA_ID,
+            phone_number_id=settings.DEMO_WHATSAPP_PHONE_NUMBER_ID,
+            display_phone=settings.DEMO_WHATSAPP_DISPLAY_PHONE or None,
+        ),
+        secrets=WhatsAppSecrets.model_validate(
+            {
+                "app_secret": settings.DEMO_WHATSAPP_APP_SECRET,
+                "access_token": settings.DEMO_WHATSAPP_ACCESS_TOKEN,
+                "verify_token": settings.DEMO_WHATSAPP_VERIFY_TOKEN,
+            }
+        ),
+        users=frozenset(settings.DEMO_WHATSAPP_USERS),
+    )
+
+
 @cache
 def door(channel: Channel) -> Door | None:
     """The door of `channel`, or None if it is off (no token/ids configured)."""
     if channel == Channel.DEMO_TG:
         return _telegram_door()
-    return None  # Channel.DEMO_WA: completed in a later step
+    return _whatsapp_door()
 
 
 def allowed_identity(door: Door, external_id: str, phone: str | None) -> bool:

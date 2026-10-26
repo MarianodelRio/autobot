@@ -120,6 +120,7 @@ def main() -> None:
         for path in (
             "/health",
             "/webhooks/telegram-demo",
+            "/webhooks/whatsapp-demo",
             "/webhooks/telegram/abc",
             "/webhooks/whatsapp/abc",
         ):

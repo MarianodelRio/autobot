@@ -15,17 +15,18 @@ ids o aprobaciones.
 - **Google Cloud de la plataforma:** proyecto propio (no de un negocio), Google
   Calendar API habilitada y cuenta de servicio con clave JSON en `google_sa.json`
   (ignorado por git) y en el gestor de contraseñas.
-- **Calendarios de desarrollo:** dos calendarios, «FlowPilot dev (real)» y «FlowPilot
-  dev (pruebas)», compartidos con la cuenta de servicio, como `calendar_id` y
-  `test_calendar_id` de un tenant `tenants/dev-salon/` en `onboarding`. Verificar: una
-  reserva desde el bot de pruebas aparece solo en el de pruebas.
+- **Calendario de la demo:** un calendario («FlowPilot demo»), compartido con la
+  cuenta de servicio, como `calendar_id` de `tenants/demo-peluqueria/`; después,
+  `status: active`. Verificar: una reserva desde cualquiera de las dos puertas de la
+  demo aparece una sola vez en ese calendario.
 - **Bot de avisos y chat de ops:** bot con @BotFather (`NOTIFY_BOT_TOKEN`) y un grupo
   de ops con él (`OPS_TELEGRAM_CHAT_ID`). Verificar: una alerta forzada llega al chat.
 - **Sentry y healthchecks.io:** proyecto de Sentry (`SENTRY_DSN`) y dos checks:
   «worker» (periodo 5 min, gracia 10 min, `HEALTHCHECKS_PING_URL`) y «backup»
   (periodo 6 h, gracia 1 h).
 
-Con esto se pueden validar a mano los packs `bus` y `salon` por el bot de pruebas.
+Con esto se pueden validar a mano los packs `bus` y `salon` por la puerta Telegram de
+la demo.
 
 ## 2. Servidor
 
@@ -43,6 +44,13 @@ Con esto se pueden validar a mano los packs `bus` y `salon` por el bot de prueba
 - **Bot de demo de producción (puerta Telegram):** distinto del de desarrollo, con su
   token y un `DEMO_TELEGRAM_WEBHOOK_SECRET` aleatorio en el `.env` del servidor; tras
   el primer despliegue, `manage.py telegram_set_webhook demo`.
+- **Demo por WhatsApp:** número de la plataforma (no de ningún cliente) con Business
+  Portfolio, app, token permanente, plantillas `confirmacion_cita` y
+  `recordatorio_cita` aprobadas (las del pack `salon`) y webhook a
+  `https://api.<dominio>/webhooks/whatsapp-demo` con `DEMO_WHATSAPP_VERIFY_TOKEN`
+  (checklist completo en `docs/runbooks/demo.md`). Variables `DEMO_WHATSAPP_*` en el
+  `.env` del servidor. El cambio de `Caddyfile` y la verificación de firma del webhook
+  necesitan aprobación humana explícita antes de desplegarse.
 - **Primer despliegue** con `make deploy SHA=<sha>`, prueba de vuelta atrás con un SHA
   roto a propósito y simulacro de restauración en una VPS temporal (objetivo: menos
   de 2 h). Requiere aprobación humana.
@@ -53,8 +61,9 @@ Verificación del servidor:
 
 - [ ] `/health` responde 200 con certificado válido; `/admin/` da 404 desde fuera y
       funciona con `make admin-tunnel`.
-- [ ] Consulta completa de Autocares y reserva de `dev-salon` (calendario de pruebas)
-      por el bot de pruebas de producción.
+- [ ] Consulta completa de `demo-autobuses` y reserva de `demo-peluqueria` por la
+      puerta Telegram de la demo de producción, y lo mismo por la puerta WhatsApp una
+      vez dada de alta.
 - [ ] Un backup automático aparece en restic y el check «backup» está verde.
 - [ ] Simulacro de restauración hecho y anotado.
 - [ ] Parar el worker dispara la alerta de healthchecks.io; arrancarlo la recupera.
@@ -67,7 +76,7 @@ Verificación del servidor:
   bot anterior (horario, servicios, ventana, evento especial e
   interruptores de envío con sus valores actuales), canal WhatsApp de la app
   existente en `onboarding` y `manual_confirmations_since` igual a la fecha de arranque.
-- El negocio comparte su calendario real; tú creas y compartes el de pruebas.
+- El negocio comparte su calendario real.
 - Secretos de la app de Meta existente en `secrets.yaml` y plantillas
   `confirmacion_cita` y `recordatorio_cita` aprobadas. Verificar: `tenant_health
   dm-barber` en verde.
@@ -75,16 +84,19 @@ Verificación del servidor:
   revisar el informe y ejecutar la migración real; comprobar después que «Ver mis
   citas» de un cliente existente muestra sus citas. La migración solo añade
   propiedades privadas a los eventos y no hace falta deshacerla.
-- Prueba con el dueño desde el bot de pruebas. En hora valle, cambiar el webhook de
-  Meta a `https://api.<dominio>/webhooks/whatsapp/<public_id>`, probar con un
-  `testers.main`, poner `status: active` y desplegar. Parar el servicio de la VM de
-  GCP y conservarla una semana; para volver atrás basta con restaurar la URL antigua.
+- Prueba con el dueño por su canal real, en `onboarding` con su id en `testers.main`
+  (no hay bot de pruebas aparte: la demo de la plataforma nunca habla con un negocio
+  real). En hora valle, cambiar el webhook de Meta a
+  `https://api.<dominio>/webhooks/whatsapp/<public_id>`, poner `status: active` y
+  desplegar. Parar el servicio de la VM de GCP y conservarla una semana; para volver
+  atrás basta con restaurar la URL antigua.
 
 ### Autocares San Sebastián (`bus`, WhatsApp)
 
-- Ids de Telegram de la empresa en `testers.telegram`, SIM sin WhatsApp y
+- Ids de Telegram o teléfonos de la empresa en `testers.main`, SIM sin WhatsApp y
   verificación de empresa en su Business Portfolio.
-- La empresa revisa el bot por el bot de pruebas y confirma el PDF de `make bus-revision`.
+- La empresa revisa el bot en `onboarding` por su canal real y confirma el PDF de
+  `make bus-revision`.
 - Alta de WhatsApp con el checklist de `docs/runbooks/alta-baja-negocio.md`, ids de
   Meta en `tenant.yaml`, secretos, `status: active` y despliegue.
 

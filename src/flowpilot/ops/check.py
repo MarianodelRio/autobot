@@ -11,6 +11,7 @@ from django.db import connection
 from django.db.models import Q
 from django.utils import timezone
 
+from flowpilot.channels.demo.doors import door
 from flowpilot.ops import health, state
 from flowpilot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
 from flowpilot.runtime.notifications import send_ops_alert
@@ -48,6 +49,7 @@ def run() -> None:
     registry = get_registry()
     if registry.errors or registry.secrets_error:
         send_ops_alert("registry", None, "🔴 Hay configuraciones de tenants o secretos ilegibles.")
+    demo_wa_billable = 0
     for tenant in registry.tenants:
         if tenant.file.status == "offboarded":
             continue
@@ -91,6 +93,12 @@ def run() -> None:
                             "🟡 Mensajes facturables de WhatsApp por encima del umbral mensual.",
                         )
                     )
+            if tenant.is_demo:
+                local_now = now.astimezone(tenant.info.timezone)
+                start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                demo_wa_billable += messages.filter(
+                    channel=Channel.DEMO_WA, billable=True, sent_at__gte=start
+                ).count()
         for auth_channel in auth_channels:
             demo = auth_channel in DEMO_CHANNELS
             send_ops_alert(
@@ -128,6 +136,12 @@ def run() -> None:
             pending.append((f"health:{issue.code}", f"{issue.severity} {issue.message}"))
         for kind, text in pending:
             send_ops_alert(kind, tenant.id, f"{tenant.slug}: {text}")
+    if demo_wa_billable > settings.DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD:
+        send_ops_alert(
+            "billing:demo_wa",
+            None,
+            "🟡 Mensajes facturables de la puerta WhatsApp de demo por encima del umbral mensual.",
+        )
     for demo_channel, label in DEMO_LABELS.items():
         if cache.get(f"bot:{demo_channel}:auth"):
             send_ops_alert(
@@ -156,6 +170,24 @@ def run() -> None:
                     None,
                     f"{issue.severity} Bot {name}: {issue.message}",
                 )
+    door_wa = door(Channel.DEMO_WA)
+    if door_wa is not None:
+        templates = {
+            (template.name, template.language)
+            for tenant in registry.demo_tenants()
+            if tenant.file.status == "active" and not tenant.is_degraded and tenant.pack is not None
+            for template in tenant.pack.templates
+        }
+        issues = health.daily(
+            "bot:demo_wa",
+            lambda: health.whatsapp_health(door_wa.description, door_wa.secrets, templates),
+        )
+        for issue in issues:
+            send_ops_alert(
+                f"bot:demo_wa:{issue.code}",
+                None,
+                f"{issue.severity} Bot de demo (WhatsApp): {issue.message}",
+            )
     disk = shutil.disk_usage(settings.BASE_DIR)
     if disk.used / disk.total > 0.85:
         send_ops_alert("disk", None, "🟠 Disco por encima del 85 %.")

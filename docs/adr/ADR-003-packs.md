@@ -4,7 +4,7 @@
 
 ## Contexto
 
-Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar (peluquería) y consulta de horarios con datos estructurados (autobuses). Las dos conversaciones se resuelven bien con una máquina de estados explícita. Cada negocio tiene un canal de producción (WhatsApp o Telegram) y todos se prueban desde un bot de Telegram compartido; las conversaciones deben funcionar igual en todos ellos.
+Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar (peluquería) y consulta de horarios con datos estructurados (autobuses). Las dos conversaciones se resuelven bien con una máquina de estados explícita. Cada negocio tiene un único canal de producción (WhatsApp o Telegram); las conversaciones deben funcionar igual en todos ellos, y cada pack nuevo trae su propio negocio de demostración para enseñarlo (ADR-006).
 
 ## Decisión
 

@@ -9,7 +9,7 @@ La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de
 ## Decisión
 
 - **Una VPS en la UE** (Hetzner Cloud, 2 vCPU / 4 GB) con Ubuntu 24.04 y **Docker Compose**: `caddy`, `web`, `worker` y `db` (PostgreSQL 18). `web` y `worker` usan la misma imagen.
-- **Caddy** con HTTPS automático; solo expone los webhooks de WhatsApp y Telegram (incluido el del bot de pruebas) y `/health`. El Admin lo sirve `web`, pero solo es accesible por túnel SSH.
+- **Caddy** con HTTPS automático; solo expone los webhooks de WhatsApp y Telegram (incluidos los de las dos puertas del bot de demo) y `/health`. El Admin lo sirve `web`, pero solo es accesible por túnel SSH.
 - **Secretos**: `.env` (plataforma) y `secrets.yaml` (canal de cada negocio) en el servidor, montados de solo lectura; nunca en git ni en la imagen.
 - **Backups**: `pg_dump` cada 6 h y los ficheros de secretos, cifrados con restic, a almacenamiento de **otro proveedor**; simulacro de restauración trimestral. RPO ≤ 6 h, RTO ≤ 2 h.
 - **Despliegue**: imagen en GHCR desde GitHub Actions; despliegue manual por SSH con migraciones primero, comprobación de salud y vuelta atrás automática.

@@ -144,6 +144,29 @@ if DEMO_TELEGRAM_WEBHOOK_SECRET and len(DEMO_TELEGRAM_WEBHOOK_SECRET) < 32:
     raise ImproperlyConfigured("DEMO_TELEGRAM_WEBHOOK_SECRET must have 32 characters or more")
 DEMO_TELEGRAM_USERS = _ids("DEMO_TELEGRAM_USERS")  # closed list of this door
 
+
+def _strings(name: str) -> frozenset[str]:
+    return frozenset(part.strip() for part in os.environ.get(name, "").split(",") if part.strip())
+
+
+# The platform's demo bot, WhatsApp door. Off unless every Meta id and secret below is
+# set (channels/demo/doors.py).
+DEMO_WHATSAPP_PHONE_NUMBER_ID = os.environ.get("DEMO_WHATSAPP_PHONE_NUMBER_ID", "")
+DEMO_WHATSAPP_WABA_ID = os.environ.get("DEMO_WHATSAPP_WABA_ID", "")
+DEMO_WHATSAPP_DISPLAY_PHONE = os.environ.get("DEMO_WHATSAPP_DISPLAY_PHONE", "")  # informational
+DEMO_WHATSAPP_APP_SECRET = os.environ.get("DEMO_WHATSAPP_APP_SECRET", "")
+DEMO_WHATSAPP_ACCESS_TOKEN = os.environ.get("DEMO_WHATSAPP_ACCESS_TOKEN", "")
+DEMO_WHATSAPP_VERIFY_TOKEN = os.environ.get("DEMO_WHATSAPP_VERIFY_TOKEN", "")
+DEMO_WHATSAPP_USERS = _strings("DEMO_WHATSAPP_USERS")  # closed list: phones or BSUIDs
+try:
+    DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD = int(
+        os.environ.get("DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD", "300")
+    )
+except ValueError:
+    raise ImproperlyConfigured("DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD must be an integer") from None
+if DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD <= 0:
+    raise ImproperlyConfigured("DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD must be positive")
+
 # Public base of the webhooks (https://api.<dominio>), for `telegram_set_webhook`.
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "")
 

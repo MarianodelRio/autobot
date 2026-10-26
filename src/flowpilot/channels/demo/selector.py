@@ -18,6 +18,7 @@ The selector's own messages (list, refusal, "Demo · …") belong to no tenant, 
 are sent here directly, once the event is marked done: at most once.
 """
 
+import copy
 import dataclasses
 import json
 import logging
@@ -32,15 +33,16 @@ from django.utils import timezone
 from core.limits import MAX_ID_BYTES, plan_sends
 from core.replies import Reply, Text
 from core.ui import list_msg, paginate, row, section
-from flowpilot.channels.base import InboundItem, Rejected, Sent
+from flowpilot.channels.base import InboundItem, Rejected, Sent, StatusItem
 from flowpilot.channels.demo.doors import Door, allowed, door
 from flowpilot.channels.ratelimit import WindowLimiter
 from flowpilot.jobs import INBOUND, ROUTE_DEMO_EVENT, app
 from flowpilot.ops.logging import bind, contextual
 from flowpilot.runtime.inbound import store
 from flowpilot.runtime.locks import demo_user_lock
-from flowpilot.runtime.models import Channel, DemoEvent, DemoSession
+from flowpilot.runtime.models import Channel, DemoEvent, DemoSession, OutboundMessage
 from flowpilot.tenancy.registry import LoadedTenant, get_registry
+from flowpilot.tenancy.tx import tenant_tx
 
 log = logging.getLogger(__name__)
 
@@ -225,7 +227,17 @@ def _synthetic_menu(door_: Door, item: InboundItem) -> InboundItem:
             },
         }
     else:
-        raise NotImplementedError("WhatsApp demo door: completed in a later step")
+        body = copy.deepcopy(item.payload)
+        message = body["entry"][0]["changes"][0]["value"]["messages"][0]
+        kept = {
+            k: message[k]
+            for k in ("from", "from_user_id", "user_id", "id", "timestamp")
+            if k in message
+        }
+        message.clear()
+        message.update(kept)
+        message["type"] = "text"
+        message["text"] = {"body": "menu"}
     (parsed,) = door_.adapter.parse(body, door_.description)
     assert isinstance(parsed, InboundItem)
     return dataclasses.replace(parsed, provider_event_id=f"select:{item.provider_event_id}")
@@ -255,6 +267,31 @@ def _finish_and_reply(
     """Mark the event done, then answer: a retry never repeats the answer."""
     _finish(event)
     _reply(door_, external_id, replies)
+
+
+def route_demo_status(item: StatusItem) -> None:
+    """A WhatsApp demo door delivery status: find which demo tenant's outbound_message
+    it belongs to (by our id or the provider's) and queue it there, like any other
+    event of that tenant. Only database reads: no external call."""
+    ref: UUID | None = None
+    if item.outbound_ref:
+        try:
+            ref = UUID(item.outbound_ref)
+        except ValueError:
+            ref = None
+    for tenant in get_registry().demo_tenants():
+        with tenant_tx(tenant.id):
+            found = (
+                OutboundMessage.objects.filter(id=ref).exists()
+                if ref is not None
+                else OutboundMessage.objects.filter(
+                    provider_message_id=item.provider_message_id
+                ).exists()
+            )
+        if found:
+            store(tenant, [item], Channel.DEMO_WA)
+            return
+    log.info("demo WhatsApp status for an unknown outbound message")
 
 
 def _reply(door_: Door, external_id: str, replies: list[Reply]) -> None:

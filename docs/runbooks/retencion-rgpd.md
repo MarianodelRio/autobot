@@ -26,19 +26,22 @@ uv run python manage.py purge_tenant SLUG
 ```
 
 `--channel` puede omitirse si el identificador corresponde a un único contacto; si
-coincide entre `main` y `test`, el comando exige elegir. Las exportaciones crean un
-archivo JSON nuevo con permisos 0600; rechazan archivos existentes y enlaces simbólicos.
-El operador debe custodiar, entregar y retirar ese archivo según el procedimiento del
-negocio. El contenido no se imprime en el terminal ni en logs.
+coincide entre `main` y una puerta de demo (`demo_tg`/`demo_wa`), el comando exige
+elegir. Las exportaciones crean un archivo JSON nuevo con permisos 0600; rechazan
+archivos existentes y enlaces simbólicos. El operador debe custodiar, entregar y
+retirar ese archivo según el procedimiento del negocio. El contenido no se imprime en
+el terminal ni en logs.
 
 El borrado de contacto incluye su conversación, mensajes y eventos identificados por
 remitente, relación con el mensaje saliente o referencia del proveedor. Los originales
-del bot de pruebas se exportan/borran solo cuando su `update_id` está vinculado a un
-evento `test` del negocio (`update_id` o `select:update_id`). Los eventos del selector
-sin negocio atribuido son datos de plataforma y caducan a los siete días; no se borran
-por compartir remitente con eventos de otro negocio. `purge_tenant` aplica la misma
-regla de asociación y exige escribir literalmente el slug, sin espacios adicionales.
-Conserva el reflejo `tenant`, YAML, secretos, calendarios y datos de otros negocios.
+del bot de demo se exportan/borran solo cuando su `provider_event_id` está vinculado a
+un evento de la puerta (`demo_tg`/`demo_wa`) del negocio (`provider_event_id` o
+`select:provider_event_id`), junto con la sesión (`DemoSession`) de esa puerta y
+persona. Los eventos del selector sin negocio atribuido son datos de plataforma y
+caducan a los siete días (treinta para las sesiones); no se borran por compartir
+remitente con eventos de otro negocio. `purge_tenant` aplica la misma regla de
+asociación y exige escribir literalmente el slug, sin espacios adicionales. Conserva
+el reflejo `tenant`, YAML, secretos, calendarios y datos de otros negocios.
 
 Para dar de baja un negocio, el operador registra la fecha real de baja y una
 fecha límite de borrado de como máximo 30 días en el registro operativo de la baja.

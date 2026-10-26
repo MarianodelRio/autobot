@@ -1,5 +1,6 @@
 """Daily pack/channel health, and the operator's on-demand health command."""
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -15,7 +16,7 @@ from flowpilot.channels.telegram.adapter import TelegramApiError, call
 from flowpilot.runtime.context import CalendarFactory, build_context, google_calendar
 from flowpilot.runtime.models import DEMO_CHANNELS, Channel
 from flowpilot.tenancy.registry import LoadedTenant
-from flowpilot.tenancy.schema import TelegramSecrets, WhatsAppSecrets
+from flowpilot.tenancy.schema import TelegramSecrets, WhatsAppChannel, WhatsAppSecrets
 
 DAY_S = 86400
 
@@ -55,15 +56,12 @@ def telegram_health(token: str, *, outbound_only: bool = False) -> list[Issue]:
     return []
 
 
-def whatsapp_health(tenant: LoadedTenant) -> list[Issue]:
-    channel = tenant.file.channel
-    if (
-        channel is None
-        or channel.type != "whatsapp"
-        or not isinstance(tenant.secrets, WhatsAppSecrets)
-    ):
-        return []
-    headers = {"Authorization": f"Bearer {tenant.secrets.access_token.get_secret_value()}"}
+def whatsapp_health(
+    channel: WhatsAppChannel, secrets: WhatsAppSecrets, templates: Collection[tuple[str, str]]
+) -> list[Issue]:
+    """Checked both for a tenant's own number (its pack's templates) and for the demo
+    door's number (the templates of every active demo tenant's pack)."""
+    headers = {"Authorization": f"Bearer {secrets.access_token.get_secret_value()}"}
     base = f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}"
     try:
         with httpx.Client(timeout=10) as client:
@@ -73,9 +71,7 @@ def whatsapp_health(tenant: LoadedTenant) -> list[Issue]:
             )
             if not response.is_success:
                 return [_graph_error(response)]
-            required = (
-                {(t.name, t.language) for t in tenant.pack.templates} if tenant.pack else set()
-            )
+            required = set(templates)
             approved: set[tuple[str, str]] = set()
             after = None
             seen: set[str] = set()
@@ -162,8 +158,13 @@ def tenant_health(
     if tenant.main_enabled:
         if isinstance(tenant.secrets, TelegramSecrets):
             issues.extend(telegram_health(tenant.secrets.bot_token.get_secret_value()))
-        else:
-            issues.extend(whatsapp_health(tenant))
+        elif isinstance(tenant.secrets, WhatsAppSecrets) and isinstance(
+            tenant.file.channel, WhatsAppChannel
+        ):
+            templates = (
+                {(t.name, t.language) for t in tenant.pack.templates} if tenant.pack else set()
+            )
+            issues.extend(whatsapp_health(tenant.file.channel, tenant.secrets, templates))
     return issues
 
 

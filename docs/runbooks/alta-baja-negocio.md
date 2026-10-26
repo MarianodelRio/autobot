@@ -7,25 +7,23 @@
    la config por defecto del pack.
 2. Completar la config (`docs/packs/<pack>.md`). En `bus`, añadir el dataset y pasar
    `make bus-validar`.
-3. **Pruebas:** añadir a `testers.telegram` los ids de Telegram de las personas del
-   negocio que vayan a probar.
-4. **Canal `main`:**
+3. **Canal `main`:**
    - WhatsApp: seguir el checklist de abajo, declarar `channel` y añadir sus secretos a
      `secrets.yaml` (`app_secret`, token permanente y `verify_token`).
    - Telegram: crear el bot con @BotFather a nombre del negocio, declarar `channel` y
      añadir `bot_token` y `webhook_secret` a `secrets.yaml`.
-5. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de
-   servicio («Hacer cambios en los eventos») y se pone su id en `calendar_id`. El
-   operador crea un calendario de pruebas, lo comparte igual y pone su id en
-   `test_calendar_id`; deben ser distintos. Si el canal es WhatsApp, crear las
-   plantillas del pack en el WhatsApp Manager.
-6. **Avisos al dueño** (opcional): `manage.py notify_link <slug>`.
-7. Commit y despliegue. Si el canal `main` es Telegram, `manage.py telegram_set_webhook <slug>`.
-8. `manage.py tenant_health <slug>` en verde.
-9. Pruebas con el negocio por el bot de pruebas y, por el canal `main`, con los ids de
-   `testers.main`.
-10. `status: active`, commit y despliegue. `make qr SLUG=<slug>` genera el QR del canal
-    para el local. Activar el canal real necesita aprobación humana explícita.
+4. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de
+   servicio («Hacer cambios en los eventos») y se pone su id en `calendar_id`. Si el
+   canal es WhatsApp, crear las plantillas del pack en el WhatsApp Manager.
+5. **Avisos al dueño** (opcional): `manage.py notify_link <slug>`.
+6. Commit y despliegue. Si el canal `main` es Telegram, `manage.py telegram_set_webhook <slug>`.
+7. `manage.py tenant_health <slug>` en verde.
+8. **Pruebas:** añadir a `testers.main` los ids (Telegram) o teléfonos/BSUID
+   (WhatsApp) de las personas del negocio que vayan a probar; con `status:
+   onboarding`, el canal `main` solo les contesta a ellas. No hay bot de pruebas
+   aparte: se prueba por el canal real del negocio.
+9. `status: active`, commit y despliegue. `make qr SLUG=<slug>` genera el QR del canal
+   para el local. Activar el canal real necesita aprobación humana explícita.
 
 ### Checklist de un número de WhatsApp
 
@@ -45,6 +43,24 @@ operador como administrador; una app y un número por negocio.
 
 Desde el 1/10/2026 Meta cobra también las respuestas dentro de la ventana de 24 h al
 precio *utility* del país; la tarifa se consulta en la cuenta de cada negocio.
+
+## Negocio de demo de un pack nuevo
+
+Cada pack nuevo trae su propio negocio de demostración, para enseñarlo por las dos
+puertas del bot de demo sin usar ningún negocio real (ver `docs/runbooks/demo.md`).
+
+1. `manage.py new_tenant demo-<pack> --pack <pack> --demo "<descripción>"` crea
+   `tenants/demo-<pack>/tenant.yaml` con `demo.description` y `status: paused` (sin
+   `channel` ni `testers`: un negocio de demo no tiene canal propio).
+2. Completar la config del pack como la de cualquier negocio, con datos inventados
+   razonables (sin credenciales ni ids reales ajenos a la persona operadora).
+3. Si el pack necesita calendario (`salon`): comparte un calendario de la persona
+   operadora con la cuenta de servicio y pon su id en `calendar_id`; las dos puertas lo
+   usan igual, no hay calendario de pruebas aparte.
+4. Escribir el escenario de conversación del pack sobre este negocio (obligatorio,
+   como el de cualquier cambio de flujo).
+5. `status: active`, commit. No requiere aprobación especial: un negocio de demo nunca
+   toca el canal real de un cliente.
 
 ## Baja
 

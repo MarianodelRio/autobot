@@ -17,5 +17,5 @@ dos proyectos temporales y compara conteos por tenant.
 
 **Verificación:** `/health` responde 200, compara por tenant los conteos de `contact`,
 `inbound_event` y `outbound_message` con el origen o informe previo; comprueba un
-flujo en el bot de pruebas. Anota SHA, snapshot, hora de inicio/fin y duración; la
+flujo por el bot de demo. Anota SHA, snapshot, hora de inicio/fin y duración; la
 meta es menos de dos horas. Borra la VPS temporal tras el simulacro autorizado.

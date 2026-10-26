@@ -15,4 +15,4 @@ atrás. Si la causa fue una configuración de tenant, corrige YAML y crea un SHA
 No cambies webhooks de canales reales sin autorización.
 
 **Verificación:** `.deployed-sha` coincide con el SHA sano, `/health` devuelve 200,
-la cola continúa y una consulta del bot de pruebas funciona.
+la cola continúa y una consulta por el bot de demo funciona.

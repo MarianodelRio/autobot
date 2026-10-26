@@ -86,8 +86,15 @@ def test_outbound_only_bot_rejects_webhook(responses: Any) -> None:
 def test_whatsapp_invalid_token(tenants: Any, responses: Any, response: Any) -> None:
     tenants(wa_tenant())
     responses(response)
-    issues = health.whatsapp_health(get_registry().by_slug["wa"])
+    issues = call(get_registry().by_slug["wa"])
     assert issues[0].code == "auth" and "secret" not in str(issues)
+
+
+def call(tenant: Any) -> list[Any]:
+    """`whatsapp_health` as `tenant_health` calls it: the tenant's channel, secrets
+    and its pack's templates."""
+    templates = {(t.name, t.language) for t in tenant.pack.templates} if tenant.pack else set()
+    return health.whatsapp_health(tenant.file.channel, tenant.secrets, templates)
 
 
 def with_template() -> Any:
@@ -112,7 +119,7 @@ def test_required_template_status_and_language(
         (200, {"id": "number"}),
         (200, {"data": [{"name": "notice", "language": language, "status": status}]}),
     )
-    assert [i.code for i in health.whatsapp_health(tenant)] == expected
+    assert [i.code for i in call(tenant)] == expected
     assert requests[0].headers["Authorization"].startswith("Bearer ")
     assert "access_token" not in str(requests[0].url)
 
@@ -134,7 +141,7 @@ def test_template_pagination_uses_fixed_host(tenants: Any, responses: Any) -> No
         ),
         (200, {"data": [{"name": "notice", "language": "es", "status": "APPROVED"}]}),
     )
-    assert health.whatsapp_health(tenant) == []
+    assert call(tenant) == []
     assert len(requests) == 3
     assert all(r.url.host == "graph.facebook.com" for r in requests)
     assert requests[-1].url.params["after"] == "cursor"
@@ -145,7 +152,7 @@ def test_health_failures_are_generic(tenants: Any, responses: Any, answer: Any) 
     tenants(wa_tenant())
     tenant = with_template()
     responses((200, {}), answer)
-    assert health.whatsapp_health(tenant)[0].code == "whatsapp_unavailable"
+    assert call(tenant)[0].code == "whatsapp_unavailable"
 
 
 def test_pack_health_uses_context_and_sanitizes_messages(tenants: Any, monkeypatch: Any) -> None:
@@ -159,7 +166,7 @@ def test_pack_health_uses_context_and_sanitizes_messages(tenants: Any, monkeypat
         return [HealthIssue("calendar_unavailable", "private@example.org secret")]
 
     object.__setattr__(tenant, "pack", replace(tenant.pack, health=failed_health))
-    monkeypatch.setattr(health, "whatsapp_health", lambda tenant: [])
+    monkeypatch.setattr(health, "whatsapp_health", lambda channel, secrets, templates: [])
     issues = health.tenant_health(tenant)
     assert len(seen) == 1 and seen[0].contact is None
     assert issues[0].severity == "🔴" and issues[0].code == "main:calendar_unavailable"
