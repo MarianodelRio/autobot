@@ -89,7 +89,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
 | F6 | Avisos, operación y observabilidad | 5 | 5 | implementación, revisiones y aprobación completas; validación manual pendiente |
-| F7 | Infraestructura y despliegue | 5 | 0 | 4/5 implementaciones preparadas; cierres bloqueados |
+| F7 | Infraestructura y despliegue | 5 | 0 | implementación técnica preparada y revisada; aprobaciones y M-7.x pendientes |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
 | **Total** | | **52** | **44** | |
 
@@ -1048,11 +1048,11 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** lo ejecutas tú en el servidor (M-7.6).
 
 ### T-7.5 · Runbooks y documentación de packs 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-7.4, T-5.6, T-4.5 · **Diseño:** §16.4, §19
+- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-7.4, T-5.6, T-4.5 · **Diseño:** §16.4, §19
 - **Hacer:** `docs/runbooks/` 1–11 y `docs/packs/salon.md` y `docs/packs/bus.md` (este con el formato completo del dataset, a partir de `buscaBus/design.md`, apartado 2.3). Pasos concretos y verificables, sin repetir `design.md`.
 - **Acepta:** cada runbook tiene síntomas, diagnóstico, pasos y verificación.
 - **Tests:** —
-- **Notas:** —
+- **Notas:** Escritos los once runbooks de §16.4 y las guías de salon y bus, incluido formato completo del dataset según parser y fixtures portados. Revisión independiente `review_75` aprobada tras corregir diagnóstico Calendar, estados de envío y fecha de despliegue de horarios. Cierre bloqueado por dependencia T-7.4; las verificaciones con servicios reales siguen pendientes.
 
 ### 👤 M-7.1 · Dominio y VPS
 - **Cuándo:** antes de T-7.4.
@@ -1097,6 +1097,8 @@ Cada acción está detallada en su fase, con cómo verificarla.
   2. Comprobar la vuelta atrás desplegando a propósito un SHA con `/health` roto.
   3. Hacer el primer simulacro de restauración en una VPS temporal y anotar el tiempo (objetivo: menos de 2 h).
 - **Verificar:** checklist de la validación de F7.
+
+**Notas para retomar (2026-10-26):** las cinco implementaciones de F7 están preparadas y tienen revisión técnica independiente aprobada. `make check` (1.735 tests, Ruff, formato, mypy y contratos), `make check-prod-config`, ShellCheck, actionlint, migraciones, auditoría de dependencias y restauración local con conteos por tenant pasan. CI en GitHub debe verificarse tras el push; las pruebas reales siguen pendientes. T-7.1 y T-7.4 esperan aprobación humana explícita (solicitada); T-7.4 también espera M-7.1. Las demás tareas quedan bloqueadas por sus dependencias, no por fallo técnico. M-7.2–M-7.6 y la validación con servicios reales se dejan para la persona operadora al final. No se ha ejecutado nada en producción.
 
 ### ✅ Validación F7
 - [ ] `https://api.<dominio>/health` responde 200 con certificado válido; `/admin/` devuelve 404 desde fuera y funciona por `make admin-tunnel`.
