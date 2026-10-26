@@ -3,7 +3,7 @@ conversación en los dos tipos de canal. Cada respuesta pasa por los límites
 comunes y por el renderizado de los dos adaptadores. Los datos son los
 reales congelados (`fixtures/horarios_real/`) salvo donde se indica.
 
-La consulta completa por el bot de pruebas, de extremo a extremo, está en
+La consulta completa de extremo a extremo (webhook → runtime → envío real) está en
 `tests/integration/test_bus_pack.py`."""
 
 from __future__ import annotations
