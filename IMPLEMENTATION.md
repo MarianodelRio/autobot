@@ -89,7 +89,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
 | F6 | Avisos, operación y observabilidad | 5 | 5 | implementación, revisiones y aprobación completas; validación manual pendiente |
-| F7 | Infraestructura y despliegue | 5 | 0 | 3/5 implementaciones preparadas; cierres bloqueados |
+| F7 | Infraestructura y despliegue | 5 | 0 | 4/5 implementaciones preparadas; cierres bloqueados |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
 | **Total** | | **52** | **44** | |
 
@@ -1038,7 +1038,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** Backup cada 6 h con `pg_dump -Fc`, `.env`, secretos, Caddyfile y SHA desplegado en restic; retención 7 diarias/4 semanales/6 mensuales y ping tras éxito. Restore a destino vacío con reintento controlado, SHA validado y parada previa de servicios si quedó incompleto. `make restore-test` creó dos proyectos Docker locales y comparó `autocares-ss|1` antes/después; ShellCheck pasó. Revisión independiente aprobada por `review_73` tras corregir el reintento. Bucket/credenciales y simulacro real siguen en M-7.2/M-7.6; cierre bloqueado por T-7.1.
 
 ### T-7.4 · Preparación del servidor ⚠️ 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-7.2, T-7.3, M-7.1 · **Diseño:** §13, §14.1
+- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-7.2, T-7.3, M-7.1 · **Diseño:** §13, §14.1
 - **Hacer:** `deploy/bootstrap-server.sh` (idempotente) y su runbook:
   - Usuario `deploy` con clave restringida a `deploy.sh`; SSH solo con clave; root deshabilitado.
   - `ufw` con 22, 80 y 443; `unattended-upgrades`; `fail2ban`.
@@ -1073,7 +1073,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
 ### 👤 M-7.3 · Secretos de despliegue
 - **Cuándo:** antes de la validación de F7.
 - **Qué:**
-  1. En la VPS, crear `/srv/flowpilot/.env`, `secrets.yaml` y `google_sa.json` (`chmod 600`).
+  1. En la VPS, crear `/srv/flowpilot/.env`, `secrets.yaml` y `google_sa.json` como `deploy` (`chmod 600`); fijar `DEPLOY_UID` con `id -u deploy`. Configurar `backup.env` y la contraseña de restic como ficheros 0600, una deploy key de GitHub de solo lectura con huella SSH verificada, y acceso de lectura al paquete GHCR (o hacerlo público).
   2. En GitHub, crear el entorno `production` con aprobación requerida y sus secretos: host, clave SSH de despliegue y `known_hosts`.
 - **Verificar:** `deploy.yml` llega a conectar con la VPS.
 
