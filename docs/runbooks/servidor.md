@@ -35,7 +35,9 @@ con tu clave en la VPS recién creada.
    `id -u deploy`. Crea `secrets.yaml`, `google_sa.json`, `backup.env` y
    `restic-password` como propietario `deploy`, modo 0600. El usuario no root de
    `web` y `worker` usa ese UID para leer los dos secretos montados. La cuenta de
-   servicio y los tokens reales dependen de M-5.1, M-6.1 y M-7.3.
+   servicio y los tokens reales dependen de M-5.1, M-6.1 y M-7.3. En
+   `DJANGO_ALLOWED_HOSTS`, incluye `api.<dominio>`, `localhost` y `127.0.0.1`:
+   el Admin recibe el host local al entrar por el túnel SSH.
 6. Desde la consola del proveedor como root, inicia el timer con
    `systemctl start flowpilot-backup.timer` solo después de
    configurar `backup.env`, `restic-password` y el destino remoto de M-7.2.
