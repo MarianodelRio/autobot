@@ -17,8 +17,7 @@ class Calendars:
     def __init__(self) -> None:
         cfg = configuration()
         self.main = FakeCalendar()
-        self.test = FakeCalendar()
-        self.clients = {cfg.calendar_id: self.main, str(cfg.test_calendar_id): self.test}
+        self.clients = {cfg.calendar_id: self.main}
         self.bound: list[str] = []
 
     def __call__(self, calendar_id: str, **kwargs: Any) -> FakeCalendar:
@@ -40,7 +39,6 @@ def salon_setup(
         cfg = configuration(**config_changes).model_dump(mode="json")
         builder = wa_tenant if channel == "whatsapp" else tg_tenant
         doc = builder(slug, pack="salon", config=cfg, **changes)
-        doc.setdefault("testers", {})["telegram"] = [111]
         tenants(doc)
         return get_registry().by_slug[slug]
 

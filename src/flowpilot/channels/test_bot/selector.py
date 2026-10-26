@@ -1,9 +1,10 @@
 """The test bot's business selector.
 
 One Telegram bot of the platform lets the operator (`TEST_BOT_OPERATORS`, sees every
-business) and each business's testers (`testers.telegram`) talk to any business they may
-see, with its real logic. For a tenant, the test bot is its `test` channel: contacts,
-conversations and messages of their own.
+business) talk to any business, with its real logic. For a tenant, the test bot is its
+`test` channel: contacts, conversations and messages of their own. A tenant whose pack
+needs a calendar is never available here (no test calendar exists anymore; see the
+demo doors of `channels/demo/`).
 
 1. `store_update` (webhook or `telegram_poll`) saves the update in `test_bot_event`,
    which has no RLS (the tenant is not known yet), and queues `route_test_update` with
@@ -37,7 +38,6 @@ from flowpilot.channels.base import InboundItem, Rejected, Sent
 from flowpilot.channels.ratelimit import WindowLimiter
 from flowpilot.jobs import INBOUND, ROUTE_TEST_UPDATE, app
 from flowpilot.ops.logging import bind, contextual
-from flowpilot.runtime.context import CalendarUnavailable, bound_calendar_id
 from flowpilot.runtime.inbound import store
 from flowpilot.runtime.locks import telegram_user_lock
 from flowpilot.runtime.models import Channel, TestBotEvent, TestSession
@@ -102,7 +102,7 @@ def route_test_update(event_id: UUID) -> None:
         _finish(event)
         return
     user_id = int(item.external_id)
-    visible = get_registry().visible_to(user_id, settings.TEST_BOT_OPERATORS)
+    visible = _visible(user_id)
     message = item.message
     payload = message.payload or ""
     if payload.startswith((SELECT, PAGE)):
@@ -148,17 +148,21 @@ def route_test_update(event_id: UUID) -> None:
             _finish(event)
 
 
+def _visible(user_id: int) -> list[LoadedTenant]:
+    """Tenants a Telegram user may pick in the test bot: all of them for an operator,
+    none otherwise."""
+    if user_id not in settings.TEST_BOT_OPERATORS:
+        return []
+    return [t for t in get_registry().tenants if not t.ambiguous]
+
+
 def is_available(tenant: LoadedTenant) -> bool:
-    """May be tested now: not degraded, offboarded nor ambiguous, and with a test
-    calendar of its own if its pack needs a calendar. Paused and onboarding
+    """May be tested now: not degraded, offboarded nor ambiguous, and its pack must not
+    need a calendar (the test channel has none of its own). Paused and onboarding
     tenants can be tested."""
     if tenant.is_degraded or tenant.ambiguous or tenant.file.status == "offboarded":
         return False
-    try:
-        bound_calendar_id(tenant, Channel.TEST)
-    except CalendarUnavailable:
-        return False
-    return True
+    return tenant.pack is None or not tenant.pack.needs_calendar
 
 
 def business_list(tenants: list[LoadedTenant], page: int) -> Reply:

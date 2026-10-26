@@ -28,7 +28,7 @@ from flowpilot.runtime.context import (
 from flowpilot.runtime.models import Channel
 from flowpilot.tenancy.registry import LoadedTenant
 from flowpilot.tenancy.schema import TelegramChannel, TenantFile
-from tests.tenancy.helpers import tenant_yaml
+from tests.tenancy.helpers import demo_tenant_yaml, tenant_yaml
 from tests.toy_pack import pack as toy
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
@@ -38,14 +38,18 @@ EVENT_ID = uuid.UUID("01920000-0000-7000-8000-0000000000e1")
 
 class CalendarConfig(BaseModel):
     calendar_id: str = "real@group.calendar.google.com"
-    test_calendar_id: str | None = "test@group.calendar.google.com"
 
 
 CALENDAR_PACK = dataclasses.replace(toy.pack, needs_calendar=True, config_schema=CalendarConfig)
 
 
 def loaded(pack: Any = toy.pack, config: BaseModel | None = None) -> LoadedTenant:
-    file = TenantFile.model_validate(tenant_yaml("demo"))
+    file = TenantFile.model_validate(tenant_yaml("some-business"))
+    return LoadedTenant(file=file, path=Path("."), pack=pack, config=config or pack.config_schema())
+
+
+def loaded_demo(pack: Any = toy.pack, config: BaseModel | None = None) -> LoadedTenant:
+    file = TenantFile.model_validate(demo_tenant_yaml("some-demo"))
     return LoadedTenant(file=file, path=Path("."), pack=pack, config=config or pack.config_schema())
 
 
@@ -104,32 +108,31 @@ def test_periodic_context_has_no_event_key() -> None:
 # ── Calendar per channel ──────────────────────────────────────────────────
 
 
-def test_main_binds_the_real_calendar_and_test_the_test_calendar() -> None:
+def test_main_binds_the_real_calendar() -> None:
     calendars = Calendars()
     tenant = loaded(CALENDAR_PACK)
     main = build_context(
         tenant, Channel.MAIN, contact=None, state={}, event_id=None, calendars=calendars
     )
-    test = build_context(
-        tenant, Channel.TEST, contact=None, state={}, event_id=None, calendars=calendars
-    )
     assert main.calendar == "port:real@group.calendar.google.com"
-    assert test.calendar == "port:test@group.calendar.google.com"
-    assert calendars.bound == ["real@group.calendar.google.com", "test@group.calendar.google.com"]
+    assert calendars.bound == ["real@group.calendar.google.com"]
 
 
-@pytest.mark.parametrize(
-    "config",
-    [
-        CalendarConfig(test_calendar_id=None),
-        CalendarConfig(test_calendar_id=""),
-        CalendarConfig(test_calendar_id="real@group.calendar.google.com"),  # the real one
-        CalendarConfig(test_calendar_id=" Real@Group.Calendar.Google.com "),
-    ],
-)
-def test_the_test_channel_never_gets_the_real_calendar(config: CalendarConfig) -> None:
+def test_a_demo_tenant_binds_its_calendar_on_any_channel() -> None:
     calendars = Calendars()
-    tenant = loaded(CALENDAR_PACK, config)
+    config = CalendarConfig(calendar_id="demo@group.calendar.google.com")
+    tenant = loaded_demo(CALENDAR_PACK, config)
+    for channel in (Channel.MAIN, Channel.TEST):
+        ctx = build_context(
+            tenant, channel, contact=None, state={}, event_id=None, calendars=calendars
+        )
+        assert ctx.calendar == "port:demo@group.calendar.google.com"
+    assert calendars.bound == ["demo@group.calendar.google.com"] * 2
+
+
+def test_a_non_demo_tenant_has_no_calendar_outside_main() -> None:
+    calendars = Calendars()
+    tenant = loaded(CALENDAR_PACK)
     with pytest.raises(CalendarUnavailable):
         build_context(
             tenant, Channel.TEST, contact=None, state={}, event_id=None, calendars=calendars
@@ -150,16 +153,12 @@ def test_lock_key_is_prefixed_with_tenant_and_bound_calendar(
     keys: list[str] = []
     monkeypatch.setattr(context, "advisory_lock", lambda key: keys.append(key))
     tenant = loaded(CALENDAR_PACK)
-    for channel in (Channel.MAIN, Channel.TEST):
-        ctx = build_context(
-            tenant, channel, contact=None, state={}, event_id=None, calendars=Calendars()
-        )
-        ctx.lock("cal:2026-10-09")
-    assert keys == [
-        f"{tenant.id}:real@group.calendar.google.com:cal:2026-10-09",
-        f"{tenant.id}:test@group.calendar.google.com:cal:2026-10-09",
-    ]
-    assert bound_calendar_id(loaded(), Channel.TEST) is None
+    ctx = build_context(
+        tenant, Channel.MAIN, contact=None, state={}, event_id=None, calendars=Calendars()
+    )
+    ctx.lock("cal:2026-10-09")
+    assert keys == [f"{tenant.id}:real@group.calendar.google.com:cal:2026-10-09"]
+    assert bound_calendar_id(loaded(), Channel.MAIN) is None  # the toy pack needs none
 
 
 # ── Advisory lock ─────────────────────────────────────────────────────────
@@ -256,15 +255,15 @@ def test_phone_contact_capability_is_only_for_main_whatsapp() -> None:
         event_id=None,
         calendars=Calendars(),
     )
-    test = build_context(
-        loaded(CALENDAR_PACK),
-        Channel.TEST,
+    demo = build_context(
+        loaded_demo(CALENDAR_PACK),
+        Channel.MAIN,
         contact=None,
         state={},
         event_id=None,
         calendars=Calendars(),
     )
-    assert main.can_contact_by_phone and not test.can_contact_by_phone
+    assert main.can_contact_by_phone and not demo.can_contact_by_phone
     tenant = loaded(CALENDAR_PACK)
     file = tenant.file.model_copy(
         update={

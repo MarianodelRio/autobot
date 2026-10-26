@@ -36,7 +36,7 @@ from tests.integration.helpers import (
     wa_text,
 )
 from tests.integration.test_test_bot import (  # noqa: F401 (fixtures)
-    TESTER,
+    OPERATOR,
     Providers,
     drain,
     press,
@@ -123,23 +123,23 @@ def test_a_full_query_through_the_test_bot(
     providers: Providers,  # noqa: F811 (the imported fixture)
 ) -> None:
     bus_tenants(autocares())
-    say(TESTER, "/start")
-    press(TESTER, "fp_select:wa")
-    assert providers.buttons(TESTER) == ["menu_horarios", "menu_info"]
+    say(OPERATOR, "/start")
+    press(OPERATOR, "fp_select:wa")
+    assert providers.buttons(OPERATOR) == ["menu_horarios", "menu_info"]
 
-    press(TESTER, "menu_horarios")
-    assert "¿Desde qué pueblo sales?" in providers.texts(TESTER)[-1]
-    say(TESTER, "pozoblanco")
-    assert "¿A dónde vas?" in providers.texts(TESTER)[-1]
-    press(TESTER, "loc:cordoba")
-    assert providers.buttons(TESTER)[:2] == ["dia:2026-09-23", "dia:2026-09-24"]
-    press(TESTER, "dia:2026-09-24")
-    result = providers.texts(TESTER)[-1]
+    press(OPERATOR, "menu_horarios")
+    assert "¿Desde qué pueblo sales?" in providers.texts(OPERATOR)[-1]
+    say(OPERATOR, "pozoblanco")
+    assert "¿A dónde vas?" in providers.texts(OPERATOR)[-1]
+    press(OPERATOR, "loc:cordoba")
+    assert providers.buttons(OPERATOR)[:2] == ["dia:2026-09-23", "dia:2026-09-24"]
+    press(OPERATOR, "dia:2026-09-24")
+    result = providers.texts(OPERATOR)[-1]
     assert result.startswith("🚌 Pozoblanco → Córdoba\n📅 Jueves 24/09")
-    assert providers.buttons(TESTER) == ["otro_dia", "vuelta", "otra_consulta"]
+    assert providers.buttons(OPERATOR) == ["otro_dia", "vuelta", "otra_consulta"]
 
-    press(TESTER, "vuelta")
-    assert "Córdoba → Pozoblanco" in providers.texts(TESTER)[-1]
+    press(OPERATOR, "vuelta")
+    assert "Córdoba → Pozoblanco" in providers.texts(OPERATOR)[-1]
     # Everything went to the test bot; nothing to Meta.
     assert providers.meta == []
 

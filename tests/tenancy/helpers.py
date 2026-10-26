@@ -37,7 +37,22 @@ def tenant_yaml(slug: str, **changes: Any) -> dict[str, Any]:
             "waba_id": "2",
             "phone_number_id": phone_number_id(slug),
         },
-        "testers": {"telegram": [111], "main": ["34600000001"]},
+        "testers": {"main": ["34600000001"]},
+        "config": {},
+    }
+    doc.update(changes)
+    return doc
+
+
+def demo_tenant_yaml(slug: str, **changes: Any) -> dict[str, Any]:
+    doc: dict[str, Any] = {
+        "id": str(uuid.uuid7()),
+        "slug": slug,
+        "name": slug.title(),
+        "status": "active",
+        "timezone": "Europe/Madrid",
+        "pack": "toy",
+        "demo": {"description": "Demo"},
         "config": {},
     }
     doc.update(changes)

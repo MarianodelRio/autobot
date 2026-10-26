@@ -44,7 +44,6 @@ def test_dry_run_writes_nothing_and_apply_is_idempotent(
     assert main([tenant.slug], calendars=calendars, at=NOW) == 0
     assert Contact.objects.using("owner").count() == 1
     assert calendars.main.calls.count("patch_private") == 1
-    assert calendars.test.calls == []
     output = capsys.readouterr().out
     assert "ES.Legacy123" not in output and "600000001" not in output
 

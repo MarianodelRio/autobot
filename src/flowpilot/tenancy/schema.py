@@ -52,7 +52,6 @@ Channel = Annotated[WhatsAppChannel | TelegramChannel, Field(discriminator="type
 
 
 class Testers(Strict):
-    telegram: list[int] = []  # may pick this tenant in the test bot
     main: list[str] = []  # in onboarding, the only ids answered on the main channel
 
     @field_validator("main", mode="before")
@@ -67,6 +66,12 @@ class Owner(Strict):
     notify: list[str] = []
 
 
+class DemoInfo(Strict):
+    # Shown under the business name in the demo selector; 72 is WhatsApp's row
+    # description limit.
+    description: str = Field(min_length=1, max_length=72)
+
+
 class TenantFile(Strict):
     """The common part of tenant.yaml; `config` is checked later by the pack."""
 
@@ -76,9 +81,10 @@ class TenantFile(Strict):
     status: Status
     timezone: str
     pack: str
-    channel: Channel
+    channel: Channel | None = None
     testers: Testers = Testers()
     owner: Owner | None = None
+    demo: DemoInfo | None = None
     config: dict[str, Any] = {}
 
     @field_validator("id")
@@ -98,7 +104,17 @@ class TenantFile(Strict):
         return value
 
     @model_validator(mode="after")
-    def main_testers_match_the_channel(self) -> TenantFile:
+    def demo_or_channel(self) -> TenantFile:
+        if self.demo is not None:
+            if self.channel is not None:
+                raise ValueError("a demo tenant must not have a channel")
+            if self.testers.main:
+                raise ValueError("a demo tenant must not have testers.main")
+            if self.status not in ("active", "paused"):
+                raise ValueError("a demo tenant's status must be active or paused")
+            return self
+        if self.channel is None:
+            raise ValueError("channel is required for a non-demo tenant")
         if self.channel.type == "whatsapp":
             wrong = [i for i in self.testers.main if not (BSUID.match(i) or PHONE.match(i))]
             kind = "a BSUID or a phone number (digits only)"

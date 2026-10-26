@@ -11,7 +11,7 @@ La configuración está en `tenants/<slug>/tenant.yaml`, bloque `config`:
 | Campo | Uso |
 |---|---|
 | `business_name`, `contact_phone` | Nombre y teléfono que ve el cliente. |
-| `calendar_id`, `test_calendar_id` | Calendario real y calendario de pruebas opcional; si se configura el segundo, deben ser distintos. |
+| `calendar_id` | Calendario de Google donde se guardan las citas. |
 | `services` | De 1 a 9 claves `a-z0-9_`, cada una con `name`, `price_eur`, `duration_min` y `client_presence_min`. |
 | `opening_hours` | Franjas semanales `HH:MM-HH:MM`; día ausente significa cerrado. |
 | `slot_step_min`, `min_notice_min`, `booking_window_days`, `max_active_bookings` | Paso de las horas, antelación, horizonte y límite de citas. |
@@ -24,9 +24,9 @@ El servicio debe ocupar como máximo el tiempo de presencia del cliente
 `[CFG] VACACIONES` y `[CFG] HORARIO HH:MM-HH:MM` ajustan los huecos del día. El
 bot distingue citas propias por metadatos privados de Calendar; una cita creada
 a mano necesita `Telefono:` en la descripción para que el barrido pueda
-identificarla. El canal `test` usa solo `test_calendar_id` y nunca envía a personas
-del canal real. Para ensayar reservas por el bot de pruebas es necesario configurar
-`test_calendar_id`.
+identificarla. Para probar cambios sin tocar el calendario real se usa
+`FakeCalendar` (ver `packs/salon/testing.py`) o el negocio de demo
+`demo-peluqueria` (`docs/runbooks/demo.md`).
 
 Las plantillas de WhatsApp las crea el operador en el WhatsApp Manager de cada
 negocio y las aprueba Meta:

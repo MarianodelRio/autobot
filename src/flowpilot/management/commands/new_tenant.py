@@ -47,7 +47,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument("slug")
         parser.add_argument("--pack", required=True)
-        parser.add_argument("--channel", required=True, choices=["whatsapp", "telegram"])
+        parser.add_argument("--channel", choices=["whatsapp", "telegram"])
+        parser.add_argument("--demo", help="Demo business: its selector description")
         parser.add_argument("--name", help="Business name (default: the slug)")
 
     def handle(self, *args: Any, **options: Any) -> None:
@@ -58,26 +59,32 @@ class Command(BaseCommand):
             raise CommandError(f"Invalid slug {slug!r}: lowercase letters, digits and dashes")
         if pack_name not in PACKS:
             raise CommandError(f"Unknown pack {pack_name!r}; known: {', '.join(sorted(PACKS))}")
+        if bool(options["channel"]) == bool(options["demo"]):
+            raise CommandError("Pass exactly one of --channel or --demo")
         directory = settings.TENANTS_DIR / slug
         if directory.exists():
             raise CommandError(f"{directory} already exists")
 
-        channel: dict[str, Any] = {"type": options["channel"], "public_id": public_id()}
-        if options["channel"] == "whatsapp":
-            channel |= {"app_id": None, "waba_id": None, "phone_number_id": None}
-        else:
-            channel |= {"bot_username": None}
-        document = {
+        document: dict[str, Any] = {
             "id": str(uuid.uuid7()),
             "slug": slug,
             "name": options["name"] or slug,
-            "status": "onboarding",
             "timezone": "Europe/Madrid",
             "pack": pack_name,
-            "channel": channel,
-            "testers": {"telegram": [], "main": []},
             "config": config_skeleton(PACKS[pack_name].config_schema),
         }
+        if options["demo"]:
+            document["status"] = "paused"
+            document["demo"] = {"description": options["demo"]}
+        else:
+            channel: dict[str, Any] = {"type": options["channel"], "public_id": public_id()}
+            if options["channel"] == "whatsapp":
+                channel |= {"app_id": None, "waba_id": None, "phone_number_id": None}
+            else:
+                channel |= {"bot_username": None}
+            document["status"] = "onboarding"
+            document["channel"] = channel
+            document["testers"] = {"main": []}
         directory.mkdir(parents=True)
         (directory / "tenant.yaml").write_text(
             yaml.safe_dump(document, allow_unicode=True, sort_keys=False)

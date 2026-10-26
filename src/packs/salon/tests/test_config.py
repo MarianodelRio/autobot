@@ -33,7 +33,6 @@ def test_source_configuration_validates() -> None:
         {"business_name": " "},
         {"contact_phone": ""},
         {"calendar_id": " "},
-        {"test_calendar_id": " SALON-MAIN@example.invalid "},
         {"services": {}},
         {"services": {"bad-key": {"name": "Corte", "duration_min": 30, "client_presence_min": 30}}},
         {"services": {"corte": {"name": "Corte", "duration_min": 60, "client_presence_min": 30}}},

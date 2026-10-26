@@ -2,7 +2,6 @@
 business_name: DM Barber Shop
 contact_phone: +34 682 21 44 69
 calendar_id: salon-main@example.invalid
-test_calendar_id: salon-test@example.invalid
 services:
   corte:
     name: Corte de pelo

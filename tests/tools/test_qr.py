@@ -6,7 +6,7 @@ from xml.etree import ElementTree
 import pytest
 
 from flowpilot.tenancy.schema import TelegramChannel, WhatsAppChannel
-from tests.tenancy.helpers import tenant_yaml, write_tenants
+from tests.tenancy.helpers import demo_tenant_yaml, tenant_yaml, write_tenants
 from tools.qr import channel_link, main, tenant_link
 
 
@@ -66,6 +66,12 @@ def test_unknown_or_mismatched_tenant_is_rejected(tmp_path: Path) -> None:
         tenant_link("other", tenants)
     with pytest.raises(ValueError, match="inválido"):
         tenant_link("../real", tenants)
+
+
+def test_demo_tenant_has_no_channel_to_link(tmp_path: Path) -> None:
+    tenants = write_tenants(tmp_path, demo_tenant_yaml("demo-a"))
+    with pytest.raises(ValueError, match="no tiene canal propio"):
+        tenant_link("demo-a", tenants)
 
 
 def test_custom_output_and_svg_extension(tmp_path: Path) -> None:

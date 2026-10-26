@@ -44,7 +44,11 @@ def main(
     if tenant is None or tenant.is_degraded or tenant.file.pack != "salon":
         print("El tenant no existe o no es un salón válido.")
         return 2
-    if tenant.file.channel.type != "whatsapp" or tenant.file.status == "offboarded":
+    if (
+        tenant.file.channel is None
+        or tenant.file.channel.type != "whatsapp"
+        or tenant.file.status == "offboarded"
+    ):
         print("La migración heredada requiere un tenant de WhatsApp que no esté dado de baja.")
         return 2
     ctx = build_context(

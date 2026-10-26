@@ -9,14 +9,14 @@ the others:
 - unknown pack, invalid config, failing `load_data` or a repeated id/public_id/
   phone_number_id: the tenant is `degraded` (its contacts get the generic text);
   a repeated key also makes it `ambiguous`: it is never routed nor synced;
-- missing secrets or channel ids: only its `main` channel is disabled (the test bot keeps
-  working).
+- missing secrets or channel ids: only its `main` channel is disabled; a demo tenant
+  (no channel of its own) always has `main` disabled, without being a warning.
 
 Messages never contain secret values.
 """
 
 import logging
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from functools import cache
 from pathlib import Path
@@ -66,6 +66,10 @@ class LoadedTenant:
         return not self.main_disabled
 
     @property
+    def is_demo(self) -> bool:
+        return self.file.demo is not None
+
+    @property
     def info(self) -> TenantInfo:
         f = self.file
         return TenantInfo(id=f.id, slug=f.slug, name=f.name, timezone=ZoneInfo(f.timezone))
@@ -80,7 +84,6 @@ class Registry:
     by_slug: dict[str, LoadedTenant] = field(default_factory=dict)
     by_public_id: dict[tuple[str, str], LoadedTenant] = field(default_factory=dict)
     by_phone_number_id: dict[str, LoadedTenant] = field(default_factory=dict)
-    by_tester: dict[int, list[LoadedTenant]] = field(default_factory=dict)
 
     def tenant(self, tenant_id: UUID) -> LoadedTenant:
         return self.by_id[tenant_id]
@@ -93,13 +96,10 @@ class Registry:
             if t.file.pack == pack and not t.is_degraded and t.file.status != "offboarded"
         ]
 
-    def visible_to(self, telegram_user_id: int, operators: Collection[int]) -> list[LoadedTenant]:
-        """Tenants a Telegram user may pick in the test bot: all for an operator,
-        otherwise those that list them in testers.telegram. Availability (degraded,
-        offboarded, test calendar) is the selector's business."""
-        if telegram_user_id in operators:
-            return [t for t in self.tenants if not t.ambiguous]
-        return list(self.by_tester.get(telegram_user_id, []))
+    def demo_tenants(self) -> list[LoadedTenant]:
+        """Demo businesses, not ambiguous. Availability (status, degraded) is the
+        selector's business."""
+        return [t for t in self.tenants if t.is_demo and not t.ambiguous]
 
     @property
     def problems(self) -> dict[str, list[str]]:
@@ -141,7 +141,7 @@ def load_registry(
         if name != "secrets.yaml":
             log.error("Tenant %s cannot serve: %s", name, "; ".join(problems))
     for t in registry.tenants:
-        if t.main_disabled and not t.is_degraded:
+        if t.main_disabled and not t.is_degraded and not t.is_demo:
             log.warning("Tenant %s main channel disabled: %s", t.slug, "; ".join(t.main_disabled))
     return registry
 
@@ -202,6 +202,8 @@ def _with_pack(tenant: LoadedTenant, packs: Mapping[str, Pack]) -> LoadedTenant:
 
 def _with_secrets(tenant: LoadedTenant, raw: Any) -> LoadedTenant:
     channel = tenant.file.channel
+    if channel is None:
+        return replace(tenant, secrets=None, main_disabled=["demo tenant: no main channel"])
     disabled = [] if channel.complete else [f"{channel.type} channel ids are missing"]
     schema = SECRETS_SCHEMA[channel.type]
     secrets = None
@@ -218,9 +220,10 @@ def _with_secrets(tenant: LoadedTenant, raw: Any) -> LoadedTenant:
 def _mark_duplicates(registry: Registry) -> None:
     def keys(t: LoadedTenant) -> Iterable[tuple[str, str]]:
         yield "id", str(t.id)
-        yield "public_id", t.file.channel.public_id
-        if t.file.channel.type == "whatsapp" and t.file.channel.phone_number_id:
-            yield "phone_number_id", t.file.channel.phone_number_id
+        if t.file.channel is not None:
+            yield "public_id", t.file.channel.public_id
+            if t.file.channel.type == "whatsapp" and t.file.channel.phone_number_id:
+                yield "phone_number_id", t.file.channel.phone_number_id
 
     owners: dict[tuple[str, str], list[int]] = {}
     for i, t in enumerate(registry.tenants):
@@ -239,11 +242,10 @@ def _index(registry: Registry) -> None:
         if t.ambiguous:
             continue  # never routed by a key that another tenant also claims
         registry.by_id[t.id] = t
-        registry.by_public_id[(t.file.channel.type, t.file.channel.public_id)] = t
-        if t.file.channel.type == "whatsapp" and t.file.channel.phone_number_id:
-            registry.by_phone_number_id[t.file.channel.phone_number_id] = t
-        for user_id in t.file.testers.telegram:
-            registry.by_tester.setdefault(user_id, []).append(t)
+        if t.file.channel is not None:
+            registry.by_public_id[(t.file.channel.type, t.file.channel.public_id)] = t
+            if t.file.channel.type == "whatsapp" and t.file.channel.phone_number_id:
+                registry.by_phone_number_id[t.file.channel.phone_number_id] = t
 
 
 def _degrade(tenant: LoadedTenant, *reasons: str) -> LoadedTenant:

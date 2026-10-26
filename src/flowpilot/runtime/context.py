@@ -5,9 +5,10 @@ the pack through it.
   transaction and prefixed with the tenant and the bound calendar.
 - `ctx.idem`: idempotency keys bound to the event being processed (`None` in periodic
   handlers, which only use `stable`).
-- `ctx.calendar`: only for packs that `needs_calendar`, bound by the runtime to the
-  channel's calendar: `calendar_id` on `main`, `test_calendar_id` on `test`. The
-  pack never picks a calendar nor knows whether the conversation is a test.
+- `ctx.calendar`: only for packs that `needs_calendar`, bound by the runtime to
+  `config.calendar_id`: a real tenant's own calendar on `main`, or a demo tenant's
+  single calendar on whichever channel reaches it. The pack never picks a calendar nor
+  knows whether the business is a demo.
 """
 
 import hashlib
@@ -97,25 +98,30 @@ def build_context(
         effects=StoredEffects(info.id, event_id, contact.id, str(channel), calendar_id)
         if event_id is not None and contact is not None
         else None,
-        can_contact_by_phone=(channel == Channel.MAIN and tenant.file.channel.type == "whatsapp"),
+        can_contact_by_phone=(
+            channel == Channel.MAIN
+            and tenant.file.channel is not None
+            and tenant.file.channel.type == "whatsapp"
+        ),
         log=logging.LoggerAdapter(logging.getLogger(f"packs.{tenant.pack.name}"), extra),
     )
 
 
 def bound_calendar_id(tenant: LoadedTenant, channel: Channel) -> str | None:
-    """The calendar a pack may use on this channel, or None if it needs none. On the
-    `test` channel it is only ever the test calendar."""
+    """The calendar a pack may use on this channel, or None if it needs none.
+
+    A demo tenant has a single calendar (`config.calendar_id`), used on whichever
+    channel reaches it. A non-demo tenant only ever uses it on `main`; any other
+    channel has no calendar available to it.
+    """
     if tenant.pack is None or not tenant.pack.needs_calendar:
         return None
-    main = getattr(tenant.config, "calendar_id", None)
-    if channel == Channel.MAIN:
-        if not main:
+    if tenant.is_demo or channel == Channel.MAIN:
+        calendar_id = getattr(tenant.config, "calendar_id", None)
+        if not calendar_id:
             raise CalendarUnavailable(f"tenant {tenant.slug} has no calendar_id")
-        return str(main)
-    test = getattr(tenant.config, "test_calendar_id", None)
-    if not test or _same_calendar(str(test), str(main or "")):
-        raise CalendarUnavailable(f"tenant {tenant.slug} has no test_calendar_id of its own")
-    return str(test)
+        return str(calendar_id)
+    raise CalendarUnavailable(f"tenant {tenant.slug} has no calendar on channel {channel}")
 
 
 @contextmanager
@@ -152,11 +158,6 @@ def advisory_lock(key: str) -> Iterator[None]:
             log.warning("Advisory unlock failed (%s): closing the connection", type(e).__name__)
             with suppress(DatabaseError):  # never hide the block's own exception
                 connection.close()
-
-
-def _same_calendar(a: str, b: str) -> bool:
-    """Calendar ids look like emails: compared without case nor surrounding spaces."""
-    return a.strip().lower() == b.strip().lower()
 
 
 def _lock_id(key: str) -> int:

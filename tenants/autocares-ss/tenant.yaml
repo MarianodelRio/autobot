@@ -20,7 +20,6 @@ channel:
   phone_number_id: null
 
 testers:
-  telegram: []   # ids de Telegram de la empresa, pendientes
   main: []
 
 config:

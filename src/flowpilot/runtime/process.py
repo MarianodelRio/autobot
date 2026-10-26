@@ -253,13 +253,15 @@ def _proactive_target(tenant: LoadedTenant, channel: str, action: SendProactive)
         log.warning("proactive %s not sent: contact of another channel", action.template.name)
         return None
     if channel == Channel.TEST:
-        allowed = {str(user) for user in settings.TEST_BOT_OPERATORS} | {
-            str(user) for user in tenant.file.testers.telegram
-        }
+        allowed = {str(user) for user in settings.TEST_BOT_OPERATORS}
         if target.external_id not in allowed:
             log.info("test proactive not sent: contact no longer has access to this tenant")
             return None
-    if channel == Channel.MAIN and tenant.file.channel.type == "whatsapp":
+    if (
+        channel == Channel.MAIN
+        and tenant.file.channel is not None
+        and tenant.file.channel.type == "whatsapp"
+    ):
         number = phone_key(
             target.phone_e164 or (target.external_id if target.external_id.isdecimal() else "")
         )
@@ -276,7 +278,11 @@ def _contact_by_phone(tenant: LoadedTenant, channel: str, phone: str) -> Contact
     """A phone with no contact yet (manual bookings): only on a WhatsApp main
     channel; elsewhere it is logged and not sent."""
     digits = re.sub(r"[\s+]", "", phone)
-    if channel != Channel.MAIN or tenant.file.channel.type != "whatsapp":
+    if (
+        channel != Channel.MAIN
+        or tenant.file.channel is None
+        or tenant.file.channel.type != "whatsapp"
+    ):
         log.info("proactive to a phone not sent: only possible on a WhatsApp main channel")
         return None
     if not PHONE.match(digits):

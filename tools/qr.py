@@ -42,6 +42,8 @@ def tenant_link(slug: str, tenants_dir: Path = REPO_ROOT / "tenants") -> str:
         raise ValueError(f"No se pudo leer una configuración válida para {slug}.") from None
     if file.slug != slug:
         raise ValueError("El slug de tenant.yaml no coincide con su directorio.")
+    if file.channel is None:
+        raise ValueError("Un negocio de demo no tiene canal propio.")
     return channel_link(file.channel)
 
 

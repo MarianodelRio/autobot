@@ -1,4 +1,4 @@
-"""Booking through the real webhook/runtime/outbox, with both calendar instances."""
+"""Booking through the real webhook/runtime/outbox."""
 
 import itertools
 import json
@@ -13,7 +13,7 @@ from flowpilot.runtime import periodic
 from flowpilot.runtime.models import Contact, Notification, OutboundMessage
 from packs.salon.models import CalendarEvent
 from tests.integration.helpers import fixture, post_tg, post_wa, wa_press, wa_text
-from tests.integration.test_test_bot import TESTER, Providers, drain, press, say
+from tests.integration.test_test_bot import Providers, drain
 from tests.integration.test_test_bot import providers as recorded_providers  # noqa: F401
 from tests.integration.test_test_bot import test_bot as bot_settings  # noqa: F401
 
@@ -46,57 +46,38 @@ def telegram(text: str, *, payload: bool = False) -> None:
     drain()
 
 
-@pytest.mark.parametrize("mode", ["whatsapp", "telegram", "test-whatsapp", "test-telegram"])
+@pytest.mark.parametrize("channel", ["whatsapp", "telegram"])
 def test_booking_over_every_channel(
-    salon_setup: Any, request: pytest.FixtureRequest, mode: str
+    salon_setup: Any, request: pytest.FixtureRequest, channel: str
 ) -> None:
     providers: Providers = request.getfixturevalue("recorded_providers")
     setup, calendars = salon_setup
-    is_test = mode.startswith("test-")
-    channel = mode.removeprefix("test-")
-    slug = "salon" if is_test else "wa" if channel == "whatsapp" else "tg"
+    slug = "wa" if channel == "whatsapp" else "tg"
     tenant = setup(
         channel=channel,
         slug=slug,
-        status="onboarding" if is_test else "active",
         config={"reminders_enabled": True, "reminder_window_hours": [0, 2]},
     )
-    if is_test:
-        say(TESTER, "/start")
-        drain()
-        press(TESTER, f"fp_select:{tenant.slug}")
-        drain()
 
     def send(text: str, *, payload: bool = False) -> None:
-        if is_test:
-            (press if payload else say)(TESTER, text)
-            drain()
-        elif channel == "whatsapp":
+        if channel == "whatsapp":
             assert post_wa((wa_press if payload else wa_text)(text)) == 200
             drain()
         else:
             telegram(text, payload=payload)
 
-    if not is_test:
-        send("hola")
+    send("hola")
     for value in ["menu_book", "service_corte", "day_2026-03-24", "period_morning", "hour_10:00"]:
         send(value, payload=True)
     send("Lucía")
-    used, untouched = (
-        (calendars.test, calendars.main) if is_test else (calendars.main, calendars.test)
-    )
-    assert len(used.created) == 1 and untouched.calls == []
+    assert len(calendars.main.created) == 1
     assert "confirmada" in str(
         list(OutboundMessage.objects.using("owner").values_list("payload", flat=True))
     )
     (contact,) = Contact.objects.using("owner").all()
-    assert contact.channel == ("test" if is_test else "main")
-    assert used.created[0].private["fp_contact"] == str(contact.id)
-    if is_test:
-        assert providers.meta == []
-        (notice,) = Notification.objects.using("owner").all()
-        assert notice.audience == "ops"
-    elif channel == "telegram":
+    assert contact.channel == "main"
+    assert calendars.main.created[0].private["fp_contact"] == str(contact.id)
+    if channel == "telegram":
         assert providers.meta == []
         assert providers.telegram and all(
             not where.startswith("999:") for where, _ in providers.telegram
@@ -138,7 +119,6 @@ def test_manual_confirmations_only_use_whatsapp(
     periodic.run_periodic(tenant.id, "calendar_sweep", int(time.time()))
     messages = list(OutboundMessage.objects.using("owner").all())
     assert len(messages) == (1 if channel == "whatsapp" else 0)
-    assert calendars.test.calls == []  # Manual confirmations disabled: no test-calendar I/O.
     if channel == "telegram":
         assert "Manual confirmations skipped" in caplog.text
     if messages:

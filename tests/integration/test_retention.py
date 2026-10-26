@@ -324,9 +324,12 @@ def test_test_bot_originals_follow_tenant_linkage(operation: str) -> None:
     assert InboundEvent.objects.using("owner").filter(tenant=b).exists()
 
 
-def test_selector_refreshes_session_activity(tenants: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_selector_refreshes_session_activity(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
     from flowpilot.channels.test_bot import selector
 
+    settings.TEST_BOT_OPERATORS = frozenset({111})
     a = loaded(tenants)
     session = TestSession.objects.create(
         tenant=a, telegram_user_id=111, selected_at=NOW - timedelta(days=40)

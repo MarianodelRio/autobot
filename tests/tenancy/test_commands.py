@@ -114,11 +114,24 @@ def test_new_tenant_ids_are_unique(tenants_dir: Path) -> None:
     [
         (["Mal_Slug", "--pack", "toy", "--channel", "whatsapp"], "Invalid slug"),
         (["x", "--pack", "nope", "--channel", "whatsapp"], "Unknown pack"),
+        (["x", "--pack", "toy"], "exactly one"),
+        (["x", "--pack", "toy", "--channel", "whatsapp", "--demo", "d"], "exactly one"),
     ],
 )
 def test_new_tenant_rejects_bad_input(tenants_dir: Path, args: list[str], error: str) -> None:
     with pytest.raises(CommandError, match=error):
         run("new_tenant", *args)
+
+
+def test_new_tenant_creates_a_demo_business(tenants_dir: Path) -> None:
+    run("new_tenant", "demo-negocio", "--pack", "toy", "--demo", "Pruébalo gratis")
+    doc = yaml.safe_load((tenants_dir / "demo-negocio" / "tenant.yaml").read_text())
+    registry = load_registry(tenants_dir, None, PACKS)
+    (t,) = registry.tenants
+    assert registry.problems == {}
+    assert t.is_demo and t.file.demo is not None
+    assert t.file.demo.description == "Pruébalo gratis"
+    assert doc["status"] == "paused" and "channel" not in doc
 
 
 def test_new_tenant_never_overwrites(tenants_dir: Path) -> None:

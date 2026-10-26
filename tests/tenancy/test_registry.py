@@ -13,6 +13,7 @@ from tests.tenancy.helpers import (
     PACKS,
     TG_SECRETS,
     WA_SECRETS,
+    demo_tenant_yaml,
     phone_number_id,
     tenant_yaml,
     write_secrets,
@@ -72,7 +73,7 @@ def test_telegram_tenant(tmp_path: Path) -> None:
     doc = tenant_yaml(
         "tg",
         channel={"type": "telegram", "public_id": "tgpublic0001", "bot_username": "tg_bot"},
-        testers={"telegram": [5], "main": [123456789]},
+        testers={"main": [123456789]},
     )
     registry = load(tmp_path, doc, secrets={"tg": TG_SECRETS})
     (t,) = registry.tenants
@@ -163,6 +164,7 @@ def test_invalid_config_degrades_only_that_tenant(tmp_path: Path) -> None:
     a, b = registry.tenants
     assert a.is_degraded and a.degraded[0].startswith("config: greeting")
     assert not b.is_degraded
+    assert a.file.channel is not None
     assert registry.by_public_id[("whatsapp", a.file.channel.public_id)] is a  # still routed
 
 
@@ -269,16 +271,33 @@ def test_repeated_keys_degrade_every_tenant_involved(
 # ── Queries ──────────────────────────────────────────────────────────────
 
 
-def test_visible_to_testers_and_operators(tmp_path: Path) -> None:
+def test_demo_tenants_lists_only_demo_businesses(tmp_path: Path) -> None:
     registry = load(
         tmp_path,
-        tenant_yaml("a", testers={"telegram": [111, 222]}),
-        tenant_yaml("b", testers={"telegram": [222]}),
+        demo_tenant_yaml("demo-a"),
+        demo_tenant_yaml("demo-b", status="paused"),
+        tenant_yaml("real"),
     )
-    assert [t.slug for t in registry.visible_to(111, operators=[999])] == ["a"]
-    assert [t.slug for t in registry.visible_to(222, operators=[999])] == ["a", "b"]
-    assert registry.visible_to(333, operators=[999]) == []
-    assert [t.slug for t in registry.visible_to(999, operators=[999])] == ["a", "b"]
+    assert {t.slug for t in registry.demo_tenants()} == {"demo-a", "demo-b"}
+    real = registry.by_slug["real"]
+    demo = registry.by_slug["demo-a"]
+    assert not real.is_demo and demo.is_demo
+
+
+def test_a_demo_tenant_has_no_secrets_and_no_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        registry = load(tmp_path, demo_tenant_yaml("demo-a"))
+    (t,) = registry.tenants
+    assert t.secrets is None and not t.main_enabled
+    assert t.main_disabled == ["demo tenant: no main channel"]
+    assert "main channel disabled" not in caplog.text
+
+
+def test_a_demo_tenant_is_never_indexed_by_public_id(tmp_path: Path) -> None:
+    registry = load(tmp_path, demo_tenant_yaml("demo-a"))
+    assert registry.by_public_id == {} and registry.by_phone_number_id == {}
 
 
 def test_serving_excludes_degraded_and_offboarded(tmp_path: Path) -> None:

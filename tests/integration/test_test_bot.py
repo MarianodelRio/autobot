@@ -1,8 +1,10 @@
 """The test bot and its business selector, with the toy
 pack, the real database and Telegram/Meta answered by a mock transport. Covers who may
-use it, picking and switching businesses, businesses that stop being available and the
-isolation of the test channel: never the real calendar, never the main channel, and its
-owner notices go to ops."""
+use it (operators only; the per-business testers list was retired with testers.telegram
+and the demo doors of channels/demo/), picking and switching businesses, businesses that
+stop being available and the isolation of the test channel: never the main channel, and
+its owner notices go to ops. A pack that needs a calendar is never available here (the
+test channel has none of its own anymore)."""
 
 import dataclasses
 import json
@@ -15,10 +17,6 @@ from django.test import Client
 from pydantic import BaseModel
 from pytest_django import Settings
 
-from core.actions import NotifyOwner
-from core.messages import IncomingMessage
-from core.pack import PackContext, PackResult
-from core.replies import Text
 from flowpilot.channels import adapters
 from flowpilot.channels.ratelimit import WindowLimiter
 from flowpilot.channels.test_bot import selector
@@ -41,7 +39,7 @@ pytestmark = [
 ]
 
 OPERATOR = 1
-TESTER = 111  # in testers.telegram of tests.tenancy.helpers.tenant_yaml
+TESTER = 111  # an arbitrary non-operator id, used only where access is not exercised
 STRANGER = 222
 SECRET = "t" * 32
 URL = "/webhooks/telegram-test"
@@ -231,14 +229,10 @@ def test_a_user_without_permission_is_refused_only_a_few_times(
     assert set(TestBotEvent.objects.using("owner").values_list("status", flat=True)) == {"done"}
 
 
-def test_testers_see_their_businesses_and_operators_all(tenants: Any, providers: Providers) -> None:
-    other = wa_t("other")
-    other["testers"] = {"telegram": [333]}
-    tenants(wa_t("wa"), other)
-    say(TESTER, "/start")
-    assert providers.buttons(TESTER) == ["fp_select:wa", "fp_page:0"]
+def test_only_operators_see_the_list(tenants: Any, providers: Providers) -> None:
+    tenants(wa_t("wa"))
     say(OPERATOR, "hola")  # no business picked yet: the list
-    assert providers.buttons(OPERATOR) == ["fp_select:other", "fp_select:wa", "fp_page:0"]
+    assert providers.buttons(OPERATOR) == ["fp_select:wa", "fp_page:0"]
 
 
 def test_unavailable_businesses_are_not_listed(
@@ -246,7 +240,6 @@ def test_unavailable_businesses_are_not_listed(
 ) -> None:
     class CalendarConfig(BaseModel):
         calendar_id: str = "real@example.com"
-        test_calendar_id: str | None = None
 
     calendar_pack = dataclasses.replace(
         toy.pack, name="cal", needs_calendar=True, config_schema=CalendarConfig
@@ -277,21 +270,25 @@ def test_the_list_is_paginated(tenants: Any, providers: Providers) -> None:
 
 def test_pick_a_business_then_talk_to_it(tenants: Any, providers: Providers) -> None:
     tenants(wa_t("wa"))
-    say(TESTER, "/start")
-    press(TESTER, "fp_select:wa")
-    texts = providers.texts(TESTER)
+    say(OPERATOR, "/start")
+    press(OPERATOR, "fp_select:wa")
+    texts = providers.texts(OPERATOR)
     assert texts[-2] == "🧪 Pruebas · Wa. Escribe /negocio para cambiar."
     assert "¿Qué quieres hacer?" in texts[-1]  # the pack's menu, after the synthetic `menu`
-    assert providers.buttons(TESTER) == ["greet", "color", "fail"]
+    assert providers.buttons(OPERATOR) == ["greet", "color", "fail"]
     tenant = get_registry().by_slug["wa"]
-    assert TestSession.objects.using("owner").get(telegram_user_id=TESTER).tenant_id == tenant.id
+    assert TestSession.objects.using("owner").get(telegram_user_id=OPERATOR).tenant_id == tenant.id
     synthetic = InboundEvent.objects.using("owner").get(provider_event_id__startswith="select:")
     assert synthetic.channel == "test" and synthetic.status == "done"
 
-    press(TESTER, "greet")  # forwarded to the tenant's test channel
-    assert providers.texts(TESTER)[-1] == "¿Cómo te llamas?"
+    press(OPERATOR, "greet")  # forwarded to the tenant's test channel
+    assert providers.texts(OPERATOR)[-1] == "¿Cómo te llamas?"
     contact = Contact.objects.using("owner").get()
-    assert (contact.channel, contact.external_id, contact.phone_e164) == ("test", str(TESTER), None)
+    assert (contact.channel, contact.external_id, contact.phone_e164) == (
+        "test",
+        str(OPERATOR),
+        None,
+    )
     # The selector answered its own buttons; the pack's buttons were answered by process_event.
     acks = [
         b["callback_query_id"] for w, b in providers.telegram if w.endswith("answerCallbackQuery")
@@ -300,17 +297,15 @@ def test_pick_a_business_then_talk_to_it(tenants: Any, providers: Providers) -> 
 
 
 def test_negocio_shows_the_list_again(tenants: Any, providers: Providers) -> None:
-    other = wa_t("other")
-    other["testers"] = {"telegram": [TESTER]}
-    tenants(wa_t("wa"), other)
-    say(TESTER, "/start")
-    press(TESTER, "fp_select:wa")
+    tenants(wa_t("wa"), wa_t("other"))
+    say(OPERATOR, "/start")
+    press(OPERATOR, "fp_select:wa")
     events = InboundEvent.objects.using("owner").count()
-    say(TESTER, "/negocio")
-    assert providers.buttons(TESTER) == ["fp_select:other", "fp_select:wa", "fp_page:0"]
+    say(OPERATOR, "/negocio")
+    assert providers.buttons(OPERATOR) == ["fp_select:other", "fp_select:wa", "fp_page:0"]
     assert InboundEvent.objects.using("owner").count() == events  # not forwarded
-    press(TESTER, "fp_select:other")
-    assert providers.texts(TESTER)[-2].startswith("🧪 Pruebas · Other.")
+    press(OPERATOR, "fp_select:other")
+    assert providers.texts(OPERATOR)[-2].startswith("🧪 Pruebas · Other.")
 
 
 def test_a_business_that_stops_being_available(
@@ -318,8 +313,8 @@ def test_a_business_that_stops_being_available(
 ) -> None:
     doc = wa_t("wa")
     tenants(doc)
-    say(TESTER, "/start")
-    press(TESTER, "fp_select:wa")
+    say(OPERATOR, "/start")
+    press(OPERATOR, "fp_select:wa")
     # A deploy breaks its config: degraded.
     import yaml
 
@@ -327,22 +322,11 @@ def test_a_business_that_stops_being_available(
         yaml.safe_dump({**doc, "config": {"colors": 1}})
     )
     get_registry.cache_clear()
-    say(TESTER, "hola")
+    say(OPERATOR, "hola")
     # Merged into one message by plan_sends; no business left to list.
-    assert providers.texts(TESTER)[-1] == (
+    assert providers.texts(OPERATOR)[-1] == (
         f"{selector.NOT_AVAILABLE_TEXT}\n\n{selector.NONE_AVAILABLE_TEXT}"
     )
-    assert not TestSession.objects.using("owner").exists()
-
-
-def test_picking_a_business_one_may_not_see(tenants: Any, providers: Providers) -> None:
-    other = wa_t("other")
-    other["testers"] = {"telegram": [333]}
-    tenants(wa_t("wa"), other)
-    press(TESTER, "fp_select:other")
-    (text,) = providers.texts(TESTER)
-    assert text.startswith(selector.NOT_AVAILABLE_TEXT)  # with the list in the same message
-    assert providers.buttons(TESTER) == ["fp_select:wa", "fp_page:0"]
     assert not TestSession.objects.using("owner").exists()
 
 
@@ -353,14 +337,14 @@ def test_the_test_channel_never_uses_the_main_channel(tenants: Any, providers: P
     """A WhatsApp business tested through the test bot: everything goes through the test
     bot, nothing through Meta, even a proactive message."""
     tenants(wa_t("wa"))
-    say(TESTER, "/start")
-    press(TESTER, "fp_select:wa")
-    press(TESTER, "color")
-    press(TESTER, "pick_1")  # replies and a SendProactive to this contact
+    say(OPERATOR, "/start")
+    press(OPERATOR, "fp_select:wa")
+    press(OPERATOR, "color")
+    press(OPERATOR, "pick_1")  # replies and a SendProactive to this contact
     assert providers.meta == []
     proactive = OutboundMessage.objects.using("owner").get(kind="proactive")
     assert (proactive.channel, proactive.status) == ("test", "sent")
-    assert providers.texts(TESTER)[-1] == "Gracias por elegir Verde. ¿Te ha gustado?"
+    assert providers.texts(OPERATOR)[-1] == "Gracias por elegir Verde. ¿Te ha gustado?"
     assert all(where.startswith("999:TEST-TOKEN/") for where, _ in providers.telegram)
 
 
@@ -372,10 +356,10 @@ def test_owner_notices_from_the_test_channel_go_to_ops(
 ) -> None:
     """Always to ops, never to the owner: also when the owner has no chat."""
     tenants(wa_t("wa", owner=owner))
-    say(TESTER, "/start")
-    press(TESTER, "fp_select:wa")
-    press(TESTER, "greet")
-    say(TESTER, "Lucía")
+    say(OPERATOR, "/start")
+    press(OPERATOR, "fp_select:wa")
+    press(OPERATOR, "greet")
+    say(OPERATOR, "Lucía")
     (row,) = Notification.objects.using("owner").all()
     assert (row.audience, row.text) == ("ops", "🧪 Wa: Nuevo saludo de Lucía")
     notify = [j for j in jobs() if j[0] == "send_notification"]
@@ -386,72 +370,11 @@ def test_a_telegram_business_is_tested_through_the_test_bot_only(
     tenants: Any, providers: Providers
 ) -> None:
     """Never through the business's own bot (its bot_token in secrets.yaml)."""
-    doc = tg_tenant("tg")
-    doc["testers"] = {"telegram": [TESTER]}
-    tenants(doc)
-    say(TESTER, "/start")
-    press(TESTER, "fp_select:tg")
-    press(TESTER, "color")
-    press(TESTER, "pick_0")
-    assert providers.texts(TESTER)[-1] == "Gracias por elegir Rojo. ¿Te ha gustado?"
-    assert providers.texts(TESTER, token="123:ABC-token") == []
+    tenants(tg_tenant("tg"))
+    say(OPERATOR, "/start")
+    press(OPERATOR, "fp_select:tg")
+    press(OPERATOR, "color")
+    press(OPERATOR, "pick_0")
+    assert providers.texts(OPERATOR)[-1] == "Gracias por elegir Rojo. ¿Te ha gustado?"
+    assert providers.texts(OPERATOR, token="123:ABC-token") == []
     assert all(where.startswith("999:TEST-TOKEN/") for where, _ in providers.telegram)
-
-
-def test_the_test_channel_never_gets_the_real_calendar(
-    tenants: Any, providers: Providers, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    class CalendarConfig(BaseModel):
-        calendar_id: str = "real@example.com"
-        test_calendar_id: str | None = "test@example.com"
-
-    seen: list[object] = []
-
-    def handle(ctx: PackContext, msg: IncomingMessage) -> PackResult:
-        seen.append(ctx.calendar)
-        if msg.text == "aviso":
-            return PackResult([Text("ok")], actions=[NotifyOwner("x", "y", ctx.idem.event("n"))])
-        return PackResult([Text("ok")])
-
-    pack = dataclasses.replace(
-        toy.pack,
-        name="cal",
-        needs_calendar=True,
-        config_schema=CalendarConfig,
-        handle_message=handle,
-    )
-    monkeypatch.setattr("packs.registry.PACKS", {"cal": pack})
-    tenants(wa_t("wa", pack="cal"))
-    bound: list[str] = []
-
-    def calendars(calendar_id: str) -> str:
-        bound.append(calendar_id)
-        return f"port:{calendar_id}"
-
-    say(TESTER, "/start")
-    for event in TestBotEvent.objects.using("owner").filter(status="pending"):
-        selector.route_test_update(event.id)
-    press_update_id = next(_ids)
-    Client().post(
-        URL,
-        data=json.dumps(
-            {
-                "update_id": press_update_id,
-                "callback_query": {
-                    "id": "cbx",
-                    "from": user(TESTER),
-                    "message": {
-                        "message_id": 2,
-                        "chat": {"id": TESTER, "type": "private"},
-                        "date": 1,
-                    },
-                    "chat_instance": "1",
-                    "data": "fp_select:wa",
-                },
-            }
-        ).encode(),
-        content_type="application/json",
-        headers={"X-Telegram-Bot-Api-Secret-Token": SECRET},
-    )
-    drain(calendars=calendars)
-    assert bound == ["test@example.com"] and seen == ["port:test@example.com"]

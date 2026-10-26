@@ -7,7 +7,6 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from core.text import fold
 from packs.salon.messages import SalonTexts
 
 Weekday = Literal["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
@@ -66,7 +65,6 @@ class SalonConfig(BaseModel):
     business_name: str = Field(min_length=1)
     contact_phone: str = Field(min_length=1)
     calendar_id: str = Field(min_length=1)
-    test_calendar_id: str | None = None
     services: dict[str, Service] = Field(min_length=1, max_length=9)
     opening_hours: dict[Weekday, list[TimeRange]] = Field(min_length=1)
     slot_step_min: int = Field(default=30, gt=0, strict=True)
@@ -81,12 +79,12 @@ class SalonConfig(BaseModel):
     info_text: str = Field(default="", max_length=4096)
     texts: SalonTexts = SalonTexts()
 
-    @field_validator("business_name", "contact_phone", "calendar_id", "test_calendar_id")
+    @field_validator("business_name", "contact_phone", "calendar_id")
     @classmethod
-    def nonempty(cls, value: str | None) -> str | None:
-        if value is not None and not value.strip():
+    def nonempty(cls, value: str) -> str:
+        if not value.strip():
             raise ValueError("value cannot be blank")
-        return value.strip() if value is not None else None
+        return value.strip()
 
     @field_validator("services")
     @classmethod
@@ -105,8 +103,6 @@ class SalonConfig(BaseModel):
 
     @model_validator(mode="after")
     def rules(self) -> SalonConfig:
-        if self.test_calendar_id and fold(self.test_calendar_id) == fold(self.calendar_id):
-            raise ValueError("test calendar must differ from main calendar")
         if self.manual_confirmations_enabled and self.manual_confirmations_since is None:
             raise ValueError("manual confirmations need an explicit start date")
         if self.manual_confirmations_since and self.manual_confirmations_since.tzinfo is None:

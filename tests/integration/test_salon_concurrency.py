@@ -81,16 +81,3 @@ def test_two_contacts_only_one_booking_and_retry_is_idempotent(salon_setup: Any)
     replay = reserve(ctx, date(2026, 3, 24), day_time(10), "corte", "Lucía")
     assert replay.gcal_id == calendar.created[0].gcal_id and len(calendar.created) == 1
     assert not connections["default"].in_atomic_block
-
-
-def test_main_and_test_calendar_book_independently(salon_setup: Any) -> None:
-    setup, calendars = salon_setup
-    tenant = setup()
-    contact = ContactInfo(uuid.uuid7(), "111", None, "Lucía", False)
-    for channel in (Channel.MAIN, Channel.TEST):
-        ctx = build_context(
-            tenant, channel, contact=contact, state={}, event_id=uuid.uuid7(), calendars=calendars
-        )
-        ctx = replace(ctx, clock=FixedClock(NOW, tenant.info.timezone))
-        reserve(ctx, date(2026, 3, 24), day_time(10), "corte", "Lucía")
-    assert len(calendars.main.created) == len(calendars.test.created) == 1

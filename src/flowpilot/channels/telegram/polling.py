@@ -55,10 +55,12 @@ def source(slug: str | None) -> Source:
     if found is None:
         raise ValueError(f"no tenant {slug!r}")
     channel = found.file.channel
+    if channel is None or not isinstance(channel, TelegramChannel):
+        raise ValueError(f"tenant {slug} has no enabled Telegram main channel")
     # The same tenant the webhook would accept: Telegram channel enabled (ids and
     # secrets) and not ambiguous; otherwise its webhook would answer 404.
     tenant = views.main_channel_tenant("telegram", channel.public_id)
-    if tenant is not found or not isinstance(channel, TelegramChannel):
+    if tenant is not found:
         raise ValueError(f"tenant {slug} has no enabled Telegram main channel")
     assert isinstance(tenant.secrets, TelegramSecrets)
 

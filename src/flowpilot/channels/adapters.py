@@ -28,6 +28,7 @@ class Endpoint:
 
 def endpoint(tenant: LoadedTenant, channel: str) -> Endpoint:
     if channel == Channel.MAIN:
+        assert tenant.file.channel is not None  # a demo tenant has no main channel
         adapter: ChannelAdapter[Any, Any] = (
             WHATSAPP if tenant.file.channel.type == "whatsapp" else TELEGRAM
         )

@@ -56,7 +56,11 @@ def telegram_health(token: str, *, outbound_only: bool = False) -> list[Issue]:
 
 def whatsapp_health(tenant: LoadedTenant) -> list[Issue]:
     channel = tenant.file.channel
-    if channel.type != "whatsapp" or not isinstance(tenant.secrets, WhatsAppSecrets):
+    if (
+        channel is None
+        or channel.type != "whatsapp"
+        or not isinstance(tenant.secrets, WhatsAppSecrets)
+    ):
         return []
     headers = {"Authorization": f"Bearer {tenant.secrets.access_token.get_secret_value()}"}
     base = f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}"

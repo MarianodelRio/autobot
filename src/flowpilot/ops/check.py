@@ -76,7 +76,7 @@ def run() -> None:
                 .distinct()
             )
             channel = tenant.file.channel
-            if channel.type == "whatsapp":
+            if channel is not None and channel.type == "whatsapp":
                 local_now = now.astimezone(tenant.info.timezone)
                 start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                 count = messages.filter(
