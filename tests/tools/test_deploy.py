@@ -25,7 +25,12 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
     docker.write_text(
         "#!/usr/bin/env bash\n"
         'printf \'%s %s\\n\' "$SHA" "$*" >>"$TEST_LOG"\n'
-        "[[ $* != *migrate* || ${MIGRATE_FAIL:-} != 1 ]]\n"
+        "[[ $* != *migrate* || ${MIGRATE_FAIL:-} != 1 ]] || exit 1\n"
+        "[[ $* != *pull* || ${PULL_FAIL:-} != 1 ]] || exit 1\n"
+        "if [[ $* == *'ps -q worker'* ]]; then echo worker-id; fi\n"
+        "if [[ $1 == inspect ]]; then\n"
+        '  if [[ ${BROKEN_WORKER_SHA:-} == "$SHA" ]]; then echo "true 1"; else echo "true 0"; fi\n'
+        "fi\n"
     )
     docker.chmod(0o755)
     curl = binaries / "curl"
@@ -76,12 +81,40 @@ def test_health_failure_restores_previous_image_and_alerts(tmp_path: Path) -> No
     assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
 
 
+def test_worker_restarting_restores_previous_image_and_alerts(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, BROKEN_WORKER_SHA=NEW)
+    assert result.returncode == 1
+    assert (tmp_path / ".deployed-sha").read_text().strip() == OLD
+    lines = (tmp_path / "docker.log").read_text().splitlines()
+    assert any(line.startswith(OLD) and "up --no-deps -d web worker" in line for line in lines)
+    assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
+    assert not any(line.startswith(NEW) and "-d caddy" in line for line in lines)
+
+
 def test_migration_failure_never_switches_web(tmp_path: Path) -> None:
     script, binaries = setup(tmp_path)
     result = invoke(script, binaries, MIGRATE_FAIL="1")
     assert result.returncode == 1
     assert (tmp_path / ".deployed-sha").read_text().strip() == OLD
-    assert "up --no-deps -d web worker" not in (tmp_path / "docker.log").read_text()
+    log = (tmp_path / "docker.log").read_text()
+    assert "up --no-deps -d web worker" not in log
+    assert any(line.startswith(OLD) and "deploy_aborted" in line for line in log.splitlines())
+
+
+def test_failure_before_switch_restores_previous_checkout(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    (tmp_path / ".git").mkdir()
+    git = binaries / "git"
+    git.write_text('#!/usr/bin/env bash\nprintf \'git %s\\n\' "$*" >>"$TEST_LOG"\n')
+    git.chmod(0o755)
+    result = invoke(script, binaries, PULL_FAIL="1")
+    assert result.returncode == 1
+    assert (tmp_path / ".deployed-sha").read_text().strip() == OLD
+    log = (tmp_path / "docker.log").read_text()
+    assert f"git checkout --quiet --detach {OLD}" in log
+    assert "migrate" not in log
+    assert "up --no-deps -d web worker" not in log
 
 
 @pytest.mark.parametrize("argument", ["short", "; rm -rf /", "A" * 40])

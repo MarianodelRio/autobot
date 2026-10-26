@@ -2,8 +2,11 @@
 
 **Síntoma:** un SHA nuevo rompe `/health` o el flujo tras desplegar. **Diagnóstico:**
 consulta `.deployed-sha`, logs de `web`/`worker` y el resultado de `deploy.yml`.
-El script revierte automáticamente si `/health` no queda sano en 60 s; comprueba
-si el aviso a ops llegó.
+El script revierte automáticamente si `/health` no queda sano en 60 s o si el
+`worker` se para o se reinicia en sus primeros ~10 s. Si falla antes de cambiar la
+imagen (pull, migración o `sync_tenants`), mantiene la imagen anterior, devuelve el
+repositorio al SHA anterior y avisa con `deploy_aborted`. Comprueba si el aviso a
+ops llegó.
 
 **Pasos:** si la reversión automática falló, un operador autorizado despliega el
 SHA anterior publicado mediante `make deploy SHA=<sha-completo>` y aprueba el job

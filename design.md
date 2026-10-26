@@ -1268,9 +1268,9 @@ Quedan ~10 € de margen hasta el objetivo de 20 € para una VPS de 8 GB si hic
 - **CI** (`ci.yml`): en cada push a `main` ejecuta las puertas de §17.3 y, si pasan, construye y publica la imagen.
 - **Despliegue** (`deploy.yml`, lanzado a mano con `workflow_dispatch`): `ssh deploy@vps "deploy/deploy.sh <sha>"`, con una clave SSH limitada a ese script:
   1. `docker compose pull`
-  2. `docker compose run --rm web manage.py migrate && manage.py sync_tenants --strict`. Si falla, se para aquí y no cambia la imagen en servicio.
+  2. `docker compose run --rm web manage.py migrate && manage.py sync_tenants --strict`. Si falla este paso o el anterior, se para aquí, no cambia la imagen en servicio, el repositorio vuelve al SHA anterior (el comando forzado ya lo había movido al nuevo) y avisa a ops.
   3. `docker compose up -d web worker`
-  4. Espera a que `/health` devuelva 200 sin tenants degradados o ilegibles (máximo 60 s). Si no llega, `deploy.sh` vuelve a desplegar el SHA anterior y avisa a ops.
+  4. Espera a que `/health` devuelva 200 sin tenants degradados o ilegibles (máximo 60 s) y a que el contenedor `worker` siga en marcha sin reinicios durante unos 10 s. Si algo falla, `deploy.sh` vuelve a desplegar el SHA anterior y avisa a ops.
 - Durante los segundos en que `web` se recrea, Caddy devuelve 502 y Meta y Telegram reintentan. El `worker` termina sus trabajos antes de parar.
 - **Vuelta atrás:** volver a desplegar el SHA anterior y su configuración Git. Las migraciones no se revierten, porque son compatibles hacia atrás. La clave SSH de CI usa un comando forzado; para un repositorio privado, la VPS tiene una deploy key de GitHub de solo lectura y la huella del host fijada por el operador. El paquete GHCR debe ser público o el usuario `deploy` debe tener autenticación de lectura configurada. El entorno `production` de GitHub requiere aprobación humana cuando la cuenta permite esa protección.
 - Se despliega preferiblemente fuera de las horas punta de los negocios (antes de las 9:00 o después de las 21:00).
