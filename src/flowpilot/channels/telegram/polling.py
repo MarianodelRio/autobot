@@ -1,4 +1,4 @@
-"""Long polling for local development (design.md §6.4): `getUpdates` instead of a
+"""Long polling for local development: `getUpdates` instead of a
 webhook, so no tunnel nor domain is needed. Each update enters **the same way as the
 webhook** once authenticated: `selector.store_update` for the test bot,
 `views.accept` for a business's own bot. A bot is never polled while it has a webhook
@@ -49,7 +49,7 @@ def source(slug: str | None) -> Source:
     if slug is None:
         secrets = test_bot_secrets()
         if secrets is None:
-            raise ValueError("TEST_BOT_TOKEN is not set (see M-3.1 in IMPLEMENTATION.md)")
+            raise ValueError("TEST_BOT_TOKEN is not set (see README: bot de pruebas en local)")
         return Source("test bot", secrets, store_update)
     found = get_registry().by_slug.get(slug)
     if found is None:

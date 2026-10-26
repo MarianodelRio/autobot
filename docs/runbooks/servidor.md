@@ -2,7 +2,7 @@
 
 **Síntoma:** no hay servidor listo, el despliegue SSH falla, o un segundo bootstrap cambia
 la configuración. **Diagnóstico:** comprueba DNS, SSH, puertos, Docker y timer por separado.
-Este procedimiento lo ejecuta la persona operadora en una VPS nueva, tras M-7.1. El
+Este procedimiento lo ejecuta la persona operadora en una VPS nueva, con el dominio ya apuntando a ella. El
 agente no lo ejecuta. Antes de empezar, guarda en tu gestor de contraseñas la clave
 privada de operación y la clave de CI, y confirma que puedes abrir una sesión `root`
 con tu clave en la VPS recién creada.
@@ -35,12 +35,12 @@ con tu clave en la VPS recién creada.
    `id -u deploy`. Crea `secrets.yaml`, `google_sa.json`, `backup.env` y
    `restic-password` como propietario `deploy`, modo 0600. El usuario no root de
    `web` y `worker` usa ese UID para leer los dos secretos montados. La cuenta de
-   servicio y los tokens reales dependen de M-5.1, M-6.1 y M-7.3. En
+   servicio y los tokens reales dependen de Google Cloud, del bot de avisos y de los secretos de GitHub. En
    `DJANGO_ALLOWED_HOSTS`, incluye `api.<dominio>`, `localhost` y `127.0.0.1`:
    el Admin recibe el host local al entrar por el túnel SSH.
 6. Desde la consola del proveedor como root, inicia el timer con
    `systemctl start flowpilot-backup.timer` solo después de
-   configurar `backup.env`, `restic-password` y el destino remoto de M-7.2.
+   configurar `backup.env`, `restic-password` y el destino remoto de los backups.
    Antes del primer despliegue, comprueba que el paquete GHCR es público o configura
    autenticación de lectura para `deploy` en Docker. En GitHub, crea el entorno
    `production` con revisión requerida, si tu plan de GitHub lo permite, y añade
@@ -50,7 +50,7 @@ con tu clave en la VPS recién creada.
 **Verificación:** la sesión de operación funciona, la clave de CI rechaza comandos
 distintos del despliegue, `docker compose version` responde, el timer está activo,
 `ufw` solo abre 22/80/443 y un segundo bootstrap deja los mismos ficheros de
-configuración. El primer despliegue y el escaneo externo pertenecen a M-7.6;
+configuración. El primer despliegue y el escaneo externo son pasos de la puesta en marcha (`docs/puesta-en-marcha.md`);
 este runbook no los da por hechos.
 
 Para entrar al Admin tras el despliegue, en tu máquina ejecuta

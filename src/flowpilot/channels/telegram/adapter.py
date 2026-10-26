@@ -1,6 +1,6 @@
-"""Telegram Bot API adapter (design.md §6.4), building on `tools/telegram_pruebas.py` of
+"""Telegram Bot API adapter, building on `tools/telegram_pruebas.py` of
 buscaBus (how lists and buttons map to inline keyboards). The same adapter serves a
-business's own bot (`main` channel) and the platform's test bot (§6.5): only the token
+business's own bot (`main` channel) and the platform's test bot: only the token
 and the routing change.
 
 The API URL carries the bot token: logs only hold exception names, status and error codes.
@@ -48,7 +48,7 @@ NO_PREVIEW = {"is_disabled": True}  # WhatsApp shows no link preview; Telegram d
 BOLD = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])")
 PARAM = re.compile(r"\{(\d+)\}")
 
-# `None` is the platform's test bot, which has no tenant.yaml channel (§6.5).
+# `None` is the platform's test bot, which has no tenant.yaml channel.
 type Channel = TelegramChannel | None
 
 
@@ -200,7 +200,7 @@ def call(
 
 
 def classify(response: httpx.Response) -> SendOutcome:
-    """Telegram's answer → `SendOutcome` (the table of design.md §6.4)."""
+    """Telegram's answer → `SendOutcome`."""
     status = response.status_code
     data = _json(response)
     reason = _describe(response)

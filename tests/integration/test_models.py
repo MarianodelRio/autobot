@@ -1,4 +1,4 @@
-"""Schema of design.md §12.1 (T-2.2): unique constraints, composite foreign keys and RLS
+"""Schema: unique constraints, composite foreign keys and RLS
 enabled. The tests write through `owner` (it bypasses RLS) because they check the
 constraints themselves; the isolation between tenants is tested in tests/isolation/."""
 

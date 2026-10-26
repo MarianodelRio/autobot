@@ -1,4 +1,4 @@
-"""`build_context` (design.md §8.2, §9.5, §6.5, T-3.4): the advisory lock competing with
+"""`build_context`: the advisory lock competing with
 another database session, idempotency keys and the calendar bound to each channel.
 Transactional: the lock is a session lock taken outside any transaction."""
 

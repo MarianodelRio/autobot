@@ -1,6 +1,6 @@
-"""Escenarios obligatorios del pack `bus` (design.md §10.5), con el arnés de
+"""Escenarios obligatorios del pack `bus`, con el arnés de
 conversación en los dos tipos de canal. Cada respuesta pasa por los límites
-comunes y por el renderizado de los dos adaptadores (§17.2). Los datos son los
+comunes y por el renderizado de los dos adaptadores. Los datos son los
 reales congelados (`fixtures/horarios_real/`) salvo donde se indica.
 
 La consulta completa por el bot de pruebas, de extremo a extremo, está en

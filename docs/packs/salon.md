@@ -28,9 +28,15 @@ identificarla. El canal `test` usa solo `test_calendar_id` y nunca envía a pers
 del canal real. Para ensayar reservas por el bot de pruebas es necesario configurar
 `test_calendar_id`.
 
-Las plantillas de WhatsApp, creadas y aprobadas por el negocio en Meta, son
-`confirmacion_cita` (Utility, `es_ES`, botón Cancelar cita) y
-`recordatorio_cita` (Utility, `es_ES`, botones Confirmar y Cancelar). El barrido
+Las plantillas de WhatsApp las crea el operador en el WhatsApp Manager de cada
+negocio y las aprueba Meta:
+
+| Nombre en Meta | Texto | Botones |
+|---|---|---|
+| `confirmacion_cita` (Utility, `es_ES`) | "Hola {1}, tu cita ha sido confirmada para el {2} a las {3}. Si necesitas cancelarla, pulsa el botón." | Cancelar cita |
+| `recordatorio_cita` (Utility, `es_ES`) | "Recuerda que tienes cita el {1} a las {2}. ¿Confirmas tu asistencia?" | Confirmar · Cancelar |
+
+El barrido
 de Calendar corre cada 15 minutos y crea avisos idempotentes; el envío real
 requiere canal activo, plantillas aprobadas y consentimiento operativo. Los avisos
 al dueño (`booking_created`, `booking_cancelled`, `booking_moved`,

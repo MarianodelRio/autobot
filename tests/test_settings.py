@@ -1,4 +1,4 @@
-"""Smoke tests for the settings and the Django project (T-0.1)."""
+"""Smoke tests for the settings and the Django project."""
 
 import os
 import subprocess

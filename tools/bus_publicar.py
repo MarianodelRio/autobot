@@ -1,4 +1,4 @@
-"""tools/bus_publicar.py — make bus-publicar TENANT=<slug> (design.md §10.1).
+"""tools/bus_publicar.py — make bus-publicar TENANT=<slug>.
 
 Marca como publicada la versión actual del dataset del tenant: crea el tag
 local `datos/<slug>/AAAA-MM-DD` (fecha de hoy en Madrid) sobre `HEAD`, la base

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Database roles (design.md §12.2): fp_owner owns the tables and bypasses RLS (migrations,
+# Database roles: fp_owner owns the tables and bypasses RLS (migrations,
 # Admin, cross-tenant operation commands); fp_app is what web and worker use, with only
 # SELECT/INSERT/UPDATE/DELETE and no DDL.
 #

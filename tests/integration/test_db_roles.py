@@ -1,4 +1,4 @@
-"""Database roles (design.md §12.2, T-2.1): web and worker use fp_app, which cannot
+"""Database roles: web and worker use fp_app, which cannot
 bypass RLS or change the schema; migrations run as fp_owner."""
 
 import pytest

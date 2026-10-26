@@ -1,6 +1,6 @@
-"""End to end through the real worker (design.md §7.7, §17.1, T-3.10): webhook → queue →
+"""End to end through the real worker: webhook → queue →
 worker → send, with the toy pack, the real database and queue, and the providers
-answered by a mock transport. One test per row of the failure table of §7.7 that does
+answered by a mock transport. One test per failure case that does
 not depend on Calendar."""
 
 import dataclasses
@@ -160,7 +160,7 @@ def test_a_contacts_messages_are_answered_in_order(tenants: Any, meta: Meta) -> 
     ]
 
 
-# ── §7.7, row by row ──────────────────────────────────────────────────────
+# ── Failure cases, one by one ──────────────────────────────────────────────────────
 
 
 def test_a_duplicate_notice_is_processed_once(tenants: Any, meta: Meta) -> None:

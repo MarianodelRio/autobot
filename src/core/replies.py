@@ -1,6 +1,6 @@
-"""Replies a pack returns, common to every channel (design.md §6.1).
+"""Replies a pack returns, common to every channel.
 
-Limits are checked by `core.limits` (T-1.2), not here.
+Limits are checked by `core.limits`, not here.
 """
 
 from dataclasses import dataclass

@@ -1,9 +1,8 @@
-"""Procrastinate app and job registry (design.md §4.4, §7.5).
+"""Procrastinate app and job registry.
 
 `procrastinate.contrib.django` builds the app on the `default` alias (fp_app) and imports
 this module (PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"), so every job is declared
-here (`process_event` and `apply_status` from T-3.5; `send_message`, `run_periodic`…
-with later tasks). The work itself lives in `flowpilot.runtime`, imported inside each job
+here. The work itself lives in `flowpilot.runtime`, imported inside each job
 because the runtime defers jobs through this module.
 
 Rules for every job (CLAUDE.md): arguments, locks and logs carry only ids, never phone
@@ -27,7 +26,7 @@ from flowpilot.ops.logging import async_contextual, contextual
 
 log = logging.getLogger(__name__)
 
-# One worker serves the three queues (§7.5); separate queues show what gets stuck.
+# One worker serves the three queues; separate queues show what gets stuck.
 INBOUND = "inbound"  # process_event, apply_status, route_test_update
 OUTBOUND = "outbound"  # send_message, send_notification
 PERIODIC = "periodic"  # run_periodic, ops_check, retention_cleanup
@@ -36,14 +35,14 @@ QUEUES = (INBOUND, OUTBOUND, PERIODIC)
 # Job names: a job is deferred by name, so modules that defer it do not import its task.
 PROCESS_EVENT = "process_event"  # (tenant_id, event_id), lock conv:<h>
 APPLY_STATUS = "apply_status"  # (tenant_id, event_id), no lock
-SEND_MESSAGE = "send_message"  # (tenant_id, outbound_id), lock out:<h> (T-3.6)
-SEND_NOTIFICATION = "send_notification"  # (tenant_id, notification_id), lock owner:<tenant> (T-6.1)
+SEND_MESSAGE = "send_message"  # (tenant_id, outbound_id), lock out:<h>
+SEND_NOTIFICATION = "send_notification"  # (tenant_id, notification_id), lock owner:<tenant>
 ROUTE_TEST_UPDATE = "route_test_update"  # (event_id) of test_bot_event, lock tg:<h>
 DISPATCH_PERIODIC = "dispatch_periodic"  # (timestamp, pack, name): one per pack Periodic
 RUN_PERIODIC = "run_periodic"  # (tenant_id, name, scheduled_at), queueing lock per both
 RETRY_STALLED_JOBS = "retry_stalled_jobs"  # (timestamp): every 5 min
 
-# `inbound` jobs are retried 3 times, only on TransientError, after 2, 4 and 8 s (§7.5).
+# `inbound` jobs are retried 3 times, only on TransientError, after 2, 4 and 8 s.
 INBOUND_RETRIES = 3
 INBOUND_RETRY = RetryStrategy(
     max_attempts=INBOUND_RETRIES, exponential_wait=2, retry_exceptions={TransientError}
@@ -54,7 +53,8 @@ INBOUND_RETRY = RetryStrategy(
 def process_event(context: JobContext, tenant_id: str, event_id: str) -> None:
     from flowpilot.runtime import process
 
-    # Sync jobs run in worker threads: drop stale connections so they stay within §4.2.
+    # Sync jobs run in worker threads: drop stale connections so they stay within the
+    # connection budget.
     close_old_connections()
     try:
         process.process_event(
@@ -81,7 +81,7 @@ def apply_status(tenant_id: str, event_id: str) -> None:
 class SendRetryStrategy(BaseRetryStrategy):
     """`send_message` is retried only when the provider asked for it (`RetryLater`, raised
     as `SendRetry`), after its `retry_after` or 2, 4, 8, 16 s. The message itself counts
-    its attempts and becomes `failed` after the fifth (§7.4)."""
+    its attempts and becomes `failed` after the fifth."""
 
     def get_retry_decision(self, *, exception: BaseException, job: Job) -> RetryDecision | None:
         from flowpilot.runtime.outbound import MAX_SEND_ATTEMPTS, SendRetry
@@ -142,7 +142,7 @@ def dispatch_periodic(timestamp: int, pack: str, name: str) -> None:
         close_old_connections()
 
 
-# Twice (§7.5), a minute apart, so a brief Calendar outage can pass.
+# Twice, a minute apart, so a brief Calendar outage can pass.
 @app.task(queue=PERIODIC, name=RUN_PERIODIC, retry=RetryStrategy(max_attempts=2, wait=60))
 def run_periodic(tenant_id: str, name: str, scheduled_at: int) -> None:
     from flowpilot.runtime import periodic
@@ -161,7 +161,7 @@ def run_periodic(tenant_id: str, name: str, scheduled_at: int) -> None:
 @async_contextual
 async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
     """Jobs left `doing` by a worker that died (no heartbeat for 30 s) keep their lock and
-    would block the contact for good: Procrastinate does not retry them by itself (§7.7).
+    would block the contact for good: Procrastinate does not retry them by itself.
     They go back to `todo`; every job is idempotent, and a `send_message` cut while
     `sending` ends `unknown`, never resent."""
     manager = context.app.job_manager

@@ -1,6 +1,6 @@
 """Root URLs.
 
-Public routes are the only ones Caddy forwards (design.md §13, §14.3): the webhooks and
+Public routes are the only ones Caddy forwards: the webhooks and
 /health. The Admin is mounted apart: Caddy never routes it, and the operator reaches it
 through the SSH tunnel to 127.0.0.1:8000.
 """

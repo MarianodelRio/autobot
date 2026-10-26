@@ -1,4 +1,4 @@
-"""Save what a channel received and queue its processing (design.md §7.1).
+"""Save what a channel received and queue its processing.
 
 Shared by the webhooks and the test bot's selector (and, through it, `telegram_poll`), so
 every entry takes the same path. No external calls: only the database.
@@ -34,7 +34,7 @@ def initial_status(tenant: LoadedTenant, item: ParsedItem) -> InboundEvent.Statu
     tenant is paused, or in onboarding and the sender is not in testers.main (matched by
     its id or, in WhatsApp, its phone: since BSUIDs the id is not the phone). Delivery
     statuses of our own messages are not subject to testers. A degraded tenant's events
-    stay pending: process_event answers them with the generic text (§5.4)."""
+    stay pending: process_event answers them with the generic text."""
     if tenant.file.status == "paused":
         return Status.IGNORED
     if tenant.file.status == "onboarding" and isinstance(item, InboundItem):
@@ -49,7 +49,7 @@ def store(tenant: LoadedTenant, items: list[ParsedItem], channel: Channel = Chan
     """Save each item as an inbound_event of `channel` (a duplicate is skipped) and queue
     its job in the same transaction, so the job exists only if the event was committed.
     Returns how many events were new. On the `test` channel the selector already checked
-    who may talk to the tenant (§6.5), so its events are always pending."""
+    who may talk to the tenant, so its events are always pending."""
     created = 0
     for item in items:
         status = initial_status(tenant, item) if channel == Channel.MAIN else Status.PENDING

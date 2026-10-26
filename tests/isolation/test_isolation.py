@@ -1,4 +1,4 @@
-"""Generic tenant isolation test (design.md §12.2, T-2.3), mandatory in CI.
+"""Generic tenant isolation test, mandatory in CI.
 
 For every model with `tenant_id`, with tenants A and B and as fp_app: A does not read,
 update, delete or insert B's rows, cannot point to them, and without a tenant nothing is
@@ -30,7 +30,7 @@ from flowpilot.tenancy.tx import tenant_tx
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 NOW = datetime(2026, 10, 5, 10, tzinfo=UTC)
 
-# Platform tables with tenant_id but no RLS by design (§6.5: written before the tenant is
+# Platform tables with tenant_id but no RLS by design (written before the tenant is
 # known, only used by the test bot selector).
 PLATFORM_MODELS: set[type[models.Model]] = {TestSession}
 PLATFORM_TABLES = {m._meta.db_table for m in PLATFORM_MODELS}

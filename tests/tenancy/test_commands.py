@@ -1,4 +1,4 @@
-"""sync_tenants and new_tenant (design.md §5.4, §16.1, T-2.4)."""
+"""sync_tenants and new_tenant."""
 
 import io
 from collections.abc import Iterator

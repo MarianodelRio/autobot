@@ -1,5 +1,5 @@
 """The `tenant` table: a mirror of tenants/*/tenant.yaml written by `sync_tenants`, for
-foreign keys and RLS (design.md §5.4, §12.1). Never edited by hand."""
+foreign keys and RLS. Never edited by hand."""
 
 from django.db import models
 

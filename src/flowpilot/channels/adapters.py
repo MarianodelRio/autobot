@@ -1,6 +1,5 @@
-"""The adapter, channel description and secrets of each conversation channel
-(design.md §6.2, §6.6): `main` is the tenant's own channel; `test` is the platform's
-test bot (§6.5)."""
+"""The adapter, channel description and secrets of each conversation channel:
+`main` is the tenant's own channel; `test` is the platform's test bot."""
 
 import secrets
 from dataclasses import dataclass
@@ -34,7 +33,7 @@ def endpoint(tenant: LoadedTenant, channel: str) -> Endpoint:
         )
         return Endpoint(adapter, tenant.file.channel, tenant.secrets)
     # The test channel always talks through the platform's test bot, whatever the
-    # tenant's main channel is: never WhatsApp nor the business's own bot (§6.5).
+    # tenant's main channel is: never WhatsApp nor the business's own bot.
     return Endpoint(TELEGRAM, None, test_bot_secrets())
 
 

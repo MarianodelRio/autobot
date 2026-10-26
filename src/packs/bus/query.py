@@ -348,7 +348,7 @@ def consultar(
     dias_siguiente: int = SIGUIENTE_CON_SERVICIO_DIAS,
 ) -> Consulta:
     """`dias_siguiente`: ventana en la que se busca el siguiente día con
-    salidas (`next_day_search_days` de la config del pack, design.md §10.4)."""
+    salidas (`next_day_search_days` de la config del pack)."""
     modelo = horarios.modelo
     if origen == destino:
         raise ValueError("origen y destino no pueden ser la misma localidad")

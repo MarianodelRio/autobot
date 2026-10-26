@@ -1,4 +1,4 @@
-"""packs/bus/tests/test_pack.py — `BusConfig` (design.md §10.4, con las reglas de
+"""packs/bus/tests/test_pack.py — `BusConfig` (con las reglas de
 `buscaBus/app/config.py`), `load_data` y la declaración del pack (el registro lo comprueba
 `tests/integration/test_bus_pack.py`, porque un pack no importa `packs.registry`)."""
 
@@ -100,5 +100,5 @@ def test_declaracion() -> None:
     assert pack.handle_message is conversation.handle
     assert pack.state_version == 1
     assert pack.conversation_timeout_min == 30
-    # Sin avisos proactivos ni periódicas (design.md §10.3), y sin calendario.
+    # Sin avisos proactivos ni periódicas, y sin calendario.
     assert pack.periodic == [] and pack.templates == [] and not pack.needs_calendar

@@ -7,7 +7,7 @@ updates:
     groups:
       python:
         patterns: ["*"]
-    # Django stays on the 5.2 LTS (design.md §0, §18): only its patch releases.
+    # Django stays on the 5.2 LTS: only its patch releases.
     ignore:
       - dependency-name: django
         versions: [">=5.3"]

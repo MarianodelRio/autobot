@@ -218,7 +218,7 @@ def test_siguiente_con_servicio_en_el_dia_45_exacto() -> None:
 
 
 def test_ventana_de_siguiente_con_servicio_configurable() -> None:
-    # `next_day_search_days` (design.md §10.4): con 46 días el 16/08 llega al 01/10;
+    # `next_day_search_days`: con 46 días el 16/08 llega al 01/10;
     # con 33, el 28/08 ya no llega (está a 34 días).
     c = query.consultar(MOTOR, "pueblo-p", "pueblo-q", date(2026, 8, 16), dias_siguiente=46)
     assert c.siguiente_con_servicio == date(2026, 10, 1)

@@ -1,5 +1,5 @@
 """`manage.py new_tenant <slug> --pack <pack> --channel whatsapp|telegram` creates
-tenants/<slug>/tenant.yaml (design.md §16.1): a UUIDv7 id, a random public_id,
+tenants/<slug>/tenant.yaml: a UUIDv7 id, a random public_id,
 `status: onboarding` and the pack's config fields. Fields without a default are left
 `null`, so the tenant does not validate until they are filled in."""
 
@@ -82,4 +82,6 @@ class Command(BaseCommand):
         (directory / "tenant.yaml").write_text(
             yaml.safe_dump(document, allow_unicode=True, sort_keys=False)
         )
-        self.stdout.write(f"Created {directory / 'tenant.yaml'}; next steps: design.md §16.1")
+        self.stdout.write(
+            f"Created {directory / 'tenant.yaml'}; next steps: docs/runbooks/alta-baja-negocio.md"
+        )

@@ -1,4 +1,4 @@
-"""`send_message` (design.md §7.4, §7.5, T-3.6): every transition, with the real adapters
+"""`send_message`: every transition, with the real adapters
 answered by a mock transport and the real database."""
 
 import json

@@ -1,4 +1,4 @@
-"""Django settings, read from environment variables (design.md §5.3).
+"""Django settings, read from environment variables.
 
 `ENVIRONMENT=local` (the default) provides development defaults; `ENVIRONMENT=prod`
 requires every secret to be set explicitly.
@@ -47,7 +47,7 @@ INSTALLED_APPS = [
     "django_otp.plugins.otp_totp",
     "flowpilot",
 ]
-# Development-only: provides `lintmigrations` for CI (design.md §17.3); absent from the image.
+# Development-only: provides `lintmigrations` for CI; absent from the image.
 if importlib.util.find_spec("django_migration_linter"):
     INSTALLED_APPS.append("django_migration_linter")
     # Third-party migrations are not ours to fix; every app of ours is linted.
@@ -89,7 +89,7 @@ TEMPLATES = [
 ]
 
 
-# Two aliases (design.md §12.2): `default` is fp_app (no BYPASSRLS, no DDL), used by web
+# Two aliases: `default` is fp_app (no BYPASSRLS, no DDL), used by web
 # and worker; `owner` is fp_owner (owns the tables, BYPASSRLS), used only by migrations,
 # the Admin and operation commands. The worker runs without DB_OWNER_URL, so without the
 # alias. Local defaults match compose.yaml, whose db is published on port 5433.
@@ -109,17 +109,17 @@ if _owner_url:
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Job queue (design.md §7.5): Procrastinate on the `default` alias (fp_app); jobs are
+# Job queue: Procrastinate on the `default` alias (fp_app); jobs are
 # declared in flowpilot/jobs.py.
 PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"
 
-# Tenants (design.md §5): config in git, channel secrets on the server (in local, the
+# Tenants: config in git, channel secrets on the server (in local, the
 # repository root, ignored by git).
 TENANTS_DIR = Path(os.environ.get("TENANTS_DIR", BASE_DIR / "tenants"))
 SECRETS_FILE = Path(env("SECRETS_FILE", str(BASE_DIR / "secrets.yaml")))
 
-# Channels (design.md §6). Graph API version of the WhatsApp Cloud API (reviewed every six
-# months, §16.4).
+# Channels. Graph API version of the WhatsApp Cloud API (reviewed every six
+# months).
 WHATSAPP_GRAPH_VERSION = env("WHATSAPP_GRAPH_VERSION", "v23.0")
 
 
@@ -131,7 +131,7 @@ def _ids(name: str) -> frozenset[int]:
         raise ImproperlyConfigured(f"{name} must be Telegram user ids") from None
 
 
-# The platform's test bot (§6.5). Without a token it is off; without a webhook secret its
+# The platform's test bot. Without a token it is off; without a webhook secret its
 # webhook is off (local development uses `telegram_poll`).
 TEST_BOT_TOKEN = os.environ.get("TEST_BOT_TOKEN", "")
 TEST_BOT_WEBHOOK_SECRET = os.environ.get("TEST_BOT_WEBHOOK_SECRET", "")
@@ -171,13 +171,13 @@ LOGGING = {
         }
     },
     "root": {"handlers": ["console"], "level": os.environ.get("LOG_LEVEL", "INFO")},
-    # httpx logs every request URL at INFO, and Telegram's carries the bot token (§13).
+    # httpx logs every request URL at INFO, and Telegram's carries the bot token.
     "loggers": {"httpx": {"level": "WARNING"}, "httpcore": {"level": "WARNING"}},
 }
 
 GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "")
 
-# Outbound-only notification bot (§11); unconfigured locally until M-6.1.
+# Outbound-only notification bot; unconfigured locally until it is created.
 NOTIFY_BOT_TOKEN = os.environ.get("NOTIFY_BOT_TOKEN", "")
 OPS_TELEGRAM_CHAT_ID = os.environ.get("OPS_TELEGRAM_CHAT_ID", "")
 CACHES = {
@@ -193,5 +193,5 @@ SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 RELEASE_SHA = os.environ.get("RELEASE_SHA", os.environ.get("SHA", ""))
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "web")
 
-# Human approval of T-6.3 is required before enabling destructive periodic retention.
+# Explicit human approval is required before enabling destructive periodic retention.
 RETENTION_CLEANUP_ENABLED = os.environ.get("RETENTION_CLEANUP_ENABLED", "false").lower() == "true"

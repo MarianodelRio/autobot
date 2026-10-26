@@ -1,4 +1,4 @@
-"""Rendering check for the conversation harness (design.md §17.2): every reply and
+"""Rendering check for the conversation harness: every reply and
 proactive message of a scenario is rendered with both adapters, so a pack whose messages
 do not fit a channel fails its tests. The root conftest.py registers it in
 `core.testing.harness.RENDER_CHECKS`."""

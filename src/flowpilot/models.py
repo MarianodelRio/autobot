@@ -1,4 +1,4 @@
-"""Django loads the app's models from here; they live in their modules (design.md §4.4)."""
+"""Django loads the app's models from here; they live in their modules."""
 
 from flowpilot.runtime.models import (
     Contact,

@@ -1,4 +1,4 @@
-"""Periodic work of the packs (design.md §7.6, T-3.7) with the toy pack's
+"""Periodic work of the packs with the toy pack's
 `daily_summary` and the real database and queue."""
 
 import asyncio

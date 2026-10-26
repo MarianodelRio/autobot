@@ -1,4 +1,4 @@
-"""`migrate` runs as fp_owner by default (design.md §12.2): fp_app cannot do DDL, and
+"""`migrate` runs as fp_owner by default: fp_app cannot do DDL, and
 running it on `default` would fail halfway. `--database` still works as usual."""
 
 from django.core.management.base import CommandParser

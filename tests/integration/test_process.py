@@ -1,4 +1,4 @@
-"""`process_event` and `apply_status` (design.md §7.2, §7.3, §6.6, §8.2, T-3.5) with the toy
+"""`process_event` and `apply_status` with the toy
 pack and the real database. Events enter through the webhook, as in production; the job
 function is then called directly (one test runs it through the worker)."""
 

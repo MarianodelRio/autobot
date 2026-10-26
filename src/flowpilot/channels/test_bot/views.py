@@ -1,4 +1,4 @@
-"""`POST /webhooks/telegram-test`: the test bot's webhook (design.md §6.5, §7.1).
+"""`POST /webhooks/telegram-test`: the test bot's webhook.
 
 Same checks as a tenant's webhook (IP limit, size, secret token before parsing, JSON),
 but it does not know the tenant yet: it only writes `test_bot_event`, which has no RLS.

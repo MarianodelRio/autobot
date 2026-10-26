@@ -1,4 +1,4 @@
-"""Sliding-window limits kept in memory, per process (design.md §13, §7.2):
+"""Sliding-window limits kept in memory, per process:
 
 - per IP, of webhook requests with an invalid signature (each `web` worker counts on its
   own; valid requests are never counted): enough to slow down someone probing secrets;
@@ -60,7 +60,7 @@ class WindowLimiter:
 
 
 def client_ip(request: HttpRequest) -> str:
-    """The caller's address. Behind Caddy (§14.3) it is the last X-Forwarded-For entry,
+    """The caller's address. Behind Caddy it is the last X-Forwarded-For entry,
     the one Caddy itself sets; without a proxy, REMOTE_ADDR."""
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
     if forwarded:

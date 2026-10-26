@@ -33,7 +33,7 @@ HORARIOS_REAL = FIXTURES / "horarios_real"
 TZ = ZoneInfo("Europe/Madrid")
 
 # La config de `buscaBus/config.yaml` (Autocares San Sebastián), en el formato de
-# `BusConfig` (design.md §10.4).
+# `BusConfig`.
 CONFIG = BusConfig.model_validate(
     dict(
         business_name="Autocares San Sebastián",

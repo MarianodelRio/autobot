@@ -1,12 +1,12 @@
-"""The `PackContext` the runtime gives a pack (design.md §8.2): everything external reaches
+"""The `PackContext` the runtime gives a pack: everything external reaches
 the pack through it.
 
-- `ctx.lock(key)`: a PostgreSQL session advisory lock (§9.5), taken outside any
+- `ctx.lock(key)`: a PostgreSQL session advisory lock, taken outside any
   transaction and prefixed with the tenant and the bound calendar.
 - `ctx.idem`: idempotency keys bound to the event being processed (`None` in periodic
   handlers, which only use `stable`).
 - `ctx.calendar`: only for packs that `needs_calendar`, bound by the runtime to the
-  channel's calendar: `calendar_id` on `main`, `test_calendar_id` on `test` (§6.5). The
+  channel's calendar: `calendar_id` on `main`, `test_calendar_id` on `test`. The
   pack never picks a calendar nor knows whether the conversation is a test.
 """
 
@@ -104,7 +104,7 @@ def build_context(
 
 def bound_calendar_id(tenant: LoadedTenant, channel: Channel) -> str | None:
     """The calendar a pack may use on this channel, or None if it needs none. On the
-    `test` channel it is only ever the test calendar (§6.5)."""
+    `test` channel it is only ever the test calendar."""
     if tenant.pack is None or not tenant.pack.needs_calendar:
         return None
     main = getattr(tenant.config, "calendar_id", None)

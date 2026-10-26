@@ -1,4 +1,4 @@
-"""Owner notices and operation alerts (design.md §11)."""
+"""Owner notices and operation alerts."""
 
 import hashlib
 import logging

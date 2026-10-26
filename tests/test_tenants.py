@@ -1,4 +1,4 @@
-"""CI gate (design.md §17.3): every tenants/*/tenant.yaml in the repository is valid with
+"""CI gate: every tenants/*/tenant.yaml in the repository is valid with
 the registered packs. CI has no secrets.yaml, so only disabled main channels are allowed."""
 
 from django.conf import settings

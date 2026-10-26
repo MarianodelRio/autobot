@@ -1,4 +1,4 @@
-"""Contract of the Telegram adapter (design.md §6.4) against updates and answers in the
+"""Contract of the Telegram adapter against updates and answers in the
 Bot API format (tests/fixtures/telegram/), and its use by the conversation harness."""
 
 import dataclasses

@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 
 class Clock(Protocol):
-    """Current time in the tenant's zone. Tests inject a fixed clock (T-1.5)."""
+    """Current time in the tenant's zone. Tests inject a fixed clock."""
 
     def now(self) -> datetime: ...
 

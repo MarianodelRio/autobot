@@ -1,4 +1,4 @@
-"""Periodic work of the packs (design.md §7.6).
+"""Periodic work of the packs.
 
 Each pack `Periodic` is a Procrastinate periodic task (`dispatch_periodic`, registered in
 `flowpilot/jobs.py`). When it fires it *dispatches*: for each active tenant of the pack it
@@ -63,7 +63,7 @@ def is_active(tenant: LoadedTenant) -> bool:
     tenants get no periodic work on their main channel (an onboarding tenant must not
     send reminders to real customers), nor does one whose channel lacks secrets or ids:
     its notices would fail and their stable keys would be spent for good. The test
-    calendar sweep is T-5.6's."""
+    calendar sweep runs on its own channel."""
     if tenant.file.status == "active" and not tenant.is_degraded and not tenant.main_enabled:
         log.warning("tenant %s gets no periodic work: its main channel is disabled", tenant.slug)
         return False

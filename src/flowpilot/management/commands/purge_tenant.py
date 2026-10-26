@@ -1,4 +1,4 @@
-"""Operator command for design.md §12.3 and §16.2."""
+"""Operator command for data rights and tenant offboarding (docs/runbooks/retencion-rgpd.md)."""
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 

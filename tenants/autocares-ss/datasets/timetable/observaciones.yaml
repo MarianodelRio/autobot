@@ -1,5 +1,5 @@
 # horarios/observaciones.yaml — catálogo de observaciones y el texto exacto
-# que ve el cliente (design.md, 2.3).
+# que ve el cliente.
 #
 # tipo: condicion | aviso
 #   - condicion: cambia si el autobús sale o si para. Conjunto cerrado que

@@ -1,4 +1,4 @@
-"""Retention with bounded, tenant-scoped transactions (design.md §12.3)."""
+"""Retention with bounded, tenant-scoped transactions."""
 
 import calendar
 from datetime import datetime, timedelta

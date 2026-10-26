@@ -1,4 +1,4 @@
-"""Pack contract (design.md §8.1, §8.2)."""
+"""Pack contract."""
 
 import logging
 from collections.abc import Callable, Mapping
@@ -52,7 +52,7 @@ class PackContext:
     contact: ContactInfo | None  # None in periodic handlers
     state: Mapping[str, Any]  # current state (read-only)
     clock: Clock
-    # Only if the pack needs_calendar, already bound to the channel's calendar (§6.5). Its
+    # Only if the pack needs_calendar, already bound to the channel's calendar. Its
     # Protocol lives in the pack (packs/salon/ports.py), which core cannot import.
     calendar: Any
     lock: Callable[[str], AbstractContextManager[None]]  # key prefixed with tenant and calendar

@@ -1,12 +1,12 @@
-"""packs/bus/conversation.py — máquina de estados de la conversación
-(design.md §10.3), portada de `buscaBus/app/handlers/flujo.py` y del despacho
+"""packs/bus/conversation.py — máquina de estados de la conversación,
+portada de `buscaBus/app/handlers/flujo.py` y del despacho
 de `buscaBus/app/handlers/conversation.py`.
 
 Cambia el pegamento: en vez de enviar por WhatsApp, cada paso añade respuestas
 a un `_Turno`, y el estado es un dict JSON que guarda el runtime. El candado
 por contacto, la caducidad (30 min), los comandos globales (`menu`, `baja`…),
 la recuperación ante errores y los comandos de administrador son de la
-plataforma (design.md §7.2, §7.3). El reloj es `ctx.clock`, en la zona del
+plataforma. El reloj es `ctx.clock`, en la zona del
 tenant.
 
 Estado: `step` (uno de los estados de abajo; sin `step`, MENU), `campo`
@@ -47,7 +47,7 @@ from packs.bus.matcher import lineas as matcher_lineas
 from packs.bus.modelo import Linea, Localidad
 
 # Textos no reconocidos se registran normalizados, nunca con el identificador
-# del contacto (design.md §10.3): si el texto contiene 6 dígitos o más (p. ej.
+# del contacto: si el texto contiene 6 dígitos o más (p. ej.
 # un teléfono escrito donde iba una fecha, con o sin espacios/guiones), se
 # registra `<numero>` en su lugar. El recuento se hace sobre los dígitos del
 # texto sin separadores, porque `formato.normalizar()` sustituye separadores
@@ -212,7 +212,7 @@ def _mostrar_paso(
         )
 
 
-# ── Búsqueda de texto libre (design.md §10.3) ─────────────────────────────
+# ── Búsqueda de texto libre ─────────────────────────────
 
 
 def _buscar(t: _Turno, campo: str, texto: str) -> None:
@@ -410,7 +410,7 @@ def _titulo_dia(fecha: date, indice: int) -> str:
 
 
 def _descripcion_dia(consulta: query.Consulta, es_hoy: bool) -> str:
-    """Descripción de una fila de la lista de días (design.md §10.3)."""
+    """Descripción de una fila de la lista de días."""
     es_festivo = (
         consulta.info_dia is not None and consulta.info_dia.es_festivo
     ) or consulta.festivo_local is not None

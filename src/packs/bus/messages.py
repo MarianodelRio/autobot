@@ -3,7 +3,7 @@
 `observaciones.yaml` del dataset (buscaBus/design.md, 2.3).
 
 Portado de buscaBus: el teléfono, el horario de oficina y los enlaces del
-negocio llegan en la config del tenant (`BusConfig`, design.md §10.4) en vez
+negocio llegan en la config del tenant (`BusConfig`) en vez
 de en constantes globales."""
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Conversation test harness (design.md §17.2): runs a pack with the same conversation
+"""Conversation test harness: runs a pack with the same conversation
 rules as the runtime (global commands, expiry and version, `plan_sends`), without a
 database or network, simulating either channel type."""
 

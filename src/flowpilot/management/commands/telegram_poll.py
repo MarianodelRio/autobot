@@ -1,5 +1,5 @@
 """`manage.py telegram_poll [<slug>]`: long polling of the test bot (by default) or of a
-tenant's own Telegram bot, for local development (design.md §6.4, §16.3). The worker
+tenant's own Telegram bot, for local development. The worker
 must be running to process what it receives."""
 
 from typing import Any

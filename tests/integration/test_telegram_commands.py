@@ -1,4 +1,4 @@
-"""`telegram_poll` and `telegram_set_webhook` (design.md §6.4, §16.3, T-3.9), with the Bot
+"""`telegram_poll` and `telegram_set_webhook`, with the Bot
 API answered by a mock transport."""
 
 import io

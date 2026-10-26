@@ -1,4 +1,4 @@
-"""The bus timetable tools with the TENANT parameter (design.md §10.1, §16.3), on a
+"""The bus timetable tools with the TENANT parameter, on a
 throwaway git repository in tmp_path with the frozen real dataset."""
 
 from __future__ import annotations

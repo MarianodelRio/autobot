@@ -1,4 +1,4 @@
-"""Tenant registry (design.md §5.2–§5.4, T-2.4)."""
+"""Tenant registry."""
 
 import dataclasses
 import logging

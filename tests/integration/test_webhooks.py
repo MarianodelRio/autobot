@@ -1,4 +1,4 @@
-"""Webhooks and /health (design.md §7.1, §13, §15.3, T-3.3): every branch of the entry,
+"""Webhooks and /health: every branch of the entry,
 against the real database. Transactional, because the tenant rows are written by
 fp_owner and the webhook reads them as fp_app."""
 
@@ -37,7 +37,7 @@ pytestmark = [
 
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A webhook never calls an external service (§7.1)."""
+    """A webhook never calls an external service."""
 
     def refuse(*args: object, **kwargs: object) -> None:
         raise AssertionError("the webhook made an external call")

@@ -1,4 +1,4 @@
-"""Tenant registry: tenants/*/tenant.yaml + secrets → memory (design.md §5.4).
+"""Tenant registry: tenants/*/tenant.yaml + secrets → memory.
 
 `load_registry` reads every tenant, validates the common part, the pack's config and the
 channel secrets, loads the datasets and builds the indexes. A broken tenant never affects
@@ -7,7 +7,7 @@ the others:
 - unreadable file, invalid YAML or an invalid common part: the tenant cannot be
   identified, so it is left out and reported in `Registry.errors`;
 - unknown pack, invalid config, failing `load_data` or a repeated id/public_id/
-  phone_number_id: the tenant is `degraded` (its contacts get the generic text, §5.4);
+  phone_number_id: the tenant is `degraded` (its contacts get the generic text);
   a repeated key also makes it `ambiguous`: it is never routed nor synced;
 - missing secrets or channel ids: only its `main` channel is disabled (the test bot keeps
   working).
@@ -94,9 +94,9 @@ class Registry:
         ]
 
     def visible_to(self, telegram_user_id: int, operators: Collection[int]) -> list[LoadedTenant]:
-        """Tenants a Telegram user may pick in the test bot (§6.5): all for an operator,
+        """Tenants a Telegram user may pick in the test bot: all for an operator,
         otherwise those that list them in testers.telegram. Availability (degraded,
-        offboarded, test calendar) is the selector's business (T-3.8)."""
+        offboarded, test calendar) is the selector's business."""
         if telegram_user_id in operators:
             return [t for t in self.tenants if not t.ambiguous]
         return list(self.by_tester.get(telegram_user_id, []))

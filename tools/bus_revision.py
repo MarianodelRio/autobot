@@ -1,4 +1,4 @@
-"""tools/bus_revision.py — make bus-revision TENANT=<slug> (design.md §10.1).
+"""tools/bus_revision.py — make bus-revision TENANT=<slug>.
 
 Portado de `buscaBus/tools/revision.py`. Genera `revision/<slug>/horarios.html`
 y `revision/<slug>/horarios.pdf` (no se versionan): la vista de revisión para

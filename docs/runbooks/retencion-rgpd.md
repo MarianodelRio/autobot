@@ -2,13 +2,13 @@
 
 La limpieza nocturna se programa a las 03:00 UTC y permanece inerte con
 `RETENTION_CLEANUP_ENABLED=false` (valor predeterminado). Solo el operador, tras la
-aprobación humana explícita de T-6.3, puede establecer `true` y reiniciar el worker.
+aprobación humana explícita, puede establecer `true` y reiniciar el worker.
 El permiso se comprueba al ejecutar el trabajo, incluidos los trabajos ya encolados.
 No se ha autorizado ni activado esa limpieza en producción.
 
 La limpieza usa lotes de hasta 1.000 filas padre y una transacción corta por lote y
 negocio bajo RLS. Los borrados en cascada de un contacto pueden afectar a más filas
-hijas. Aplica los plazos de §12.3 del diseño también a negocios pausados y dados de
+hijas. Aplica los plazos de retención también a negocios pausados y dados de
 baja que sigan en el registro. Los doce meses se calculan por calendario; para contactos
 sin actividad registrada se usa la fecha de creación. `test_session.selected_at`
 registra la selección o el último mensaje remitido al negocio. Los estados se vacían
@@ -40,11 +40,11 @@ por compartir remitente con eventos de otro negocio. `purge_tenant` aplica la mi
 regla de asociación y exige escribir literalmente el slug, sin espacios adicionales.
 Conserva el reflejo `tenant`, YAML, secretos, calendarios y datos de otros negocios.
 
-Para dar de baja un negocio (§16.2), el operador registra la fecha real de baja y una
+Para dar de baja un negocio, el operador registra la fecha real de baja y una
 fecha límite de borrado de como máximo 30 días en el registro operativo de la baja.
 Marca `offboarded`, realiza la exportación acordada y ejecuta `purge_tenant` dentro de
 ese plazo; comprueba el resultado antes de retirar secretos, acceso al canal y carpeta
 `tenants/<slug>/`. No se retira la entrada del registro antes del borrado: el worker
 recorre ese registro. `synced_at` se actualiza en cada sincronización y nunca demuestra
 la fecha de baja. La gestión de calendarios pertenece al negocio y la retención de
-backups corresponde a F7/restic; estos comandos no modifican ninguno de ellos.
+backups corresponde a restic (`deploy/backup.sh`); estos comandos no modifican ninguno de ellos.

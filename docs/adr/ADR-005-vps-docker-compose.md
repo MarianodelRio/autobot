@@ -1,6 +1,6 @@
 # ADR-005 — Una VPS con Docker Compose
 
-**Estado:** aceptada · **Relacionado:** `design.md` §0, §5.3, §14
+**Estado:** aceptada
 
 ## Contexto
 
@@ -24,7 +24,7 @@ La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de
 ## Consecuencias
 
 - Coste de infraestructura de ~6–11 €/mes.
-- Sin alta disponibilidad: un fallo de la VPS supone una caída hasta restaurar (los proveedores reintentan los webhooks). Aceptado (`design.md` §1.3).
+- Sin alta disponibilidad: un fallo de la VPS supone una caída hasta restaurar (los proveedores reintentan los webhooks). Aceptado.
 - Parches del sistema, cortafuegos y backups son responsabilidad nuestra: automatizados y vigilados.
 - Nada depende del proveedor: cambiar de VPS es una restauración.
 

@@ -1,4 +1,4 @@
-"""`tenant_tx`: the only way to set the tenant for RLS (design.md §12.2)."""
+"""`tenant_tx`: the only way to set the tenant for RLS."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager

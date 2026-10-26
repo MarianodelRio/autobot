@@ -1,4 +1,4 @@
-"""Spanish date helpers (design.md §8.3). Ported from `slots.py` (Peluquería) and
+"""Spanish date helpers. Ported from `slots.py` (Peluquería) and
 `messages.py` (buscaBus), with `zoneinfo` instead of `pytz`."""
 
 from collections.abc import Collection

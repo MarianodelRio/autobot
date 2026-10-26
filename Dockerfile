@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Multi-stage image (design.md §14.6): dependencies with uv, then a minimal non-root runtime.
+# Multi-stage image: dependencies with uv, then a minimal non-root runtime.
 FROM ghcr.io/astral-sh/uv:0.13.5 AS uv
 
 FROM python:3.14-slim AS build

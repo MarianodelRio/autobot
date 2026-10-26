@@ -4,7 +4,7 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class IdemKeys:
-    """Idempotency keys (design.md §7.6, §9.5).
+    """Idempotency keys.
 
     `event(name)` is bound to the inbound event being processed, so reprocessing it
     yields the same key. `stable(name)` identifies an entity across runs (sweeps), e.g.

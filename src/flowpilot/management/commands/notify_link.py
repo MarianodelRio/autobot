@@ -1,4 +1,4 @@
-"""Manually discover an owner's chat; never changes tenant configuration (§11)."""
+"""Manually discover an owner's chat; never changes tenant configuration."""
 
 import secrets
 import time
@@ -25,7 +25,7 @@ class Command(BaseCommand):
             raise CommandError("Negocio desconocido.")
         bot = bot_secrets()
         if bot is None:
-            raise CommandError("Falta NOTIFY_BOT_TOKEN (M-6.1).")
+            raise CommandError("Falta NOTIFY_BOT_TOKEN.")
         if options["timeout"] <= 0:
             raise CommandError("El tiempo de espera debe ser positivo.")
         code = secrets.token_urlsafe(24)

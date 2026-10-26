@@ -1,4 +1,4 @@
-"""The conversation harness. Each turn follows `process_event` (design.md §7.2) without
+"""The conversation harness. Each turn follows `process_event` without
 the database: effective state, global commands, the pack, `plan_sends` in strict mode
 (a reply out of the common limits fails the test) and the actions. Replies and state go
 through JSON, as they would in `outbound_message.payload` and `conversation.state`."""
@@ -40,8 +40,8 @@ type ChannelType = Literal["whatsapp", "telegram"]
 DEFAULT_NOW = "2026-10-05T10:00:00+02:00"
 
 # Run on every reply and proactive message of every turn; they raise to fail the test.
-# The platform's root conftest.py registers the rendering with both channel adapters here
-# (design.md §17.2): core cannot import them.
+# The platform's root conftest.py registers the rendering with both channel adapters here:
+# core cannot import them.
 RENDER_CHECKS: list[Callable[[Outbound], None]] = []
 
 
@@ -143,7 +143,7 @@ class Conversation:
     ```
 
     `attempts` is how many times a `TransientError` is tried with the same event before
-    the recovery text, as the job retries in production (§7.5).
+    the recovery text, as the job retries in production.
     """
 
     def __init__(
@@ -206,7 +206,7 @@ class Conversation:
 
     def replay(self) -> Turn:
         """Process the last message again with the same event id, as a retry after the
-        worker died between tx1 and tx2 (§7.2): everything the first attempt saved
+        worker died between tx1 and tx2: everything the first attempt saved
         (state, contact changes, actions, replies) is undone first. Only the pack's own
         side effects (e.g. a fake calendar) remain, as in production."""
         if self._last is None:
@@ -220,7 +220,7 @@ class Conversation:
         return self._turn(last.message, last.event_id)
 
     def run_periodic(self, name: str) -> list[Action]:
-        """Run one of the pack's periodic handlers, as `run_periodic` does (§7.6)."""
+        """Run one of the pack's periodic handlers, as `run_periodic` does."""
         (periodic,) = [p for p in self.pack.periodic if p.name == name]
         actions = periodic.handler(self._context(None, {}, IdemKeys(None)))
         self._apply(actions)

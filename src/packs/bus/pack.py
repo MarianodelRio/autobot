@@ -1,4 +1,4 @@
-"""Declaration of the bus pack (design.md §8.1, §10)."""
+"""Declaration of the bus pack."""
 
 from pathlib import Path
 
@@ -8,12 +8,12 @@ from core.pack import Pack, TenantInfo
 from packs.bus import conversation, datos
 from packs.bus.config import BusConfig
 
-DATASET_DIR = Path("datasets") / "timetable"  # inside tenants/<slug>/ (§10.1)
+DATASET_DIR = Path("datasets") / "timetable"  # inside tenants/<slug>/
 
 
 def load_data(tenant: TenantInfo, config: BaseModel, path: Path) -> datos.Datos:
     """Validate and load the tenant's timetable, and resolve `start_menu_towns` against
-    it. Any error (an invalid dataset, an unknown town) degrades the tenant (§5.4)."""
+    it. Any error (an invalid dataset, an unknown town) degrades the tenant."""
     assert isinstance(config, BusConfig)
     return datos.cargar(path / DATASET_DIR, config.start_menu_towns)
 

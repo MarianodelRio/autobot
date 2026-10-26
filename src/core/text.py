@@ -1,4 +1,4 @@
-"""Text helpers shared by the packs (design.md §8.3). Ported from `_norm` and
+"""Text helpers shared by the packs. Ported from `_norm` and
 `_strip_html` (Peluquería, `parser.py`) and `normalizar` (buscaBus, `formato.py`, without
 its stop words, which stay in the bus pack)."""
 

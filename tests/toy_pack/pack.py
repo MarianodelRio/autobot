@@ -1,5 +1,5 @@
-"""A toy pack that exercises the conversation harness (T-1.5) and, later, the runtime
-(T-3.x). Only used in tests; never registered in `packs.registry`."""
+"""A toy pack that exercises the conversation harness and the runtime. Only used in tests;
+never registered in `packs.registry`."""
 
 from pydantic import BaseModel
 

@@ -185,8 +185,8 @@ def test_estado_caducado_vuelve_al_menu(
     phone = "34600000010"
     conv.handle_message(phone, phone, None, "menu_horarios")
     conv.handle_message(phone, phone, None, "loc:pozoblanco")
-    # En FlowPilot la caducidad (30 min) la aplica la plataforma (design.md
-    # §7.3): pasada, el siguiente mensaje empieza en el menú.
+    # En FlowPilot la caducidad (30 min) la aplica la plataforma: pasada, el siguiente
+    # mensaje empieza en el menú.
     freeze_calendario(HOY, hora=(0, 31))
     conv.handle_message(phone, phone, None, "loc:cordoba")
     assert conv._get(phone).step == conv.flujo.MENU
@@ -476,8 +476,8 @@ def test_ver_la_vuelta_sin_trayecto(
     conv: Conv, mock_wa: MockWA, freeze_calendario: Freeze, datos_motor: Datos
 ) -> None:
     """En buscaBus, sin trayecto de vuelta se mandaba un texto y después el
-    menú. En FlowPilot `plan_sends` mete el texto en el cuerpo del menú
-    (design.md §7.4): llega un solo mensaje."""
+    menú. En FlowPilot `plan_sends` mete el texto en el cuerpo del menú:
+    llega un solo mensaje."""
     freeze_calendario(HOY)
     phone = "34600000111"
     conv.handle_message(phone, phone, None, "menu_horarios")
@@ -1026,7 +1026,7 @@ def test_status_no_es_un_comando_del_pack(
     conv: Conv, mock_wa: MockWA, freeze_calendario: Freeze
 ) -> None:
     # Los comandos de administrador de buscaBus (`/status`, `/logs`…) son de la
-    # plataforma en FlowPilot (design.md §15); para el pack son texto normal.
+    # plataforma en FlowPilot; para el pack son texto normal.
     freeze_calendario(HOY)
     otro_phone = "34600000123"
     total_before = _n_calls(mock_wa)
@@ -1154,7 +1154,7 @@ def test_cambio_de_origen_a_par_no_vendible_da_mensaje_propio(
     conv.handle_message(phone, phone, None, f"dia:{HOY.isoformat()}")
     conv.forzar(phone, origen="campus-de-rabanales", destino="alcolea")
     conv.handle_message(phone, phone, None, "vuelta")
-    # El aviso llega dentro del cuerpo del menú (`plan_sends`, design.md §7.4).
+    # El aviso llega dentro del cuerpo del menú (`plan_sends`).
     text = _last_interactive(mock_wa)["interactive"]["body"]["text"]
     assert "no vendemos billetes" in text
     assert "No hay trayecto directo" not in text

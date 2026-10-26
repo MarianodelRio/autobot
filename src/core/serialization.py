@@ -1,5 +1,5 @@
-"""JSON (de)serialization of replies and proactive messages for `outbound_message.payload`
-(design.md §12.1): the common form is stored, and the adapter renders it when sending."""
+"""JSON (de)serialization of replies and proactive messages for `outbound_message.payload`:
+the common form is stored, and the adapter renders it when sending."""
 
 from typing import Any
 

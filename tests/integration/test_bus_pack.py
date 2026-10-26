@@ -1,4 +1,4 @@
-"""The bus pack end to end (design.md §10.5, "consulta completa por Telegram"): a tenant
+"""The bus pack end to end ("consulta completa por Telegram"): a tenant
 with its timetable in `datasets/timetable/`, loaded by the registry, picked in the test
 bot and queried through the real runtime (webhook → route → process_event → send), and
 the same query by the WhatsApp main channel."""

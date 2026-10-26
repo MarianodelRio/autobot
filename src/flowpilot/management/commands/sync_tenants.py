@@ -1,5 +1,5 @@
 """`manage.py sync_tenants`: mirror tenants/*/tenant.yaml in the `tenant` table, for the
-foreign keys and RLS (design.md §5.4). Run after `migrate`; idempotent. Writes as
+foreign keys and RLS. Run after `migrate`; idempotent. Writes as
 fp_owner, since fp_app may only read that table. A broken tenant never blocks the others
 nor the deploy: it is skipped and reported."""
 

@@ -1,6 +1,6 @@
 # ADR-003 — Packs con máquina de estados propia
 
-**Estado:** aceptada · **Relacionado:** `design.md` §6, §8
+**Estado:** aceptada
 
 ## Contexto
 

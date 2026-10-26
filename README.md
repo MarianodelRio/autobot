@@ -4,14 +4,16 @@ Plataforma de automatización para pequeños negocios: atiende a sus clientes po
 
 Sustituye a los bots independientes `Peluqueria` y `buscaBus` por una sola plataforma para 5–15 negocios, en una VPS con Docker Compose.
 
-**Estado:** implementación en curso; el avance está en [IMPLEMENTATION.md](IMPLEMENTATION.md).
+Cada negocio usa un **pack** con su lógica: `salon` (pedir, ver, mover y cancelar citas sobre Google Calendar, recordatorios y avisos al dueño) o `bus` (consulta de horarios origen → destino → día). Un bot de Telegram de pruebas compartido permite probar cualquier negocio sin tocar su canal real.
 
-## Cómo empezar
+**Estado:** la plataforma y los dos packs están implementados y probados con simulaciones; aún no se ha probado nada contra servicios reales. Los pasos pendientes están en [docs/puesta-en-marcha.md](docs/puesta-en-marcha.md).
 
-1. La idea del producto: [IDEA.md](IDEA.md).
-2. El diseño técnico completo: [design.md](design.md).
-3. El plan de implementación y su estado: [IMPLEMENTATION.md](IMPLEMENTATION.md).
-4. Las reglas para trabajar en el repo: [CLAUDE.md](CLAUDE.md).
+## Documentación
+
+- Reglas para trabajar en el repo: [CLAUDE.md](CLAUDE.md).
+- Decisiones de arquitectura: [docs/adr/](docs/adr/).
+- Configuración de cada pack: [docs/packs/](docs/packs/).
+- Operación (alta y baja de negocios, servidor, incidencias, retención): [docs/runbooks/](docs/runbooks/).
 
 ## Desarrollo local
 
@@ -51,7 +53,7 @@ apto para imprimir. Los archivos de `qr/` son generados y no se suben a git.
 
 ### Bot de pruebas en local
 
-Con un bot de Telegram de desarrollo propio (M-3.1 en `IMPLEMENTATION.md`): pon su token en `TEST_BOT_TOKEN` y tu id de Telegram en `TEST_BOT_OPERATORS`, en `.env`, y después:
+Con un bot de Telegram de desarrollo propio (ver [docs/puesta-en-marcha.md](docs/puesta-en-marcha.md)): pon su token en `TEST_BOT_TOKEN` y tu id de Telegram en `TEST_BOT_OPERATORS`, en `.env`, y después:
 
 ```bash
 make up                # el worker procesa lo que llega; tras cambiar .env: docker compose up -d

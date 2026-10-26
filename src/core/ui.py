@@ -1,4 +1,4 @@
-"""Reply builders that respect the common limits (design.md §8.3). Ported from the
+"""Reply builders that respect the common limits. Ported from the
 `interactive.py` helpers of both bots, building `core.replies` instead of WhatsApp
 payloads. Titles are truncated as in the source; anything else out of limits is a
 programming error and raises `LimitError`."""

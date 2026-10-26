@@ -1,4 +1,4 @@
-"""Channel adapter contract (design.md §6.2).
+"""Channel adapter contract.
 
 An adapter verifies a provider's webhook, turns its body into `ParsedItem`s, renders the
 common replies into the provider's format and sends them. Packs and the runtime never
@@ -72,7 +72,7 @@ class RetryLater:
 
 @dataclass(frozen=True)
 class Ambiguous:
-    """It may or may not have been sent: never resent blindly (design.md §7.4)."""
+    """It may or may not have been sent: never resent blindly."""
 
     reason: str
 
@@ -111,7 +111,7 @@ class ChannelAdapter[C, S](Protocol):
 def parse_stored[C](
     adapter: ChannelAdapter[C, Any], payload: dict[str, Any], channel: C
 ) -> ParsedItem:
-    """The item stored in an inbound_event.payload (design.md §7.2)."""
+    """The item stored in an inbound_event.payload."""
     items = adapter.parse(payload, channel)
     if len(items) != 1:
         raise ValueError(f"a stored payload must hold one item, not {len(items)}")

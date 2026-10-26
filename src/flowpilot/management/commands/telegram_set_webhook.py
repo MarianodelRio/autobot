@@ -1,5 +1,5 @@
 """`manage.py telegram_set_webhook <slug|test> [--delete]`: register (or remove) the
-webhook of a tenant's own Telegram bot or of the test bot (design.md §6.4, §16.1), with
+webhook of a tenant's own Telegram bot or of the test bot, with
 its `secret_token` and only `message` and `callback_query` updates. Needs PUBLIC_URL."""
 
 from typing import Any

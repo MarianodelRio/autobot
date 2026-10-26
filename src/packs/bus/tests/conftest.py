@@ -149,7 +149,7 @@ def datos_muchas_lineas(
 def crear_horarios_muchas_salidas(directorio: Path) -> None:
     """Un `horarios/` sintético con 228 salidas diarias de Origen a Destino (cada
     5 minutos de 05:00 a 23:55): su resultado pasa de 4.096 caracteres y se
-    corta (design.md §10.3)."""
+    corta."""
     (directorio / "lineas").mkdir(parents=True, exist_ok=True)
     (directorio / "paradas.yaml").write_text(
         "localidades:\n  origen: { nombre: Origen }\n  destino: { nombre: Destino }\n\n"

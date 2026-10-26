@@ -1,4 +1,4 @@
-"""`process_event` and `apply_status` (design.md §7.2, §7.3, §6.6, §8.2).
+"""`process_event` and `apply_status`.
 
 `process_event` runs one contact message in three steps, so no transaction is open
 while the pack calls Calendar or the adapter calls the provider:
@@ -62,10 +62,10 @@ from flowpilot.tenancy.tx import tenant_tx
 
 log = logging.getLogger(__name__)
 
-# What the contacts of a degraded tenant receive (§5.4): its pack cannot run.
+# What the contacts of a degraded tenant receive: its pack cannot run.
 UNAVAILABLE_TEXT = "Ahora mismo no puedo atenderte; inténtalo más tarde."
 
-# More than 20 messages in 60 s from one contact are saved and not answered (§7.2). The
+# More than 20 messages in 60 s from one contact are saved and not answered. The
 # worker is a single process, so an in-memory window covers all its threads.
 contact_limiter = WindowLimiter(limit=20, window_s=60)
 
@@ -98,7 +98,7 @@ def process_event(
         item = parse_stored(ep.adapter, _payload(event), ep.channel)
         if not isinstance(item, InboundItem):
             raise ValueError(f"event {event.id} holds no message")
-        # The time it reached us: a Telegram callback has no date of its own (§6.4).
+        # The time it reached us: a Telegram callback has no date of its own.
         message = dataclasses.replace(item.message, received_at=event.received_at)
         contact = _upsert_contact(tenant, event.channel, item, now)
         conversation, _ = Conversation.objects.get_or_create(tenant_id=tenant.id, contact=contact)
@@ -170,7 +170,7 @@ def _run_pack(
 ) -> tuple[PackResult, str]:
     """The pack's result and, if it failed, the error recorded on the event. A
     `TransientError` is retried by the job; on the last attempt, and on any other
-    exception, the contact gets the recovery text and the state is reset (§7.2)."""
+    exception, the contact gets the recovery text and the state is reset."""
     assert tenant.pack is not None
     try:
         ctx = build_context(
@@ -194,7 +194,7 @@ def _run_pack(
         return recovery_result(), "TransientError on the last attempt"
     except Exception as e:
         record(tenant.id, event.channel, failed=True)
-        # Sentry, once configured (T-6.2), takes it from this log record.
+        # Sentry, once configured takes it from this log record.
         log.exception("event %s: unexpected error in pack %s", event.id, tenant.pack.name)
         return recovery_result(), type(e).__name__
 
@@ -209,7 +209,7 @@ def apply_actions(
     now: Any,
 ) -> list[OutboundMessage]:
     """Apply a pack's actions inside the caller's tenant_tx. `channel` is where they come
-    from: a test conversation never reaches the main channel nor the owner (§6.5).
+    from: a test conversation never reaches the main channel nor the owner.
     Returns the proactive messages to send."""
     messages: list[OutboundMessage] = []
     for action in actions:
@@ -238,7 +238,7 @@ def apply_actions(
 
 
 def _proactive_target(tenant: LoadedTenant, channel: str, action: SendProactive) -> Contact | None:
-    """The contact a proactive message goes to, by its own channel (§6.6), or None if it
+    """The contact a proactive message goes to, by its own channel, or None if it
     must not be sent: unknown, opted out, unreachable, or on another channel than the one
     the action came from."""
     ref = action.to
@@ -273,7 +273,7 @@ def _proactive_target(tenant: LoadedTenant, channel: str, action: SendProactive)
 
 
 def _contact_by_phone(tenant: LoadedTenant, channel: str, phone: str) -> Contact | None:
-    """A phone with no contact yet (manual bookings, §6.6, §9.6): only on a WhatsApp main
+    """A phone with no contact yet (manual bookings): only on a WhatsApp main
     channel; elsewhere it is logged and not sent."""
     digits = re.sub(r"[\s+]", "", phone)
     if channel != Channel.MAIN or tenant.file.channel.type != "whatsapp":
@@ -305,10 +305,10 @@ def _contact_by_phone(tenant: LoadedTenant, channel: str, phone: str) -> Contact
 
 
 def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> None:
-    """Queue the notice if the owner has a chat and wants this kind (§11); otherwise it
+    """Queue the notice if the owner has a chat and wants this kind; otherwise it
     is only logged. A notice born in the test channel never reaches the owner: it goes to
-    the ops chat with "🧪" (§6.5), whatever the owner settings. Delivery is
-    `send_notification` (T-6.1), which reads `audience`."""
+    the ops chat with "🧪", whatever the owner settings. Delivery is
+    `send_notification`, which reads `audience`."""
     owner = tenant.file.owner
     if channel == Channel.MAIN:
         if owner is None or owner.telegram_chat_id is None or action.kind not in owner.notify:
@@ -333,7 +333,7 @@ def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> No
 
 @contextual
 def apply_status(tenant_id: UUID, event_id: UUID) -> None:
-    """A delivery status from the provider updates its outbound_message (§7.2): found by
+    """A delivery status from the provider updates its outbound_message: found by
     `outbound_ref` (our id) or by the provider's id."""
     tenant = get_registry().by_id.get(tenant_id)
     if tenant is None:

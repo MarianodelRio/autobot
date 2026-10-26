@@ -1,4 +1,4 @@
-"""`/health` (design.md §15.3): 200 with a database connection, with the number of tenants
+"""`/health`: 200 with a database connection, with the number of tenants
 loaded and degraded; 503 without it. No external calls, and no names: it is public."""
 
 from django.db import Error as DatabaseError

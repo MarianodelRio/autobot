@@ -1,5 +1,5 @@
-"""Common schema of `tenants/<slug>/tenant.yaml` and of each tenant's secrets
-(design.md §5.2, §5.3). The `config` section is validated by the pack's own schema."""
+"""Common schema of `tenants/<slug>/tenant.yaml` and of each tenant's secrets.
+The `config` section is validated by the pack's own schema."""
 
 import re
 from typing import Annotated, Any, Literal

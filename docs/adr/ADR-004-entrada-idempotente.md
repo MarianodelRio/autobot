@@ -1,6 +1,6 @@
 # ADR-004 — Entrada idempotente y "al menos una vez"
 
-**Estado:** aceptada · **Relacionado:** `design.md` §4.3, §7, §9.5
+**Estado:** aceptada
 
 ## Contexto
 

@@ -1,4 +1,4 @@
-"""Webhooks of each tenant's main channel (design.md §7.1, §13).
+"""Webhooks of each tenant's main channel.
 
 Order: IP blocked by invalid signatures (429), tenant (404), body size (400), authenticity
 (401, counted for the IP limit), JSON (400), offboarded (200 without saving), then each
@@ -116,7 +116,7 @@ def _receive(
         return HttpResponse(status=400)
     try:
         accept(tenant, body, parse)
-    except (DatabaseError, ProcrastinateException) as e:  # the provider retries (§7.7)
+    except (DatabaseError, ProcrastinateException) as e:  # the provider retries
         log.error("Webhook of tenant %s not saved: %s", tenant.slug, type(e).__name__)
         return HttpResponse(status=503)
     return HttpResponse(status=200)
@@ -129,7 +129,7 @@ def accept(
 ) -> None:
     """What an authentic body of a tenant's main channel becomes: nothing if the tenant
     is offboarded, otherwise its items saved and queued. The one entry shared by the
-    webhooks and `telegram_poll` (§6.4)."""
+    webhooks and `telegram_poll`."""
     if tenant.file.status == "offboarded":
         return
     store(tenant, parse(body))

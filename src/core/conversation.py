@@ -1,6 +1,6 @@
-"""Conversation rules shared by the runtime and the test harness (design.md §7.2, §7.3).
+"""Conversation rules shared by the runtime and the test harness.
 
-Pure functions: the runtime (T-3.5) and the harness (T-1.5) call them in the same order,
+Pure functions: the runtime and the harness call them in the same order,
 so a scenario runs the pack exactly as production does.
 """
 

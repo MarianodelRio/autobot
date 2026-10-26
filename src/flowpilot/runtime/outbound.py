@@ -1,4 +1,4 @@
-"""Outbound messages (design.md §7.4, §8.2): the rows of `outbound_message`, the jobs that
+"""Outbound messages: the rows of `outbound_message`, the jobs that
 send them and `send_message` itself.
 
 Rows and jobs are created inside the transaction that commits them, so a send job exists
@@ -80,13 +80,13 @@ def defer_sends(tenant_id: UUID, messages: list[OutboundMessage]) -> None:
         )
 
 
-# ── send_message (§7.4) ───────────────────────────────────────────────────
+# ── send_message ───────────────────────────────────────────────────
 
 MAX_SEND_ATTEMPTS = 5
 
 
 class SendRetry(Exception):
-    """The provider asked to retry later: the job is retried (§7.5), keeping its place
+    """The provider asked to retry later: the job is retried, keeping its place
     before the contact's later messages (same lock, older job)."""
 
     def __init__(self, after_s: float | None) -> None:
@@ -169,7 +169,7 @@ def _record(slug: str, message: OutboundMessage, outcome: SendOutcome) -> SendRe
             if outcome.kind == "recipient":
                 Contact.objects.filter(id=message.contact_id).update(unreachable=True)
             elif outcome.kind == "auth":
-                # The 🔴 alert is sent by ops_check (T-6.1, §15.3), which looks for these.
+                # The 🔴 alert is sent by ops_check, which looks for these.
                 log.error("ALERT tenant %s: channel token rejected (%s)", slug, outcome.reason)
         case RetryLater() if message.attempts < MAX_SEND_ATTEMPTS:
             message.status = Status.PENDING

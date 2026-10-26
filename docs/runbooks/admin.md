@@ -3,7 +3,7 @@
 El sitio está en `/admin/` y el panel en `/admin/estado/`, dentro del conjunto de URL
 `internal`. Requiere usuario activo con `is_staff` y verificación TOTP. El proceso web
 necesita `DB_OWNER_URL`; sin el alias `owner`, responde 503. El worker no lo necesita.
-La publicación por túnel y la configuración de Caddy corresponden a F7.
+El acceso es solo por túnel SSH (`make admin-tunnel`, ver `servidor.md`); Caddy no publica `/admin/`.
 
 El alta inicial se hace en una sesión local privada de operación, nunca mediante un
 formulario público. Con la base local preparada:

@@ -1,4 +1,4 @@
-"""Persistent operation cooldowns must survive cache capacity pressure (§11)."""
+"""Persistent operation cooldowns must survive cache capacity pressure."""
 
 from datetime import datetime
 

@@ -1,4 +1,4 @@
-"""Proactive messages: notices the bot starts itself (design.md §6.2)."""
+"""Proactive messages: notices the bot starts itself."""
 
 from dataclasses import dataclass
 

@@ -1,4 +1,4 @@
-"""Common message limits and the send plan (design.md §6.1, §7.4).
+"""Common message limits and the send plan.
 
 Packs build replies that fit **both** channels, so the strictest value of each limit
 applies. Exceeding a limit is a programming error: `plan_sends(strict=True)` (tests and
@@ -103,7 +103,7 @@ def check(reply: Reply) -> tuple[list[str], list[str]]:
 
 
 def plan_sends(replies: list[Reply], *, strict: bool = False) -> list[Reply]:
-    """Turn a pack's replies into the final messages to send, in order (§7.4):
+    """Turn a pack's replies into the final messages to send, in order:
     merge consecutive texts, put a text into the following interactive body when they
     fit together, and enforce the limits."""
     for reply in replies:  # before merging, so a neighbour cannot hide a problem

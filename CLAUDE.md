@@ -1,29 +1,28 @@
 # CLAUDE.md — FlowPilot
 
-Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de Telegram compartido para probar cualquier negocio. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). El diseño completo está en [`design.md`](design.md); este fichero resume las reglas para trabajar en el repo.
+Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de Telegram compartido para probar cualquier negocio. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). Este fichero resume las reglas para trabajar en el repo.
 
-**Estado:** implementación en curso; el avance y los pendientes se consultan en `IMPLEMENTATION.md`. `design.md` es la especificación.
+**Estado:** plataforma y dos packs implementados y probados con simulaciones; nada probado aún contra servicios reales. Los pasos manuales pendientes están en [`docs/puesta-en-marcha.md`](docs/puesta-en-marcha.md).
 
 ## Idioma
 
 - Responde siempre en español: resúmenes, preguntas, planes y revisiones.
-- Documentos (`README`, `docs/`, `design.md`) en español. Código, identificadores, comandos y mensajes de commit en inglés.
-- Excepción (decidida por la persona, 2026-10-22): el código portado de buscaBus en `packs/bus/` conserva sus identificadores en español (`Localidad`, `Viaje`, `SEL_ORIGEN`…), como los nombra `design.md` §10; lo nuevo de ese pack va en inglés.
+- Documentos (`README`, `docs/`) en español. Código, identificadores, comandos y mensajes de commit en inglés.
+- Excepción (decidida por la persona, 2026-10-22): el código portado de buscaBus en `packs/bus/` conserva sus identificadores en español (`Localidad`, `Viaje`, `SEL_ORIGEN`…); lo nuevo de ese pack va en inglés.
 
 ## Forma de trabajo
 
-- El trabajo sigue [`IMPLEMENTATION.md`](IMPLEMENTATION.md): un agente implementa cada tarea y otro, en una sesión nueva, la revisa (apartados 1.3 y 1.5 de ese fichero). Sin framework de orquestación.
-- El estado de las tareas y las notas para retomar el trabajo viven solo en `IMPLEMENTATION.md`. Una tarea se cierra en un único commit que incluye código, tests y su marca `done`.
-- Si una tarea espera una acción manual, se marca `blocked` y se sigue con otra independiente. Nunca se inventan credenciales ni ids, ni se simulan aprobaciones o verificaciones reales (apartado 1.6 de `IMPLEMENTATION.md`).
+- Cada cambio va en un commit con su código, sus tests y la documentación afectada (`README`, `docs/`).
+- Si algo espera una acción manual, se deja anotado y se sigue con otra cosa independiente. Nunca se inventan credenciales ni ids, ni se simulan aprobaciones o verificaciones reales.
 - Se trabaja directamente sobre `main`; sin ramas ni PR salvo que la persona lo pida. CI debe quedar en verde.
 - Commit o push solo cuando la persona lo pida.
-- Si un cambio contradice `design.md`, se actualiza `design.md` en el mismo commit (o se pregunta antes).
+- Una decisión de arquitectura nueva o que cambie una existente se registra como ADR en `docs/adr/` (o se pregunta antes).
 
-## Arquitectura (resumen de `design.md`)
+## Arquitectura
 
 - Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `worker`, `db`).
 - `core/` e `integrations/` no importan Django; `packs/*` solo importan `core` (nunca Django, `integrations` ni otro pack). Lo comprueba `import-linter`.
-- Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de pruebas solo en `channels/test_bot/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio (§8.3).
+- Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de pruebas solo en `channels/test_bot/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio.
 - Config y datasets de cada negocio en `tenants/<slug>/` (YAML validado en CI). Secretos en `.env` y `secrets.yaml` del servidor; nunca en git.
 
 ## Reglas obligatorias
@@ -42,4 +41,4 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 ## Referencias
 
 - Bots de origen (solo lectura, para portar código y requisitos): `~/Desktop/Peluqueria` y `~/Desktop/buscaBus`.
-- Decisiones: `docs/adr/`. Glosario: `docs/glosario.md`.
+- Decisiones: `docs/adr/`. Operación: `docs/runbooks/`. Configuración de cada pack: `docs/packs/`.

@@ -1,4 +1,4 @@
-"""Queue locks of a contact (design.md §7.1, §7.5). Procrastinate's job table has no RLS,
+"""Queue locks of a contact. Procrastinate's job table has no RLS,
 so a lock never carries a phone or a user id: only a hash of tenant, channel and id."""
 
 import hashlib

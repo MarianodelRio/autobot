@@ -1,4 +1,4 @@
-"""The test bot's business selector (design.md §6.5).
+"""The test bot's business selector.
 
 One Telegram bot of the platform lets the operator (`TEST_BOT_OPERATORS`, sees every
 business) and each business's testers (`testers.telegram`) talk to any business they may
@@ -150,7 +150,7 @@ def route_test_update(event_id: UUID) -> None:
 
 def is_available(tenant: LoadedTenant) -> bool:
     """May be tested now: not degraded, offboarded nor ambiguous, and with a test
-    calendar of its own if its pack needs a calendar (§6.5). Paused and onboarding
+    calendar of its own if its pack needs a calendar. Paused and onboarding
     tenants can be tested."""
     if tenant.is_degraded or tenant.ambiguous or tenant.file.status == "offboarded":
         return False
@@ -197,7 +197,7 @@ def _pick(event: TestBotEvent, item: InboundItem, tenant: LoadedTenant) -> None:
 
 def _synthetic_menu(event: TestBotEvent) -> dict[str, Any]:
     """A Telegram update with the text `menu` from the same user, as the runtime reads
-    it (§6.5)."""
+    it."""
     update: dict[str, Any] = event.payload
     callback = update.get("callback_query") or {}
     sender: dict[str, Any] = callback.get("from") or update["message"]["from"]

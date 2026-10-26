@@ -1,4 +1,4 @@
-# CI gates (design.md §17.3). If any fails, no image is published.
+# CI gates. If any fails, no image is published.
 name: CI
 
 on:

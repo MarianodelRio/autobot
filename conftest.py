@@ -1,4 +1,4 @@
-"""Test database setup (design.md §12.2).
+"""Test database setup.
 
 fp_app cannot create databases or tables, so Django's usual test setup (create and migrate
 through `default`) is replaced: the test database `test_<name>` already exists (created by
@@ -32,7 +32,7 @@ def django_db_setup(django_db_blocker: DjangoDbBlocker) -> Iterator[None]:
 @pytest.fixture(scope="session", autouse=True)
 def _flush_as_owner() -> Iterator[None]:
     """Transactional tests empty every table with TRUNCATE after each test, once per alias.
-    fp_app may not TRUNCATE (it ignores RLS, design.md §12.2), so the flush always runs as
+    fp_app may not TRUNCATE (it ignores RLS), so the flush always runs as
     fp_owner. Test-only: the roles keep their privileges."""
     original = flush.Command.handle
 
@@ -48,7 +48,7 @@ def _flush_as_owner() -> Iterator[None]:
 @pytest.fixture(scope="session", autouse=True)
 def _render_scenarios_with_both_adapters() -> Iterator[None]:
     """Every conversation scenario renders its messages with the WhatsApp and Telegram
-    adapters (design.md §17.2); core's harness cannot import them itself."""
+    adapters; core's harness cannot import them itself."""
     from core.testing.harness import RENDER_CHECKS
     from flowpilot.channels.testing import check_rendering
 

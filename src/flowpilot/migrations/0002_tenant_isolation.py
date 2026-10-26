@@ -1,4 +1,4 @@
-"""Tenant isolation (design.md §12.1, §12.2). Requires explicit human approval (CLAUDE.md).
+"""Tenant isolation. Requires explicit human approval (CLAUDE.md).
 
 1. Composite foreign keys: a child row can only point to a parent of its own tenant.
 2. Row level security, forced also for the table owner, on every table with `tenant_id`
@@ -10,7 +10,7 @@ from django.db import migrations
 
 TENANT = "NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 
-# (table, tenant column) — every table with tenant data. The isolation test (T-2.3) checks
+# (table, tenant column) — every table with tenant data. The isolation test checks
 # that no model with tenant_id is missing from here.
 RLS_TABLES = [
     ("tenant", "id"),
@@ -25,7 +25,7 @@ RLS_TABLES = [
 COMPOSITE_FKS = [
     ("conversation", "conversation_contact_fk", "contact_id", "contact", "CASCADE"),
     ("outbound_message", "outbound_message_contact_fk", "contact_id", "contact", "CASCADE"),
-    # Events are deleted after 90 days and messages kept 12 months (§12.3): only the event
+    # Events are deleted after 90 days and messages kept 12 months: only the event
     # column is cleared, never tenant_id.
     (
         "outbound_message",

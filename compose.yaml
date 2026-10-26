@@ -1,5 +1,5 @@
-# Local development (design.md §14.2): same image as production, code mounted, no Caddy.
-# Local-only passwords; production takes them from .env (T-7.1).
+# Local development: same image as production, code mounted, no Caddy.
+# Local-only passwords; production takes them from .env.
 x-app: &app
   build: .
   image: flowpilot:local
@@ -30,8 +30,8 @@ services:
     environment:
       DB_APP_URL: postgres://fp_app:fp_app@db:5432/flowpilot
       SERVICE_NAME: worker
-      DB_OWNER_URL: ""  # the worker never uses fp_owner (design.md §14.2)
-    # Graceful stop (design.md §7.5): on SIGTERM it takes no new jobs and lets running
+      DB_OWNER_URL: ""  # the worker never uses fp_owner
+    # Graceful stop: on SIGTERM it takes no new jobs and lets running
     # ones finish for up to 50 s, within the 60 s before Docker kills it; a cut job is
     # retried (every job is idempotent).
     command: python manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50
@@ -48,7 +48,7 @@ services:
       POSTGRES_TEST_DB: test_flowpilot  # for the tests run from the host (make check)
     volumes:
       - pgdata:/var/lib/postgresql
-      # Runs once, on an empty volume: creates fp_owner and fp_app (design.md §12.2).
+      # Runs once, on an empty volume: creates fp_owner and fp_app.
       - ./deploy/postgres:/docker-entrypoint-initdb.d:ro
     ports:
       - "127.0.0.1:5433:5432"  # 5433 so it does not clash with a PostgreSQL on the host

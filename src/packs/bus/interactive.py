@@ -2,7 +2,7 @@
 (listas y botones) del pack, portados de `buscaBus/app/utils/interactive.py`.
 
 Construyen `core.replies` con los helpers de `core.ui`, que truncan títulos como
-el origen y validan los límites comunes (design.md §6.1). Son PUROS: no leen
+el origen y validan los límites comunes. Son PUROS: no leen
 estado ni el reloj; reciben ya calculado lo que pintan. El pie de los mensajes
 lleva el nombre del negocio de la config (buscaBus lo tenía fijo).
 """
@@ -106,7 +106,7 @@ def build_destinos(
 ) -> List:
     """destinos_ordenados: lista completa de (id, nombre) ya ordenada
     (`conversation.ordenar_destinos`). Si hay 9 o menos, se muestran todos +
-    volver (cero ambigüedad, design.md §10.3). Si hay más, se muestran los 8
+    volver (cero ambigüedad). Si hay más, se muestran los 8
     primeros + fila de escribir/líneas + volver = 10 filas."""
     if len(destinos_ordenados) <= MAX_LIST_ROWS - 1:
         rows = [_fila_localidad(f"loc:{lid}", nombre) for lid, nombre in destinos_ordenados]
@@ -292,7 +292,7 @@ def build_dias(
 def build_resultado(cfg: BusConfig, texto: str, botones: list[tuple[str, str]]) -> list[Reply]:
     """botones: lista de (id, titulo), máximo 3. El resultado va en el cuerpo de
     los botones si cabe (1.024); si no, como texto aparte (hasta 4.096), seguido
-    de los botones (design.md §7.4)."""
+    de los botones."""
     acciones = [button(id_, titulo) for id_, titulo in botones[:3]]
     if len(texto) <= MAX_INTERACTIVE_BODY:
         return [buttons_msg(body=texto, buttons=acciones, footer=_pie(cfg))]

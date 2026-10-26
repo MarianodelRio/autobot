@@ -14,4 +14,4 @@ el despliegue y el tag hasta ese día: el pack lee el dataset desplegado al inst
 
 **Verificación:** el validador no da errores, la empresa confirma el PDF, el bot de
 pruebas muestra el horario nuevo y el tag `datos/<slug>/fecha` apunta al commit
-desplegado. La prueba real con la empresa queda para M-8.3.
+desplegado. La prueba real con la empresa sigue pendiente.

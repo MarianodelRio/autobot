@@ -1,4 +1,4 @@
-"""Contract of the WhatsApp adapter (design.md §6.3) against webhook bodies in the
+"""Contract of the WhatsApp adapter against webhook bodies in the
 documented format (tests/fixtures/whatsapp/) and simulated Graph API answers."""
 
 import hashlib

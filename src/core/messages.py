@@ -1,4 +1,4 @@
-"""What a pack receives from a contact (design.md §6.1)."""
+"""What a pack receives from a contact."""
 
 from dataclasses import dataclass
 from datetime import datetime

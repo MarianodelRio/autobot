@@ -1,4 +1,4 @@
-"""WhatsApp Cloud API adapter (design.md §6.3), ported from `webhook.py` and `whatsapp.py`
+"""WhatsApp Cloud API adapter, ported from `webhook.py` and `whatsapp.py`
 of Peluquería.
 
 Logs never carry identifiers, texts or provider response bodies (a 4xx body may hold
@@ -184,7 +184,7 @@ class WhatsAppAdapter:
 
 
 def classify(response: httpx.Response) -> SendOutcome:
-    """Meta's answer → `SendOutcome` (the table of design.md §6.3)."""
+    """Meta's answer → `SendOutcome`."""
     status = response.status_code
     error = _error(response)
     reason = _describe(response)

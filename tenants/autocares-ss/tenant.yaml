@@ -1,4 +1,4 @@
-# tenants/autocares-ss/tenant.yaml — Autocares San Sebastián (pack bus, design.md §10).
+# tenants/autocares-ss/tenant.yaml — Autocares San Sebastián (pack bus).
 # La config se porta de buscaBus/config.yaml. Decisiones con negocio (2026-10-08):
 # operador Autocares San Sebastián (D9); en "Información", solo la web oficial por ahora
 # (D10); los 8 pueblos del menú se quedan como están y se cambiarán si hace falta (D7).
@@ -10,8 +10,8 @@ timezone: Europe/Madrid
 pack: bus
 
 channel:
-  # Canal main de WhatsApp (decidido, IMPLEMENTATION.md M-4.1): número propio y app de
-  # Meta en el portfolio de la empresa. Los ids se rellenan en M-8.3; mientras falten,
+  # Canal main de WhatsApp (decidido): número propio y app de
+  # Meta en el portfolio de la empresa. Los ids se rellenan al dar de alta el canal; mientras falten,
   # el canal main está deshabilitado y el negocio solo se prueba por el bot de pruebas.
   type: whatsapp
   public_id: zhhvht2eksq80vqa
@@ -20,7 +20,7 @@ channel:
   phone_number_id: null
 
 testers:
-  telegram: []   # ids de Telegram de la empresa: M-4.1
+  telegram: []   # ids de Telegram de la empresa, pendientes
   main: []
 
 config:

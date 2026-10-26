@@ -1,5 +1,5 @@
-"""Limit per IP of invalid webhook signatures (design.md §13) and the conversation lock
-hash (§7.1)."""
+"""Limit per IP of invalid webhook signatures and the conversation lock
+hash."""
 
 import uuid
 

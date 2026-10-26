@@ -1,4 +1,4 @@
-"""Procrastinate queue (design.md §7.5, T-2.5): a job is deferred and run by a worker,
+"""Procrastinate queue: a job is deferred and run by a worker,
 and jobs sharing a lock run one at a time, in creation order. Transactional: the worker
 only sees committed jobs, as in production."""
 

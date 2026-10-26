@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Multi-tenant platform that serves small businesses' customers over WhatsApp or Telegram."
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
-# Versions verified in design.md §18.
 dependencies = [
     "django>=5.2,<5.3",
     "procrastinate[django]>=3.10,<4",
@@ -66,7 +65,7 @@ pythonpath = ["src"]
 testpaths = ["tests", "src"]
 addopts = "--strict-markers"
 
-# Module dependency rules (design.md §4.4). Run with `PYTHONPATH=src lint-imports`.
+# Module dependency rules. Run with `PYTHONPATH=src lint-imports`.
 [tool.importlinter]
 root_packages = ["core", "integrations", "packs", "flowpilot", "config"]
 include_external_packages = true

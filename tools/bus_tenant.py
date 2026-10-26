@@ -1,4 +1,4 @@
-"""Shared by the bus timetable tools (design.md §10.1, §16.3): where a tenant's dataset
+"""Shared by the bus timetable tools: where a tenant's dataset
 lives and how its published versions are tagged. Tools run on a developer machine with
 the repository checked out; they never touch the server."""
 
@@ -30,5 +30,5 @@ def dataset_dir(slug: str, repo_root: Path = REPO_ROOT) -> Path:
 
 
 def tag_prefix(slug: str) -> str:
-    """Published versions are tagged `datos/<slug>/AAAA-MM-DD` (§10.1)."""
+    """Published versions are tagged `datos/<slug>/AAAA-MM-DD`."""
     return f"datos/{slug}/"

@@ -1,4 +1,4 @@
-"""The test bot and its business selector (design.md §6.5, §6.6, T-3.8), with the toy
+"""The test bot and its business selector, with the toy
 pack, the real database and Telegram/Meta answered by a mock transport. Covers who may
 use it, picking and switching businesses, businesses that stop being available and the
 isolation of the test channel: never the real calendar, never the main channel, and its

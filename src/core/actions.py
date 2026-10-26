@@ -1,4 +1,4 @@
-"""What a pack wants to happen besides replying (design.md §8.2)."""
+"""What a pack wants to happen besides replying."""
 
 from dataclasses import dataclass
 from uuid import UUID
@@ -8,7 +8,7 @@ from core.proactive import TemplateSpec
 
 @dataclass(frozen=True)
 class ContactRef:
-    """An existing contact, or a phone with no contact yet (manual bookings, §9.6)."""
+    """An existing contact, or a phone with no contact yet (manual bookings)."""
 
     contact_id: UUID | None = None
     phone: str | None = None

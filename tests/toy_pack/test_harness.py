@@ -1,4 +1,4 @@
-"""Scenarios of the toy pack: they exercise the conversation harness (T-1.5)."""
+"""Scenarios of the toy pack: they exercise the conversation harness."""
 
 import ast
 import dataclasses
@@ -28,7 +28,7 @@ def chat(request: pytest.FixtureRequest) -> Conversation:
     return Conversation(toy.pack, channel=request.param)
 
 
-# ── The §17.2 example, adapted to the toy pack ────────────────────────────
+# ── The reference scenario, adapted to the toy pack ────────────────────────────
 
 
 def test_full_conversation(chat: Conversation) -> None:
