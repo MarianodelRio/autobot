@@ -1,6 +1,5 @@
-"""Fixtures del pack `bus`, portadas de `buscaBus/tests/conftest.py`. En buscaBus
-instalaban los datos en un global; aquí los devuelven, porque el pack los recibe
-en `ctx.data`."""
+"""Fixtures del pack `bus`. Devuelven los datos, porque el pack los recibe en
+`ctx.data`."""
 
 from __future__ import annotations
 
@@ -19,8 +18,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 @pytest.fixture
 def _instalados() -> dict[str, horarios_datos.Datos]:
     """Los datos que verá la conversación: los reales, salvo que un test pida
-    unos sintéticos (`datos_motor`, `datos_pendientes`, `datos_muchas_lineas`),
-    como hacía el `instalar()` global de buscaBus."""
+    unos sintéticos (`datos_motor`, `datos_pendientes`, `datos_muchas_lineas`)."""
     return {"datos": datos_reales()}
 
 
@@ -33,7 +31,7 @@ def mock_wa() -> MockWA:
 def conv(
     request: pytest.FixtureRequest, mock_wa: MockWA, _instalados: dict[str, horarios_datos.Datos]
 ) -> Conv:
-    """La conversación de buscaBus, en los dos tipos de canal."""
+    """La conversación del pack, en los dos tipos de canal."""
     c = Conv(mock_wa, request.param)
     c.instalados = _instalados
     return c

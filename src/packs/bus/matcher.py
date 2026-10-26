@@ -1,5 +1,4 @@
-"""packs/bus/matcher.py — coincidencia de texto libre con localidades
-(buscaBus/design.md, 4.7).
+"""packs/bus/matcher.py — coincidencia de texto libre con localidades.
 
 Índice puro y sin estado sobre un `Horarios` ya cargado (`loader.cargar`):
 nada de WhatsApp ni de textos en español (eso vive en fase 4, en
@@ -22,7 +21,7 @@ MIN_LETRAS = 3
 MAX_CANDIDATAS = 9
 LETRAS_ERRATA_CORTA = 5
 
-# buscaBus/design.md 4.7: relleno inicial que se quita del texto del cliente ya
+# Relleno inicial que se quita del texto del cliente ya
 # normalizado ("desde pozoblanco", "¿desde pozoblanco?", "voy a cordoba").
 # Se hace después de normalizar para que la puntuación ("¿", ",") no lo
 # impida. Comprobado una sola vez, de más largo a más corto, para que "voy a"
@@ -136,7 +135,7 @@ def lineas(
     horarios: Horarios,
 ) -> tuple[tuple[Linea, tuple[Localidad, ...]], ...]:
     """Líneas en orden alfabético por título (`Linea.titulo`, normalizado),
-    cada una con sus pueblos en orden alfabético (P18, buscaBus/design.md 4.7).
+    cada una con sus pueblos en orden alfabético.
     Descarta las líneas sin pueblos y las aldeas pendientes (ya excluidas en
     `Horarios.lineas_pueblos`)."""
     resultado: list[tuple[Linea, tuple[Localidad, ...]]] = []

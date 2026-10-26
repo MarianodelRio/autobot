@@ -1,5 +1,5 @@
 """tests/tools/test_revision.py — el HTML de `make revision` contiene cada línea,
-temporada, leyenda y pendiente (buscaBus/design.md, sección 9).
+temporada, leyenda y pendiente.
 
 Usa un repositorio git real y desechable en tmp_path (git es una herramienta
 de desarrollo local, no una API externa, así que no se simula), siguiendo el
@@ -281,7 +281,7 @@ def test_main_falla_si_horarios_no_valida(tmp_path: Path, monkeypatch: pytest.Mo
     assert not (repo_root / "revision" / SLUG / "horarios.html").exists()
 
 
-# ── Correcciones de la fase 1 (buscaBus/design.md 8) ─────────────────────────────────
+# ── Tablas por sentido, anchas y por línea ───────────────────
 # Estos tests usan formato.validar() + revision.generar_html() directamente,
 # sin repositorio git: no hace falta comparar dos versiones para comprobar
 # cómo se pinta la versión actual.

@@ -1,5 +1,4 @@
-"""packs/bus/tests/test_conversation.py — flujo completo y casos borde (buscaBus/design.md 4.8,
-plan fase 4 paso 13)."""
+"""packs/bus/tests/test_conversation.py — flujo completo y casos borde."""
 
 from collections.abc import Callable
 from datetime import date, timedelta
@@ -13,7 +12,7 @@ from packs.bus.tests.compat import NEGOCIO_TELEFONO, Conv, MockWA
 
 Freeze = Callable[..., None]
 
-HOY = date(2026, 9, 23)  # miércoles, dentro de vigencia (buscaBus/design.md ejemplo)
+HOY = date(2026, 9, 23)  # miércoles, dentro de vigencia
 
 
 def _last_interactive(mock_wa: MockWA) -> dict[str, Any]:
@@ -475,8 +474,7 @@ def test_ver_la_vuelta_con_trayecto_valido(
 def test_ver_la_vuelta_sin_trayecto(
     conv: Conv, mock_wa: MockWA, freeze_calendario: Freeze, datos_motor: Datos
 ) -> None:
-    """En buscaBus, sin trayecto de vuelta se mandaba un texto y después el
-    menú. En FlowPilot `plan_sends` mete el texto en el cuerpo del menú:
+    """Sin trayecto de vuelta, `plan_sends` mete el texto en el cuerpo del menú:
     llega un solo mensaje."""
     freeze_calendario(HOY)
     phone = "34600000111"
@@ -999,7 +997,7 @@ def test_log_redaction_numero_telefono_con_separadores(
 ) -> None:
     """`formato.normalizar()` sustituye separadores por espacios, así que un
     número escrito con espacios o guiones no debe colar como si tuviera menos
-    de 6 dígitos consecutivos (buscaBus/design.md, 4.7)."""
+    de 6 dígitos consecutivos."""
     import logging
 
     freeze_calendario(HOY)
@@ -1025,8 +1023,8 @@ def test_log_redaction_numero_telefono_con_separadores(
 def test_status_no_es_un_comando_del_pack(
     conv: Conv, mock_wa: MockWA, freeze_calendario: Freeze
 ) -> None:
-    # Los comandos de administrador de buscaBus (`/status`, `/logs`…) son de la
-    # plataforma en FlowPilot; para el pack son texto normal.
+    # Comandos como `/status` o `/logs` son de la plataforma; para el pack son
+    # texto normal.
     freeze_calendario(HOY)
     otro_phone = "34600000123"
     total_before = _n_calls(mock_wa)

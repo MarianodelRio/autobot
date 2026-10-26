@@ -2,7 +2,7 @@
 
 Plataforma de automatización para pequeños negocios: atiende a sus clientes por WhatsApp o Telegram, gestiona reservas sobre la agenda que ya usan (peluquerías) o responde consultas de horarios (autobuses) y avisa al dueño por Telegram.
 
-Sustituye a los bots independientes `Peluqueria` y `buscaBus` por una sola plataforma para 5–15 negocios, en una VPS con Docker Compose.
+Una sola plataforma para 5–15 negocios, en una VPS con Docker Compose.
 
 Cada negocio usa un **pack** con su lógica: `salon` (pedir, ver, mover y cancelar citas sobre Google Calendar, recordatorios y avisos al dueño) o `bus` (consulta de horarios origen → destino → día). Un bot de Telegram de pruebas compartido permite probar cualquier negocio sin tocar su canal real.
 

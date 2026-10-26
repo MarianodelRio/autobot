@@ -4,7 +4,7 @@
 
 ## Contexto
 
-Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar (peluquería) y consulta de horarios con datos estructurados (autobuses). Los dos bots de origen resuelven su conversación con una máquina de estados explícita y funcionan bien. Cada negocio tiene un canal de producción (WhatsApp o Telegram) y todos se prueban desde un bot de Telegram compartido; las conversaciones deben funcionar igual en todos ellos.
+Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar (peluquería) y consulta de horarios con datos estructurados (autobuses). Las dos conversaciones se resuelven bien con una máquina de estados explícita. Cada negocio tiene un canal de producción (WhatsApp o Telegram) y todos se prueban desde un bot de Telegram compartido; las conversaciones deben funcionar igual en todos ellos.
 
 ## Decisión
 
@@ -22,7 +22,7 @@ Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar
 
 ## Consecuencias
 
-- Portar los dos bots es casi copiar su lógica y cambiar el pegamento.
+- La lógica de cada negocio queda separada del pegamento con la plataforma.
 - Los packs se prueban sin BD con un arnés de conversación en pytest.
 - Variaciones entre negocios del mismo pack se resuelven con opciones de config.
 

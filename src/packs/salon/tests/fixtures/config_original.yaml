@@ -1,4 +1,4 @@
-# Config pública de Peluqueria 6e22f4a; ids de calendario sintéticos, solo para tests.
+# Config pública del bot anterior; ids de calendario sintéticos, solo para tests.
 business_name: DM Barber Shop
 contact_phone: +34 682 21 44 69
 calendar_id: salon-main@example.invalid

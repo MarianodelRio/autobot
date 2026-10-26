@@ -1,6 +1,6 @@
 """packs/bus/modelo.py — entidades inmutables del modelo de horarios.
 
-Ver buscaBus/design.md, sección 2.4. Estos objetos son el resultado de cargar y validar
+Estos objetos son el resultado de cargar y validar
 `horarios/` con `packs/bus/formato.py`. No se construyen a mano en
 ningún otro sitio.
 """
@@ -59,7 +59,7 @@ class Paso:
 class Tabla:
     """Una tabla `horarios:` tal como está escrita en el fichero de línea:
     conserva el sentido y el orden de columnas. La vista de revisión pinta
-    una tabla por `Tabla`, nunca mezcla tablas (buscaBus/design.md, 2.4)."""
+    una tabla por `Tabla`, nunca mezcla tablas."""
 
     linea: str  # id de línea
     temporada: str
@@ -82,7 +82,7 @@ class Viaje:
 
 @dataclass(frozen=True)
 class Calendario:
-    """Festivos y periodo escolar (buscaBus/design.md, sección 3 y `horarios/calendario.yaml`).
+    """Festivos y periodo escolar (`horarios/calendario.yaml`).
     Validado por `formato.py` como el resto de `horarios/`; `calendario.py`
     (fase 2) solo hace lógica pura sobre este objeto ya validado."""
 

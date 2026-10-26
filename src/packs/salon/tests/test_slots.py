@@ -1,4 +1,4 @@
-"""Ported slot and Calendar-engine cases, with explicit clock and configuration."""
+"""Slot and Calendar-engine cases, with explicit clock and configuration."""
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta

@@ -261,7 +261,7 @@ class Turn:
             try:
                 count = len(booking.contact_events(self.ctx))
             except TransientError, PermanentError:
-                count = 0  # The source bot deliberately fails open only on the limit check.
+                count = 0  # Deliberately fails open, only on the limit check.
             if count >= self.cfg.max_active_bookings:
                 return self.result(
                     ui.back(

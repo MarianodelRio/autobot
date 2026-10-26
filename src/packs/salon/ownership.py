@@ -1,4 +1,4 @@
-"""Event ownership, including the original bot's WaId/Telefono fields."""
+"""Event ownership, including the legacy WaId/Telefono fields."""
 
 from collections.abc import Sequence
 

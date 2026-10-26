@@ -1,8 +1,8 @@
 """tools/bus_revision.py — make bus-revision TENANT=<slug>.
 
-Portado de `buscaBus/tools/revision.py`. Genera `revision/<slug>/horarios.html`
+Genera `revision/<slug>/horarios.html`
 y `revision/<slug>/horarios.pdf` (no se versionan): la vista de revisión para
-negocio (buscaBus/design.md, sección 2.3), con los cambios desde la última
+negocio, con los cambios desde la última
 versión publicada, el último tag `datos/<slug>/AAAA-MM-DD`. Es el único módulo
 que habla con git (para encontrar esa versión) y con WeasyPrint (para el PDF);
 la comparación en sí vive en `packs/bus/diff.py`, que no toca ni disco ni git.
@@ -126,7 +126,7 @@ def _contar_viajes(modelo: Modelo) -> int:
 
 
 def _clases_tabla() -> list[str]:
-    # Las 8 clases individuales, en el orden de buscaBus/design.md/formato.py.
+    # Las 8 clases individuales, en el orden de formato.py.
     return list(DIAS_INDIVIDUALES)
 
 
@@ -143,7 +143,7 @@ def _observaciones_usadas_en_tabla(modelo: Modelo, viajes: list[Viaje], letra: b
 
 # Por encima de este número de paradas, la tabla se pinta trasponiendo filas
 # y columnas (paradas en filas) para que no se salga de la página impresa
-# (buscaBus/design.md 8, "Correcciones de la fase 1", punto 2 — Badajoz, 20 paradas).
+# (caso real: Badajoz, 20 paradas).
 _MAX_COLUMNAS_TABLA_NORMAL = 12
 # Trasponiendo, cada bloque de viajes (ahora columnas) no puede tener más de
 # esto, o se sigue saliendo de la página: se reparte en varios bloques.
@@ -399,8 +399,7 @@ def _render_seccion_linea(
 
     partes.append("<h3>Horarios</h3>")
 
-    # Una tabla por `Tabla`, en el orden del fichero (buscaBus/design.md 8,
-    # "Correcciones de la fase 1", punto 1): nunca se mezclan ida y vuelta ni
+    # Una tabla por `Tabla`, en el orden del fichero: nunca se mezclan ida y vuelta ni
     # se reordenan columnas.
     for tabla in linea.tablas:
         viajes_tabla = [v for v in linea.viajes if v.tabla is tabla]

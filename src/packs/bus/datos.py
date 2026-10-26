@@ -1,8 +1,6 @@
-"""packs/bus/datos.py — datos de horarios de un tenant, ya cargados en memoria
-(buscaBus/design.md, fase 4; design.md §10.1).
+"""packs/bus/datos.py — datos de horarios de un tenant, ya cargados en memoria.
 
-En buscaBus este módulo guardaba un `Datos` global protegido por un candado
-(`instalar()`/`actual()`). En FlowPilot los datos son por tenant: el registro
+Los datos son por tenant: el registro
 de tenants guarda lo que devuelve `load_data` y el pack lo recibe en
 `ctx.data`, así que aquí solo queda la carga.
 """

@@ -1,6 +1,5 @@
 # Fixture con 13 paradas (por encima del límite de 12 columnas de
-# tools/revision.py) para probar la tabla trasponida (design.md 8,
-# "Correcciones de la fase 1", punto 2).
+# tools/bus_revision.py) para probar la tabla trasponida.
 localidades:
   loc-aaa: { nombre: Localidad AAA }
   loc-bbb: { nombre: Localidad BBB }

@@ -1,6 +1,4 @@
-"""Text helpers shared by the packs. Ported from `_norm` and
-`_strip_html` (Peluquería, `parser.py`) and `normalizar` (buscaBus, `formato.py`, without
-its stop words, which stay in the bus pack)."""
+"""Text helpers shared by the packs. The bus pack's stop words stay in the pack."""
 
 import html
 import re
@@ -9,7 +7,7 @@ import unicodedata
 
 def fold(text: str) -> str:
     """Lowercase, without accents and stripped; punctuation is kept (`[cfg]`, `10:00`).
-    Exactly Peluquería's `_norm`, for parsers that rely on punctuation."""
+    For parsers that rely on punctuation."""
     text = unicodedata.normalize("NFD", text.lower())
     return "".join(c for c in text if unicodedata.category(c) != "Mn").strip()
 

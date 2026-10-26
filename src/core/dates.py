@@ -1,5 +1,4 @@
-"""Spanish date helpers. Ported from `slots.py` (Peluquería) and
-`messages.py` (buscaBus), with `zoneinfo` instead of `pytz`."""
+"""Spanish date helpers, with `zoneinfo`."""
 
 from collections.abc import Collection
 from datetime import date, datetime, timedelta

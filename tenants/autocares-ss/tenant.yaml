@@ -1,7 +1,7 @@
 # tenants/autocares-ss/tenant.yaml — Autocares San Sebastián (pack bus).
-# La config se porta de buscaBus/config.yaml. Decisiones con negocio (2026-10-08):
-# operador Autocares San Sebastián (D9); en "Información", solo la web oficial por ahora
-# (D10); los 8 pueblos del menú se quedan como están y se cambiarán si hace falta (D7).
+# Decisiones con el negocio (2026-10-08): operador Autocares San Sebastián; en
+# "Información", solo la web oficial por ahora; los 8 pueblos del menú se quedan como
+# están y se cambiarán si hace falta.
 id: 01a163fd-bed0-7002-80df-8f2acdc7778b
 slug: autocares-ss
 name: Autocares San Sebastián

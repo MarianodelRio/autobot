@@ -256,7 +256,7 @@ def test_pueblos_por_linea_con_paginacion(canal: ChannelType, datos_muchas_linea
     lista = turn.replies[-1]
     assert isinstance(lista, List)
     assert [r.id for s in lista.sections for r in s.rows][-1] == "lineas:0"
-    # Una página que no existe vuelve a la lista de líneas, como en buscaBus.
+    # Una página que no existe vuelve a la lista de líneas.
     chat.press("linea:linea-larga:9", check=False).expect(list_includes="➡️ Más líneas")
     chat.press("loc:origen")  # Origen, en la lista de pueblos de la línea
     assert chat.state["origen"] == "origen"

@@ -1,10 +1,10 @@
 """packs/bus/interactive.py — constructores de las respuestas interactivas
-(listas y botones) del pack, portados de `buscaBus/app/utils/interactive.py`.
+(listas y botones) del pack.
 
-Construyen `core.replies` con los helpers de `core.ui`, que truncan títulos como
-el origen y validan los límites comunes. Son PUROS: no leen
+Construyen `core.replies` con los helpers de `core.ui`, que truncan títulos y
+validan los límites comunes. Son PUROS: no leen
 estado ni el reloj; reciben ya calculado lo que pintan. El pie de los mensajes
-lleva el nombre del negocio de la config (buscaBus lo tenía fijo).
+lleva el nombre del negocio de la config.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def _cabecera(texto: str) -> str:
 
 def _fila_localidad(id_: str, nombre: str) -> Row:
     """Fila para una localidad: la descripción lleva el nombre completo si el
-    título se truncó (buscaBus, plan fase 4, paso 10)."""
+    título se truncó."""
     descripcion = nombre if len(nombre) > MAX_TITULO_FILA else None
     return row(id_, nombre, descripcion)
 

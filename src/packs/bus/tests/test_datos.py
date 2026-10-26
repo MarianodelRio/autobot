@@ -1,6 +1,5 @@
 """packs/bus/tests/test_datos.py — `datos.cargar` resuelve los pueblos del menú
-de inicio contra las localidades del dataset, o falla con el nombre del pueblo.
-buscaBus no tenía tests propios de este módulo."""
+de inicio contra las localidades del dataset, o falla con el nombre del pueblo."""
 
 from __future__ import annotations
 

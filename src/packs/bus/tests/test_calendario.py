@@ -1,5 +1,5 @@
 """packs/bus/tests/test_calendario.py — calendario.py (lógica pura de calendario) y la
-validación de calendario.yaml en formato.py (buscaBus/design.md, sección 3 y 2.3)."""
+validación de calendario.yaml en formato.py."""
 
 from __future__ import annotations
 

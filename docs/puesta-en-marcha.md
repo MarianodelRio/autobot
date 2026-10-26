@@ -62,8 +62,8 @@ Verificación del servidor:
 
 ### DM Barber Shop (`salon`, WhatsApp)
 
-- Crear `tenants/dm-barber/tenant.yaml` con la config actual de
-  `Peluqueria/config.yaml` (horario, servicios, ventana, evento especial e
+- Crear `tenants/dm-barber/tenant.yaml` con la config actual del
+  bot anterior (horario, servicios, ventana, evento especial e
   interruptores de envío con sus valores actuales), canal WhatsApp de la app
   existente en `onboarding` y `manual_confirmations_since` igual a la fecha de arranque.
 - El negocio comparte su calendario real; tú creas y compartes el de pruebas.
@@ -92,7 +92,7 @@ Verificación del servidor:
 Antes de activar cada negocio, recorrer en producción todo lo que ofrece su pack
 (`docs/packs/`): en `salon`, también un recordatorio real y la confirmación de una
 cita manual. Tras una semana sin alertas 🔴 abiertas, borrar la VM de GCP (servicio,
-nginx, DuckDNS) y archivar los repositorios `Peluqueria` y `buscaBus`.
+nginx, DuckDNS) y archivar los repositorios de los bots anteriores.
 
 Activar un canal real, cambiar un webhook y tocar datos de producción necesitan
 aprobación humana explícita.

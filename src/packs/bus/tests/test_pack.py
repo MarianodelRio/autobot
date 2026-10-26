@@ -1,6 +1,6 @@
-"""packs/bus/tests/test_pack.py — `BusConfig` (con las reglas de
-`buscaBus/app/config.py`), `load_data` y la declaración del pack (el registro lo comprueba
-`tests/integration/test_bus_pack.py`, porque un pack no importa `packs.registry`)."""
+"""packs/bus/tests/test_pack.py — `BusConfig`, `load_data` y la declaración del pack
+(el registro lo comprueba `tests/integration/test_bus_pack.py`, porque un pack no
+importa `packs.registry`)."""
 
 from __future__ import annotations
 

@@ -1,5 +1,4 @@
-"""Ported from Peluquería `tests/test_slots.py` (TestGetNextDays, TestFormatDateEs),
-with a fixed aware datetime instead of patching `datetime` and `pytz`."""
+"""Spanish date helpers, with a fixed aware datetime."""
 
 from datetime import date, datetime
 from zoneinfo import ZoneInfo

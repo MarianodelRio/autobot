@@ -1,6 +1,4 @@
-"""Ported from the helper tests of both bots' `tests/test_interactive.py` (`_trunc` and
-the title limits) and buscaBus `tests/test_matcher.py` (`paginar`), adapted to
-`core.replies`."""
+"""UI helpers: truncation, title limits and pagination, on `core.replies`."""
 
 import pytest
 

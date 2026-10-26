@@ -1,5 +1,5 @@
 """packs/bus/loader.py — carga `horarios/` a memoria al arrancar
-el bot (buscaBus/design.md, 2.4), usando el único parser/validador (`formato.py`).
+el bot, usando el único parser/validador (`formato.py`).
 
 Nunca devuelve datos parciales o ambiguos: si `horarios/` no valida, lanza
 `HorariosInvalidos` con la lista completa de errores en vez de devolver un

@@ -1,6 +1,4 @@
-"""packs/bus/conversation.py — máquina de estados de la conversación,
-portada de `buscaBus/app/handlers/flujo.py` y del despacho
-de `buscaBus/app/handlers/conversation.py`.
+"""packs/bus/conversation.py — máquina de estados de la conversación.
 
 Cambia el pegamento: en vez de enviar por WhatsApp, cada paso añade respuestas
 a un `_Turno`, y el estado es un dict JSON que guarda el runtime. El candado
@@ -56,7 +54,7 @@ _RE_NO_DIGITO = re.compile(r"\D")
 
 # Palabras que, escritas en cualquier estado, vuelven al menú. `menu`, `menú` e
 # `inicio` ya los atiende la plataforma (llegan como texto vacío); `hola` y
-# `salir` son de buscaBus.
+# `salir` son propias del pack.
 _ESCAPE_MENU = {"menu", "menú", "inicio", "hola", "salir"}
 
 
@@ -148,7 +146,7 @@ def ordenar_destinos(
     alcanzables: list[str], prioridad: list[str], nombres: dict[str, str]
 ) -> list[tuple[str, str]]:
     """Orden de negocio primero (según `start_menu_towns`), después el
-    resto en orden alfabético (buscaBus/design.md, 4.4)."""
+    resto en orden alfabético."""
     prioridad_presentes = [lid for lid in prioridad if lid in alcanzables]
     resto = [lid for lid in alcanzables if lid not in prioridad_presentes]
     resto.sort(key=lambda lid: formato.normalizar(nombres[lid]))
@@ -387,7 +385,7 @@ def _mostrar_linea_pagina(t: _Turno, campo: str, value: str) -> None:
         _mostrar_lineas(t, campo, 0)
         return
     linea, locs = elegida
-    # Una página inexistente vuelve a la lista de líneas, como en buscaBus
+    # Una página inexistente vuelve a la lista de líneas
     # (`core.ui.paginate` mostraría la primera página de la línea).
     if pagina < 0 or pagina >= _n_paginas(len(locs)):
         _mostrar_lineas(t, campo, 0)

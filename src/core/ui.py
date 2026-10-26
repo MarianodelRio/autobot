@@ -1,6 +1,5 @@
-"""Reply builders that respect the common limits. Ported from the
-`interactive.py` helpers of both bots, building `core.replies` instead of WhatsApp
-payloads. Titles are truncated as in the source; anything else out of limits is a
+"""Reply builders that respect the common limits, building `core.replies`. Titles
+are truncated; anything else out of limits is a
 programming error and raises `LimitError`."""
 
 from collections.abc import Sequence

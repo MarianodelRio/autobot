@@ -2,7 +2,7 @@
 
 Valida el dataset de horarios del tenant con `packs/bus/formato.py` e imprime
 errores y avisos agrupados. Sale con código 1 si hay errores, 0 en caso
-contrario. Portado de `buscaBus/tools/validar.py`.
+contrario.
 """
 
 from __future__ import annotations

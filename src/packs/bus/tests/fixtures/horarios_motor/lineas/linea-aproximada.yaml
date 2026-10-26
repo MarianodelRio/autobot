@@ -1,6 +1,6 @@
 # Línea con aviso de ámbito línea (hora_aproximada), para probar que el
 # resultado muestra "⚠️ Horarios de paso aproximados." sin marca numérica
-# (design.md 4.8, como en la línea real de Badajoz).
+# (como en la línea real de Badajoz).
 nombre: Línea Aproximada
 avisos: [hora_aproximada]
 no_circula: []

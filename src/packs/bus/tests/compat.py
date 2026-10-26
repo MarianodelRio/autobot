@@ -1,5 +1,5 @@
-"""Doble de compatibilidad para portar casi tal cual los tests de conversación e
-interfaz de buscaBus (`test_conversation`, `test_interactive`, `test_messages`).
+"""Doble de compatibilidad para escribir los tests de conversación e interfaz
+(`test_conversation`, `test_interactive`, `test_messages`) sobre una API compacta.
 
 Aquellos tests llamaban a `conv.handle_message(...)`, leían los payloads de
 WhatsApp de un `mock_wa` y fijaban el reloj con `freeze_calendario`. Aquí lo
@@ -32,8 +32,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 HORARIOS_REAL = FIXTURES / "horarios_real"
 TZ = ZoneInfo("Europe/Madrid")
 
-# La config de `buscaBus/config.yaml` (Autocares San Sebastián), en el formato de
-# `BusConfig`.
+# La config de Autocares San Sebastián, en el formato de `BusConfig`.
 CONFIG = BusConfig.model_validate(
     dict(
         business_name="Autocares San Sebastián",
@@ -64,7 +63,7 @@ def datos_reales() -> horarios_datos.Datos:
 
 
 def wa(reply: Reply) -> dict[str, Any]:
-    """El payload de WhatsApp que buscaBus construía para esta respuesta."""
+    """El payload de WhatsApp equivalente a esta respuesta."""
     if isinstance(reply, Text):
         return {"type": "text", "text": {"body": reply.body}}
     interactive: dict[str, Any] = {"body": {"text": reply.body}}
@@ -152,7 +151,7 @@ class MockWA:
 
 
 class Conv:
-    """`app.handlers.conversation` de buscaBus sobre el arnés: un `Conversation`
+    """Conversación del pack sobre el arnés: un `Conversation`
     por identificador, con los datos instalados al empezar a hablar."""
 
     UNKNOWN_INPUT = "__unknown__"
@@ -194,8 +193,7 @@ class Conv:
         self.mock_wa.registrar(identifier, turn.replies)
 
     def forzar(self, identifier: str, **campos: str) -> None:
-        """Fuerza campos del estado guardado (lo que los tests de buscaBus
-        hacían escribiendo en `conv._get(phone)`)."""
+        """Fuerza campos del estado guardado."""
         self._chat(identifier).state.update(campos)
 
     def _get(self, identifier: str) -> SimpleNamespace:

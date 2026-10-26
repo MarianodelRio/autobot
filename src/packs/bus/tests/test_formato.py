@@ -1,4 +1,4 @@
-"""packs/bus/tests/test_formato.py — cada regla de buscaBus/design.md 2.3 rechaza su caso con un
+"""packs/bus/tests/test_formato.py — cada regla del formato rechaza su caso con un
 mensaje concreto; horarios/ real valida sin errores."""
 
 from __future__ import annotations

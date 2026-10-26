@@ -1,4 +1,4 @@
-"""Common reply builders, ported from Peluqueria/utils/interactive."""
+"""Common reply builders of the salon pack."""
 
 from collections.abc import Sequence
 

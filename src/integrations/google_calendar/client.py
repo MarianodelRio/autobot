@@ -1,4 +1,4 @@
-"""Port of Peluqueria's Calendar client; no cache, globals or personal-data logs."""
+"""Google Calendar client; no cache, globals or personal-data logs."""
 
 import re
 import time

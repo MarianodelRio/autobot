@@ -1,5 +1,4 @@
-"""Ported from Peluquería `tests/test_parser.py` (TestNorm → `fold`, TestStripHtml), plus
-`normalize`, which also drops punctuation like buscaBus `normalizar`."""
+"""`fold`, `strip_html` and `normalize`, which also drops punctuation."""
 
 import pytest
 

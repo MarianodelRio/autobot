@@ -1,4 +1,4 @@
-"""Pure slot engine ported from Peluqueria/utils/slots and calendar/engine."""
+"""Pure slot engine."""
 
 from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta

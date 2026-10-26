@@ -1,10 +1,9 @@
 """packs/bus/messages.py — todos los textos en español que ve el cliente.
 `messages.py` solo da formato: el texto de las observaciones vive en
-`observaciones.yaml` del dataset (buscaBus/design.md, 2.3).
+`observaciones.yaml` del dataset.
 
-Portado de buscaBus: el teléfono, el horario de oficina y los enlaces del
-negocio llegan en la config del tenant (`BusConfig`) en vez
-de en constantes globales."""
+El teléfono, el horario de oficina y los enlaces del negocio llegan en la
+config del tenant (`BusConfig`)."""
 
 from __future__ import annotations
 
@@ -90,7 +89,7 @@ def _horario_oficina_txt(cfg: BusConfig) -> str:
 
 
 def tel_y_horario(cfg: BusConfig) -> str:
-    # Sin horario de oficina en la config, solo el teléfono (buscaBus lo exigía).
+    # Sin horario de oficina en la config, solo el teléfono.
     if not cfg.office_hours:
         return f"📞 {cfg.contact_phone}"
     return f"📞 {cfg.contact_phone} (horario de oficina: {_horario_oficina_txt(cfg)})"
@@ -250,7 +249,7 @@ def msg_resultado(
     destino_nombre: str,
     fecha: date,
 ) -> str:
-    """Mensaje de resultado (buscaBus/design.md, 4.6). `consulta.estado` decide el
+    """Mensaje de resultado. `consulta.estado` decide el
     contenido; nunca se deriva de si `salidas` está vacío (`sin_datos`
     también produce salidas vacías)."""
     cabecera = f"🚌 {origen_nombre} → {destino_nombre}"
@@ -372,7 +371,7 @@ def msg_resultado(
 
     texto = "\n".join(partes)
     if len(texto) > MAX_TEXT:
-        # Trunca por la última salida completa (buscaBus/design.md 4.6).
+        # Trunca por la última salida completa.
         acumulado = []
         largo = 0
         cabecera_txt = "\n".join(partes[:3]) + "\n"

@@ -1,5 +1,4 @@
-"""Config of the bus pack, validated like buscaBus's `config.yaml`
-(`app/config.py`): non-empty name and phone, office hours with known days and
+"""Config of the bus pack: non-empty name and phone, office hours with known days and
 non-overlapping `HH:MM-HH:MM` ranges, and 1 to 8 distinct start-menu towns."""
 
 import re

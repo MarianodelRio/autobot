@@ -1,5 +1,4 @@
-"""packs/bus/fechas.py — lector de fechas en formato cerrado día/mes[/año]
-(buscaBus/design.md, 4.5).
+"""packs/bus/fechas.py — lector de fechas en formato cerrado día/mes[/año].
 
 Sin lenguaje natural ("mañana", "el viernes que viene"): solo día y mes en
 números, con año opcional. Puro: `hoy` lo pasa el llamador (fase 4 pasará

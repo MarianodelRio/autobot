@@ -1,6 +1,5 @@
-"""packs/bus/calendario.py — lógica pura de calendario (buscaBus/design.md,
-sección 3): temporada de una línea, tipo de día y periodo lectivo para una
-fecha dada.
+"""packs/bus/calendario.py — lógica pura de calendario: temporada de una línea,
+tipo de día y periodo lectivo para una fecha dada.
 
 No hace E/S ni lee el reloj para resolver `info_dia`/`temporada_de`: reciben
 el objeto `Calendario` ya validado por `formato.py` y la fecha a resolver.
@@ -52,11 +51,11 @@ def _en_algun_rango(fecha: date, rangos: tuple[tuple[date, date], ...]) -> bool:
 def info_dia(
     calendario: Calendario, fecha: date, permitir_fuera_de_vigencia: bool = False
 ) -> InfoDia:
-    """Resuelve el tipo de día de `fecha` según `calendario` (buscaBus/design.md,
-    sección 3). Lanza `FueraDeCalendario` si `fecha` cae fuera de la vigencia
-    del calendario, salvo con `permitir_fuera_de_vigencia=True` (solo para
-    los días sin servicio en ninguna línea, que se conocen sin calendario
-    vigente; el nombre del festivo será None si no está cargado)."""
+    """Resuelve el tipo de día de `fecha` según `calendario`. Lanza
+    `FueraDeCalendario` si `fecha` cae fuera de la vigencia del calendario, salvo con
+    `permitir_fuera_de_vigencia=True` (solo para los días sin servicio en ninguna
+    línea, que se conocen sin calendario vigente; el nombre del festivo será None si
+    no está cargado)."""
     fuera = fecha < calendario.vigencia_inicio or fecha > calendario.vigencia_fin
     if fuera and not permitir_fuera_de_vigencia:
         raise FueraDeCalendario(
@@ -70,8 +69,7 @@ def info_dia(
     es_festivo = nombre_festivo is not None
 
     # Decisión 1: un festivo siempre gana, sea cual sea el día de la semana
-    # (buscaBus/design.md, sección 3): un festivo en sábado usa la clase "festivos",
-    # no "sabado".
+    # Un festivo en sábado usa la clase "festivos", no "sabado".
     clase_dia = "festivos" if es_festivo else dia_semana
 
     es_lectivo = (

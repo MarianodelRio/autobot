@@ -1,4 +1,4 @@
-"""Spanish texts ported from Peluqueria/utils/messages, configurable per tenant."""
+"""Spanish texts of the salon pack, configurable per tenant."""
 
 from datetime import datetime
 from decimal import Decimal

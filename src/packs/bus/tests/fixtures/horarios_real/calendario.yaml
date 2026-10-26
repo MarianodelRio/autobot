@@ -1,4 +1,4 @@
-# horarios/calendario.yaml — festivos y periodo escolar (design.md, 2.3 y 3).
+# horarios/calendario.yaml — festivos y periodo escolar.
 #
 # Fuente de verdad editada a mano, validada por app/services/horarios/formato.py
 # como el resto de horarios/. Festivos de Andalucía (BOJA): Decreto 101/2025

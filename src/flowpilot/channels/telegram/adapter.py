@@ -1,5 +1,4 @@
-"""Telegram Bot API adapter, building on `tools/telegram_pruebas.py` of
-buscaBus (how lists and buttons map to inline keyboards). The same adapter serves a
+"""Telegram Bot API adapter: lists and buttons map to inline keyboards. The same adapter serves a
 business's own bot (`main` channel) and the platform's test bot: only the token
 and the routing change.
 
@@ -294,7 +293,7 @@ def _parts(out: Outbound) -> tuple[str | None, str, list[Button]]:
             for row in (r for s in out.sections for r in s.rows):
                 if not row.description:
                     buttons.append(Button(row.id, row.title))
-                elif row.description.startswith(row.title):  # as in buscaBus
+                elif row.description.startswith(row.title):
                     buttons.append(Button(row.id, row.description))
                 else:
                     buttons.append(Button(row.id, row.title))

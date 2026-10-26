@@ -1,6 +1,6 @@
 """packs/bus/formato.py — parser + validador único de horarios/.
 
-Único módulo que interpreta el formato de horarios/ (buscaBus/design.md, sección 2.3).
+Único módulo que interpreta el formato de horarios/.
 Lo usan `tools/validar.py`, `tools/formatear.py`, los tests y (fase 2) el
 loader al arrancar el bot. Ninguna otra parte del código vuelve a parsear
 estos ficheros.
@@ -76,7 +76,7 @@ GRUPOS_DIA: dict[str, frozenset[str]] = {
 ESTADOS_DIA = {"horario", "sin_servicio", "sin_datos"}
 
 # Temporadas con nombre público: solo estas se muestran al cliente como
-# "horario de X" en la cabecera del resultado (buscaBus/design.md, 4.6). Una temporada
+# "horario de X" en la cabecera del resultado. Una temporada
 # nueva con nombre propio exige ampliar esta tabla.
 NOMBRES_PUBLICOS_TEMPORADA = {
     "invierno": "invierno",
@@ -104,11 +104,11 @@ CAMPOS_PARADAS_TOPE = {"localidades", "paradas", "pendientes", "no_vendibles"}
 CAMPOS_LOCALIDAD = {"nombre", "alias", "pendiente", "ver", "minutos", "aviso"}
 CAMPOS_PARADA = {"nombre", "localidad"}
 CAMPOS_OBSERVACION = {"letra", "tipo", "ambitos", "texto"}
-# Título de fila de una lista interactiva de WhatsApp (buscaBus/design.md 2.3, 4.4).
+# Título de fila de una lista interactiva de WhatsApp.
 MAX_TITULO_LINEA = 24
 LINEA_ID_RE = re.compile(r"^[a-z0-9-]+$")
 
-# ── calendario.yaml (fase 2, buscaBus/design.md 2.3 y 3) ─────────────────────────────
+# ── calendario.yaml ──────────────────────────────────────────────────────────────────
 # Fechas con año real (a diferencia de las temporadas de línea, que no lo
 # llevan): parser distinto y sin relación con `_parse_temporada_rango` /
 # `_DIAS_DEL_ANIO` (que son año-independientes y se reutilizan cada año).
@@ -147,14 +147,14 @@ _DIAS_DEL_ANIO: list[tuple[int, int]] = [
 ]
 _INDICE_DIA = {md: i for i, md in enumerate(_DIAS_DEL_ANIO)}
 
-# buscaBus/design.md 4.7: artículos y preposiciones de enlace que se descartan al
+# Artículos y preposiciones de enlace que se descartan al
 # normalizar (villanueva duque = Villanueva del Duque).
 _PALABRAS_VACIAS_NORMALIZAR = frozenset({"el", "la", "los", "las", "de", "del"})
 
 
 def normalizar(texto: str) -> str:
-    """Normalización única de nombres de localidad/parada y sus alias
-    (buscaBus/design.md, 4.7): `core.text.normalize` (minúsculas, sin tildes,
+    """Normalización única de nombres de localidad/parada y sus alias:
+    `core.text.normalize` (minúsculas, sin tildes,
     sin puntuación, colapsada a espacio) y sin artículos/preposiciones de
     enlace. La comparten el validador (aquí) y `packs.bus.matcher`; ningún
     otro módulo vuelve a normalizar un nombre por su cuenta."""
@@ -224,7 +224,7 @@ def _parse_temporada_rango(rango: str) -> list[int] | None:
 
 
 def temporada_de_linea(linea: Linea, mes: int, dia: int) -> Temporada | None:
-    """Temporada de `linea` vigente para ese día/mes (buscaBus/design.md 2.3 y 3).
+    """Temporada de `linea` vigente para ese día/mes.
 
     Único punto que vuelve a interpretar un rango de temporada de línea fuera
     de la validación: reutiliza `_parse_temporada_rango`, el mismo parser
@@ -463,7 +463,7 @@ def _validar_localidades_paradas(
 
     # Ambigüedades declaradas (aviso, no error): un nombre o alias compartido
     # por varias localidades, o un alias que coincide con el nombre de otra
-    # (buscaBus/design.md 2.3 y 4.7; caso real: 'villafranca').
+    # (caso real: 'villafranca').
     mapa_claves: dict[str, set[str]] = {}
     for lid, loc in localidades.items():
         claves = {normalizar(loc.nombre)} | {normalizar(a) for a in loc.alias}
@@ -484,7 +484,7 @@ def _validar_localidades_paradas(
 def _validar_pendientes_paradas(
     datos_paradas: dict[str, Any], path: Path, errores: list[str], avisos: list[str]
 ) -> tuple[str, ...]:
-    """Lee el campo opcional `pendientes:` de paradas.yaml (buscaBus/design.md 2.3):
+    """Lee el campo opcional `pendientes:` de paradas.yaml:
     preguntas abiertas que no están ligadas a ninguna línea concreta (p.ej.
     P32, posición de una aldea en la ruta)."""
     raw = datos_paradas.get("pendientes", []) or []
@@ -513,7 +513,7 @@ def _validar_localidades_pendientes(
 ) -> None:
     """Localidades pendientes (P15/P32): aldeas sin hora de paso propia.
     Cruza `pendiente`, `ver` y `aviso` con paradas, observaciones y la lista
-    `pendientes:` de paradas.yaml (buscaBus/design.md 2.3)."""
+    `pendientes:` de paradas.yaml."""
     for lid, loc in sorted(localidades.items()):
         if loc.pendiente is None:
             continue
@@ -599,7 +599,7 @@ def _validar_calendario(
     avisos: list[str],
     localidades: dict[str, Localidad],
 ) -> Calendario | None:
-    """Valida `calendario.yaml` (buscaBus/design.md 2.3 y 3): festivos y periodo
+    """Valida `calendario.yaml`: festivos y periodo
     escolar, con fechas de año real. Nunca adivina: fecha inválida, rango
     invertido, festivo duplicado o fuera de vigencia, campo desconocido o
     ausente, e inicio de curso posterior al fin son errores concretos."""
@@ -1107,7 +1107,7 @@ def _validar_linea(
 
     # Varias tablas de la misma línea pueden compartir temporada+dias (p.ej.
     # ida y vuelta ambas anual/sábado): sin más información en el esquema
-    # (buscaBus/design.md 2.3 no declara un campo de sentido por tabla), se numeran
+    # (el formato no declara un campo de sentido por tabla), se numeran
     # "tabla N de M" para que los avisos/errores de cada una sean
     # distinguibles.
     claves_tabla = [
@@ -1341,8 +1341,8 @@ def _validar_linea(
         clases_cubiertas.setdefault(temporada_e, set()).update(GRUPOS_DIA[dias_e])
 
     # Dos tablas con la misma temporada, días y extremos de cabecera serían
-    # indistinguibles para el diff y para la vista de revisión (buscaBus/design.md
-    # 2.4): a diferencia de "tabla N de M" (que solo numera avisos), esto es
+    # indistinguibles para el diff y para la vista de revisión: a diferencia de
+    # "tabla N de M" (que solo numera avisos), esto es
     # un error porque probablemente son la misma tabla duplicada por error.
     firmas_tabla: dict[tuple[str, str, str, str], list[Tabla]] = {}
     for t in tablas:
@@ -1428,7 +1428,7 @@ def _validar_buses(
     localidades: dict[str, Localidad],
     errores: list[str],
 ) -> None:
-    """Grupos `bus:<id>` declarados (buscaBus/design.md 2.3): todo lo declarado tiene
+    """Grupos `bus:<id>` declarados: todo lo declarado tiene
     que cuadrar; si no, error concreto. Solo compara entre sí los miembros que
     circulan algún mismo día (el mismo `bus:` puede repartirse entre viajes
     de días distintos, p.ej. Badajoz lunes-jueves y viernes)."""
@@ -1512,7 +1512,7 @@ def _avisos_mismo_bus(
     lineas: dict[str, Linea],
     avisos: list[str],
 ) -> None:
-    """Aviso heurístico (buscaBus/design.md 2.3): pares de viajes de líneas distintas y
+    """Aviso heurístico: pares de viajes de líneas distintas y
     NO declarados como el mismo `bus:` que parecen el mismo autobús (2 o más
     localidades comunes en el mismo orden, días solapados y la misma hora en la
     primera parada común) pero discrepan más adelante. Solo avisa: la fusión
@@ -1664,7 +1664,7 @@ def validar(directorio: Path | str) -> Resultado:
     if paradas_sin_usar:
         avisos.append(f"Paradas definidas que ninguna línea usa: {paradas_sin_usar}")
 
-    # buscaBus/design.md 2.3: la misma fila de avisos cubre "paradas o localidades
+    # La misma fila de avisos cubre "paradas o localidades
     # definidas que ninguna línea usa". Una localidad está en uso si alguna de
     # sus paradas físicas aparece en algún viaje.
     localidades_usadas = {

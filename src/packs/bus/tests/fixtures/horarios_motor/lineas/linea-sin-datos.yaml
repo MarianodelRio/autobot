@@ -1,6 +1,6 @@
 # De lunes a viernes no hay datos (nunca se trata como sin servicio). El
 # sábado sí hay tabla (solo para que el motor sepa que esta línea conecta
-# E-F y G-H "alguna vez", igual que exige design.md 3 para distinguir
+# E-F y G-H "alguna vez", para distinguir
 # sin_trayecto de sin_datos).
 nombre: Línea Sin Datos
 avisos: []

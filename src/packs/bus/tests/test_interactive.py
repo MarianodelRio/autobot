@@ -1,5 +1,5 @@
 """packs/bus/tests/test_interactive.py — ninguna lista supera 10 filas ni ningún botón
-3 (buscaBus/design.md, 4 y 9). La prueba más importante: la lista de destinos depende
+3. La prueba más importante: la lista de destinos depende
 del origen elegido y nunca puede pasarse del límite."""
 
 from typing import Any
@@ -12,8 +12,7 @@ from packs.bus.interactive import descripcion_linea
 from packs.bus.modelo import Linea, Localidad
 from packs.bus.tests.compat import CONFIG, NEGOCIO_TELEFONO, datos_reales, wa, wa_all
 
-# Los constructores con la firma de buscaBus (sin la config, que antes era
-# global) y el payload de WhatsApp que leían estos tests.
+# Los constructores sin la config y el payload de WhatsApp que leen estos tests.
 
 
 def build_menu() -> dict[str, Any]:

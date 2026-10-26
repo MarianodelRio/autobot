@@ -1,6 +1,6 @@
 """tools/bus_formatear.py — make bus-formatear TENANT=<slug>.
 
-Portado de `buscaBus/tools/formatear.py`. Realinea las columnas de los bloques
+Realinea las columnas de los bloques
 `tabla: |` de `lineas/*.yaml` del dataset del tenant a
 nivel de texto, sin volcar el YAML de nuevo (para no tocar comentarios, orden
 de claves ni nada más del fichero). Es idempotente: ejecutarlo dos veces

@@ -1,4 +1,4 @@
-"""packs/bus/tests/test_query.py — motor de consulta (buscaBus/design.md, sección 3).
+"""packs/bus/tests/test_query.py — motor de consulta.
 
 Pruebas doradas contra `horarios/` real (verificadas a mano contra
 horarios/lineas/*.yaml) más pruebas sobre la mezcla sintética

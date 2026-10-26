@@ -1,5 +1,5 @@
 # Variante de observaciones_base.yaml con un marcador `{otro}` en el texto
-# que no es `{telefono}` (design.md 2.3 — solo se admite `{telefono}`).
+# que no es `{telefono}` (solo se admite `{telefono}`).
 a_demanda:
   letra: D
   tipo: condicion

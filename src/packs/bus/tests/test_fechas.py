@@ -1,4 +1,4 @@
-"""packs/bus/tests/test_fechas.py — lector de fechas en formato cerrado (buscaBus/design.md 4.5)."""
+"""packs/bus/tests/test_fechas.py — lector de fechas en formato cerrado."""
 
 from __future__ import annotations
 

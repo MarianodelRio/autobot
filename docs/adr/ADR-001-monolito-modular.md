@@ -16,7 +16,7 @@ Una sola persona construye y opera la plataforma para 5–15 negocios. Hay que a
 
 - **Microservicios**: más despliegues y fallos parciales; sin beneficio a esta escala.
 - **Celery + Redis**: una pieza más que operar; Postgres ya da transacciones compartidas con los datos (el trabajo solo existe si hay COMMIT).
-- **FastAPI** (la base de los bots de origen): habría que montar a mano admin, migraciones y ORM, que Django trae.
+- **FastAPI**: habría que montar a mano admin, migraciones y ORM, que Django trae.
 
 ## Consecuencias
 

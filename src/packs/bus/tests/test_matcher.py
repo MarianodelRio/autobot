@@ -1,4 +1,4 @@
-"""packs/bus/tests/test_matcher.py — reglas de coincidencia de texto de buscaBus/design.md 4.7,
+"""packs/bus/tests/test_matcher.py — reglas de coincidencia de texto,
 contra `horarios/` real y una fixture pequeña para el límite de candidatas."""
 
 from __future__ import annotations
@@ -341,7 +341,7 @@ def test_propiedad_toda_localidad_por_su_nombre_exacto() -> None:
     # par Villafranca (de Córdoba / de los Barros): la ambigüedad declarada
     # solo salta al escribir el alias compartido "villafranca" (ver
     # test_villafranca_siempre_pregunta), nunca al escribir el nombre
-    # completo (buscaBus/design.md 4.7: "Villafranca de Córdoba" resuelve sola).
+    # completo ("Villafranca de Córdoba" resuelve sola).
     h = _horarios_real()
     m = matcher.Matcher(h)
     for lid, loc in h.modelo.localidades.items():

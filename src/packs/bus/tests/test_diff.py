@@ -1,5 +1,5 @@
 """packs/bus/tests/test_diff.py — altas, bajas y cambios de hora, de observaciones, de
-temporadas y de días, en lenguaje de negocio (buscaBus/design.md, sección 9).
+temporadas y de días, en lenguaje de negocio.
 
 Construye Modelo/Linea/Viaje/Paso/Temporada a mano: diff.py es puro y no toca
 disco ni invoca formato.validar()."""

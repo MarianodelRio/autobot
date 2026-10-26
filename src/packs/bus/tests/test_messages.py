@@ -1,5 +1,5 @@
 """packs/bus/tests/test_messages.py — cabecera de fecha y mensaje de "sin servicio" del
-resultado (buscaBus/design.md, 4.6), con los horarios reales de `horarios/`."""
+resultado, con los horarios reales de `horarios/`."""
 
 from __future__ import annotations
 

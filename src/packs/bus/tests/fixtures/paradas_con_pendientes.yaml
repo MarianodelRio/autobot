@@ -1,5 +1,5 @@
-# Variante de paradas_base.yaml con el campo `pendientes:` (design.md 8,
-# "Correcciones de la fase 1", punto 6). "cabeza-del-buey" no lo usa ninguna
+# Variante de paradas_base.yaml con el campo `pendientes:`.
+# "cabeza-del-buey" no lo usa ninguna
 # línea (aparece en "Localidades que ninguna línea usa" de la revisión).
 localidades:
   pueblo-a: { nombre: Pueblo A }

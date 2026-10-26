@@ -8,7 +8,7 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 - Responde siempre en español: resúmenes, preguntas, planes y revisiones.
 - Documentos (`README`, `docs/`) en español. Código, identificadores, comandos y mensajes de commit en inglés.
-- Excepción (decidida por la persona, 2026-10-22): el código portado de buscaBus en `packs/bus/` conserva sus identificadores en español (`Localidad`, `Viaje`, `SEL_ORIGEN`…); lo nuevo de ese pack va en inglés.
+- Excepción (decidida por la persona, 2026-10-22): el código heredado de `packs/bus/` conserva sus identificadores en español (`Localidad`, `Viaje`, `SEL_ORIGEN`…); lo nuevo de ese pack va en inglés.
 
 ## Forma de trabajo
 
@@ -40,5 +40,4 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 ## Referencias
 
-- Bots de origen (solo lectura, para portar código y requisitos): `~/Desktop/Peluqueria` y `~/Desktop/buscaBus`.
 - Decisiones: `docs/adr/`. Operación: `docs/runbooks/`. Configuración de cada pack: `docs/packs/`.

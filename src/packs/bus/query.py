@@ -1,4 +1,4 @@
-"""packs/bus/query.py — motor de consulta (design.md §10.2; buscaBus/design.md, sección 3).
+"""packs/bus/query.py — motor de consulta.
 
 Puro: no hace E/S ni lee el reloj. `ahora` siempre se recibe como parámetro
 (nunca `datetime.now()` dentro de este módulo), para que las pruebas sean
@@ -18,7 +18,7 @@ from packs.bus.loader import Horarios
 from packs.bus.modelo import Linea, Temporada, Viaje
 
 # Número de días hacia delante en los que se busca la siguiente fecha con
-# servicio cuando la fecha pedida no tiene salidas (buscaBus/design.md, sección 3).
+# servicio cuando la fecha pedida no tiene salidas.
 SIGUIENTE_CON_SERVICIO_DIAS = 45
 
 EstadoConsulta = Literal["con_salidas", "sin_servicio", "sin_datos", "sin_trayecto", "no_vendible"]
@@ -175,7 +175,7 @@ def _evaluar_pareja(
     info: InfoDia,
     clase: str,
 ) -> tuple[bool, tuple[str, ...]]:
-    """Comprueba las condiciones de negocio (buscaBus/design.md, 2.4 y 3) que aplican
+    """Comprueba las condiciones de negocio que aplican
     a esta pareja concreta de paradas de un viaje, y devuelve si es válida y
     las notas (texto ya resuelto) que debe llevar. Ningún pendiente (`Pnn`)
     aparece nunca aquí: son solo para negocio/validador."""
@@ -199,7 +199,7 @@ def _evaluar_pareja(
 
 
 def _resolver_fecha(horarios: Horarios, origen: str, destino: str, fecha: date) -> _Resolucion:
-    """Precedencia (buscaBus/design.md, sección 3): sin_trayecto, sin_servicio en
+    """Precedencia: sin_trayecto, sin_servicio en
     ninguna línea (P03g), fuera de vigencia (sin_datos), líneas."""
     modelo = horarios.modelo
     calendario = modelo.calendario

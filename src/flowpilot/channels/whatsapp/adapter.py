@@ -1,5 +1,4 @@
-"""WhatsApp Cloud API adapter, ported from `webhook.py` and `whatsapp.py`
-of Peluquería.
+"""WhatsApp Cloud API adapter.
 
 Logs never carry identifiers, texts or provider response bodies (a 4xx body may hold
 personal data): only status and error codes.

@@ -1,4 +1,4 @@
-"""Calendar API contract, with response shapes from the source bot's tests."""
+"""Calendar API contract, with recorded response shapes."""
 
 import contextlib
 import json

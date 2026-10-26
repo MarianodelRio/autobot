@@ -1,6 +1,6 @@
 """packs/bus/tests/test_loader.py — cargar() nunca devuelve datos parciales: o carga
 horarios/ real con índices precalculados, o lanza HorariosInvalidos con la
-lista completa de errores (buscaBus/design.md, 2.4)."""
+lista completa de errores."""
 
 from __future__ import annotations
 

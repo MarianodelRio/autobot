@@ -33,7 +33,7 @@ def main(
     from packs.salon.migration import migrate
 
     parser = argparse.ArgumentParser(
-        description="Migrar metadatos de citas heredadas de Peluquería"
+        description="Migrar metadatos de citas heredadas del bot anterior"
     )
     parser.add_argument("slug")
     parser.add_argument(

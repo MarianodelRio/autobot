@@ -1,6 +1,5 @@
 """packs/bus/diff.py — diferencias entre dos versiones de horarios/
-en lenguaje de negocio (buscaBus/design.md, sección 2.3, "Cambios desde la versión
-publicada").
+en lenguaje de negocio ("Cambios desde la versión publicada").
 
 Módulo puro: no toca disco, no invoca git, no lanza excepciones por
 diferencias de negocio. Compara dos `Modelo` ya validados por
@@ -42,7 +41,7 @@ _ESTADOS_EN_PALABRAS = {
 # Orden estable de las clases de día para recorrer los cambios de "dias".
 _ORDEN_CLASES = DIAS_INDIVIDUALES
 
-# Fraseo "en palabras" de cada clave de tabla (buscaBus/design.md sección 2.3). Se
+# Fraseo "en palabras" de cada clave de tabla. Se
 # construye a partir de GRUPOS_DIA para no duplicar el catálogo de claves de
 # formato.py, con los textos exactos que pide el diseño.
 _CLASES_EN_PALABRAS = {
@@ -121,8 +120,7 @@ def _minutos(hhmm: str) -> int:
 
 # Diferencia máxima (minutos) entre las horas del primer punto en común de
 # dos viajes para considerarlos "el mismo viaje que cambió de hora" en vez de
-# una alta y una baja independientes (buscaBus/design.md 8, "Correcciones de la fase
-# 1", punto 3).
+# una alta y una baja independientes.
 _UMBRAL_MINUTOS_EMPAREJADO = 30
 
 
@@ -160,7 +158,7 @@ def _clave_viaje(viaje: Viaje) -> tuple[Any, ...]:
     )
 
 
-# El emparejado usa la salida de cada parada común (buscaBus/design.md 2.3): la hora
+# El emparejado usa la salida de cada parada común: la hora
 # a la que el autobús sale de ella.
 def _diferencia_primer_paso_comun(viaje_a: Viaje, viaje_b: Viaje) -> int | None:
     horas_b = {p.parada: p.salida for p in viaje_b.pasos}
@@ -362,8 +360,8 @@ def _comparar_tabla(
     return mensajes
 
 
-# Fraseo del verbo según la posición del paso en el viaje *actual* (buscaBus/design.md
-# 8, "Correcciones de la fase 1", punto 7: no siempre es "la salida").
+# Fraseo del verbo según la posición del paso en el viaje *actual* (no siempre es
+# "la salida").
 _VERBO_POR_POSICION = {
     "primera": "Sale de",
     "intermedia": "Pasa por",
