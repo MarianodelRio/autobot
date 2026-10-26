@@ -19,6 +19,12 @@ staticfiles/
 revision/
 qr/
 backups/
+.deployed-sha
+.deploy.lock
+.deployed-sha.tmp
+.backup.lock
+.restore-incomplete
+state/
 
 # Claves y credenciales
 *.pem

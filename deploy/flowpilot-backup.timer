@@ -1,0 +1,11 @@
+[Unit]
+Description=Run FlowPilot backup every six hours
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:00:00 UTC
+Persistent=true
+RandomizedDelaySec=5m
+Unit=flowpilot-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -89,7 +89,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
 | F6 | Avisos, operación y observabilidad | 5 | 5 | implementación, revisiones y aprobación completas; validación manual pendiente |
-| F7 | Infraestructura y despliegue | 5 | 0 | 2/5 implementaciones preparadas; cierres bloqueados |
+| F7 | Infraestructura y despliegue | 5 | 0 | 3/5 implementaciones preparadas; cierres bloqueados |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
 | **Total** | | **52** | **44** | |
 
@@ -1028,14 +1028,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** Script de despliegue con SHA completo, bloqueo, pull, migración, `sync_tenants --strict`, salud hasta 60 s y rollback de imagen/configuración con aviso único a ops. Workflow manual con entorno `production`, verificación de ancestro de main, imagen GHCR y SSH con clave restringida; `make deploy`. 7 tests nuevos de despliegue/sincronización, ShellCheck y actionlint en verde. Revisión independiente aprobada por `review_72` tras corregir hallazgos de permisos, CI, espera y rollback. Prueba real de SHA roto aplazada a M-7.6; cierre bloqueado por T-7.1.
 
 ### T-7.3 · Backups y restauración 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-7.1 · **Diseño:** §14.4
+- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-7.1 · **Diseño:** §14.4
 - **Hacer:**
   - `deploy/backup.sh` (`pg_dump`, ficheros de secretos, restic, `forget --prune` con la política del diseño y ping a healthchecks).
   - `deploy/restore.sh` y el timer de systemd cada 6 h.
   - Objetivos `make backup-now` y `make restore-test`.
 - **Acepta:** restaurar en local un backup hecho en local deja los mismos conteos por tenant.
 - **Tests:** `shellcheck`; prueba de restauración en local documentada en las notas.
-- **Notas:** —
+- **Notas:** Backup cada 6 h con `pg_dump -Fc`, `.env`, secretos, Caddyfile y SHA desplegado en restic; retención 7 diarias/4 semanales/6 mensuales y ping tras éxito. Restore a destino vacío con reintento controlado, SHA validado y parada previa de servicios si quedó incompleto. `make restore-test` creó dos proyectos Docker locales y comparó `autocares-ss|1` antes/después; ShellCheck pasó. Revisión independiente aprobada por `review_73` tras corregir el reintento. Bucket/credenciales y simulacro real siguen en M-7.2/M-7.6; cierre bloqueado por T-7.1.
 
 ### T-7.4 · Preparación del servidor ⚠️ 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-7.2, T-7.3, M-7.1 · **Diseño:** §13, §14.1
