@@ -79,6 +79,14 @@ def test_sync_tenants_keeps_going_with_broken_tenants(tenants_dir: Path) -> None
     assert set(Tenant.objects.using("owner").values_list("slug", flat=True)) == {"good", "deg"}
 
 
+@pytest.mark.django_db(databases=["default", "owner"])
+def test_sync_tenants_strict_reports_skipped_rows(tenants_dir: Path) -> None:
+    write_tenants(tenants_dir.parent, tenant_yaml("good"), raw={"bad": "id: ["})
+    with pytest.raises(CommandError, match="could not be synchronized"):
+        run("sync_tenants", "--strict")
+    assert list(Tenant.objects.using("owner").values_list("slug", flat=True)) == ["good"]
+
+
 def test_new_tenant_creates_a_valid_onboarding_tenant(tenants_dir: Path) -> None:
     run("new_tenant", "nuevo-negocio", "--pack", "toy", "--channel", "whatsapp", "--name", "Nuevo")
     doc = yaml.safe_load((tenants_dir / "nuevo-negocio" / "tenant.yaml").read_text())

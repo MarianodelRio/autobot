@@ -89,7 +89,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
 | F6 | Avisos, operación y observabilidad | 5 | 5 | implementación, revisiones y aprobación completas; validación manual pendiente |
-| F7 | Infraestructura y despliegue | 5 | 0 | 1/5 implementaciones preparadas; cierres bloqueados |
+| F7 | Infraestructura y despliegue | 5 | 0 | 2/5 implementaciones preparadas; cierres bloqueados |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
 | **Total** | | **52** | **44** | |
 
@@ -1018,14 +1018,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** Compose de producción con UID no root que lee secretos 0600, variables separadas por servicio, GHCR por SHA, BD privada y Caddy con solo las cuatro rutas públicas; WhiteNoise y estáticos en la imagen. `make check-prod-config` pasó con Caddy local y backend de prueba (rutas internas 404). Revisión técnica independiente aprobada por `review_71`, incluido el ajuste de UID. Aprobación humana de infraestructura solicitada y pendiente; no se ha ejecutado en VPS.
 
 ### T-7.2 · Despliegue 🤖
-- **Estado:** pending · **Revisión:** — · **Depende de:** T-7.1, T-0.3 · **Diseño:** §14.6
+- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-7.1, T-0.3 · **Diseño:** §14.6
 - **Hacer:**
   - `deploy/deploy.sh <sha>`: pull, migraciones con `sync_tenants`, `up`, espera de `/health` y vuelta automática al SHA anterior con aviso a ops.
   - `.github/workflows/deploy.yml` con `workflow_dispatch` y el entorno `production`.
   - Objetivo `make deploy`.
 - **Acepta:** un SHA con `/health` roto vuelve solo al anterior (probado en el servidor en M-7.6).
 - **Tests:** `shellcheck` del script en CI.
-- **Notas:** —
+- **Notas:** Script de despliegue con SHA completo, bloqueo, pull, migración, `sync_tenants --strict`, salud hasta 60 s y rollback de imagen/configuración con aviso único a ops. Workflow manual con entorno `production`, verificación de ancestro de main, imagen GHCR y SSH con clave restringida; `make deploy`. 7 tests nuevos de despliegue/sincronización, ShellCheck y actionlint en verde. Revisión independiente aprobada por `review_72` tras corregir hallazgos de permisos, CI, espera y rollback. Prueba real de SHA roto aplazada a M-7.6; cierre bloqueado por T-7.1.
 
 ### T-7.3 · Backups y restauración 🤖
 - **Estado:** pending · **Revisión:** — · **Depende de:** T-7.1 · **Diseño:** §14.4

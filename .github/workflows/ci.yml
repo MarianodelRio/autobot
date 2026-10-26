@@ -63,6 +63,11 @@ jobs:
         run: |
           uv run ruff check .
           uv run ruff format --check .
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck deploy/*.sh deploy/postgres/*.sh
       - name: mypy
         run: uv run mypy
       - name: import-linter
