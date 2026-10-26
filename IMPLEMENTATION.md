@@ -89,7 +89,7 @@ Una acción 👤 sin hacer bloquea **solo** las tareas y validaciones que depend
 | F4 | Pack `bus` | 6 | 6 | validación manual pendiente (bot de desarrollo, M-3.1) |
 | F5 | Pack `salon` | 9 | 9 | implementación y revisiones completas; validación manual pendiente |
 | F6 | Avisos, operación y observabilidad | 5 | 5 | implementación, revisiones y aprobación completas; validación manual pendiente |
-| F7 | Infraestructura y despliegue | 5 | 0 | implementación técnica preparada y revisada; aprobaciones y M-7.x pendientes |
+| F7 | Infraestructura y despliegue | 5 | 2 | T-7.1 y T-7.3 cerradas con aprobación; T-7.2, T-7.4 y T-7.5 esperan M-7.x; validación pendiente |
 | F8 | Puesta en marcha de los negocios | 3 | 0 | pending |
 | **Total** | | **52** | **44** | |
 
@@ -1008,14 +1008,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
 **Resultado verificable:** FlowPilot corriendo en la VPS con HTTPS, desplegado desde GitHub, con backups externos y una restauración probada.
 
 ### T-7.1 · Compose de producción y Caddy ⚠️ 🤖
-- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-6.4 · **Diseño:** §14.2, §14.3, §13
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-6.4 · **Diseño:** §14.2, §14.3, §13
 - **Hacer:**
   - `compose.prod.yaml`: imagen de GHCR por `SHA`, `read_only`, `tmpfs`, secretos montados de solo lectura, logs rotados y `web` publicado solo en `127.0.0.1:8000`.
   - `Caddyfile` con solo las rutas públicas de §14.3.
   - `.env.example` y `secrets.example.yaml` de producción.
 - **Acepta:** en local, con la configuración de producción, las rutas no públicas devuelven 404 a través de Caddy.
 - **Tests:** script de comprobación de rutas incluido en `make check-prod-config`.
-- **Notas:** Compose de producción con UID no root que lee secretos 0600, variables separadas por servicio, GHCR por SHA, BD privada y Caddy con solo las cuatro rutas públicas; WhiteNoise y estáticos en la imagen. `make check-prod-config` pasó con Caddy local y backend de prueba (rutas internas 404). Revisión técnica independiente aprobada por `review_71`, incluido el ajuste de UID. Aprobación humana de infraestructura solicitada y pendiente; no se ha ejecutado en VPS.
+- **Notas:** Compose de producción con UID no root que lee secretos 0600, variables separadas por servicio, GHCR por SHA, BD privada y Caddy con solo las cuatro rutas públicas; WhiteNoise y estáticos en la imagen. `make check-prod-config` pasó con Caddy local y backend de prueba (rutas internas 404). Revisión técnica independiente aprobada por `review_71`, incluido el ajuste de UID. Aprobación humana de infraestructura recibida el 2026-10-26 («approbe all»); CI del SHA `c513c9a` en verde. No se ha ejecutado en VPS (eso es M-7.1 y M-7.6).
 
 ### T-7.2 · Despliegue 🤖
 - **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-7.1, T-0.3 · **Diseño:** §14.6
@@ -1028,14 +1028,14 @@ Cada acción está detallada en su fase, con cómo verificarla.
 - **Notas:** Script de despliegue con SHA completo, bloqueo, pull, migración, `sync_tenants --strict`, salud hasta 60 s y rollback de imagen/configuración con aviso único a ops. Workflow manual con entorno `production`, verificación de ancestro de main, imagen GHCR y SSH con clave restringida; `make deploy`. 7 tests nuevos de despliegue/sincronización, ShellCheck y actionlint en verde. Revisión independiente aprobada por `review_72` tras corregir hallazgos de permisos, CI, espera y rollback. Prueba real de SHA roto aplazada a M-7.6; cierre bloqueado por T-7.1.
 
 ### T-7.3 · Backups y restauración 🤖
-- **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-7.1 · **Diseño:** §14.4
+- **Estado:** done · **Revisión:** aprobada · **Depende de:** T-7.1 · **Diseño:** §14.4
 - **Hacer:**
   - `deploy/backup.sh` (`pg_dump`, ficheros de secretos, restic, `forget --prune` con la política del diseño y ping a healthchecks).
   - `deploy/restore.sh` y el timer de systemd cada 6 h.
   - Objetivos `make backup-now` y `make restore-test`.
 - **Acepta:** restaurar en local un backup hecho en local deja los mismos conteos por tenant.
 - **Tests:** `shellcheck`; prueba de restauración en local documentada en las notas.
-- **Notas:** Backup cada 6 h con `pg_dump -Fc`, `.env`, secretos, Caddyfile y SHA desplegado en restic; retención 7 diarias/4 semanales/6 mensuales y ping tras éxito. Restore a destino vacío con reintento controlado, SHA validado y parada previa de servicios si quedó incompleto. `make restore-test` creó dos proyectos Docker locales y comparó `autocares-ss|1` antes/después; ShellCheck pasó. Revisión independiente aprobada por `review_73` tras corregir el reintento. Bucket/credenciales y simulacro real siguen en M-7.2/M-7.6; cierre bloqueado por T-7.1.
+- **Notas:** Backup cada 6 h con `pg_dump -Fc`, `.env`, secretos, Caddyfile y SHA desplegado en restic; retención 7 diarias/4 semanales/6 mensuales y ping tras éxito. Restore a destino vacío con reintento controlado, SHA validado y parada previa de servicios si quedó incompleto. `make restore-test` creó dos proyectos Docker locales y comparó `autocares-ss|1` antes/después; ShellCheck pasó. Revisión independiente aprobada por `review_73` tras corregir el reintento. Bucket/credenciales y simulacro real siguen en M-7.2/M-7.6; cerrada con la aprobación de T-7.1 (2026-10-26) por cumplir su criterio en local.
 
 ### T-7.4 · Preparación del servidor ⚠️ 🤖
 - **Estado:** blocked · **Revisión:** aprobada · **Depende de:** T-7.2, T-7.3, M-7.1 · **Diseño:** §13, §14.1
@@ -1098,7 +1098,7 @@ Cada acción está detallada en su fase, con cómo verificarla.
   3. Hacer el primer simulacro de restauración en una VPS temporal y anotar el tiempo (objetivo: menos de 2 h).
 - **Verificar:** checklist de la validación de F7.
 
-**Notas para retomar (2026-10-26):** las cinco implementaciones de F7 están preparadas y tienen revisión técnica independiente aprobada. `make check` (1.735 tests, Ruff, formato, mypy y contratos), `make check-prod-config`, ShellCheck, actionlint, migraciones, auditoría de dependencias y restauración local con conteos por tenant pasan. CI en GitHub debe verificarse tras el push; las pruebas reales siguen pendientes. T-7.1 y T-7.4 esperan aprobación humana explícita (solicitada); T-7.4 también espera M-7.1. Las demás tareas quedan bloqueadas por sus dependencias, no por fallo técnico. M-7.2–M-7.6 y la validación con servicios reales se dejan para la persona operadora al final. No se ha ejecutado nada en producción.
+**Notas para retomar (2026-10-26):** las cinco implementaciones de F7 están preparadas y tienen revisión técnica independiente aprobada. `make check` (1.735 tests, Ruff, formato, mypy y contratos), `make check-prod-config`, ShellCheck, actionlint, migraciones, auditoría de dependencias y restauración local con conteos por tenant pasan. CI del SHA `c513c9a` en verde. Las pruebas reales siguen pendientes. T-7.1 recibió aprobación humana el 2026-10-26 y T-7.3 se cierra con ella. T-7.4 espera M-7.1 (dominio y VPS); T-7.2 cierra al ejecutar M-7.6 en el servidor, ya que su criterio lo exige. T-7.5 depende de T-7.4. M-7.2–M-7.6 y la validación con servicios reales se dejan para la persona operadora al final. No se ha ejecutado nada en producción.
 
 ### ✅ Validación F7
 - [ ] `https://api.<dominio>/health` responde 200 con certificado válido; `/admin/` devuelve 404 desde fuera y funciona por `make admin-tunnel`.
