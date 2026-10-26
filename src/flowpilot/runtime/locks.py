@@ -11,9 +11,11 @@ def contact_hash(tenant_id: UUID, channel: str, external_id: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
-def telegram_user_lock(user_id: str) -> str:
-    """`tg:<h>`: the test bot's selector handles one user's updates one at a time."""
-    return f"tg:{hashlib.sha256(f'tg\x00{user_id}'.encode()).hexdigest()[:16]}"
+def demo_user_lock(channel: str, external_id: str) -> str:
+    """`demo:<h>`: the demo selector handles one person's updates, on one door, one
+    at a time."""
+    key = f"{channel}\x00{external_id}"
+    return f"demo:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
 
 
 def conversation_lock(tenant_id: UUID, channel: str, external_id: str) -> str:

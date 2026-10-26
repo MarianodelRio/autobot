@@ -33,7 +33,7 @@ pytestmark = [
 def alerts(monkeypatch: pytest.MonkeyPatch, settings: Any) -> list[tuple[Any, ...]]:
     found: list[tuple[Any, ...]] = []
     settings.HEALTHCHECKS_PING_URL = ""
-    settings.TEST_BOT_TOKEN = ""
+    settings.DEMO_TELEGRAM_TOKEN = ""
     settings.NOTIFY_BOT_TOKEN = ""
     monkeypatch.setattr(check, "send_ops_alert", lambda *args: found.append(args))
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
@@ -81,15 +81,15 @@ def test_outbound_row(
     assert ("outbound_failed" in kinds(alerts)) == expected
 
 
-def test_auth_row_separates_test_bot(tenants: Any, alerts: Any) -> None:
+def test_auth_row_separates_the_demo_bot(tenants: Any, alerts: Any) -> None:
     tenants(wa_tenant())
     row = message(status="failed", last_error="auth: HTTP 401")
     check.run()
     assert ("auth", row.tenant_id) in [(a[0], a[1]) for a in alerts]
     alerts.clear()
-    OutboundMessage.objects.using("owner").filter(id=row.id).update(channel="test")
+    OutboundMessage.objects.using("owner").filter(id=row.id).update(channel="demo_tg")
     check.run()
-    assert ("auth:test", None) in [(a[0], a[1]) for a in alerts]
+    assert ("auth:demo_tg", None) in [(a[0], a[1]) for a in alerts]
     assert "auth" not in kinds(alerts)
 
 
@@ -107,7 +107,7 @@ def test_three_errors_reset_and_persist(tenants: Any, alerts: Any) -> None:
         state.record(tenant.id, "main", failed=True)
     check.run()
     assert "errors:main" in kinds(alerts)
-    assert state.read(tenant.id, "test") == {}
+    assert state.read(tenant.id, "demo_tg") == {}
     state.record(tenant.id, "main", failed=False)
     alerts.clear()
     check.run()
@@ -285,12 +285,12 @@ def test_unknown_legacy_first_observation(tenants: Any, alerts: Any, monkeypatch
     assert "outbound_failed" in kinds(alerts)
 
 
-@pytest.mark.parametrize("bot", ["test", "notify"])
+@pytest.mark.parametrize("bot", ["demo_tg", "demo_wa", "notify"])
 def test_platform_bot_auth_signal(tenants: Any, alerts: Any, bot: str) -> None:
     tenants()
     cache.set(f"bot:{bot}:auth", True, timeout=None)
     check.run()
-    kind = "auth:test" if bot == "test" else "bot:notify:auth"
+    kind = f"auth:{bot}" if bot != "notify" else "bot:notify:auth"
     assert (kind, None) in [(a[0], a[1]) for a in alerts]
 
 

@@ -1,19 +1,16 @@
 """The adapter, channel description and secrets of each conversation channel:
-`main` is the tenant's own channel; `test` is the platform's test bot."""
+`main` is the tenant's own channel; `demo_tg`/`demo_wa` are the platform's demo
+doors (`channels/demo/doors.py`), shared by every demo tenant."""
 
-import secrets
 from dataclasses import dataclass
-from functools import cache
 from typing import Any
 
-from django.conf import settings
-
 from flowpilot.channels.base import ChannelAdapter
+from flowpilot.channels.demo.doors import door
 from flowpilot.channels.telegram import TelegramAdapter
 from flowpilot.channels.whatsapp import WhatsAppAdapter
 from flowpilot.runtime.models import Channel
 from flowpilot.tenancy.registry import LoadedTenant
-from flowpilot.tenancy.schema import TelegramSecrets
 
 WHATSAPP = WhatsAppAdapter()
 TELEGRAM = TelegramAdapter()
@@ -22,7 +19,7 @@ TELEGRAM = TelegramAdapter()
 @dataclass(frozen=True)
 class Endpoint:
     adapter: ChannelAdapter[Any, Any]
-    channel: Any  # the tenant.yaml channel, or None for the test bot
+    channel: Any  # the tenant.yaml channel, or the demo door's description
     secrets: Any
 
 
@@ -33,20 +30,10 @@ def endpoint(tenant: LoadedTenant, channel: str) -> Endpoint:
             WHATSAPP if tenant.file.channel.type == "whatsapp" else TELEGRAM
         )
         return Endpoint(adapter, tenant.file.channel, tenant.secrets)
-    # The test channel always talks through the platform's test bot, whatever the
-    # tenant's main channel is: never WhatsApp nor the business's own bot.
-    return Endpoint(TELEGRAM, None, test_bot_secrets())
-
-
-@cache
-def test_bot_secrets() -> TelegramSecrets | None:
-    """The test bot's secrets, or None if it has no token. Without a webhook secret the
-    webhook is off (the view checks the setting), so a random one fills the field."""
-    if not settings.TEST_BOT_TOKEN:
-        return None
-    return TelegramSecrets.model_validate(
-        {
-            "bot_token": settings.TEST_BOT_TOKEN,
-            "webhook_secret": settings.TEST_BOT_WEBHOOK_SECRET or secrets.token_urlsafe(32),
-        }
-    )
+    # A demo door always talks through the platform's own credentials, whatever the
+    # tenant's main channel is (a demo tenant has none): never a business's own bot.
+    found = door(Channel(channel))
+    demo_adapter: ChannelAdapter[Any, Any] = WHATSAPP if channel == Channel.DEMO_WA else TELEGRAM
+    if found is None:  # the door is off: fail to send, as if its token were missing
+        return Endpoint(demo_adapter, None, None)
+    return Endpoint(found.adapter, found.description, found.secrets)

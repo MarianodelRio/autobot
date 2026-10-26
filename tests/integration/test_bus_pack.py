@@ -1,7 +1,6 @@
-"""The bus pack end to end ("consulta completa por Telegram"): a tenant
-with its timetable in `datasets/timetable/`, loaded by the registry, picked in the test
-bot and queried through the real runtime (webhook → route → process_event → send), and
-the same query by the WhatsApp main channel."""
+"""The bus pack end to end: a tenant with its timetable in `datasets/timetable/`,
+loaded by the registry and queried through the real runtime (webhook → route →
+process_event → send), by its WhatsApp and by its Telegram main channel."""
 
 import json
 import shutil
@@ -27,22 +26,16 @@ from packs.bus.pack import pack as bus_pack
 from packs.bus.tests.compat import CONFIG, HORARIOS_REAL
 from packs.registry import PACKS as REGISTERED
 from tests.integration.helpers import (
+    Providers,
+    drain,
     fixture,
     post_tg,
     post_wa,
+    providers,  # noqa: F401 (fixture)
     tg_tenant,
     wa_press,
     wa_tenant,
     wa_text,
-)
-from tests.integration.test_test_bot import (  # noqa: F401 (fixtures)
-    OPERATOR,
-    Providers,
-    drain,
-    press,
-    providers,
-    say,
-    test_bot,
 )
 from tests.tenancy.helpers import PACKS, TG_SECRETS, WA_SECRETS, write_secrets
 
@@ -115,33 +108,6 @@ def wednesday(monkeypatch: pytest.MonkeyPatch) -> None:
         return datetime(2026, 9, 23, 10, 0, tzinfo=self.tz)
 
     monkeypatch.setattr(SystemClock, "now", now)
-
-
-@pytest.mark.usefixtures("wednesday")
-def test_a_full_query_through_the_test_bot(
-    bus_tenants: Setup,
-    providers: Providers,  # noqa: F811 (the imported fixture)
-) -> None:
-    bus_tenants(autocares())
-    say(OPERATOR, "/start")
-    press(OPERATOR, "fp_select:wa")
-    assert providers.buttons(OPERATOR) == ["menu_horarios", "menu_info"]
-
-    press(OPERATOR, "menu_horarios")
-    assert "¿Desde qué pueblo sales?" in providers.texts(OPERATOR)[-1]
-    say(OPERATOR, "pozoblanco")
-    assert "¿A dónde vas?" in providers.texts(OPERATOR)[-1]
-    press(OPERATOR, "loc:cordoba")
-    assert providers.buttons(OPERATOR)[:2] == ["dia:2026-09-23", "dia:2026-09-24"]
-    press(OPERATOR, "dia:2026-09-24")
-    result = providers.texts(OPERATOR)[-1]
-    assert result.startswith("🚌 Pozoblanco → Córdoba\n📅 Jueves 24/09")
-    assert providers.buttons(OPERATOR) == ["otro_dia", "vuelta", "otra_consulta"]
-
-    press(OPERATOR, "vuelta")
-    assert "Córdoba → Pozoblanco" in providers.texts(OPERATOR)[-1]
-    # Everything went to the test bot; nothing to Meta.
-    assert providers.meta == []
 
 
 @pytest.mark.usefixtures("wednesday")

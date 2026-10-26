@@ -37,18 +37,18 @@ def test_manage_check_passes_without_database() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_test_bot_operators_must_be_ids() -> None:
+def test_demo_telegram_users_must_be_ids() -> None:
     code = "import sys; sys.path.insert(0, 'src'); import config.settings as s;"
-    code += " print(sorted(s.TEST_BOT_OPERATORS))"
-    ok = run("-c", code, TEST_BOT_OPERATORS="12, 34 56")
+    code += " print(sorted(s.DEMO_TELEGRAM_USERS))"
+    ok = run("-c", code, DEMO_TELEGRAM_USERS="12, 34 56")
     assert ok.stdout.strip() == "[12, 34, 56]", ok.stderr
-    bad = run("manage.py", "check", TEST_BOT_OPERATORS="12,abc")
-    assert bad.returncode != 0 and "TEST_BOT_OPERATORS" in bad.stderr
+    bad = run("manage.py", "check", DEMO_TELEGRAM_USERS="12,abc")
+    assert bad.returncode != 0 and "DEMO_TELEGRAM_USERS" in bad.stderr
 
 
-def test_test_bot_webhook_secret_must_be_long() -> None:
-    result = run("manage.py", "check", TEST_BOT_WEBHOOK_SECRET="short")
-    assert result.returncode != 0 and "TEST_BOT_WEBHOOK_SECRET" in result.stderr
+def test_demo_telegram_webhook_secret_must_be_long() -> None:
+    result = run("manage.py", "check", DEMO_TELEGRAM_WEBHOOK_SECRET="short")
+    assert result.returncode != 0 and "DEMO_TELEGRAM_WEBHOOK_SECRET" in result.stderr
 
 
 def test_prod_requires_secret_key() -> None:

@@ -1,5 +1,5 @@
-"""`manage.py telegram_poll [<slug>]`: long polling of the test bot (by default) or of a
-tenant's own Telegram bot, for local development. The worker
+"""`manage.py telegram_poll [<slug>]`: long polling of the demo bot's Telegram door (by
+default) or of a tenant's own Telegram bot, for local development. The worker
 must be running to process what it receives."""
 
 from typing import Any
@@ -32,7 +32,7 @@ class Command(BaseCommand):
             with httpx.Client(timeout=CLIENT_TIMEOUT_S) as client:
                 poll(bot, client)
         except WebhookActive:
-            target = options["slug"] or "test"
+            target = options["slug"] or "demo"
             raise CommandError(
                 f"{bot.name} has a webhook: Telegram does not allow polling at the same time."
                 f" Remove it with `manage.py telegram_set_webhook {target} --delete`"

@@ -3,23 +3,23 @@
 from flowpilot.runtime.models import (
     Contact,
     Conversation,
+    DemoEvent,
+    DemoSession,
     InboundEvent,
     Notification,
     OutboundMessage,
     PlatformCache,
-    TestBotEvent,
-    TestSession,
 )
 from flowpilot.tenancy.models import Tenant
 
 __all__ = [
     "Contact",
     "Conversation",
+    "DemoEvent",
+    "DemoSession",
     "InboundEvent",
     "Notification",
     "OutboundMessage",
     "PlatformCache",
     "Tenant",
-    "TestBotEvent",
-    "TestSession",
 ]

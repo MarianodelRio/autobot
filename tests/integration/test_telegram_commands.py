@@ -11,10 +11,10 @@ import pytest
 from django.core.management import CommandError, call_command
 from pytest_django import Settings
 
-from flowpilot.channels import adapters, views
+from flowpilot.channels import views
+from flowpilot.channels.demo.doors import door
 from flowpilot.channels.telegram import polling
-from flowpilot.channels.test_bot import selector
-from flowpilot.runtime.models import InboundEvent, TestBotEvent
+from flowpilot.runtime.models import Channel, DemoEvent, InboundEvent
 from tests.integration.helpers import jobs, tg_tenant
 from tests.tenancy.helpers import TG_SECRETS
 
@@ -27,14 +27,14 @@ pytestmark = [
 
 
 @pytest.fixture(autouse=True)
-def test_bot(settings: Settings) -> Iterator[None]:
-    settings.TEST_BOT_TOKEN = "999:TEST-TOKEN"
-    settings.TEST_BOT_WEBHOOK_SECRET = "t" * 32
-    settings.TEST_BOT_OPERATORS = frozenset({1})
+def demo_bot(settings: Settings) -> Iterator[None]:
+    settings.DEMO_TELEGRAM_TOKEN = "999:TEST-TOKEN"
+    settings.DEMO_TELEGRAM_WEBHOOK_SECRET = "t" * 32
+    settings.DEMO_TELEGRAM_USERS = frozenset({1})
     settings.PUBLIC_URL = "https://api.example.org/"
-    adapters.test_bot_secrets.cache_clear()
+    door.cache_clear()
     yield
-    adapters.test_bot_secrets.cache_clear()
+    door.cache_clear()
 
 
 class BotApi:
@@ -81,8 +81,11 @@ def message(update_id: int, user_id: int = 1, text: str = "hola") -> dict[str, A
 # ── telegram_poll enters the same way as the webhook ──────────────────────
 
 
-def test_the_test_bot_source_is_the_webhook_entry() -> None:
-    assert polling.source(None).accept is selector.store_update
+def test_the_demo_bot_source_stores_through_the_selector() -> None:
+    bot = polling.source(None)
+    assert bot.name == "demo bot"
+    bot.accept(message(1))
+    assert DemoEvent.objects.using("owner").filter(channel=Channel.DEMO_TG).count() == 1
 
 
 def test_a_tenant_bot_source_goes_through_the_webhook_entry(
@@ -97,15 +100,15 @@ def test_a_tenant_bot_source_goes_through_the_webhook_entry(
     assert seen == ["tg"]
 
 
-def test_polling_the_test_bot_stores_and_queues_like_the_webhook(tenants: Any) -> None:
+def test_polling_the_demo_bot_stores_and_queues_like_the_webhook(tenants: Any) -> None:
     tenants(tg_tenant())
     api = BotApi(updates(message(10), message(11)))
     polling.poll(polling.source(None), api.client, stop=lambda: not api.answers)
-    assert sorted(TestBotEvent.objects.using("owner").values_list("update_id", flat=True)) == [
-        10,
-        11,
+    assert sorted(DemoEvent.objects.using("owner").values_list("provider_event_id", flat=True)) == [
+        "10",
+        "11",
     ]
-    assert [j[0] for j in jobs()] == ["route_test_update", "route_test_update"]
+    assert [j[0] for j in jobs()] == ["route_demo_event", "route_demo_event"]
     ((where, params),) = api.calls
     assert where == "999:TEST-TOKEN/getUpdates"
     assert params == {"timeout": 25, "allowed_updates": ["message", "callback_query"]}
@@ -132,7 +135,7 @@ def test_the_offset_moves_on_and_errors_do_not_stop_polling(
             raise RuntimeError("bug")
         return True
 
-    bot = polling.Source("test bot", polling.source(None).secrets, flaky)
+    bot = polling.Source("demo bot", polling.source(None).secrets, flaky)
     pauses: list[float] = []
     api = BotApi(
         httpx.Response(502),
@@ -163,7 +166,7 @@ def test_a_tenant_bot_is_polled_only_if_its_webhook_would_accept_it(tenants: Any
 def test_polling_stops_on_an_invalid_token(monkeypatch: pytest.MonkeyPatch) -> None:
     api = BotApi(httpx.Response(401, json={"ok": False, "error_code": 401}))
     monkeypatch.setattr("httpx.Client", lambda **kwargs: api.new_client())
-    with pytest.raises(CommandError, match="refuses the token of test bot"):
+    with pytest.raises(CommandError, match="refuses the token of demo bot"):
         call_command("telegram_poll", stdout=io.StringIO())
 
 
@@ -178,14 +181,14 @@ def test_poll_command_explains_how_to_remove_the_webhook(
 ) -> None:
     api = BotApi(httpx.Response(409, json={"ok": False, "error_code": 409}))
     monkeypatch.setattr("httpx.Client", lambda **kwargs: api.new_client())
-    with pytest.raises(CommandError, match="telegram_set_webhook test --delete"):
+    with pytest.raises(CommandError, match="telegram_set_webhook demo --delete"):
         call_command("telegram_poll", stdout=io.StringIO())
 
 
-def test_poll_command_needs_the_test_bot_token(settings: Settings) -> None:
-    settings.TEST_BOT_TOKEN = ""
-    adapters.test_bot_secrets.cache_clear()
-    with pytest.raises(CommandError, match="TEST_BOT_TOKEN"):
+def test_poll_command_needs_the_demo_telegram_token(settings: Settings) -> None:
+    settings.DEMO_TELEGRAM_TOKEN = ""
+    door.cache_clear()
+    with pytest.raises(CommandError, match="DEMO_TELEGRAM_TOKEN"):
         call_command("telegram_poll", stdout=io.StringIO())
 
 
@@ -199,13 +202,13 @@ def set_webhook(api: BotApi, monkeypatch: pytest.MonkeyPatch, *args: str) -> str
     return out.getvalue()
 
 
-def test_set_the_test_bot_webhook(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_set_the_demo_bot_webhook(monkeypatch: pytest.MonkeyPatch) -> None:
     api = BotApi(httpx.Response(200, json={"ok": True, "result": True}))
-    out = set_webhook(api, monkeypatch, "test")
+    out = set_webhook(api, monkeypatch, "demo")
     ((where, params),) = api.calls
     assert where == "999:TEST-TOKEN/setWebhook"
     assert params == {
-        "url": "https://api.example.org/webhooks/telegram-test",
+        "url": "https://api.example.org/webhooks/telegram-demo",
         "secret_token": "t" * 32,
         "allowed_updates": ["message", "callback_query"],
     }
@@ -224,7 +227,7 @@ def test_set_a_tenant_bot_webhook(tenants: Any, monkeypatch: pytest.MonkeyPatch)
 
 def test_delete_a_webhook(monkeypatch: pytest.MonkeyPatch) -> None:
     api = BotApi(httpx.Response(200, json={"ok": True, "result": True}))
-    assert "deleted" in set_webhook(api, monkeypatch, "test", "--delete")
+    assert "deleted" in set_webhook(api, monkeypatch, "demo", "--delete")
     assert api.calls[0][0] == "999:TEST-TOKEN/deleteWebhook"
 
 
@@ -234,13 +237,13 @@ def test_set_webhook_errors(
     tenants(tg_tenant())
     api = BotApi(httpx.Response(401, json={"ok": False, "error_code": 401}))
     with pytest.raises(CommandError, match="Telegram refused it: HTTP 401, error 401"):
-        set_webhook(api, monkeypatch, "test")
+        set_webhook(api, monkeypatch, "demo")
     with pytest.raises(CommandError, match="no tenant"):
         set_webhook(api, monkeypatch, "nobody")
     settings.PUBLIC_URL = ""
     with pytest.raises(CommandError, match="PUBLIC_URL"):
         set_webhook(api, monkeypatch, "tg")
     settings.PUBLIC_URL = "https://api.example.org"
-    settings.TEST_BOT_WEBHOOK_SECRET = ""
-    with pytest.raises(CommandError, match="TEST_BOT_WEBHOOK_SECRET"):
-        set_webhook(api, monkeypatch, "test")
+    settings.DEMO_TELEGRAM_WEBHOOK_SECRET = ""
+    with pytest.raises(CommandError, match="DEMO_TELEGRAM_WEBHOOK_SECRET"):
+        set_webhook(api, monkeypatch, "demo")

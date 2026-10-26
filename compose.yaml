@@ -38,6 +38,14 @@ services:
     stop_grace_period: 60s
     init: true
 
+  # Keeps the demo bot's Telegram door always on in local, without a foreground
+  # terminal: `make demo-up` / `make demo-down`.
+  demo-poller:
+    <<: *app
+    profiles: [demo]
+    command: python manage.py telegram_poll
+    restart: unless-stopped
+
   db:
     image: postgres:18
     environment:

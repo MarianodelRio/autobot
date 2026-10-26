@@ -11,7 +11,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("slug")
         parser.add_argument("external_id")
-        parser.add_argument("--channel", choices=["main", "test"])
+        parser.add_argument("--channel", choices=["main", "demo_tg", "demo_wa"])
 
     def handle(self, *args: object, **options: object) -> None:
         tenant = privacy.tenant_for(str(options["slug"]))

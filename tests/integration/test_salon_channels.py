@@ -12,10 +12,8 @@ from core.clock import SystemClock
 from flowpilot.runtime import periodic
 from flowpilot.runtime.models import Contact, Notification, OutboundMessage
 from packs.salon.models import CalendarEvent
-from tests.integration.helpers import fixture, post_tg, post_wa, wa_press, wa_text
-from tests.integration.test_test_bot import Providers, drain
-from tests.integration.test_test_bot import providers as recorded_providers  # noqa: F401
-from tests.integration.test_test_bot import test_bot as bot_settings  # noqa: F401
+from tests.integration.helpers import Providers, drain, fixture, post_tg, post_wa, wa_press, wa_text
+from tests.integration.helpers import providers as recorded_providers  # noqa: F401
 
 pytestmark = [
     pytest.mark.django_db(transaction=True, databases=["default", "owner"]),

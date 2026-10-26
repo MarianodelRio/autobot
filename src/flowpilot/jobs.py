@@ -27,7 +27,7 @@ from flowpilot.ops.logging import async_contextual, contextual
 log = logging.getLogger(__name__)
 
 # One worker serves the three queues; separate queues show what gets stuck.
-INBOUND = "inbound"  # process_event, apply_status, route_test_update
+INBOUND = "inbound"  # process_event, apply_status, route_demo_event
 OUTBOUND = "outbound"  # send_message, send_notification
 PERIODIC = "periodic"  # run_periodic, ops_check, retention_cleanup
 QUEUES = (INBOUND, OUTBOUND, PERIODIC)
@@ -37,7 +37,7 @@ PROCESS_EVENT = "process_event"  # (tenant_id, event_id), lock conv:<h>
 APPLY_STATUS = "apply_status"  # (tenant_id, event_id), no lock
 SEND_MESSAGE = "send_message"  # (tenant_id, outbound_id), lock out:<h>
 SEND_NOTIFICATION = "send_notification"  # (tenant_id, notification_id), lock owner:<tenant>
-ROUTE_TEST_UPDATE = "route_test_update"  # (event_id) of test_bot_event, lock tg:<h>
+ROUTE_DEMO_EVENT = "route_demo_event"  # (event_id) of demo_event, lock demo:<h>
 DISPATCH_PERIODIC = "dispatch_periodic"  # (timestamp, pack, name): one per pack Periodic
 RUN_PERIODIC = "run_periodic"  # (tenant_id, name, scheduled_at), queueing lock per both
 RETRY_STALLED_JOBS = "retry_stalled_jobs"  # (timestamp): every 5 min
@@ -92,13 +92,13 @@ class SendRetryStrategy(BaseRetryStrategy):
         return RetryDecision(retry_in={"seconds": math.ceil(wait)})
 
 
-@app.task(queue=INBOUND, name=ROUTE_TEST_UPDATE, retry=INBOUND_RETRY)
-def route_test_update(event_id: str) -> None:
-    from flowpilot.channels.test_bot import selector
+@app.task(queue=INBOUND, name=ROUTE_DEMO_EVENT, retry=INBOUND_RETRY)
+def route_demo_event(event_id: str) -> None:
+    from flowpilot.channels.demo import selector
 
     close_old_connections()
     try:
-        selector.route_test_update(UUID(event_id))
+        selector.route_demo_event(UUID(event_id))
     finally:
         close_old_connections()
 

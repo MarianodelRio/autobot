@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from django import forms
-from django.conf import settings
 from django.contrib import admin
 from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.contenttypes.models import ContentType
@@ -20,8 +19,9 @@ from procrastinate import App
 from procrastinate.contrib.django.django_connector import DjangoConnector
 from procrastinate.contrib.django.models import ProcrastinateEvent, ProcrastinateJob
 
+from flowpilot.channels.demo.doors import door
 from flowpilot.runtime.locks import contact_hash
-from flowpilot.runtime.models import InboundEvent, OutboundMessage
+from flowpilot.runtime.models import DEMO_CHANNELS, Channel, InboundEvent, OutboundMessage
 from flowpilot.tenancy.models import Tenant
 from flowpilot.tenancy.registry import get_registry
 
@@ -117,7 +117,9 @@ class OperationsSite(OTPAdminSite):  # type: ignore[misc]
                 }
             else:
                 health = None
-            for channel in ("main", "test"):
+            demo = loaded is not None and loaded.is_demo
+            channels = ("demo_tg", "demo_wa") if demo else ("main",)
+            for channel in channels:
                 outgoing = OutboundMessage.objects.using(OWNER).filter(
                     tenant=tenant, channel=channel, created_at__gte=start
                 )
@@ -258,7 +260,10 @@ class OutboundAdmin(ReadOnlyAdmin):
                         and not tenant.ambiguous
                         and (
                             (message.channel == "main" and tenant.main_enabled)
-                            or (message.channel == "test" and bool(settings.TEST_BOT_TOKEN))
+                            or (
+                                message.channel in DEMO_CHANNELS
+                                and door(Channel(message.channel)) is not None
+                            )
                         )
                     )
                 if not eligible:

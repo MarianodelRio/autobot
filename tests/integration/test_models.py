@@ -12,11 +12,11 @@ from django.db import DatabaseError, IntegrityError, connections, transaction
 from flowpilot.models import (
     Contact,
     Conversation,
+    DemoEvent,
     InboundEvent,
     Notification,
     OutboundMessage,
     Tenant,
-    TestBotEvent,
 )
 
 pytestmark = pytest.mark.django_db(databases=["default", "owner"])
@@ -80,7 +80,7 @@ def test_duplicate_inbound_event_is_rejected() -> None:
 def test_same_provider_event_in_another_channel_or_tenant_is_allowed() -> None:
     a, b = tenant("a"), tenant("b")
     event(a, "1")
-    event(a, "1", channel="test")
+    event(a, "1", channel="demo_tg")
     event(b, "1")
 
 
@@ -112,7 +112,7 @@ def test_duplicate_notification_idem_key_is_rejected() -> None:
 def test_contact_is_unique_per_tenant_channel_and_external_id() -> None:
     a = tenant("a")
     contact(a, "34600000001")
-    contact(a, "34600000001", channel="test")  # the same person on the test bot
+    contact(a, "34600000001", channel="demo_tg")  # the same person on a demo door
     raises_integrity(lambda: contact(a, "34600000001"))
 
 
@@ -123,9 +123,11 @@ def test_one_conversation_per_contact() -> None:
     raises_integrity(lambda: Conversation.objects.using("owner").create(tenant=a, contact=c))
 
 
-def test_duplicate_test_bot_update_is_rejected() -> None:
-    def save() -> TestBotEvent:
-        return TestBotEvent.objects.using("owner").create(update_id=42, payload={}, received_at=NOW)
+def test_duplicate_demo_event_is_rejected() -> None:
+    def save() -> DemoEvent:
+        return DemoEvent.objects.using("owner").create(
+            channel="demo_tg", provider_event_id="42", payload={}, received_at=NOW
+        )
 
     save()
     raises_integrity(save)
@@ -185,13 +187,13 @@ def test_rls_is_enabled_and_forced_on_tenant_tables_only() -> None:
                     "inbound_event",
                     "outbound_message",
                     "notification",
-                    "test_bot_event",
-                    "test_session",
+                    "demo_event",
+                    "demo_session",
                 ]
             ],
         )
         flags = {name: (enabled, forced) for name, enabled, forced in cursor.fetchall()}
-    platform = {"test_bot_event", "test_session"}
+    platform = {"demo_event", "demo_session"}
     assert {t for t, f in flags.items() if f == (True, True)} == set(flags) - platform
     assert all(flags[t] == (False, False) for t in platform)
 

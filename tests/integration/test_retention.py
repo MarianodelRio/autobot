@@ -18,14 +18,14 @@ from flowpilot.runtime import privacy, retention
 from flowpilot.runtime.models import (
     Contact,
     Conversation,
+    DemoEvent,
+    DemoSession,
     InboundEvent,
     Notification,
     OutboundMessage,
-    TestBotEvent,
-    TestSession,
 )
 from flowpilot.tenancy.models import Tenant
-from tests.integration.helpers import wa_tenant
+from tests.integration.helpers import demo_tenant, wa_tenant
 from tests.integration.test_models import contact, event, outbound, tenant
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
@@ -115,12 +115,18 @@ def test_selector_and_expired_conversations(tenants: Any, settings: Settings) ->
     a = loaded(tenants)
     settings.RETENTION_CLEANUP_ENABLED = True
     for index, days in enumerate([6, 7]):
-        TestBotEvent.objects.create(
-            update_id=index, payload={}, received_at=NOW - timedelta(days=days)
+        DemoEvent.objects.create(
+            channel="demo_tg",
+            provider_event_id=str(index),
+            payload={},
+            received_at=NOW - timedelta(days=days),
         )
     for index, days in enumerate([29, 30]):
-        TestSession.objects.create(
-            telegram_user_id=index, tenant=a, selected_at=NOW - timedelta(days=days)
+        DemoSession.objects.create(
+            channel="demo_tg",
+            external_id=str(index),
+            tenant=a,
+            selected_at=NOW - timedelta(days=days),
         )
     expired = Conversation.objects.using("owner").create(
         tenant=a,
@@ -132,8 +138,8 @@ def test_selector_and_expired_conversations(tenants: Any, settings: Settings) ->
         tenant=a, contact=contact(a, "other"), state={"private": True}, last_inbound_at=NOW
     )
     retention.cleanup(now=NOW)
-    assert list(TestBotEvent.objects.values_list("update_id", flat=True)) == [0]
-    assert list(TestSession.objects.values_list("telegram_user_id", flat=True)) == [0]
+    assert list(DemoEvent.objects.values_list("provider_event_id", flat=True)) == ["0"]
+    assert list(DemoSession.objects.values_list("external_id", flat=True)) == ["0"]
     expired.refresh_from_db(using="owner")
     recent.refresh_from_db(using="owner")
     assert expired.state == {} and recent.state == {"private": True}
@@ -192,7 +198,7 @@ def test_export_private_and_contact_ambiguity(
 ) -> None:
     a = tenant("a")
     c = contact(a, "111")
-    contact(a, "111", "test")
+    contact(a, "111", "demo_tg")
     target = tmp_path / "export.json"
     with pytest.raises(CommandError, match="ambiguo"):
         call_command("export_contact", "a", "111", output=str(target))
@@ -208,21 +214,21 @@ def test_export_private_and_contact_ambiguity(
 
 def test_forget_only_matching_contact_and_events() -> None:
     a, b = tenant("a"), tenant("b")
-    c = contact(a, "111", "test")
+    c = contact(a, "111", "demo_tg")
     other_channel = contact(a, "111")
-    other_tenant = contact(b, "111", "test")
-    incoming = event(a, "incoming", "test")
+    other_tenant = contact(b, "111", "demo_tg")
+    incoming = event(a, "incoming", "demo_tg")
     InboundEvent.objects.using("owner").filter(pk=incoming.pk).update(
         payload={"message": {"from": {"id": 111}}}
     )
-    linked = event(a, "linked", "test")
+    linked = event(a, "linked", "demo_tg")
     outbound(a, c, "one", inbound_event=linked)
     unrelated = event(a, "other", "main")
-    foreign = event(b, "foreign", "test")
-    TestSession.objects.create(tenant=b, telegram_user_id=111, selected_at=NOW)
+    foreign = event(b, "foreign", "demo_tg")
+    DemoSession.objects.create(channel="demo_tg", external_id="111", tenant=b, selected_at=NOW)
     with pytest.raises(CommandError, match="ambiguo"):
         call_command("forget_contact", "a", "111")
-    call_command("forget_contact", "a", "111", channel="test")
+    call_command("forget_contact", "a", "111", channel="demo_tg")
     assert set(Contact.objects.using("owner").values_list("pk", flat=True)) == {
         other_channel.pk,
         other_tenant.pk,
@@ -231,7 +237,9 @@ def test_forget_only_matching_contact_and_events() -> None:
         unrelated.pk,
         foreign.pk,
     }
-    assert TestSession.objects.exists()
+    # DemoSession is keyed by (channel, external_id) alone, not by tenant: forgetting
+    # this person's identity removes their one demo session, whichever tenant it points to.
+    assert not DemoSession.objects.exists()
 
 
 def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: Path) -> None:
@@ -244,8 +252,10 @@ def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: 
         Notification.objects.using("owner").create(
             tenant=t, idem_key="one", kind="daily", text="private"
         )
-        TestSession.objects.create(tenant=t, telegram_user_id=1 if t == a else 2, selected_at=NOW)
-    TestBotEvent.objects.create(update_id=99, payload={}, received_at=NOW)
+        DemoSession.objects.create(
+            channel="demo_tg", external_id=str(1 if t == a else 2), tenant=t, selected_at=NOW
+        )
+    DemoEvent.objects.create(channel="demo_tg", provider_event_id="99", payload={}, received_at=NOW)
     target = tmp_path / "tenant.json"
     call_command("export_tenant", "a", output=str(target), stdout=io.StringIO())
     assert all(
@@ -263,7 +273,7 @@ def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: 
         assert not model.objects.using("owner").filter(tenant=a).exists()
         assert model.objects.using("owner").filter(tenant=b).count() == 1
     assert Tenant.objects.using("owner").count() == 2
-    assert TestBotEvent.objects.exists()
+    assert DemoEvent.objects.exists()
 
 
 @pytest.mark.parametrize("reference", ["recipient_id", "provider", "opaque", "sender"])
@@ -300,42 +310,50 @@ def test_whatsapp_erasure_associates_messages_and_statuses(reference: str) -> No
 
 
 @pytest.mark.parametrize("operation", ["forget", "purge"])
-def test_test_bot_originals_follow_tenant_linkage(operation: str) -> None:
+def test_demo_event_originals_follow_tenant_linkage(operation: str) -> None:
     a, b = tenant("a"), tenant("b")
-    c = contact(a, "111", "test")
+    c = contact(a, "111", "demo_tg")
     for t, provider_id in [(a, "select:1"), (a, "2"), (b, "3")]:
-        e = event(t, provider_id, "test")
+        e = event(t, provider_id, "demo_tg")
         InboundEvent.objects.using("owner").filter(pk=e.pk).update(
             payload={"message": {"from": {"id": 111}}}
         )
-    for update_id in [1, 2, 3, 4]:
-        TestBotEvent.objects.create(
-            update_id=update_id, payload={"message": {"from": {"id": 111}}}, received_at=NOW
+    for provider_event_id in ["1", "2", "3", "4"]:
+        DemoEvent.objects.create(
+            channel="demo_tg",
+            provider_event_id=provider_event_id,
+            payload={"message": {"from": {"id": 111}}},
+            received_at=NOW,
         )
-    assert {row["update_id"] for row in privacy.export_data(a, c)["data"]["test_bot_event"]} == {
-        1,
-        2,
-    }
+    assert {
+        row["provider_event_id"] for row in privacy.export_data(a, c)["data"]["demo_event"]
+    } == {"1", "2"}
     if operation == "forget":
         privacy.forget(c)
     else:
         privacy.purge(a)
-    assert set(TestBotEvent.objects.values_list("update_id", flat=True)) == {3, 4}
+    assert set(DemoEvent.objects.values_list("provider_event_id", flat=True)) == {"3", "4"}
     assert InboundEvent.objects.using("owner").filter(tenant=b).exists()
 
 
 def test_selector_refreshes_session_activity(
     tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
 ) -> None:
-    from flowpilot.channels.test_bot import selector
+    from flowpilot.channels.demo import selector
+    from flowpilot.channels.demo.doors import door
 
-    settings.TEST_BOT_OPERATORS = frozenset({111})
-    a = loaded(tenants)
-    session = TestSession.objects.create(
-        tenant=a, telegram_user_id=111, selected_at=NOW - timedelta(days=40)
+    settings.DEMO_TELEGRAM_TOKEN = "999:TEST-TOKEN"
+    settings.DEMO_TELEGRAM_WEBHOOK_SECRET = "t" * 32
+    settings.DEMO_TELEGRAM_USERS = frozenset({111})
+    door.cache_clear()
+    tenants(demo_tenant("a"))
+    a = Tenant.objects.using("owner").get(slug="a")
+    session = DemoSession.objects.create(
+        channel="demo_tg", external_id="111", tenant=a, selected_at=NOW - timedelta(days=40)
     )
-    e = TestBotEvent.objects.create(
-        update_id=55,
+    e = DemoEvent.objects.create(
+        channel="demo_tg",
+        provider_event_id="55",
         received_at=NOW,
         payload={
             "update_id": 55,
@@ -349,9 +367,10 @@ def test_selector_refreshes_session_activity(
         },
     )
     monkeypatch.setattr(selector, "store", lambda *args: None)
-    selector.route_test_update(e.id)
+    selector.route_demo_event(e.id)
     session.refresh_from_db()
     assert session.selected_at > NOW - timedelta(days=1)
+    door.cache_clear()
 
 
 def test_export_rejects_symlinks(tmp_path: Path) -> None:

@@ -58,15 +58,12 @@ def send_notification(
         bind(tenant=tenant.slug, channel="notification", event_id="")
         if row is None or row.status != Notification.Status.PENDING:
             return
-        if row.audience == Notification.Audience.OPS:
-            chat_id = settings.OPS_TELEGRAM_CHAT_ID
-        else:
-            owner = tenant.file.owner
-            chat_id = (
-                str(owner.telegram_chat_id)
-                if owner and owner.telegram_chat_id is not None and row.kind in owner.notify
-                else ""
-            )
+        owner = tenant.file.owner
+        chat_id = (
+            str(owner.telegram_chat_id)
+            if owner and owner.telegram_chat_id is not None and row.kind in owner.notify
+            else ""
+        )
         # Claim durably before network I/O. A crash or ambiguous result stays failed:
         # notification has no unknown state, and must never be resent blindly.
         row.status = Notification.Status.FAILED

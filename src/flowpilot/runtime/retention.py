@@ -11,11 +11,11 @@ from django.utils import timezone
 from flowpilot.runtime.models import (
     Contact,
     Conversation,
+    DemoEvent,
+    DemoSession,
     InboundEvent,
     Notification,
     OutboundMessage,
-    TestBotEvent,
-    TestSession,
 )
 from flowpilot.tenancy.registry import get_registry
 from flowpilot.tenancy.tx import tenant_tx
@@ -92,8 +92,8 @@ def cleanup(*, now: datetime | None = None) -> None:
                 if not count:
                     break
     for query in (
-        TestBotEvent.objects.filter(received_at__lte=now - timedelta(days=7)),
-        TestSession.objects.filter(selected_at__lte=now - timedelta(days=30)),
+        DemoEvent.objects.filter(received_at__lte=now - timedelta(days=7)),
+        DemoSession.objects.filter(selected_at__lte=now - timedelta(days=30)),
     ):
         while apply_batches(query):
             pass

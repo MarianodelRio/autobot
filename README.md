@@ -4,7 +4,7 @@ Plataforma de automatización para pequeños negocios: atiende a sus clientes po
 
 Una sola plataforma para 5–15 negocios, en una VPS con Docker Compose.
 
-Cada negocio usa un **pack** con su lógica: `salon` (pedir, ver, mover y cancelar citas sobre Google Calendar, recordatorios y avisos al dueño) o `bus` (consulta de horarios origen → destino → día). Un bot de Telegram de pruebas compartido permite probar cualquier negocio sin tocar su canal real.
+Cada negocio usa un **pack** con su lógica: `salon` (pedir, ver, mover y cancelar citas sobre Google Calendar, recordatorios y avisos al dueño) o `bus` (consulta de horarios origen → destino → día). Un bot de demo, por Telegram y por WhatsApp, enseña cada pack con negocios de demostración propios, sin tocar el canal real de ningún cliente.
 
 **Estado:** la plataforma y los dos packs están implementados y probados con simulaciones; aún no se ha probado nada contra servicios reales. Los pasos pendientes están en [docs/puesta-en-marcha.md](docs/puesta-en-marcha.md).
 
@@ -51,13 +51,15 @@ El canal debe declarar `display_phone` internacional (WhatsApp) o `bot_username`
 (Telegram). El QR apunta al canal del negocio y se guarda como SVG con fondo blanco,
 apto para imprimir. Los archivos de `qr/` son generados y no se suben a git.
 
-### Bot de pruebas en local
+### Bot de demo en local
 
-Con un bot de Telegram de desarrollo propio (ver [docs/puesta-en-marcha.md](docs/puesta-en-marcha.md)): pon su token en `TEST_BOT_TOKEN` y tu id de Telegram en `TEST_BOT_OPERATORS`, en `.env`, y después:
+Con un bot de Telegram de desarrollo propio, distinto del de producción (ver
+[docs/puesta-en-marcha.md](docs/puesta-en-marcha.md)): pon su token en
+`DEMO_TELEGRAM_TOKEN` y tu id de Telegram en `DEMO_TELEGRAM_USERS`, en `.env`, y después:
 
 ```bash
-make up                # el worker procesa lo que llega; tras cambiar .env: docker compose up -d
-make telegram-poll     # long polling del bot de pruebas (sin túnel ni dominio); Ctrl+C para parar
+make up         # el worker procesa lo que llega; tras cambiar .env: docker compose up -d
+make demo-up    # arranca también el poller de la puerta Telegram de demo (make demo-down la para)
 ```
 
-En Telegram, escribe `/start` al bot: muestra los negocios que puedes probar. `make telegram-poll SLUG=<slug>` hace lo mismo con el bot propio de un negocio. Un bot con webhook no admite polling: `docker compose exec web python manage.py telegram_set_webhook test --delete` se lo quita (nunca a un bot que use el servidor).
+En Telegram, escribe `/start` al bot: muestra los negocios de demo disponibles. `make telegram-poll SLUG=<slug>` hace lo mismo con el bot propio de un negocio (o sin `SLUG`, con la puerta Telegram de demo, en primer plano). Un bot con webhook no admite polling: `docker compose exec web python manage.py telegram_set_webhook demo --delete` se lo quita (nunca a un bot que use el servidor).

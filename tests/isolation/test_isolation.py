@@ -19,11 +19,12 @@ from django.db import DatabaseError, IntegrityError, connections, models, transa
 from flowpilot.models import (
     Contact,
     Conversation,
+    DemoEvent,
+    DemoSession,
     InboundEvent,
     Notification,
     OutboundMessage,
     Tenant,
-    TestSession,
 )
 from flowpilot.tenancy.tx import tenant_tx
 
@@ -31,8 +32,8 @@ pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owne
 NOW = datetime(2026, 10, 5, 10, tzinfo=UTC)
 
 # Platform tables with tenant_id but no RLS by design (written before the tenant is
-# known, only used by the test bot selector).
-PLATFORM_MODELS: set[type[models.Model]] = {TestSession}
+# known, only used by the demo selector).
+PLATFORM_MODELS: set[type[models.Model]] = {DemoSession}
 PLATFORM_TABLES = {m._meta.db_table for m in PLATFORM_MODELS}
 RLS_ERROR = "row-level security"
 
@@ -351,8 +352,12 @@ def test_tenant_sees_only_its_own_tenant_row(tenants: tuple[Tenant, Tenant]) -> 
 
 def test_platform_tables_need_no_tenant(tenants: tuple[Tenant, Tenant]) -> None:
     a, _ = tenants
-    TestSession.objects.create(telegram_user_id=1, tenant_id=a.id, selected_at=NOW)
-    assert TestSession.objects.count() == 1
+    DemoSession.objects.create(channel="demo_tg", external_id="1", tenant_id=a.id, selected_at=NOW)
+    assert DemoSession.objects.count() == 1
+
+
+def test_demo_event_has_no_tenant_id() -> None:
+    assert not any(f.name == "tenant" for f in DemoEvent._meta.get_fields())
 
 
 # ── tenant_tx ─────────────────────────────────────────────────────────────

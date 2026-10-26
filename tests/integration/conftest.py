@@ -31,6 +31,7 @@ def tenants(tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch)
         default = {
             d["slug"]: WA_SECRETS if d["channel"]["type"] == "whatsapp" else TG_SECRETS
             for d in docs
+            if "channel" in d  # a demo tenant has none
         }
         write_secrets(tmp_path, default if secrets is None else secrets)
         get_registry.cache_clear()

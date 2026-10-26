@@ -2,7 +2,7 @@
 
 **Síntoma:** token caducado, revocado o potencialmente expuesto. **Diagnóstico:**
 `tenant_health <slug>` indica autenticación; identifica si el secreto es de Meta,
-Telegram, bot de pruebas, avisos u otra integración. La firma del webhook usa
+Telegram, bot de demo, avisos u otra integración. La firma del webhook usa
 `app_secret` o `webhook_secret`; cambiarla exige coordinación con el proveedor.
 
 **Pasos:** con aprobación humana, genera el nuevo valor en el proveedor y guárdalo en

@@ -122,12 +122,12 @@ def test_a_demo_tenant_binds_its_calendar_on_any_channel() -> None:
     calendars = Calendars()
     config = CalendarConfig(calendar_id="demo@group.calendar.google.com")
     tenant = loaded_demo(CALENDAR_PACK, config)
-    for channel in (Channel.MAIN, Channel.TEST):
+    for channel in (Channel.MAIN, Channel.DEMO_TG, Channel.DEMO_WA):
         ctx = build_context(
             tenant, channel, contact=None, state={}, event_id=None, calendars=calendars
         )
         assert ctx.calendar == "port:demo@group.calendar.google.com"
-    assert calendars.bound == ["demo@group.calendar.google.com"] * 2
+    assert calendars.bound == ["demo@group.calendar.google.com"] * 3
 
 
 def test_a_non_demo_tenant_has_no_calendar_outside_main() -> None:
@@ -135,7 +135,7 @@ def test_a_non_demo_tenant_has_no_calendar_outside_main() -> None:
     tenant = loaded(CALENDAR_PACK)
     with pytest.raises(CalendarUnavailable):
         build_context(
-            tenant, Channel.TEST, contact=None, state={}, event_id=None, calendars=calendars
+            tenant, Channel.DEMO_TG, contact=None, state={}, event_id=None, calendars=calendars
         )
     assert calendars.bound == []  # the factory never saw calendar_id
 

@@ -51,7 +51,12 @@ INSTALLED_APPS = [
 if importlib.util.find_spec("django_migration_linter"):
     INSTALLED_APPS.append("django_migration_linter")
     # Third-party migrations are not ours to fix; every app of ours is linted.
-    MIGRATION_LINTER_OPTIONS = {"exclude_apps": ["procrastinate", "otp_totp"]}
+    MIGRATION_LINTER_OPTIONS = {
+        "exclude_apps": ["procrastinate", "otp_totp"],
+        # Drops the retired test-bot tables: approved by the person (2026-10-26,
+        # docs/mejoras/01-bot-de-demo.md §2).
+        "ignore_name": ["0008_demo_channels"],
+    }
 
 DATABASE_ROUTERS = ["flowpilot.admin_db.AdminDatabaseRouter"]
 
@@ -131,13 +136,13 @@ def _ids(name: str) -> frozenset[int]:
         raise ImproperlyConfigured(f"{name} must be Telegram user ids") from None
 
 
-# The platform's test bot. Without a token it is off; without a webhook secret its
-# webhook is off (local development uses `telegram_poll`).
-TEST_BOT_TOKEN = os.environ.get("TEST_BOT_TOKEN", "")
-TEST_BOT_WEBHOOK_SECRET = os.environ.get("TEST_BOT_WEBHOOK_SECRET", "")
-if TEST_BOT_WEBHOOK_SECRET and len(TEST_BOT_WEBHOOK_SECRET) < 32:
-    raise ImproperlyConfigured("TEST_BOT_WEBHOOK_SECRET must have 32 characters or more")
-TEST_BOT_OPERATORS = _ids("TEST_BOT_OPERATORS")  # they see every business
+# The platform's demo bot, Telegram door. Without a token it is off; without a webhook
+# secret its webhook is off (local development uses `telegram_poll`).
+DEMO_TELEGRAM_TOKEN = os.environ.get("DEMO_TELEGRAM_TOKEN", "")
+DEMO_TELEGRAM_WEBHOOK_SECRET = os.environ.get("DEMO_TELEGRAM_WEBHOOK_SECRET", "")
+if DEMO_TELEGRAM_WEBHOOK_SECRET and len(DEMO_TELEGRAM_WEBHOOK_SECRET) < 32:
+    raise ImproperlyConfigured("DEMO_TELEGRAM_WEBHOOK_SECRET must have 32 characters or more")
+DEMO_TELEGRAM_USERS = _ids("DEMO_TELEGRAM_USERS")  # closed list of this door
 
 # Public base of the webhooks (https://api.<dominio>), for `telegram_set_webhook`.
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "")

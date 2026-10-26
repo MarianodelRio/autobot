@@ -10,9 +10,10 @@ from django.core.cache import cache
 from django.utils import timezone
 from pydantic import SecretStr
 
+from flowpilot.channels.demo.doors import door
 from flowpilot.channels.telegram.adapter import TelegramApiError, call
 from flowpilot.runtime.context import CalendarFactory, build_context, google_calendar
-from flowpilot.runtime.models import Channel
+from flowpilot.runtime.models import DEMO_CHANNELS, Channel
 from flowpilot.tenancy.registry import LoadedTenant
 from flowpilot.tenancy.schema import TelegramSecrets, WhatsAppSecrets
 
@@ -128,14 +129,17 @@ def tenant_health(
     issues: list[Issue] = []
     if tenant.is_degraded:
         issues.append(Issue("degraded", "El tenant está degradado.", "🔴"))
-    if not tenant.main_enabled:
-        issues.append(
-            Issue("channel_disabled", "El canal principal no tiene configuración completa.", "🔴")
-        )
-    if tenant.pack is not None and tenant.pack.health is not None and not tenant.is_degraded:
+    if tenant.is_demo:
+        channels = [channel for channel in DEMO_CHANNELS if door(channel) is not None]
+    else:
+        if not tenant.main_enabled:
+            issues.append(
+                Issue(
+                    "channel_disabled", "El canal principal no tiene configuración completa.", "🔴"
+                )
+            )
         channels = [Channel.MAIN]
-        if tenant.pack.needs_calendar and settings.TEST_BOT_TOKEN:
-            channels.append(Channel.TEST)
+    if tenant.pack is not None and tenant.pack.health is not None and not tenant.is_degraded:
         for channel in channels:
             try:
                 ctx = build_context(

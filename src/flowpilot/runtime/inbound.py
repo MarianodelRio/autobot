@@ -1,6 +1,6 @@
 """Save what a channel received and queue its processing.
 
-Shared by the webhooks and the test bot's selector (and, through it, `telegram_poll`), so
+Shared by the webhooks and the demo selector (and, through it, `telegram_poll`), so
 every entry takes the same path. No external calls: only the database.
 """
 
@@ -48,7 +48,7 @@ def initial_status(tenant: LoadedTenant, item: ParsedItem) -> InboundEvent.Statu
 def store(tenant: LoadedTenant, items: list[ParsedItem], channel: Channel = Channel.MAIN) -> int:
     """Save each item as an inbound_event of `channel` (a duplicate is skipped) and queue
     its job in the same transaction, so the job exists only if the event was committed.
-    Returns how many events were new. On the `test` channel the selector already checked
+    Returns how many events were new. On a demo door the selector already checked
     who may talk to the tenant, so its events are always pending."""
     created = 0
     for item in items:

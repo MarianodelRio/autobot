@@ -1,6 +1,6 @@
 # CLAUDE.md — FlowPilot
 
-Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de Telegram compartido para probar cualquier negocio. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). Este fichero resume las reglas para trabajar en el repo.
+Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de demo, por WhatsApp y Telegram, para enseñar los packs. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). Este fichero resume las reglas para trabajar en el repo.
 
 **Estado:** plataforma y dos packs implementados y probados con simulaciones; nada probado aún contra servicios reales. Los pasos manuales pendientes están en [`docs/puesta-en-marcha.md`](docs/puesta-en-marcha.md).
 
@@ -22,8 +22,9 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 - Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `worker`, `db`).
 - `core/` e `integrations/` no importan Django; `packs/*` solo importan `core` (nunca Django, `integrations` ni otro pack). Lo comprueba `import-linter`.
-- Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de pruebas solo en `channels/test_bot/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio.
+- Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de demo solo en `channels/demo/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio.
 - Config y datasets de cada negocio en `tenants/<slug>/` (YAML validado en CI). Secretos en `.env` y `secrets.yaml` del servidor; nunca en git.
+- Cada pack nuevo incluye su negocio de demo en `tenants/demo-<pack>/` y su escenario de conversación.
 
 ## Reglas obligatorias
 

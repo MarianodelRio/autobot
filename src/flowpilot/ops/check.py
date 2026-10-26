@@ -12,11 +12,13 @@ from django.db.models import Q
 from django.utils import timezone
 
 from flowpilot.ops import health, state
-from flowpilot.runtime.models import Channel, OutboundMessage
+from flowpilot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
 from flowpilot.runtime.notifications import send_ops_alert
 from flowpilot.runtime.periodic import channels_for
 from flowpilot.tenancy.registry import get_registry
 from flowpilot.tenancy.tx import tenant_tx
+
+DEMO_LABELS = {Channel.DEMO_TG: "Telegram", Channel.DEMO_WA: "WhatsApp"}
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +52,7 @@ def run() -> None:
         if tenant.file.status == "offboarded":
             continue
         pending: list[tuple[str, str]] = []
-        if tenant.is_degraded or not tenant.main_enabled:
+        if tenant.is_degraded or (not tenant.is_demo and not tenant.main_enabled):
             pending.append(
                 ("tenant_unavailable", "🔴 Tenant degradado o canal sin secretos/configuración.")
             )
@@ -68,7 +70,7 @@ def run() -> None:
                         "🟠 Hay envíos fallidos o ambiguos desde hace más de 10 minutos.",
                     )
                 )
-            # A test-channel rejection belongs to the platform test bot, not the
+            # A demo-door rejection belongs to the platform's own credentials, not the
             # tenant's configured main-channel credentials.
             auth_channels = list(
                 messages.filter(last_error__startswith="auth:")
@@ -90,11 +92,13 @@ def run() -> None:
                         )
                     )
         for auth_channel in auth_channels:
+            demo = auth_channel in DEMO_CHANNELS
             send_ops_alert(
-                "auth:test" if auth_channel == Channel.TEST else "auth",
-                None if auth_channel == Channel.TEST else tenant.id,
-                "🔴 Envío rechazado por autenticación del bot de pruebas."
-                if auth_channel == Channel.TEST
+                f"auth:{auth_channel}" if demo else "auth",
+                None if demo else tenant.id,
+                f"🔴 Bot de demo ({DEMO_LABELS.get(Channel(auth_channel), auth_channel)}):"
+                " envío rechazado por autenticación."
+                if demo
                 else "🔴 Envío del canal principal rechazado por autenticación.",
             )
         for bound_channel in channels_for(tenant):
@@ -124,14 +128,19 @@ def run() -> None:
             pending.append((f"health:{issue.code}", f"{issue.severity} {issue.message}"))
         for kind, text in pending:
             send_ops_alert(kind, tenant.id, f"{tenant.slug}: {text}")
-    if cache.get("bot:test:auth"):
-        send_ops_alert("auth:test", None, "🔴 Bot de pruebas: envío rechazado por autenticación.")
+    for demo_channel, label in DEMO_LABELS.items():
+        if cache.get(f"bot:{demo_channel}:auth"):
+            send_ops_alert(
+                f"auth:{demo_channel}",
+                None,
+                f"🔴 Bot de demo ({label}): envío rechazado por autenticación.",
+            )
     if cache.get("bot:notify:auth"):
         send_ops_alert(
             "bot:notify:auth", None, "🔴 Bot de avisos: envío rechazado por autenticación."
         )
     for name, token, outbound_only in (
-        ("test", settings.TEST_BOT_TOKEN, False),
+        ("demo_tg", settings.DEMO_TELEGRAM_TOKEN, False),
         ("notify", settings.NOTIFY_BOT_TOKEN, True),
     ):
         if token:

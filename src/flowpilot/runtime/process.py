@@ -20,7 +20,6 @@ import re
 from typing import Any
 from uuid import UUID
 
-from django.conf import settings
 from django.db.models import F, Q
 from django.utils import timezone
 
@@ -41,6 +40,7 @@ from core.proactive import ProactiveMessage
 from core.replies import Text
 from flowpilot.channels.adapters import endpoint
 from flowpilot.channels.base import InboundItem, StatusItem, parse_stored
+from flowpilot.channels.demo.doors import allowed_identity, door
 from flowpilot.channels.ratelimit import WindowLimiter
 from flowpilot.jobs import OUTBOUND, SEND_NOTIFICATION, app
 from flowpilot.ops.logging import bind, contextual
@@ -48,6 +48,7 @@ from flowpilot.ops.state import record
 from flowpilot.runtime.context import CalendarFactory, build_context, google_calendar
 from flowpilot.runtime.identity import aliases_for, phone_group, phone_key
 from flowpilot.runtime.models import (
+    DEMO_CHANNELS,
     Channel,
     Contact,
     Conversation,
@@ -209,7 +210,7 @@ def apply_actions(
     now: Any,
 ) -> list[OutboundMessage]:
     """Apply a pack's actions inside the caller's tenant_tx. `channel` is where they come
-    from: a test conversation never reaches the main channel nor the owner.
+    from: a proactive message only ever reaches a contact of that same channel.
     Returns the proactive messages to send."""
     messages: list[OutboundMessage] = []
     for action in actions:
@@ -252,10 +253,10 @@ def _proactive_target(tenant: LoadedTenant, channel: str, action: SendProactive)
     if target.channel != channel:
         log.warning("proactive %s not sent: contact of another channel", action.template.name)
         return None
-    if channel == Channel.TEST:
-        allowed = {str(user) for user in settings.TEST_BOT_OPERATORS}
-        if target.external_id not in allowed:
-            log.info("test proactive not sent: contact no longer has access to this tenant")
+    if channel in DEMO_CHANNELS:
+        door_ = door(Channel(channel))
+        if door_ is None or not allowed_identity(door_, target.external_id, target.phone_e164):
+            log.info("demo proactive not sent: contact no longer has access to this door")
             return None
     if (
         channel == Channel.MAIN
@@ -312,23 +313,18 @@ def _contact_by_phone(tenant: LoadedTenant, channel: str, phone: str) -> Contact
 
 def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> None:
     """Queue the notice if the owner has a chat and wants this kind; otherwise it
-    is only logged. A notice born in the test channel never reaches the owner: it goes to
-    the ops chat with "🧪", whatever the owner settings. Delivery is
-    `send_notification`, which reads `audience`."""
+    is only logged. A demo tenant's owner receives it the same way as a real one.
+    Delivery is `send_notification`, which reads `audience`."""
     owner = tenant.file.owner
-    if channel == Channel.MAIN:
-        if owner is None or owner.telegram_chat_id is None or action.kind not in owner.notify:
-            log.info("NotifyOwner %s only logged: the owner does not receive it", action.kind)
-            return
-        audience, text = Notification.Audience.OWNER, action.text
-    else:
-        audience, text = Notification.Audience.OPS, f"🧪 {tenant.file.name}: {action.text}"
+    if owner is None or owner.telegram_chat_id is None or action.kind not in owner.notify:
+        log.info("NotifyOwner %s only logged: the owner does not receive it", action.kind)
+        return
     row = Notification(
         tenant_id=tenant.id,
         idem_key=action.idem_key,
-        audience=audience,
+        audience=Notification.Audience.OWNER,
         kind=action.kind[:64],
-        text=text,
+        text=action.text,
     )
     Notification.objects.bulk_create([row], ignore_conflicts=True)
     if Notification.objects.filter(id=row.id).exists():

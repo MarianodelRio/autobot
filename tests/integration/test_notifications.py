@@ -96,15 +96,18 @@ def test_delivery_once_and_job(tenants: Any, telegram: Any) -> None:
     assert reload(row).status == "sent" and reload(row).sent_at is not None
 
 
-@pytest.mark.parametrize("configured", [False, True])
-def test_test_channel_always_routes_ops(tenants: Any, telegram: Any, configured: bool) -> None:
-    tenants(owner() if configured else wa_tenant())
+@pytest.mark.parametrize("channel", ["main", "demo_tg", "demo_wa"])
+def test_notify_owner_reaches_the_owner_on_any_channel(
+    tenants: Any, telegram: Any, channel: str
+) -> None:
+    """A demo tenant's owner is notified the same way as a real one (no "ops" audience
+    survives: a demo channel is not special-cased)."""
+    tenants(owner())
     seen = telegram(ok())
-    row = notice("test")
+    row = notice(channel)
     send(row)
     body = json.loads(seen[0].content)
-    assert row.audience == "ops" and body["chat_id"] == "-200"
-    assert body["text"].startswith("🧪 ")
+    assert row.audience == "owner" and body["chat_id"] == "100"
 
 
 @pytest.mark.parametrize("config", [None, {"telegram_chat_id": 100, "notify": []}])

@@ -1,8 +1,8 @@
 """Long polling for local development: `getUpdates` instead of a
 webhook, so no tunnel nor domain is needed. Each update enters **the same way as the
-webhook** once authenticated: `selector.store_update` for the test bot,
+webhook** once authenticated: `selector.store_event` for the demo bot's Telegram door,
 `views.accept` for a business's own bot. A bot is never polled while it has a webhook
-(Telegram answers 409): `telegram_set_webhook <slug|test> --delete` removes it.
+(Telegram answers 409): `telegram_set_webhook <slug|demo> --delete` removes it.
 """
 
 import logging
@@ -14,9 +14,12 @@ from typing import Any
 import httpx
 
 from flowpilot.channels import views
-from flowpilot.channels.adapters import TELEGRAM, test_bot_secrets
+from flowpilot.channels.adapters import TELEGRAM
+from flowpilot.channels.base import InboundItem
+from flowpilot.channels.demo.doors import door
+from flowpilot.channels.demo.selector import store_event
 from flowpilot.channels.telegram.adapter import TelegramApiError, call
-from flowpilot.channels.test_bot.selector import store_update
+from flowpilot.runtime.models import Channel
 from flowpilot.tenancy.registry import get_registry
 from flowpilot.tenancy.schema import TelegramChannel, TelegramSecrets
 
@@ -38,19 +41,26 @@ class BotRefused(Exception):
 
 @dataclass(frozen=True)
 class Source:
-    name: str  # "test bot" or the tenant's slug: never the token
+    name: str  # "demo bot" or the tenant's slug: never the token
     secrets: TelegramSecrets
     accept: Callable[[dict[str, Any]], object]  # the webhook's entry, after authenticity
     public_id: str | None = None  # the tenant's, for its webhook URL
 
 
 def source(slug: str | None) -> Source:
-    """The test bot (no slug) or the own bot of a tenant whose main channel is Telegram."""
+    """The demo bot's Telegram door (no slug) or the own bot of a tenant whose main
+    channel is Telegram."""
     if slug is None:
-        secrets = test_bot_secrets()
-        if secrets is None:
-            raise ValueError("TEST_BOT_TOKEN is not set (see README: bot de pruebas en local)")
-        return Source("test bot", secrets, store_update)
+        door_ = door(Channel.DEMO_TG)
+        if door_ is None:
+            raise ValueError("DEMO_TELEGRAM_TOKEN is not set")
+
+        def accept_demo(update: dict[str, Any]) -> None:
+            for item in TELEGRAM.parse(update, None):
+                if isinstance(item, InboundItem):
+                    store_event(door_, item)
+
+        return Source("demo bot", door_.secrets, accept_demo)
     found = get_registry().by_slug.get(slug)
     if found is None:
         raise ValueError(f"no tenant {slug!r}")

@@ -119,7 +119,7 @@ def main() -> None:
             raise RuntimeError("Caddy/upstream did not start")
         for path in (
             "/health",
-            "/webhooks/telegram-test",
+            "/webhooks/telegram-demo",
             "/webhooks/telegram/abc",
             "/webhooks/whatsapp/abc",
         ):
@@ -131,6 +131,7 @@ def main() -> None:
             "/static/admin/css/base.css",
             "/health/",
             "/webhooks/telegram",
+            "/webhooks/telegram-test",
         ):
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=3)

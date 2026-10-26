@@ -7,10 +7,11 @@ ids o aprobaciones.
 
 ## 1. Desarrollo local con servicios reales
 
-- **Bot de pruebas de desarrollo:** crear un bot con @BotFather (p. ej.
-  `flowpilot_dev_bot`), poner su token en `TEST_BOT_TOKEN` y tu id de Telegram
-  (@userinfobot) en `TEST_BOT_OPERATORS` del `.env` local. Verificar: `make
-  telegram-poll` arranca y `/start` muestra la lista de negocios.
+- **Bot de demo de desarrollo (puerta Telegram):** crear un bot con @BotFather (p. ej.
+  `flowpilot_dev_bot`), distinto del de producción, poner su token en
+  `DEMO_TELEGRAM_TOKEN` y tu id de Telegram (@userinfobot) en `DEMO_TELEGRAM_USERS`
+  del `.env` local. Verificar: `make telegram-poll` arranca y `/start` muestra la
+  lista de negocios de demo.
 - **Google Cloud de la plataforma:** proyecto propio (no de un negocio), Google
   Calendar API habilitada y cuenta de servicio con clave JSON en `google_sa.json`
   (ignorado por git) y en el gestor de contraseñas.
@@ -39,9 +40,9 @@ Con esto se pueden validar a mano los packs `bus` y `salon` por el bot de prueba
   0600, `DEPLOY_UID`, deploy key de GitHub de solo lectura y acceso de lectura a GHCR.
   En GitHub, entorno `production` con aprobación requerida y secretos `DEPLOY_HOST`,
   `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS`.
-- **Bot de pruebas de producción:** distinto del de desarrollo, con su token y un
-  `TEST_BOT_WEBHOOK_SECRET` aleatorio en el `.env` del servidor; tras el primer
-  despliegue, `manage.py telegram_set_webhook test`.
+- **Bot de demo de producción (puerta Telegram):** distinto del de desarrollo, con su
+  token y un `DEMO_TELEGRAM_WEBHOOK_SECRET` aleatorio en el `.env` del servidor; tras
+  el primer despliegue, `manage.py telegram_set_webhook demo`.
 - **Primer despliegue** con `make deploy SHA=<sha>`, prueba de vuelta atrás con un SHA
   roto a propósito y simulacro de restauración en una VPS temporal (objetivo: menos
   de 2 h). Requiere aprobación humana.

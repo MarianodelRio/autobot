@@ -11,27 +11,19 @@ and applies its actions in one. A run later than `max_delay_min` is dropped and 
 """
 
 import logging
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from django.conf import settings
 from django.utils import timezone
 from procrastinate.exceptions import AlreadyEnqueued
 
-from core.actions import NotifyOwner, SendProactive
 from core.pack import Pack, Periodic
+from flowpilot.channels.demo.doors import door
 from flowpilot.jobs import PERIODIC, RUN_PERIODIC, app
 from flowpilot.ops.logging import bind, contextual
 from flowpilot.ops.state import record
-from flowpilot.runtime.context import (
-    CalendarFactory,
-    CalendarUnavailable,
-    bound_calendar_id,
-    build_context,
-    google_calendar,
-)
-from flowpilot.runtime.models import Channel
+from flowpilot.runtime.context import CalendarFactory, build_context, google_calendar
+from flowpilot.runtime.models import DEMO_CHANNELS, Channel
 from flowpilot.runtime.outbound import defer_sends
 from flowpilot.runtime.process import apply_actions
 from flowpilot.tenancy.registry import LoadedTenant, get_registry
@@ -41,29 +33,25 @@ log = logging.getLogger(__name__)
 
 
 def active_tenants(pack: str) -> list[LoadedTenant]:
-    """Tenants of `pack` with at least one eligible main or test periodic context."""
+    """Tenants of `pack` with at least one eligible periodic channel."""
     return [t for t in get_registry().serving(pack) if channels_for(t)]
 
 
 def channels_for(tenant: LoadedTenant) -> list[Channel]:
     if tenant.is_degraded or tenant.file.status == "offboarded":
         return []
-    channels = [Channel.MAIN] if is_active(tenant) else []
-    if tenant.pack is not None and tenant.pack.needs_calendar and settings.TEST_BOT_TOKEN:
-        try:
-            if bound_calendar_id(tenant, Channel.TEST) is not None:
-                channels.append(Channel.TEST)
-        except CalendarUnavailable:
-            pass
-    return channels
+    if tenant.is_demo:
+        if tenant.file.status != "active":
+            return []
+        return [channel for channel in DEMO_CHANNELS if door(channel) is not None]
+    return [Channel.MAIN] if is_active(tenant) else []
 
 
 def is_active(tenant: LoadedTenant) -> bool:
     """`active`, not degraded, and with its main channel enabled. Onboarding and paused
     tenants get no periodic work on their main channel (an onboarding tenant must not
     send reminders to real customers), nor does one whose channel lacks secrets or ids:
-    its notices would fail and their stable keys would be spent for good. The test
-    calendar sweep runs on its own channel."""
+    its notices would fail and their stable keys would be spent for good."""
     if tenant.file.status == "active" and not tenant.is_degraded and not tenant.main_enabled:
         log.warning("tenant %s gets no periodic work: its main channel is disabled", tenant.slug)
         return False
@@ -119,13 +107,6 @@ def run_periodic(
                 tenant, channel, contact=None, state={}, event_id=None, calendars=calendars
             )
             actions = periodic.handler(ctx)  # no transaction during Calendar calls
-            if channel == Channel.TEST:
-                actions = [
-                    replace(a, idem_key=f"test:{a.idem_key}")
-                    if isinstance(a, (SendProactive, NotifyOwner))
-                    else a
-                    for a in actions
-                ]
             with tenant_tx(tenant.id):
                 messages = apply_actions(
                     tenant, channel, actions, contact=None, event=None, now=timezone.now()
@@ -134,7 +115,7 @@ def run_periodic(
             record(tenant.id, channel, failed=False, sweep=name == "calendar_sweep")
         except Exception as exc:
             record(tenant.id, channel, failed=True)
-            # A failed real calendar must not prevent a test-calendar sweep (or vice versa).
+            # A failure on one demo door must not prevent the other from running.
             log.warning("periodic %s of tenant %s failed on channel %s", name, tenant.slug, channel)
             failures.append(exc)
     if failures:

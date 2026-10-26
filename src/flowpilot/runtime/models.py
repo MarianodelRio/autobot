@@ -15,7 +15,11 @@ from flowpilot.tenancy.models import Tenant
 
 class Channel(models.TextChoices):
     MAIN = "main"
-    TEST = "test"
+    DEMO_TG = "demo_tg"
+    DEMO_WA = "demo_wa"
+
+
+DEMO_CHANNELS = (Channel.DEMO_TG, Channel.DEMO_WA)
 
 
 class TenantScoped(models.Model):
@@ -176,7 +180,6 @@ class Notification(TenantScoped):
 
     class Audience(models.TextChoices):
         OWNER = "owner"  # the business owner's chat (owner.telegram_chat_id)
-        OPS = "ops"  # the operator's chat: notices born in the test channel
 
     idem_key = models.TextField()
     audience = models.CharField(
@@ -200,11 +203,12 @@ class Notification(TenantScoped):
         ]
 
 
-# ── Test bot tables: platform-level, no tenant_id and no RLS ──
+# ── Demo doors tables: platform-level ──
 
 
-class TestBotEvent(models.Model):
-    __test__ = False  # not a pytest test class
+class DemoEvent(models.Model):
+    """A message received by a demo door, before the selector knows its tenant.
+    No tenant_id and no RLS: the tenant is not known yet."""
 
     class Status(models.TextChoices):
         PENDING = "pending"
@@ -212,34 +216,48 @@ class TestBotEvent(models.Model):
         FAILED = "failed"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
-    update_id = models.BigIntegerField(unique=True)
-    payload = models.JSONField()
+    channel = models.CharField(max_length=8, choices=Channel)  # demo_tg | demo_wa
+    provider_event_id = models.CharField(max_length=200)  # update_id or wamid
+    payload = models.JSONField()  # the item, as inbound_event.payload
     status = models.CharField(
         max_length=8, choices=Status, default=Status.PENDING, db_default=Status.PENDING
     )
     received_at = models.DateTimeField()
 
     class Meta:
-        db_table = "test_bot_event"
-        indexes = [models.Index(fields=["received_at"], name="test_bot_retention_idx")]
+        db_table = "demo_event"
+        indexes = [models.Index(fields=["received_at"], name="demo_event_retention_idx")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["channel", "provider_event_id"], name="demo_event_provider_uniq"
+            ),
+        ]
 
     def __str__(self) -> str:
-        return f"test_bot_event {self.update_id}"
+        return f"demo_event {self.id}"
 
 
-class TestSession(models.Model):
-    __test__ = False  # not a pytest test class
+class DemoSession(models.Model):
+    """The demo business a person picked, per door. No RLS: it belongs to the
+    platform, not to the demo tenant it points to."""
 
-    telegram_user_id = models.BigIntegerField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
+    channel = models.CharField(max_length=8, choices=Channel)
+    external_id = models.CharField(max_length=160)  # id de Telegram, BSUID o teléfono
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="+")
     selected_at = models.DateTimeField()
 
     class Meta:
-        db_table = "test_session"
-        indexes = [models.Index(fields=["selected_at"], name="test_session_retention_idx")]
+        db_table = "demo_session"
+        indexes = [models.Index(fields=["selected_at"], name="demo_session_retention_idx")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["channel", "external_id"], name="demo_session_channel_external_uniq"
+            ),
+        ]
 
     def __str__(self) -> str:
-        return f"test_session {self.tenant_id}"  # never the Telegram user id
+        return f"demo_session {self.id}"  # never the external id
 
 
 class PlatformCache(models.Model):

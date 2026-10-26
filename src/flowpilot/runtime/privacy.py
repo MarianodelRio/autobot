@@ -8,20 +8,21 @@ from uuid import UUID
 
 from django.core.management.base import CommandError
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 
 from flowpilot.runtime.models import (
+    DEMO_CHANNELS,
     Contact,
     Conversation,
+    DemoEvent,
+    DemoSession,
     InboundEvent,
     Notification,
     OutboundMessage,
-    TestBotEvent,
-    TestSession,
 )
 from flowpilot.tenancy.models import Tenant
 
-MODELS = (Contact, Conversation, InboundEvent, OutboundMessage, Notification, TestSession)
+MODELS = (Contact, Conversation, InboundEvent, OutboundMessage, Notification, DemoSession)
 
 
 def tenant_for(slug: str) -> Tenant:
@@ -39,7 +40,7 @@ def contact_for(tenant: Tenant, external_id: str, channel: str | None) -> Contac
     if not contacts:
         raise CommandError("Contacto desconocido.")
     if len(contacts) > 1:
-        raise CommandError("Identificador ambiguo: indique --channel main o test.")
+        raise CommandError("Identificador ambiguo: indique --channel main, demo_tg o demo_wa.")
     return contacts[0]
 
 
@@ -100,16 +101,23 @@ def contact_events(contact: Contact) -> set[UUID]:
     return ids
 
 
-def test_bot_events(tenant_id: UUID, event_ids: set[UUID] | None = None) -> QuerySet[TestBotEvent]:
-    events = InboundEvent.objects.using("owner").filter(tenant_id=tenant_id, channel="test")
+def demo_events(tenant_id: UUID, event_ids: set[UUID] | None = None) -> QuerySet[DemoEvent]:
+    events = InboundEvent.objects.using("owner").filter(
+        tenant_id=tenant_id, channel__in=DEMO_CHANNELS
+    )
     if event_ids is not None:
         events = events.filter(id__in=event_ids)
-    updates: set[int] = set()
-    for provider_id in events.values_list("provider_event_id", flat=True).iterator(chunk_size=1000):
-        raw = provider_id.removeprefix("select:")
-        if raw.isdecimal():
-            updates.add(int(raw))
-    return TestBotEvent.objects.using("owner").filter(update_id__in=updates)
+    keys: set[tuple[str, str]] = set()
+    for channel, provider_id in events.values_list("channel", "provider_event_id").iterator(
+        chunk_size=1000
+    ):
+        keys.add((channel, provider_id.removeprefix("select:")))
+    if not keys:
+        return DemoEvent.objects.none()
+    query = Q()
+    for channel, raw in keys:
+        query |= Q(channel=channel, provider_event_id=raw)
+    return DemoEvent.objects.using("owner").filter(query)
 
 
 def export_data(tenant: Tenant, contact: Contact | None = None) -> dict[str, Any]:
@@ -123,14 +131,14 @@ def export_data(tenant: Tenant, contact: Contact | None = None) -> dict[str, Any
                 query = query.filter(contact_id=contact.id)
             elif model is InboundEvent:
                 query = query.filter(id__in=contact_events(contact))
-            elif model is TestSession and contact.channel == "test":
-                query = query.filter(telegram_user_id=contact.external_id)
+            elif model is DemoSession and contact.channel in DEMO_CHANNELS:
+                query = query.filter(channel=contact.channel, external_id=contact.external_id)
             else:
                 query = query.none()
         result["data"][model._meta.db_table] = list(query.values())
-    result["data"]["test_bot_event"] = (
-        list(test_bot_events(tenant.id, contact_events(contact) if contact else None).values())
-        if contact is None or contact.channel == "test"
+    result["data"]["demo_event"] = (
+        list(demo_events(tenant.id, contact_events(contact) if contact else None).values())
+        if contact is None or contact.channel in DEMO_CHANNELS
         else []
     )
     return result
@@ -150,18 +158,18 @@ def write_private(path: str, data: dict[str, Any]) -> None:
 def forget(contact: Contact) -> None:
     with transaction.atomic(using="owner"):
         ids = contact_events(contact)
-        if contact.channel == "test":
-            test_bot_events(contact.tenant_id, ids).delete()
+        if contact.channel in DEMO_CHANNELS:
+            demo_events(contact.tenant_id, ids).delete()
         InboundEvent.objects.using("owner").filter(tenant_id=contact.tenant_id, id__in=ids).delete()
-        if contact.channel == "test":
-            TestSession.objects.using("owner").filter(
-                tenant_id=contact.tenant_id, telegram_user_id=contact.external_id
+        if contact.channel in DEMO_CHANNELS:
+            DemoSession.objects.using("owner").filter(
+                channel=contact.channel, external_id=contact.external_id
             ).delete()
         Contact.objects.using("owner").filter(tenant_id=contact.tenant_id, id=contact.id).delete()
 
 
 def purge(tenant: Tenant) -> None:
     with transaction.atomic(using="owner"):
-        test_bot_events(tenant.id).delete()
+        demo_events(tenant.id).delete()
         for model in MODELS:
             model.objects.using("owner").filter(tenant_id=tenant.id).delete()
