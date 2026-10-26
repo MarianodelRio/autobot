@@ -1,0 +1,21 @@
+# tenants/demo-autobuses/tenant.yaml — negocio de demo del pack bus.
+# Creado con `manage.py new_tenant demo-autobuses --pack bus --demo "..."`.
+# Tres líneas inventadas entre Posadas y Córdoba (docs/mejoras/01-bot-de-demo.md
+# §5.10); no son un negocio real y no se publican con `make bus-publicar`.
+id: 01a179e5-6da7-7375-a641-d323beab9727
+slug: demo-autobuses
+name: Autobuses de Prueba
+timezone: Europe/Madrid
+pack: bus
+config:
+  business_name: Autobuses de Prueba
+  contact_phone: "600 000 000"
+  office_hours:
+    - days: [lunes, martes, miercoles, jueves, viernes]
+      ranges: ["09:00-14:00"]
+  links: {}
+  start_menu_towns: [Posadas, Córdoba, Almodóvar del Río, Palma del Río]
+  next_day_search_days: 45
+status: active
+demo:
+  description: Consulta horarios entre pueblos

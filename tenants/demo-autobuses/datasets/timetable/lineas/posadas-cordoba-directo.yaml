@@ -1,0 +1,31 @@
+# horarios/lineas/posadas-cordoba-directo.yaml — demo-autobuses.
+# Línea inventada sin parada intermedia (35 min Posadas-Córdoba). Las salidas
+# desde Córdoba llevan el aviso E (sale de la estación de autobuses).
+nombre: Posadas – Córdoba (directo)
+nombre_corto: Directo Posadas–Córdoba
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  # ── Lunes a viernes — ida ────────────────────────────────────────────────
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      POS    COR
+      06:45  07:20
+      16:00  16:35
+
+  # ── Lunes a viernes — vuelta (sale de la estación de Córdoba) ────────────
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      COR    POS
+      15:00  15:35  | sale_estacion_cordoba
+      19:30  20:05  | sale_estacion_cordoba
+
+pendientes: []

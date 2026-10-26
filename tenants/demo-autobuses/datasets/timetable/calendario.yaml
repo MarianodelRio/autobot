@@ -1,0 +1,39 @@
+# horarios/calendario.yaml — demo-autobuses.
+# Mismos festivos y el mismo curso 2026-27 que tenants/autocares-ss (sin
+# festivos locales: aquí no hace falta distinguirlos por línea).
+#
+# Demo: ampliar la vigencia cada verano junto con el curso.
+vigencia: 01/01/2026 - 31/08/2027
+
+festivos:
+  # 2026 — Decreto 101/2025
+  01/01/2026: Año Nuevo
+  06/01/2026: Epifanía
+  28/02/2026: Día de Andalucía
+  02/04/2026: Jueves Santo
+  03/04/2026: Viernes Santo
+  01/05/2026: Fiesta del Trabajo
+  15/08/2026: Asunción
+  12/10/2026: Fiesta Nacional
+  02/11/2026: Todos los Santos (trasladado)
+  07/12/2026: Constitución (trasladado)
+  08/12/2026: Inmaculada
+  25/12/2026: Navidad
+  # 2027 — Decreto 84/2026
+  01/01/2027: Año Nuevo
+  06/01/2027: Epifanía
+  01/03/2027: Día de Andalucía (trasladado)
+  25/03/2027: Jueves Santo
+  26/03/2027: Viernes Santo
+  01/05/2027: Fiesta del Trabajo
+  16/08/2027: Asunción (trasladado)
+
+curso:
+  inicio_clases: 10/09/2026
+  fin_clases: 22/06/2027
+  vacaciones:
+    - 23/12/2026 - 07/01/2027   # Navidad
+    - 22/03/2027 - 28/03/2027   # Semana Santa
+  no_lectivos: [26/02/2027]
+
+sin_servicio_todas_las_lineas: [25/12, 01/01]

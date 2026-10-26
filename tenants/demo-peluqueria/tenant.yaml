@@ -1,0 +1,77 @@
+# tenants/demo-peluqueria/tenant.yaml — negocio de demo del pack salon.
+# Creado con `manage.py new_tenant demo-peluqueria --pack salon --demo "..."`.
+# status queda en "paused" hasta que la persona ponga su calendario de verdad
+# (docs/mejoras/01-bot-de-demo.md §8) y lo pase a "active"; el owner lo completa
+# ella misma con `manage.py notify_link demo-peluqueria` y después debe añadir
+# `notify: [booking_created, booking_cancelled, booking_moved, move_cancel_failed]`.
+id: 01a179e5-5e58-70eb-be24-ae547d510745
+slug: demo-peluqueria
+name: Peluquería de Prueba
+timezone: Europe/Madrid
+pack: salon
+config:
+  business_name: Peluquería de Prueba
+  contact_phone: "600 000 000"
+  # Marcador explícito: sustitúyelo por el id real del calendario "FlowPilot
+  # demo" (docs/mejoras/01-bot-de-demo.md §8) antes de pasar status a "active".
+  calendar_id: PENDIENTE-calendario-de-demo
+  services:
+    corte:
+      name: Corte de pelo
+      price_eur: 15
+      duration_min: 30
+      client_presence_min: 30
+    corte_barba:
+      name: Corte y barba
+      price_eur: 20
+      duration_min: 45
+      client_presence_min: 45
+    tinte:
+      name: Tinte
+      price_eur: 35
+      duration_min: 60
+      client_presence_min: 90
+    peinado:
+      name: Lavado y peinado
+      price_eur: 18
+      duration_min: 30
+      client_presence_min: 30
+  opening_hours:
+    lunes: ["09:30-14:00", "17:00-20:30"]
+    martes: ["09:30-14:00", "17:00-20:30"]
+    miercoles: ["09:30-14:00", "17:00-20:30"]
+    jueves: ["09:30-14:00", "17:00-20:30"]
+    viernes: ["09:30-14:00", "17:00-20:30"]
+    sabado: ["09:30-14:00"]
+  slot_step_min: 30
+  min_notice_min: 30
+  booking_window_days: 14
+  max_active_bookings: 3
+  reminders_enabled: true
+  reminder_window_hours: [0, 2]
+  manual_confirmations_enabled: false
+  manual_confirmations_since: null
+  special_event:
+    active: false
+    name: ''
+    days: {}
+  info_text: >-
+    Esto es una peluquería de prueba de FlowPilot. Las citas se guardan en un
+    calendario de demostración.
+  texts:
+    welcome: 💈 ¡Bienvenido! ¿En qué podemos ayudarte hoy?
+    name_prompt: ¿A nombre de quién reservamos? Escribe tu nombre.
+    name_text_only: Por favor, escribe tu nombre en un mensaje de texto 🙂
+    no_slots: No hay horarios disponibles para ese día. Prueba con otro día.
+    slot_taken: Ese horario ya no está disponible
+    no_bookings: No tienes ninguna cita próxima.
+    cancelled: Tu cita ha sido cancelada ✅
+    missing: No se encontró esa cita.
+    confirmed: ¡Tu cita está confirmada! ✅
+    moved: Tu cita ha sido movida ✅
+    move_cancel_failed: Tu nueva cita está reservada. No hemos podido cancelar la
+      anterior; hemos avisado al negocio.
+    event_no_days: No hay fechas disponibles para el evento en este momento.
+status: paused
+demo:
+  description: Reserva, mueve o cancela una cita

@@ -44,7 +44,7 @@ al dueño (`booking_created`, `booking_cancelled`, `booking_moved`,
 configuración apropiados.
 
 Para cambiar horario o servicios, edita YAML, ejecuta `make check`, prueba una
-reserva completa y una cancelación con `FakeCalendar` o el calendario de pruebas,
+reserva completa y una cancelación con `FakeCalendar` o con `demo-peluqueria`,
 y despliega el SHA aprobado. Usa `tenant_health <slug>` para comprobar acceso
 Calendar y plantillas antes de activar el canal real. Los procedimientos de
 incidencia y de secretos están en `docs/runbooks/04-calendar.md` y

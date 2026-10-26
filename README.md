@@ -62,6 +62,11 @@ make up         # el worker procesa lo que llega; tras cambiar .env: docker comp
 make demo-up    # arranca también el poller de la puerta Telegram de demo (make demo-down la para)
 ```
 
-En Telegram, escribe `/start` al bot: muestra los negocios de demo disponibles. `make telegram-poll SLUG=<slug>` hace lo mismo con el bot propio de un negocio (o sin `SLUG`, con la puerta Telegram de demo, en primer plano). Un bot con webhook no admite polling: `docker compose exec web python manage.py telegram_set_webhook demo --delete` se lo quita (nunca a un bot que use el servidor).
+En Telegram, escribe `/start` al bot: muestra los negocios de demo disponibles
+(`demo-autobuses`, siempre; `demo-peluqueria` solo si está `active`). `make
+telegram-poll SLUG=<slug>` hace lo mismo con el bot propio de un negocio (o sin
+`SLUG`, con la puerta Telegram de demo, en primer plano). Un bot con webhook no
+admite polling: `docker compose exec web python manage.py telegram_set_webhook
+demo --delete` se lo quita (nunca a un bot que use el servidor).
 
 La puerta WhatsApp de la demo solo funciona en el servidor: un número de Meta tiene una única URL de webhook, así que no hay equivalente local. Ver [docs/runbooks/demo.md](docs/runbooks/demo.md).

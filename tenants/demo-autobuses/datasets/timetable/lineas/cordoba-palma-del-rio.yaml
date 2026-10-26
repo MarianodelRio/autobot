@@ -1,0 +1,44 @@
+# horarios/lineas/cordoba-palma-del-rio.yaml — demo-autobuses.
+# Línea inventada que circula todos los días, incluidos domingos y festivos,
+# con un único viaje por sentido (aviso D).
+nombre: Córdoba – Almodóvar del Río – Posadas – Palma del Río
+nombre_corto: Córdoba – Palma del Río
+avisos: [domingos_un_viaje]
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabados-domingos-festivos: horario }
+
+horarios:
+  # ── Lunes a viernes — ida ────────────────────────────────────────────────
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      COR    ALM    POS    PAL
+      11:00  11:25  11:40  12:00
+
+  # ── Lunes a viernes — vuelta ─────────────────────────────────────────────
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      PAL    POS    ALM    COR
+      17:00  17:20  17:35  18:00
+
+  # ── Sábados, domingos y festivos — ida ────────────────────────────────────
+  - temporada: anual
+    dias: sabados-domingos-festivos
+    tabla: |
+      COR    ALM    POS    PAL
+      11:00  11:25  11:40  12:00
+
+  # ── Sábados, domingos y festivos — vuelta ─────────────────────────────────
+  - temporada: anual
+    dias: sabados-domingos-festivos
+    tabla: |
+      PAL    POS    ALM    COR
+      17:00  17:20  17:35  18:00
+
+pendientes: []

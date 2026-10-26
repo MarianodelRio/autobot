@@ -12,7 +12,7 @@ pack: bus
 channel:
   # Canal main de WhatsApp (decidido): número propio y app de
   # Meta en el portfolio de la empresa. Los ids se rellenan al dar de alta el canal; mientras falten,
-  # el canal main está deshabilitado y el negocio solo se prueba por el bot de pruebas.
+  # el canal main está deshabilitado y el negocio solo se prueba en onboarding con testers.main.
   type: whatsapp
   public_id: zhhvht2eksq80vqa
   app_id: null

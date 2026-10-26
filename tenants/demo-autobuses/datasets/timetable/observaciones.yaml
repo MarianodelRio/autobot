@@ -1,0 +1,14 @@
+# horarios/observaciones.yaml — demo-autobuses. Solo avisos: no hace falta
+# ninguna condición que el motor de consulta tenga que aplicar.
+
+sale_estacion_cordoba:
+  letra: E
+  tipo: aviso
+  ambitos: [viaje]
+  texto: "Sale de la estación de autobuses de Córdoba."
+
+domingos_un_viaje:
+  letra: D
+  tipo: aviso
+  ambitos: [linea]
+  texto: "Los domingos solo circula un viaje por sentido."

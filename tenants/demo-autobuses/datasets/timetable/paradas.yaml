@@ -1,0 +1,15 @@
+# horarios/paradas.yaml — demo-autobuses. Dataset inventado para enseñar el
+# pack bus: tres líneas entre Posadas y Córdoba (docs/mejoras/01-bot-de-demo.md
+# §5.10). No es un negocio real.
+
+localidades:
+  posadas: { nombre: Posadas }
+  almodovar-del-rio: { nombre: Almodóvar del Río, alias: [almodovar] }
+  cordoba: { nombre: Córdoba }
+  palma-del-rio: { nombre: Palma del Río, alias: [palma] }
+
+paradas:
+  POS: { nombre: Posadas, localidad: posadas }
+  ALM: { nombre: Almodóvar del Río, localidad: almodovar-del-rio }
+  COR: { nombre: Córdoba, localidad: cordoba }
+  PAL: { nombre: Palma del Río, localidad: palma-del-rio }
