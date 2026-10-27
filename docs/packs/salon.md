@@ -43,6 +43,34 @@ al dueño (`booking_created`, `booking_cancelled`, `booking_moved`,
 `move_cancel_failed`) necesitan su vínculo de Telegram y los interruptores de
 configuración apropiados.
 
+### Resumen mensual al dueño
+
+El pack declara estas métricas de negocio para el resumen periódico
+(`docs/mejoras/02-avisos-y-resumenes.md`):
+
+| Métrica | Unidad | Se emite cuando |
+|---|---|---|
+| Citas creadas | recuento | se confirma una reserva nueva o un movimiento (`create()`) |
+| Citas canceladas | recuento | se cancela una cita (`cancel()`) |
+| Ingresos estimados | euros | junto con cada cita creada, por el `price_eur` de ese servicio; si el servicio no tiene precio configurado, esa reserva no suma ingresos (pero sí cuenta como cita creada) |
+
+Un movimiento de cita cuenta solo como cita creada de la nueva, nunca como
+cancelación de la antigua. Las citas añadidas a mano en Google Calendar no pasan
+por `conversation.py`, así que no generan ninguna de estas métricas: es el
+comportamiento esperado, no una limitación.
+
+Para activar el resumen mensual del negocio, añade en su `tenant.yaml`:
+
+```yaml
+owner:
+  telegram_chat_id: 123456789
+  summary_monthly: true
+```
+
+Requiere `owner.telegram_chat_id` (el mismo vínculo de Telegram que los avisos
+puntuales). Llega por el bot de avisos el día 1 de cada mes, con los datos del mes
+anterior ya cerrado.
+
 Para cambiar horario o servicios, edita YAML, ejecuta `make check`, prueba una
 reserva completa y una cancelación con `FakeCalendar` o con `demo-peluqueria`,
 y despliega el SHA aprobado. Usa `tenant_health <slug>` para comprobar acceso

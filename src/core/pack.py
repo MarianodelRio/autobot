@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -42,6 +42,16 @@ class ContactInfo:
 class HealthIssue:
     code: str
     message: str
+
+
+@dataclass(frozen=True)
+class SummaryMetric:
+    """One line of the owner's periodic summary (`flowpilot.runtime.summary`), fed by
+    `RecordMetric` actions of the same `kind`."""
+
+    kind: str
+    label: str
+    unit: Literal["count", "eur"] = "count"
 
 
 @dataclass(frozen=True)
@@ -90,3 +100,4 @@ class Pack:
     load_data: Callable[[TenantInfo, BaseModel, Path], object] | None = None
     health: Callable[[PackContext], list[HealthIssue]] | None = None
     templates: list[TemplateSpec] = field(default_factory=list)
+    summary_metrics: list[SummaryMetric] = field(default_factory=list)

@@ -203,6 +203,28 @@ class Notification(TenantScoped):
         ]
 
 
+class MetricEvent(TenantScoped):
+    """A pack business event for the owner's periodic summary
+    (`flowpilot.runtime.summary`). No phone, user id or free text: only `kind` (a fixed
+    string the pack declares in `Pack.summary_metrics`) and `value`."""
+
+    kind = models.CharField(max_length=64)
+    value = models.DecimalField(max_digits=12, decimal_places=2)
+    idem_key = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "metric_event"
+        indexes = [
+            models.Index(fields=["tenant", "kind", "created_at"], name="metric_event_kind_idx")
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "idem_key"], name="metric_event_idem_key_uniq"
+            ),
+        ]
+
+
 # ── Demo doors tables: platform-level ──
 
 

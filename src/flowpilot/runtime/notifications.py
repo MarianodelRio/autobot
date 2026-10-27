@@ -16,6 +16,7 @@ from flowpilot.channels.base import Rejected, RetryLater, SendOutcome, Sent
 from flowpilot.ops.logging import bind, contextual
 from flowpilot.runtime.models import Notification
 from flowpilot.runtime.outbound import SendRetry
+from flowpilot.runtime.summary import OWNER_SUMMARY_KIND
 from flowpilot.tenancy.registry import get_registry
 from flowpilot.tenancy.schema import TelegramSecrets
 from flowpilot.tenancy.tx import tenant_tx
@@ -59,9 +60,13 @@ def send_notification(
         if row is None or row.status != Notification.Status.PENDING:
             return
         owner = tenant.file.owner
+        # owner.notify only gates per-event notices; the summary has its own toggle
+        # (owner.summary_monthly), already checked when dispatch_owner_summaries created
+        # this row.
+        allowed = row.kind == OWNER_SUMMARY_KIND or row.kind in owner.notify if owner else False
         chat_id = (
             str(owner.telegram_chat_id)
-            if owner and owner.telegram_chat_id is not None and row.kind in owner.notify
+            if owner and owner.telegram_chat_id is not None and allowed
             else ""
         )
         # Claim durably before network I/O. A crash or ambiguous result stays failed:

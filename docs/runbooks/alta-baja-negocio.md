@@ -15,7 +15,10 @@
 4. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de
    servicio («Hacer cambios en los eventos») y se pone su id en `calendar_id`. Si el
    canal es WhatsApp, crear las plantillas del pack en el WhatsApp Manager.
-5. **Avisos al dueño** (opcional): `manage.py notify_link <slug>`.
+5. **Avisos al dueño** (opcional): `manage.py notify_link <slug>`. Con el vínculo ya
+   hecho, el resumen mensual (opcional) se activa con `owner.summary_monthly: true`
+   en su `tenant.yaml` (ver `docs/packs/<pack>.md`); llega por el mismo bot el día 1
+   de cada mes, con los datos del mes anterior.
 6. Commit y despliegue. Si el canal `main` es Telegram, `manage.py telegram_set_webhook <slug>`.
 7. `manage.py tenant_health <slug>` en verde.
 8. **Pruebas:** añadir a `testers.main` los ids (Telegram) o teléfonos/BSUID
@@ -43,6 +46,27 @@ operador como administrador; una app y un número por negocio.
 
 Desde el 1/10/2026 Meta cobra también las respuestas dentro de la ventana de 24 h al
 precio *utility* del país; la tarifa se consulta en la cuenta de cada negocio.
+
+### Precios aproximados de mensajería (resumen mensual)
+
+El "coste aproximado de mensajería" del resumen al dueño
+(`docs/mejoras/02-avisos-y-resumenes.md`, `flowpilot/runtime/summary.py:PRICE_EUR`) usa
+esta tabla, en euros por mensaje, para España:
+
+| Categoría de plantilla | Precio aprox. | Franja gratuita mensual |
+|---|---|---|
+| `service` (ventana de 24 h) | 0,0730 € | 1.000 mensajes por número |
+| `utility` | 0,0394 € | ninguna |
+| `marketing` | 0,0988 € | ninguna |
+| `authentication` | 0,0363 € | ninguna |
+
+**No es la tarifa real de ninguna cuenta.** Meta publica el rate card exacto, por
+país y moneda, en el panel de facturación de WhatsApp Business Manager de cada
+negocio, y cambia como máximo una vez por trimestre (el día 1). Estos valores son
+una estimación interna sin contrastar contra ese panel, comprobada por última vez
+el 27/10/2026; revísalos si Meta anuncia un cambio de tarifas y, sobre todo, antes
+de presentar el coste del resumen como una cifra fiable. Telegram no tiene coste
+por mensaje y no entra en este cálculo.
 
 ## Negocio de demo de un pack nuevo
 

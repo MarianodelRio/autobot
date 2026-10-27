@@ -23,7 +23,7 @@ from uuid import UUID
 from django.db.models import F, Q
 from django.utils import timezone
 
-from core.actions import Action, NotifyOwner, SendProactive, UpdateContact
+from core.actions import Action, NotifyOwner, RecordMetric, SendProactive, UpdateContact
 from core.conversation import (
     EffectiveState,
     effective_state,
@@ -53,6 +53,7 @@ from flowpilot.runtime.models import (
     Contact,
     Conversation,
     InboundEvent,
+    MetricEvent,
     Notification,
     OutboundMessage,
 )
@@ -235,6 +236,8 @@ def apply_actions(
                     messages.append(row)
             case NotifyOwner():
                 _notify_owner(tenant, channel, action)
+            case RecordMetric():
+                _record_metric(tenant, action)
     return messages
 
 
@@ -331,6 +334,15 @@ def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> No
         app.configure_task(SEND_NOTIFICATION, queue=OUTBOUND, lock=f"owner:{tenant.id}").defer(
             tenant_id=str(tenant.id), notification_id=str(row.id)
         )
+
+
+def _record_metric(tenant: LoadedTenant, action: RecordMetric) -> None:
+    """A plain business event, for the owner's periodic summary
+    (`flowpilot.runtime.summary`): no queue, no external call, just a row."""
+    row = MetricEvent(
+        tenant_id=tenant.id, idem_key=action.idem_key, kind=action.kind[:64], value=action.value
+    )
+    MetricEvent.objects.bulk_create([row], ignore_conflicts=True)
 
 
 @contextual

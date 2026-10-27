@@ -22,6 +22,7 @@ from flowpilot.models import (
     DemoEvent,
     DemoSession,
     InboundEvent,
+    MetricEvent,
     Notification,
     OutboundMessage,
     Tenant,
@@ -92,12 +93,19 @@ def _notification(t: Tenant, **o: Any) -> Notification:
     )
 
 
+def _metric_event(t: Tenant, **o: Any) -> MetricEvent:
+    return MetricEvent.objects.create(
+        **{"tenant_id": t.id, "idem_key": uuid.uuid4().hex, "kind": "k", "value": 1, **o}
+    )
+
+
 FACTORIES: dict[type[models.Model], Callable[..., models.Model]] = {
     Contact: _contact,
     Conversation: _conversation,
     InboundEvent: _event,
     OutboundMessage: _outbound,
     Notification: _notification,
+    MetricEvent: _metric_event,
 }
 MODELS = sorted(FACTORIES, key=str)
 

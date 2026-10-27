@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from core.pack import Pack, TenantInfo
+from core.pack import Pack, SummaryMetric, TenantInfo
 from packs.bus import conversation, datos
 from packs.bus.config import BusConfig
 
@@ -25,4 +25,5 @@ pack = Pack(
     conversation_timeout_min=30,
     handle_message=conversation.handle,
     load_data=load_data,
+    summary_metrics=[SummaryMetric("schedule_query", "Consultas de horario")],
 )

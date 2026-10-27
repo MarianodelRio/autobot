@@ -62,3 +62,25 @@ La empresa confirma el PDF antes del commit y despliegue. Después ejecuta
 `make bus-publicar TENANT=<slug>`; la herramienta crea el tag local, que la
 persona operadora publica. Los cambios futuros se publican en su fecha de
 vigencia. El runbook 10 contiene las comprobaciones de operación.
+
+### Resumen mensual al dueño
+
+El pack declara una sola métrica para el resumen periódico al dueño
+(`docs/mejoras/02-avisos-y-resumenes.md`):
+
+| Métrica | Unidad | Se emite cuando |
+|---|---|---|
+| Consultas de horario | recuento | la conversación encuentra un itinerario (`con_salidas`); un menú, un error o "sin horarios" no cuentan |
+
+`bus` no vende nada, así que no declara ninguna métrica en euros: es el
+comportamiento esperado, no una limitación. Para activar el resumen mensual del
+negocio, añade en su `tenant.yaml`:
+
+```yaml
+owner:
+  telegram_chat_id: 123456789
+  summary_monthly: true
+```
+
+Requiere `owner.telegram_chat_id`. Llega por el bot de avisos el día 1 de cada
+mes, con los datos del mes anterior ya cerrado.

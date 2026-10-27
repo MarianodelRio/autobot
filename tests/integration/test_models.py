@@ -14,6 +14,7 @@ from flowpilot.models import (
     Conversation,
     DemoEvent,
     InboundEvent,
+    MetricEvent,
     Notification,
     OutboundMessage,
     Tenant,
@@ -109,6 +110,28 @@ def test_duplicate_notification_idem_key_is_rejected() -> None:
     raises_integrity(notify)
 
 
+def test_duplicate_metric_event_idem_key_is_rejected() -> None:
+    a = tenant("a")
+
+    def record() -> MetricEvent:
+        return MetricEvent.objects.using("owner").create(
+            tenant=a, idem_key="metric:booking_created:e1", kind="booking_created", value=1
+        )
+
+    record()
+    raises_integrity(record)
+
+
+def test_same_metric_event_idem_key_in_another_tenant_is_allowed() -> None:
+    a, b = tenant("a"), tenant("b")
+    MetricEvent.objects.using("owner").create(
+        tenant=a, idem_key="metric:x", kind="booking_created", value=1
+    )
+    MetricEvent.objects.using("owner").create(
+        tenant=b, idem_key="metric:x", kind="booking_created", value=1
+    )
+
+
 def test_contact_is_unique_per_tenant_channel_and_external_id() -> None:
     a = tenant("a")
     contact(a, "34600000001")
@@ -187,6 +210,7 @@ def test_rls_is_enabled_and_forced_on_tenant_tables_only() -> None:
                     "inbound_event",
                     "outbound_message",
                     "notification",
+                    "metric_event",
                     "demo_event",
                     "demo_session",
                 ]

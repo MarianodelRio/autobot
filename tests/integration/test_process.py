@@ -5,13 +5,14 @@ function is then called directly (one test runs it through the worker)."""
 import dataclasses
 import json
 from datetime import timedelta
+from decimal import Decimal
 from typing import Any
 
 import pytest
 from django.db import connections
 from django.utils import timezone
 
-from core.actions import ContactRef, SendProactive
+from core.actions import ContactRef, RecordMetric, SendProactive
 from core.conversation import OPT_IN_TEXT, OPT_OUT_TEXT, RECOVERY_TEXT, RESTART_TEXT
 from core.errors import TransientError
 from core.messages import IncomingMessage
@@ -26,10 +27,12 @@ from flowpilot.runtime.models import (
     Contact,
     Conversation,
     InboundEvent,
+    MetricEvent,
     Notification,
     OutboundMessage,
 )
 from flowpilot.tenancy.registry import LoadedTenant, get_registry
+from flowpilot.tenancy.tx import tenant_tx
 from tests.integration.helpers import (
     BSUID,
     events,
@@ -406,6 +409,30 @@ def test_notify_owner_without_owner_is_only_logged(tenants: Any) -> None:
     receive(wa_press("greet"))
     receive(wa_text("Lucía"))
     assert not Notification.objects.using("owner").exists()
+
+
+def test_record_metric_creates_a_metric_event(tenants: Any) -> None:
+    tenants(wa_tenant())
+    receive(wa_text("hola"))
+    receive(wa_press("greet"))
+    receive(wa_text("Lucía"))
+    row = MetricEvent.objects.using("owner").get()
+    assert (row.kind, row.value) == ("greeted", Decimal(1))
+
+
+def test_record_metric_is_idempotent_by_idem_key(tenants: Any) -> None:
+    tenants(wa_tenant())
+    for _ in range(2):
+        with tenant_tx(tenant().id):
+            process.apply_actions(
+                tenant(),
+                "main",
+                [RecordMetric("booking_created", "m1")],
+                contact=None,
+                event=None,
+                now=timezone.now(),
+            )
+    assert MetricEvent.objects.using("owner").count() == 1
 
 
 def test_proactive_to_a_phone_without_contact(

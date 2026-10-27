@@ -3,10 +3,10 @@ never registered in `packs.registry`."""
 
 from pydantic import BaseModel
 
-from core.actions import Action, ContactRef, NotifyOwner, SendProactive
+from core.actions import Action, ContactRef, NotifyOwner, RecordMetric, SendProactive
 from core.errors import TransientError
 from core.messages import IncomingMessage
-from core.pack import Pack, PackContext, PackResult, Periodic
+from core.pack import Pack, PackContext, PackResult, Periodic, SummaryMetric
 from core.proactive import TemplateSpec
 from core.replies import Text
 from core.ui import button, buttons_msg, list_msg, paginate, row, section
@@ -57,8 +57,11 @@ def handle(ctx: PackContext, msg: IncomingMessage) -> PackResult:
         name = msg.text.strip()
         result = menu(ctx)
         notify = NotifyOwner("greeted", f"Nuevo saludo de {name}", ctx.idem.event("notify:greeted"))
+        metric = RecordMetric("greeted", ctx.idem.event("metric:greeted"))
         return PackResult(
-            replies=[Text(f"¡Encantado, *{name}*!"), *result.replies], state={}, actions=[notify]
+            replies=[Text(f"¡Encantado, *{name}*!"), *result.replies],
+            state={},
+            actions=[notify, metric],
         )
 
     match msg.payload:
@@ -102,4 +105,5 @@ pack = Pack(
     handle_message=handle,
     periodic=[Periodic("daily_summary", every_min=1440, handler=daily_summary)],
     templates=[TEMPLATE_THANKS],
+    summary_metrics=[SummaryMetric("greeted", "Saludos")],
 )

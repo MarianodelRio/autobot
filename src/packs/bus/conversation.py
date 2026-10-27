@@ -19,6 +19,7 @@ from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from core.actions import Action, RecordMetric
 from core.messages import IncomingMessage
 from core.pack import PackContext, PackResult
 from core.replies import Reply, Text
@@ -90,6 +91,7 @@ class _Turno:
         self.datos = datos
         self.estado: dict[str, Any] = dict(ctx.state)
         self.replies: list[Reply] = []
+        self.actions: list[Action] = []
 
     def responder(self, *replies: Reply) -> None:
         self.replies.extend(replies)
@@ -533,6 +535,8 @@ def _resultado(t: _Turno, fecha: date) -> None:
     t.set("fecha", fecha.isoformat())
     t.step = RESULTADO
     t.responder(*build_resultado(t.cfg, texto, botones))
+    if consulta.estado == "con_salidas":
+        t.actions.append(RecordMetric("schedule_query", t.ctx.idem.event("metric:schedule_query")))
 
 
 # ── Handlers por estado ───────────────────────────────────────────────
@@ -700,7 +704,7 @@ def handle(ctx: PackContext, message: IncomingMessage) -> PackResult:
         # cambiar el dataset): se vuelve al menú en vez de fallar.
         t.replies.clear()
         to_menu(t)
-    return PackResult(replies=t.replies, state=t.estado)
+    return PackResult(replies=t.replies, state=t.estado, actions=t.actions)
 
 
 def _despachar(t: _Turno, text: str | None, interactive_id: str | None, value: str) -> None:

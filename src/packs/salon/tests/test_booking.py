@@ -1,6 +1,7 @@
 """Booking scenarios through the production conversation harness and both renderers."""
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from core.errors import TransientError
 from core.testing.harness import Conversation
@@ -32,6 +33,19 @@ def test_full_booking(salon: Conversation) -> None:
     assert salon.locks == ["cal:2026-03-24"]
     assert salon.contact.display_name == "Lucía García"
     assert salon.notifications[0].kind == "booking_created"
+    assert [(m.kind, m.value) for m in salon.metrics] == [
+        ("booking_created", Decimal(1)),
+        ("booking_revenue", Decimal(10)),
+    ]
+
+
+def test_booking_without_a_configured_price_emits_no_revenue_metric(salon: Conversation) -> None:
+    salon.config = configuration(
+        services={"corte": {"name": "Corte de pelo", "duration_min": 30, "client_presence_min": 30}}
+    )
+    choose(salon)
+    salon.send("Lucía García")
+    assert [m.kind for m in salon.metrics] == ["booking_created"]
 
 
 def test_replayed_booking_is_not_duplicated(salon: Conversation) -> None:
@@ -194,3 +208,19 @@ def test_one_digit_calendar_hour_reaches_the_booking_flow(salon: Conversation) -
     salon.press("day_2026-03-24")
     salon.press("period_morning")
     assert "09:00" in salon.state["slots"]
+
+
+def test_manual_calendar_booking_emits_no_metric(salon: Conversation) -> None:
+    """A booking added straight to Calendar never goes through Turn.create(): it is
+    invisible to the owner's periodic summary (decision 6 of the proposal)."""
+    start = datetime.fromisoformat("2026-03-24T10:00:00+01:00")
+    salon.calendar.add(
+        CalendarEvent(
+            "manual",
+            "Corte - Alguien",
+            "Telefono: +34600000099",
+            start,
+            start + timedelta(minutes=30),
+        )
+    )
+    assert salon.metrics == []

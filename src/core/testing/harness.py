@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
-from core.actions import Action, NotifyOwner, SendProactive, UpdateContact
+from core.actions import Action, NotifyOwner, RecordMetric, SendProactive, UpdateContact
 from core.conversation import (
     effective_state,
     global_command,
@@ -234,6 +234,10 @@ class Conversation:
     def notifications(self) -> list[NotifyOwner]:
         return [a for a in self.actions if isinstance(a, NotifyOwner)]
 
+    @property
+    def metrics(self) -> list[RecordMetric]:
+        return [a for a in self.actions if isinstance(a, RecordMetric)]
+
     # ── One turn, in the order of process_event ───────────────────────────
 
     def _turn(self, message: IncomingMessage, event_id: UUID | None = None) -> Turn:
@@ -344,7 +348,7 @@ class Conversation:
                     )
                     if action.to.contact_id == self.contact.id:
                         self._pressable.update(action.button_payloads)
-                case NotifyOwner():
+                case NotifyOwner() | RecordMetric():
                     pass
             self.actions.append(action)
 

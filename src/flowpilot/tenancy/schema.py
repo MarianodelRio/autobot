@@ -64,6 +64,13 @@ class Testers(Strict):
 class Owner(Strict):
     telegram_chat_id: int | None = None
     notify: list[str] = []
+    summary_monthly: bool = False
+
+    @model_validator(mode="after")
+    def _summary_needs_chat(self) -> Owner:
+        if self.summary_monthly and self.telegram_chat_id is None:
+            raise ValueError("summary_monthly needs telegram_chat_id")
+        return self
 
 
 class DemoInfo(Strict):

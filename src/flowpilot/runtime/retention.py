@@ -14,6 +14,7 @@ from flowpilot.runtime.models import (
     DemoEvent,
     DemoSession,
     InboundEvent,
+    MetricEvent,
     Notification,
     OutboundMessage,
 )
@@ -64,6 +65,7 @@ def cleanup(*, now: datetime | None = None) -> None:
                 {"payload": None},
             ),
             (Notification.objects.filter(created_at__lte=annual), None),
+            (MetricEvent.objects.filter(created_at__lte=annual), None),
             (
                 Contact.objects.filter(
                     Q(last_activity_at__lte=annual)

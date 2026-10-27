@@ -1,6 +1,7 @@
 """What a pack wants to happen besides replying."""
 
 from dataclasses import dataclass
+from decimal import Decimal
 from uuid import UUID
 
 from core.proactive import TemplateSpec
@@ -40,4 +41,14 @@ class UpdateContact:
     opt_out: bool | None = None
 
 
-type Action = SendProactive | NotifyOwner | UpdateContact
+@dataclass(frozen=True)
+class RecordMetric:
+    """A business event for the owner's periodic summary (`flowpilot.runtime.summary`).
+    `kind` must be one of the pack's declared `Pack.summary_metrics`."""
+
+    kind: str
+    idem_key: str
+    value: Decimal = Decimal(1)
+
+
+type Action = SendProactive | NotifyOwner | UpdateContact | RecordMetric

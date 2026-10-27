@@ -14,6 +14,7 @@ import math
 from uuid import UUID
 
 from django.db import close_old_connections
+from django.utils import timezone
 from procrastinate import BaseRetryStrategy, JobContext, RetryDecision, RetryStrategy
 from procrastinate.contrib.django import app as app
 from procrastinate.jobs import Job
@@ -41,6 +42,7 @@ ROUTE_DEMO_EVENT = "route_demo_event"  # (event_id) of demo_event, lock demo:<h>
 DISPATCH_PERIODIC = "dispatch_periodic"  # (timestamp, pack, name): one per pack Periodic
 RUN_PERIODIC = "run_periodic"  # (tenant_id, name, scheduled_at), queueing lock per both
 RETRY_STALLED_JOBS = "retry_stalled_jobs"  # (timestamp): every 5 min
+DISPATCH_OWNER_SUMMARIES = "dispatch_owner_summaries"  # (timestamp): daily, platform-wide
 
 # `inbound` jobs are retried 3 times, only on TransientError, after 2, 4 and 8 s.
 INBOUND_RETRIES = 3
@@ -235,5 +237,19 @@ def retention_cleanup(timestamp: int) -> None:
     close_old_connections()
     try:
         cleanup()
+    finally:
+        close_old_connections()
+
+
+# Daily, platform-wide (not per-pack, so it does not use dispatch_periodic/run_periodic):
+# dispatch_owner_summaries itself only acts on a tenant on its own day 1.
+@app.periodic(cron="0 11 * * *", periodic_id=DISPATCH_OWNER_SUMMARIES)
+@app.task(queue=PERIODIC, name=DISPATCH_OWNER_SUMMARIES, queueing_lock=DISPATCH_OWNER_SUMMARIES)
+def dispatch_owner_summaries(timestamp: int) -> None:
+    from flowpilot.runtime import summary
+
+    close_old_connections()
+    try:
+        summary.dispatch_owner_summaries(timezone.now())
     finally:
         close_old_connections()
