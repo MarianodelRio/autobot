@@ -31,7 +31,8 @@
 ### Checklist de un número de WhatsApp
 
 La app de Meta, la WABA y el número están en el Business Portfolio del negocio, con el
-operador como administrador; una app y un número por negocio.
+operador como administrador; una app y un número por negocio. Explicación no técnica
+de este modelo y de cómo migrarlo en el futuro: `docs/runbooks/alta-whatsapp-meta.md`.
 
 - SIM sin WhatsApp activo.
 - Gmail y Business Portfolio del negocio.
