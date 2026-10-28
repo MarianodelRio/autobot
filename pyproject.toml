@@ -1,5 +1,5 @@
 [project]
-name = "flowpilot"
+name = "autobot"
 version = "0.1.0"
 description = "Multi-tenant platform that serves small businesses' customers over WhatsApp or Telegram."
 readme = "README.md"
@@ -46,7 +46,7 @@ extend-exclude = ["*.md"]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "DJ"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["core", "integrations", "packs", "flowpilot", "config", "tools"]
+known-first-party = ["core", "integrations", "packs", "autobot", "config", "tools"]
 
 [tool.mypy]
 python_version = "3.14"
@@ -67,31 +67,31 @@ addopts = "--strict-markers"
 
 # Module dependency rules. Run with `PYTHONPATH=src lint-imports`.
 [tool.importlinter]
-root_packages = ["core", "integrations", "packs", "flowpilot", "config"]
+root_packages = ["core", "integrations", "packs", "autobot", "config"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "core imports nothing from the project nor Django"
 type = "forbidden"
 source_modules = ["core"]
-forbidden_modules = ["integrations", "packs", "flowpilot", "config", "django"]
+forbidden_modules = ["integrations", "packs", "autobot", "config", "django"]
 
 [[tool.importlinter.contracts]]
 name = "integrations only imports core (no Django)"
 type = "forbidden"
 source_modules = ["integrations"]
-forbidden_modules = ["packs", "flowpilot", "config", "django"]
+forbidden_modules = ["packs", "autobot", "config", "django"]
 
 [[tool.importlinter.contracts]]
-name = "packs only import core (no Django, integrations or flowpilot)"
+name = "packs only import core (no Django, integrations or autobot)"
 type = "forbidden"
 source_modules = ["packs"]
-forbidden_modules = ["integrations", "flowpilot", "config", "django"]
+forbidden_modules = ["integrations", "autobot", "config", "django"]
 
 [[tool.importlinter.contracts]]
-name = "A pack is imported only by packs.registry; flowpilot reaches packs only via the registry"
+name = "A pack is imported only by packs.registry; autobot reaches packs only via the registry"
 type = "protected"
 protected_modules = ["packs.*"]
 allowed_importers = ["packs.registry"]
-ignore_imports = ["flowpilot -> packs.registry", "flowpilot.** -> packs.registry"]
+ignore_imports = ["autobot -> packs.registry", "autobot.** -> packs.registry"]
 unmatched_ignore_imports_alerting = "none"

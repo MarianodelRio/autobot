@@ -1,8 +1,8 @@
 # 2. Un negocio o canal no responde
 
 **Síntoma:** otros negocios funcionan, pero uno no responde en su canal `main`.
-**Diagnóstico:** ejecuta `docker compose -p flowpilot -f compose.prod.yaml exec web
-python manage.py tenant_health <slug>` desde `/srv/flowpilot` y revisa si figura
+**Diagnóstico:** ejecuta `docker compose -p autobot -f compose.prod.yaml exec web
+python manage.py tenant_health <slug>` desde `/srv/autobot` y revisa si figura
 `onboarding`, `paused`, `offboarded` o `degraded`. Compara `public_id`, ids de canal y
 secretos con la configuración aprobada; no muestres valores de secretos en pantalla
 compartida ni tickets. En `onboarding`, `main` solo acepta testers declarados.

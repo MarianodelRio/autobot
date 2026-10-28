@@ -11,10 +11,10 @@ import pytest
 from django.core.management import CommandError, call_command
 from pytest_django import Settings
 
-from flowpilot.channels import views
-from flowpilot.channels.demo.doors import door
-from flowpilot.channels.telegram import polling
-from flowpilot.runtime.models import Channel, DemoEvent, InboundEvent
+from autobot.channels import views
+from autobot.channels.demo.doors import door
+from autobot.channels.telegram import polling
+from autobot.runtime.models import Channel, DemoEvent, InboundEvent
 from tests.integration.helpers import jobs, tg_tenant
 from tests.tenancy.helpers import TG_SECRETS
 

@@ -13,13 +13,13 @@ from django.core.management.base import CommandError
 from django.db import connections
 from django.utils import timezone
 
+from autobot.channels.adapters import TELEGRAM
+from autobot.runtime import notifications, process
+from autobot.runtime.models import Notification, PlatformCache
+from autobot.runtime.outbound import SendRetry
+from autobot.tenancy.registry import get_registry
+from autobot.tenancy.tx import tenant_tx
 from core.actions import NotifyOwner
-from flowpilot.channels.adapters import TELEGRAM
-from flowpilot.runtime import notifications, process
-from flowpilot.runtime.models import Notification, PlatformCache
-from flowpilot.runtime.outbound import SendRetry
-from flowpilot.tenancy.registry import get_registry
-from flowpilot.tenancy.tx import tenant_tx
 from tests.integration.helpers import jobs, wa_tenant
 
 pytestmark = [
@@ -195,7 +195,7 @@ def test_unconfigured_does_not_send(tenants: Any, telegram: Any, settings: Any) 
 def test_notify_link_private_matching_code(tenants: Any, telegram: Any, monkeypatch: Any) -> None:
     tenants(owner())
     monkeypatch.setattr(
-        "flowpilot.management.commands.notify_link.secrets.token_urlsafe", lambda n: "code"
+        "autobot.management.commands.notify_link.secrets.token_urlsafe", lambda n: "code"
     )
     updates = [
         {
@@ -261,7 +261,7 @@ def test_notify_link_timeout(tenants: Any, telegram: Any, monkeypatch: Any) -> N
     )
     ticks = iter([0, 301])
     monkeypatch.setattr(
-        "flowpilot.management.commands.notify_link.time.monotonic", lambda: next(ticks)
+        "autobot.management.commands.notify_link.time.monotonic", lambda: next(ticks)
     )
     with pytest.raises(CommandError, match="caducado"):
         call_command("notify_link", "wa", stdout=StringIO())

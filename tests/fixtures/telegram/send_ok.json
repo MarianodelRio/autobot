@@ -5,8 +5,8 @@
     "from": {
       "id": 7000000001,
       "is_bot": true,
-      "first_name": "FlowPilot Dev",
-      "username": "flowpilot_dev_bot"
+      "first_name": "Autobot Dev",
+      "username": "autobot_dev_bot"
     },
     "chat": {
       "id": 100000001,

@@ -23,12 +23,12 @@ def main(
 ) -> int:
     from django.db import DatabaseError
 
-    from flowpilot.runtime.context import build_context, google_calendar
-    from flowpilot.runtime.identity import phone_group, phone_key
-    from flowpilot.runtime.models import Channel, Contact
-    from flowpilot.tenancy.registry import get_registry
-    from flowpilot.tenancy.schema import BSUID
-    from flowpilot.tenancy.tx import tenant_tx
+    from autobot.runtime.context import build_context, google_calendar
+    from autobot.runtime.identity import phone_group, phone_key
+    from autobot.runtime.models import Channel, Contact
+    from autobot.tenancy.registry import get_registry
+    from autobot.tenancy.schema import BSUID
+    from autobot.tenancy.tx import tenant_tx
     from packs.salon.booking import calendar, configuration
     from packs.salon.migration import migrate
 

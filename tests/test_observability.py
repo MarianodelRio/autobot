@@ -8,7 +8,7 @@ from uuid import UUID
 
 import pytest
 
-from flowpilot.ops.logging import JsonFormatter, before_send, context, contextual, redact
+from autobot.ops.logging import JsonFormatter, before_send, context, contextual, redact
 
 
 @pytest.mark.parametrize("phone", ["+34612345678", "612345678", "+34 612 345 678", "612-345-678"])

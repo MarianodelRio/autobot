@@ -6,9 +6,9 @@ import uuid
 import pytest
 from django.test import RequestFactory
 
-from flowpilot.channels import ratelimit
-from flowpilot.channels.ratelimit import WindowLimiter, client_ip
-from flowpilot.runtime.locks import contact_hash, conversation_lock
+from autobot.channels import ratelimit
+from autobot.channels.ratelimit import WindowLimiter, client_ip
+from autobot.runtime.locks import contact_hash, conversation_lock
 
 
 class Clock:

@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from flowpilot.runtime import periodic
-from flowpilot.runtime.models import Channel, Contact, OutboundMessage
-from flowpilot.tenancy.tx import tenant_tx
+from autobot.runtime import periodic
+from autobot.runtime.models import Channel, Contact, OutboundMessage
+from autobot.tenancy.tx import tenant_tx
 from packs.salon.models import CalendarEvent
 
 pytestmark = [

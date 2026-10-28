@@ -1,4 +1,4 @@
-# Preparar la VPS de FlowPilot
+# Preparar la VPS de Autobot
 
 **Síntoma:** no hay servidor listo, el despliegue SSH falla, o un segundo bootstrap cambia
 la configuración. **Diagnóstico:** comprueba DNS, SSH, puertos, Docker y timer por separado.
@@ -17,21 +17,21 @@ con tu clave en la VPS recién creada.
    `bash deploy/bootstrap-server.sh operator.pub ci.pub github-read-key github-known-hosts`. El
    script exige Ubuntu 24.04, instala Docker Engine/Compose desde el repositorio oficial,
    `ufw`, `fail2ban`, actualizaciones automáticas y restic; crea `deploy`, clona el
-   repositorio en `/srv/flowpilot`, instala el timer de backup y deshabilita SSH de
+   repositorio en `/srv/autobot`, instala el timer de backup y deshabilita SSH de
    root y contraseña. La clave de CI lleva un comando forzado: solo acepta
    `deploy/deploy.sh <sha completo de main>`. La clave de operación permite
    mantenimiento y el túnel Admin. La clave de lectura del repositorio permite
    `git fetch` del código que corresponde al SHA de despliegue.
 3. Abre **otra sesión** con la clave de operación: `ssh deploy@<host>`. Comprueba
    `docker compose version` y
-   `systemctl is-enabled flowpilot-backup.timer`. Si la sesión falla, conserva la
+   `systemctl is-enabled autobot-backup.timer`. Si la sesión falla, conserva la
    consola del proveedor para corregir `authorized_keys` antes de cerrarla.
 4. Ejecuta el mismo bootstrap de nuevo desde la consola del proveedor; verifica que
    no añade usuarios, claves, reglas de firewall ni unidades duplicadas. Comprueba
    `sshd -T | grep -E 'permitrootlogin|passwordauthentication'` y
    `ufw status numbered`. Desde otra máquina, escanea los puertos públicos; solo deben
    aparecer 22, 80 y 443. El puerto 8000 escucha únicamente en 127.0.0.1.
-5. En `/srv/flowpilot/.env`, usa `.env.example` como guía y fija `DEPLOY_UID` con
+5. En `/srv/autobot/.env`, usa `.env.example` como guía y fija `DEPLOY_UID` con
    `id -u deploy`. Crea `secrets.yaml`, `google_sa.json`, `backup.env` y
    `restic-password` como propietario `deploy`, modo 0600. El usuario no root de
    `web` y `worker` usa ese UID para leer los dos secretos montados. La cuenta de
@@ -39,7 +39,7 @@ con tu clave en la VPS recién creada.
    `DJANGO_ALLOWED_HOSTS`, incluye `api.<dominio>`, `localhost` y `127.0.0.1`:
    el Admin recibe el host local al entrar por el túnel SSH.
 6. Desde la consola del proveedor como root, inicia el timer con
-   `systemctl start flowpilot-backup.timer` solo después de
+   `systemctl start autobot-backup.timer` solo después de
    configurar `backup.env`, `restic-password` y el destino remoto de los backups.
    Antes del primer despliegue, comprueba que el paquete GHCR es público o configura
    autenticación de lectura para `deploy` en Docker. En GitHub, crea el entorno

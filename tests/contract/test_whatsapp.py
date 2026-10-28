@@ -14,10 +14,7 @@ import httpx
 import pytest
 from django.test import RequestFactory
 
-from core.messages import IncomingMessage
-from core.proactive import ProactiveMessage, TemplateSpec
-from core.replies import Button, Buttons, List, Row, Section, Text
-from flowpilot.channels.base import (
+from autobot.channels.base import (
     Ambiguous,
     InboundItem,
     Rejected,
@@ -26,8 +23,11 @@ from flowpilot.channels.base import (
     StatusItem,
     parse_stored,
 )
-from flowpilot.channels.whatsapp import WhatsAppAdapter
-from flowpilot.tenancy.schema import WhatsAppChannel, WhatsAppSecrets
+from autobot.channels.whatsapp import WhatsAppAdapter
+from autobot.tenancy.schema import WhatsAppChannel, WhatsAppSecrets
+from core.messages import IncomingMessage
+from core.proactive import ProactiveMessage, TemplateSpec
+from core.replies import Button, Buttons, List, Row, Section, Text
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "whatsapp"
 CHANNEL = WhatsAppChannel(

@@ -70,7 +70,7 @@ def test_migrations_ran_as_fp_owner_and_fp_app_can_use_the_tables() -> None:
 
 
 def test_migrate_uses_the_owner_alias_by_default() -> None:
-    assert get_commands()["migrate"] == "flowpilot"  # what `manage.py migrate` runs
-    command = load_command_class("flowpilot", "migrate")
+    assert get_commands()["migrate"] == "autobot"  # what `manage.py migrate` runs
+    command = load_command_class("autobot", "migrate")
     options = command.create_parser("manage.py", "migrate").parse_args([])
     assert options.database == "owner"

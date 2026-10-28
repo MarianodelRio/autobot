@@ -40,7 +40,7 @@ jobs:
         env:
           SHA: ${{ inputs.sha }}
         run: |
-          docker manifest inspect ghcr.io/marianodelrio/flowpilot:"$SHA" >/dev/null
+          docker manifest inspect ghcr.io/marianodelrio/autobot:"$SHA" >/dev/null
       - name: Install deploy key and pinned host
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}

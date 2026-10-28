@@ -16,7 +16,7 @@ import pytest
 from django.apps import apps
 from django.db import DatabaseError, IntegrityError, connections, models, transaction
 
-from flowpilot.models import (
+from autobot.models import (
     Contact,
     Conversation,
     DemoEvent,
@@ -27,7 +27,7 @@ from flowpilot.models import (
     OutboundMessage,
     Tenant,
 )
-from flowpilot.tenancy.tx import tenant_tx
+from autobot.tenancy.tx import tenant_tx
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 NOW = datetime(2026, 10, 5, 10, tzinfo=UTC)
@@ -113,7 +113,7 @@ MODELS = sorted(FACTORIES, key=str)
 def tenant_models() -> set[type[models.Model]]:
     return {
         m
-        for m in apps.get_app_config("flowpilot").get_models()
+        for m in apps.get_app_config("autobot").get_models()
         if any(f.name == "tenant" for f in m._meta.get_fields())
     }
 

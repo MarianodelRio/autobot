@@ -13,10 +13,10 @@ from typing import Any
 import pytest
 from django.db import close_old_connections, connections
 
+from autobot.runtime.context import build_context
+from autobot.runtime.models import Channel
 from core.pack import ContactInfo
 from core.testing.clock import FixedClock
-from flowpilot.runtime.context import build_context
-from flowpilot.runtime.models import Channel
 from packs.salon.booking import SlotTaken, reserve
 from packs.salon.models import CalendarEvent
 from packs.salon.testing import FakeCalendar

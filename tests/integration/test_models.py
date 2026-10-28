@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from django.db import DatabaseError, IntegrityError, connections, transaction
 
-from flowpilot.models import (
+from autobot.models import (
     Contact,
     Conversation,
     DemoEvent,

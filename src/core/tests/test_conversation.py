@@ -82,7 +82,7 @@ class TestGlobalCommand:
             "/start",
             "/START",
             "/start ref123",
-            "/start@flowpilot_dev_bot",
+            "/start@autobot_dev_bot",
         ],
     )
     def test_menu(self, value: str) -> None:

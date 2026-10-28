@@ -242,16 +242,16 @@ owner:
    se añade a `type Action`.
 2. **`core/pack.py`**: nueva `SummaryMetric(kind: str, label: str, unit: Literal["count", "eur"] = "count")`;
    `Pack` gana `summary_metrics: list[SummaryMetric] = field(default_factory=list)`.
-3. **`flowpilot/runtime/models.py`**: nuevo modelo `MetricEvent(TenantScoped)` —
+3. **`autobot/runtime/models.py`**: nuevo modelo `MetricEvent(TenantScoped)` —
    `kind` (`CharField`, máx. 64), `value` (`DecimalField`), `idem_key` (`TextField`),
    `created_at` (`auto_now_add`); índice `(tenant, kind, created_at)`; restricción única
    `(tenant, idem_key)`, igual que `Notification`. Migración nueva (no destructiva: solo
    crea tabla e índices, sin aprobación especial).
-4. **`flowpilot/runtime/process.py`**: nuevo `case RecordMetric():` que inserta la fila
+4. **`autobot/runtime/process.py`**: nuevo `case RecordMetric():` que inserta la fila
    con `bulk_create(..., ignore_conflicts=True)`, igual que `_notify_owner`; sin cola ni
    llamada externa (es solo un registro).
-5. **`flowpilot/tenancy/schema.py`**: `Owner.summary_monthly` (sección 5).
-6. **`flowpilot/runtime/summary.py`** (nuevo): `previous_month`, `month_to_date`,
+5. **`autobot/tenancy/schema.py`**: `Owner.summary_monthly` (sección 5).
+6. **`autobot/runtime/summary.py`** (nuevo): `previous_month`, `month_to_date`,
    `dispatch_owner_summaries`, `build_summary`, `_generic_metrics`, `_messaging_cost`,
    `_pack_metrics`, `_render` (sección 4). `_generic_metrics` cuenta "usuarios" como
    contactos distintos con `OutboundMessage` en el periodo (decisión 9, no
@@ -259,7 +259,7 @@ owner:
    `_messaging_cost` hace la cuenta de la decisión 10 sobre `OutboundMessage`, con la
    tabla de precios por categoría como constante configurable y documentada como
    aproximada.
-7. **`flowpilot/jobs.py`**: un periodic nuevo, diario, en UTC a una hora fija (p. ej.
+7. **`autobot/jobs.py`**: un periodic nuevo, diario, en UTC a una hora fija (p. ej.
    `"0 7 * * *"`, las 7:00 UTC — por decidir con la persona si prefiere otra hora),
    `DISPATCH_OWNER_SUMMARIES`, que llama a `dispatch_owner_summaries` (que internamente
    solo actúa para cada tenant si hoy es el día 1 de su mes, en su zona horaria — el job
@@ -282,7 +282,7 @@ owner:
    - Disambiguación cuando el `chat_id` corresponde a más de un negocio: pendiente de
      detallar (decisión 11) — no se implementa a ciegas, se diseña ese flujo concreto
      cuando se aborde esta pieza.
-9. **`flowpilot/runtime/retention.py`**: añade `MetricEvent` a la lista de tablas con
+9. **`autobot/runtime/retention.py`**: añade `MetricEvent` a la lista de tablas con
    recorte anual (`annual`, igual que `Notification`), dentro del bucle por tenant.
 10. **`packs/salon/pack.py`**: `summary_metrics=[SummaryMetric("booking_created", "Citas creadas"), SummaryMetric("booking_cancelled", "Citas canceladas"), SummaryMetric("booking_revenue", "Ingresos estimados", unit="eur")]`.
 11. **`packs/salon/conversation.py`**:
@@ -337,7 +337,7 @@ cabe sin problema en el límite de 4.096 caracteres de un mensaje; no necesita p
 
 - `tests/core/test_actions.py` (o donde correspondan): `RecordMetric` se transforma en
   `MetricEvent`, es idempotente (dos acciones con el mismo `idem_key` crean una sola fila).
-- `tests/flowpilot/test_summary.py` (nuevo):
+- `tests/autobot/test_summary.py` (nuevo):
   - `previous_month`: dado el 1 de noviembre, da `[1 de octubre, 1 de noviembre)`
     completo — ni un día de más ni de menos; caso de borde de cambio de año (1 de
     enero → diciembre del año anterior).

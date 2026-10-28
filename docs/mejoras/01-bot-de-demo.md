@@ -18,7 +18,7 @@ Eso cambia:
    No hay bot de pruebas, calendario de pruebas ni `testers.telegram` para clientes.
    Para probar un cliente antes de abrirlo sigue existiendo `status: onboarding` con
    `testers.main` (solo contesta a esos ids, en su canal real).
-2. **La plataforma tiene un bot de demo** para enseñar FlowPilot a posibles clientes,
+2. **La plataforma tiene un bot de demo** para enseñar Autobot a posibles clientes,
    con **dos puertas**: un bot de Telegram y un número de WhatsApp. Las dos hacen lo
    mismo: la primera respuesta pide elegir negocio y, desde ahí, la conversación es la
    del pack real de ese negocio.
@@ -31,7 +31,7 @@ Eso cambia:
 5. La demo corre en la VM de producción como un cliente más, se enciende y apaga por
    puerta (credenciales) y por negocio (`status`), y también se puede lanzar en local.
 
-Es una evolución del bot de pruebas actual (`flowpilot/channels/test_bot/`): su
+Es una evolución del bot de pruebas actual (`autobot/channels/test_bot/`): su
 selector ya hace casi todo; se generaliza a dos transportes y se restringe a negocios
 de demo.
 
@@ -65,7 +65,7 @@ Puerta Telegram  ─┐                     ┌─ demo-peluqueria (salon, calen
 Puerta WhatsApp  ─┘   (lista cerrada)   └─ demo-autobuses (bus, 3 líneas)
 ```
 
-- Canales internos (`flowpilot.runtime.models.Channel`): `main`, `demo_tg`, `demo_wa`.
+- Canales internos (`autobot.runtime.models.Channel`): `main`, `demo_tg`, `demo_wa`.
   El valor `test` desaparece. Los nombres caben en las columnas actuales
   (`max_length=8`).
 - Un contacto de demo existe por negocio y por puerta: la misma persona por Telegram y
@@ -75,7 +75,7 @@ Puerta WhatsApp  ─┘   (lista cerrada)   └─ demo-autobuses (bus, 3 línea
 
 ## 4. Configuración y ajustes
 
-### 4.1 `tenant.yaml` (`flowpilot/tenancy/schema.py`)
+### 4.1 `tenant.yaml` (`autobot/tenancy/schema.py`)
 
 - Nuevo campo opcional `demo: DemoInfo | None = None`, con
   `class DemoInfo(Strict): description: str = Field(min_length=1, max_length=72)`.
@@ -91,7 +91,7 @@ Puerta WhatsApp  ─┘   (lista cerrada)   └─ demo-autobuses (bus, 3 línea
   - Si `demo` no está: `channel` es obligatorio y se aplica la comprobación actual de
     `testers.main` según el tipo de canal.
 
-### 4.2 Registro (`flowpilot/tenancy/registry.py`)
+### 4.2 Registro (`autobot/tenancy/registry.py`)
 
 - `_with_secrets`: si `tenant.file.channel is None` (demo), no busca secretos,
   `secrets=None` y `main_disabled=["demo tenant: no main channel"]`. `load_registry` no
@@ -109,7 +109,7 @@ Puerta WhatsApp  ─┘   (lista cerrada)   └─ demo-autobuses (bus, 3 línea
   tiene `extra="forbid"`); ese comportamiento no se cambia en esta mejora.
 - Sin más cambios en el pack: no sabe si habla con una demo.
 
-### 4.4 Calendario ligado (`flowpilot/runtime/context.py`)
+### 4.4 Calendario ligado (`autobot/runtime/context.py`)
 
 `bound_calendar_id(tenant, channel)`:
 
@@ -139,14 +139,14 @@ Se eliminan `TEST_BOT_TOKEN`, `TEST_BOT_WEBHOOK_SECRET` y `TEST_BOT_OPERATORS`. 
 | `DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD` | Entero, 300 por defecto: mensajes facturables al mes de la puerta WhatsApp antes de avisar |
 
 La puerta WhatsApp está encendida solo si `PHONE_NUMBER_ID`, `WABA_ID`, `APP_SECRET`,
-`ACCESS_TOKEN` y `VERIFY_TOKEN` tienen valor. `flowpilot/ops/logging.py` (filtro de
+`ACCESS_TOKEN` y `VERIFY_TOKEN` tienen valor. `autobot/ops/logging.py` (filtro de
 privacidad) incluye los nuevos secretos en la lista que hoy contiene `TEST_BOT_TOKEN`
 y `TEST_BOT_WEBHOOK_SECRET`. `compose.prod.yaml` pasa las variables nuevas en
 `x-app-env` y quita las viejas. `.env.example` las documenta en un bloque "Bot de demo".
 
 ## 5. Cambios en el código
 
-### 5.1 Modelos y migración (`flowpilot/runtime/models.py`)
+### 5.1 Modelos y migración (`autobot/runtime/models.py`)
 
 - `Channel`: `MAIN = "main"`, `DEMO_TG = "demo_tg"`, `DEMO_WA = "demo_wa"`. Propiedad o
   constante `DEMO_CHANNELS = (Channel.DEMO_TG, Channel.DEMO_WA)` en el mismo módulo.
@@ -180,7 +180,7 @@ class DemoSession(models.Model):
     # Index(selected_at, name="demo_session_retention_idx"); __str__ sin external_id
 ```
 
-- `flowpilot/models.py` exporta los modelos nuevos y deja de exportar los viejos.
+- `autobot/models.py` exporta los modelos nuevos y deja de exportar los viejos.
 - Migración `0008_demo_channels.py` (⚠️ aprobada), en este orden:
   1. `RunSQL` que borra los datos del canal `test`: `DELETE FROM outbound_message
      WHERE channel='test'`, `DELETE FROM conversation WHERE contact_id IN (SELECT id
@@ -197,9 +197,9 @@ class DemoSession(models.Model):
   - Pasar `makemigrations --check` y `lintmigrations` (si el linter marca el borrado,
     se añade la excepción con un comentario que cite esta aprobación).
 
-### 5.2 Puertas y selector (`flowpilot/channels/demo/`, sustituye a `test_bot/`)
+### 5.2 Puertas y selector (`autobot/channels/demo/`, sustituye a `test_bot/`)
 
-Se mueve `flowpilot/channels/test_bot/` a `flowpilot/channels/demo/` (`selector.py`,
+Se mueve `autobot/channels/test_bot/` a `autobot/channels/demo/` (`selector.py`,
 `views.py`, `doors.py`) y se borra el antiguo.
 
 `doors.py` describe cada puerta:
@@ -278,17 +278,17 @@ def allowed(door: Door, item: InboundItem) -> bool
 
 | Constante | Texto |
 |---|---|
-| `PICK_TEXT` | `👋 Demo de FlowPilot. Elige el negocio que quieres probar:` |
+| `PICK_TEXT` | `👋 Demo de Autobot. Elige el negocio que quieres probar:` |
 | `PICKED_TEXT` | `Demo · {name}. Escribe /negocio para cambiar.` |
 | `NOT_AVAILABLE_TEXT` | `Ese negocio no está disponible ahora mismo.` |
 | `NONE_AVAILABLE_TEXT` | `No hay ninguna demo disponible ahora mismo.` |
 | `NO_ACCESS_TEXT` | `No tienes acceso a esta demo.` |
 
-`flowpilot/runtime/locks.py`: `telegram_user_lock` → `demo_user_lock(channel,
+`autobot/runtime/locks.py`: `telegram_user_lock` → `demo_user_lock(channel,
 external_id)` = `demo:<16 hex de sha256(channel \x00 external_id)>`.
-`flowpilot/jobs.py`: `ROUTE_TEST_UPDATE` → `ROUTE_DEMO_EVENT = "route_demo_event"`.
+`autobot/jobs.py`: `ROUTE_TEST_UPDATE` → `ROUTE_DEMO_EVENT = "route_demo_event"`.
 
-### 5.3 Webhooks de las puertas (`flowpilot/channels/demo/views.py`, `config/urls.py`)
+### 5.3 Webhooks de las puertas (`autobot/channels/demo/views.py`, `config/urls.py`)
 
 - `POST /webhooks/telegram-demo` (sustituye a `/webhooks/telegram-test`): mismas
   comprobaciones que hoy (limitador por IP, tamaño, `X-Telegram-Bot-Api-Secret-Token`
@@ -441,7 +441,7 @@ booking_moved, move_cancel_failed]`). `config`:
 - `reminders_enabled: true`, `reminder_window_hours: [0, 2]`: el recordatorio llega
   hasta dos horas antes de la cita, para poder enseñarlo en directo.
 - `manual_confirmations_enabled: false`, `special_event` inactivo.
-- `info_text`: "Esto es una peluquería de prueba de FlowPilot. Las citas se guardan
+- `info_text`: "Esto es una peluquería de prueba de Autobot. Las citas se guardan
   en un calendario de demostración."
 
 **`tenants/demo-autobuses/`** · `name: Autobuses de Prueba` · `pack: bus` ·
@@ -571,7 +571,7 @@ Tests nuevos, como mínimo:
 1. Crear dos bots de Telegram de demo con @BotFather: uno para producción y otro para
    local.
 2. Proyecto de Google Cloud con cuenta de servicio (`google_sa.json`), un calendario
-   "FlowPilot demo" compartido con ella ("Hacer cambios en los eventos"), y su id en
+   "Autobot demo" compartido con ella ("Hacer cambios en los eventos"), y su id en
    `calendar_id` de `demo-peluqueria`; después `status: active`.
 3. Bot de avisos (`NOTIFY_BOT_TOKEN`) y `manage.py notify_link demo-peluqueria` para
    rellenar `owner.telegram_chat_id`.

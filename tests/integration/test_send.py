@@ -12,12 +12,12 @@ from django.db import connections
 from django.utils import timezone
 from procrastinate.contrib.django.django_connector import DjangoConnector
 
-from flowpilot.channels import adapters
-from flowpilot.jobs import OUTBOUND, SendRetryStrategy, app
-from flowpilot.runtime import outbound, process
-from flowpilot.runtime.models import Contact, OutboundMessage
-from flowpilot.runtime.outbound import SendRetry, send_message
-from flowpilot.tenancy.registry import LoadedTenant, get_registry
+from autobot.channels import adapters
+from autobot.jobs import OUTBOUND, SendRetryStrategy, app
+from autobot.runtime import outbound, process
+from autobot.runtime.models import Contact, OutboundMessage
+from autobot.runtime.outbound import SendRetry, send_message
+from autobot.tenancy.registry import LoadedTenant, get_registry
 from tests.integration.helpers import (
     events,
     fixture,
@@ -333,7 +333,7 @@ def test_send_recipient_prefers_the_phone() -> None:
 def test_unknown_time_and_original_event_context(tenants: Any, meta: Any, monkeypatch: Any) -> None:
     from datetime import timedelta
 
-    from flowpilot.ops.logging import before_send
+    from autobot.ops.logging import before_send
 
     tenants(wa_tenant())
     row = a_reply()

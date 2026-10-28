@@ -2,13 +2,13 @@
 # Local-only passwords; production takes them from .env.
 x-app: &app
   build: .
-  image: flowpilot:local
+  image: autobot:local
   env_file:
     - path: .env
       required: false
   environment:
-    DB_APP_URL: postgres://fp_app:fp_app@db:5432/flowpilot
-    DB_OWNER_URL: postgres://fp_owner:fp_owner@db:5432/flowpilot
+    DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
+    DB_OWNER_URL: postgres://fp_owner:fp_owner@db:5432/autobot
   volumes:
     - ./src:/app/src
     - ./tenants:/app/tenants
@@ -28,7 +28,7 @@ services:
     <<: *app
     # Replaces the whole environment of x-app (it is not merged): repeat what it needs.
     environment:
-      DB_APP_URL: postgres://fp_app:fp_app@db:5432/flowpilot
+      DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
       SERVICE_NAME: worker
       DB_OWNER_URL: ""  # the worker never uses fp_owner
     # Graceful stop: on SIGTERM it takes no new jobs and lets running
@@ -49,11 +49,11 @@ services:
   db:
     image: postgres:18
     environment:
-      POSTGRES_DB: flowpilot
+      POSTGRES_DB: autobot
       POSTGRES_PASSWORD: postgres
       FP_OWNER_PASSWORD: fp_owner
       FP_APP_PASSWORD: fp_app
-      POSTGRES_TEST_DB: test_flowpilot  # for the tests run from the host (make check)
+      POSTGRES_TEST_DB: test_autobot  # for the tests run from the host (make check)
     volumes:
       - pgdata:/var/lib/postgresql
       # Runs once, on an empty volume: creates fp_owner and fp_app.
@@ -62,7 +62,7 @@ services:
       - "127.0.0.1:5433:5432"  # 5433 so it does not clash with a PostgreSQL on the host
     healthcheck:
       # Over TCP: during the first init the server only listens on the socket.
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d flowpilot"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d autobot"]
       interval: 5s
       timeout: 3s
       retries: 10

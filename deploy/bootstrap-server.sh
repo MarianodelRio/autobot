@@ -23,9 +23,9 @@ if [[ $(wc -l <"$1") -ne 1 || $(wc -l <"$2") -ne 1 ]] || \
   exit 2
 fi
 fingerprint=$(cat "$1" "$2" "$3" "$4" "$0" | sha256sum | cut -d' ' -f1)
-marker=/var/lib/flowpilot/bootstrap-complete
+marker=/var/lib/autobot/bootstrap-complete
 operator_line="$operator_key"
-ci_line="restrict,command=\"/srv/flowpilot/deploy/ssh-deploy.sh\" $ci_key"
+ci_line="restrict,command=\"/srv/autobot/deploy/ssh-deploy.sh\" $ci_key"
 ufw_rules_safe() {
   ufw show added | awk '/^ufw / && $0 !~ /^ufw allow (22|80|443)\/tcp$/ {bad=1} END {exit bad?1:0}'
 }
@@ -41,16 +41,16 @@ if [[ -f $marker && $(cat "$marker") == "$fingerprint" ]] && \
    systemctl is-active --quiet docker && \
    systemctl is-active --quiet fail2ban && \
    systemctl is-active --quiet ssh && \
-   systemctl is-enabled --quiet flowpilot-backup.timer && \
+   systemctl is-enabled --quiet autobot-backup.timer && \
    [[ $(ufw status | head -n 1) == 'Status: active' ]] && \
    ufw_rules_complete && \
    grep -q '^DEFAULT_INPUT_POLICY="DROP"$' /etc/default/ufw && \
    cmp -s /home/deploy/.ssh/authorized_keys \
      <(printf '%s\n%s\n' "$operator_line" "$ci_line") && \
-   cmp -s /srv/flowpilot/deploy/flowpilot-backup.timer /etc/systemd/system/flowpilot-backup.timer && \
-   cmp -s /srv/flowpilot/deploy/flowpilot-backup.service /etc/systemd/system/flowpilot-backup.service && \
-   [[ $(stat -c '%u:%g:%a' /srv/flowpilot/state/caddy-data) == "$(id -u deploy):$(id -g deploy):700" ]] && \
-   [[ $(stat -c '%u:%g:%a' /srv/flowpilot/state/caddy-config) == "$(id -u deploy):$(id -g deploy):700" ]] && \
+   cmp -s /srv/autobot/deploy/autobot-backup.timer /etc/systemd/system/autobot-backup.timer && \
+   cmp -s /srv/autobot/deploy/autobot-backup.service /etc/systemd/system/autobot-backup.service && \
+   [[ $(stat -c '%u:%g:%a' /srv/autobot/state/caddy-data) == "$(id -u deploy):$(id -g deploy):700" ]] && \
+   [[ $(stat -c '%u:%g:%a' /srv/autobot/state/caddy-config) == "$(id -u deploy):$(id -g deploy):700" ]] && \
    [[ $(sshd -T | awk '/^permitrootlogin / {print $2}') == no ]] && \
    [[ $(sshd -T | awk '/^passwordauthentication / {print $2}') == no ]]; then
   echo 'Bootstrap already configured'
@@ -97,17 +97,17 @@ if ! cmp -s "$keys" /home/deploy/.ssh/authorized_keys; then
   install -m 0600 -o deploy -g deploy "$keys" /home/deploy/.ssh/authorized_keys
 fi
 
-install -d -m 0750 -o deploy -g deploy /srv/flowpilot
-if [[ ! -d /srv/flowpilot/.git ]]; then
+install -d -m 0750 -o deploy -g deploy /srv/autobot
+if [[ ! -d /srv/autobot/.git ]]; then
   runuser -u deploy -- env GIT_SSH_COMMAND='ssh -i /home/deploy/.ssh/github_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/deploy/.ssh/known_hosts -o StrictHostKeyChecking=yes' \
-    git clone --quiet git@github.com:MarianodelRio/flowpilot.git /srv/flowpilot
+    git clone --quiet git@github.com:MarianodelRio/autobot.git /srv/autobot
 fi
-runuser -u deploy -- git -C /srv/flowpilot config core.sshCommand \
+runuser -u deploy -- git -C /srv/autobot config core.sshCommand \
   'ssh -i /home/deploy/.ssh/github_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/deploy/.ssh/known_hosts -o StrictHostKeyChecking=yes'
-install -d -m 0700 -o deploy -g deploy /srv/flowpilot/state/caddy-data
-install -d -m 0700 -o deploy -g deploy /srv/flowpilot/state/caddy-config
+install -d -m 0700 -o deploy -g deploy /srv/autobot/state/caddy-data
+install -d -m 0700 -o deploy -g deploy /srv/autobot/state/caddy-config
 
-cat >/etc/ssh/sshd_config.d/00-00-flowpilot.conf <<'EOF'
+cat >/etc/ssh/sshd_config.d/00-00-autobot.conf <<'EOF'
 PermitRootLogin no
 PasswordAuthentication no
 KbdInteractiveAuthentication no
@@ -122,7 +122,7 @@ if [[ $(sshd -T | awk '/^permitrootlogin / {print $2}') != no ]] || \
   exit 1
 fi
 systemctl reload ssh
-cat >/etc/fail2ban/jail.d/flowpilot-sshd.local <<'EOF'
+cat >/etc/fail2ban/jail.d/autobot-sshd.local <<'EOF'
 [sshd]
 enabled = true
 EOF
@@ -138,10 +138,10 @@ ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
 
-install -m 0644 /srv/flowpilot/deploy/flowpilot-backup.service /etc/systemd/system/
-install -m 0644 /srv/flowpilot/deploy/flowpilot-backup.timer /etc/systemd/system/
+install -m 0644 /srv/autobot/deploy/autobot-backup.service /etc/systemd/system/
+install -m 0644 /srv/autobot/deploy/autobot-backup.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable flowpilot-backup.timer
-install -d -m 0755 /var/lib/flowpilot
+systemctl enable autobot-backup.timer
+install -d -m 0755 /var/lib/autobot
 printf '%s\n' "$fingerprint" >"$marker"
 echo 'Bootstrap completed; configure secrets and GHCR read access before deploy'

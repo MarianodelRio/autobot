@@ -6,10 +6,10 @@ from typing import Any
 import pytest
 from django.utils import timezone
 
+from autobot.runtime.effects import StoredEffects
+from autobot.runtime.models import InboundEvent
+from autobot.tenancy.tx import tenant_tx
 from core.errors import PermanentError
-from flowpilot.runtime.effects import StoredEffects
-from flowpilot.runtime.models import InboundEvent
-from flowpilot.tenancy.tx import tenant_tx
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 

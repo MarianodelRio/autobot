@@ -18,14 +18,14 @@ from django.db import OperationalError, connections
 from django.test import Client
 from procrastinate.contrib.django.django_connector import DjangoConnector
 
+from autobot.channels import adapters, views
+from autobot.jobs import PERIODIC, QUEUES, app
+from autobot.runtime import process
+from autobot.runtime.models import Contact, Conversation, OutboundMessage
+from autobot.tenancy.registry import get_registry
 from core.conversation import RECOVERY_TEXT
 from core.messages import IncomingMessage
 from core.pack import PackContext, PackResult
-from flowpilot.channels import adapters, views
-from flowpilot.jobs import PERIODIC, QUEUES, app
-from flowpilot.runtime import process
-from flowpilot.runtime.models import Contact, Conversation, OutboundMessage
-from flowpilot.tenancy.registry import get_registry
 from tests.integration.helpers import (
     events,
     fixture,

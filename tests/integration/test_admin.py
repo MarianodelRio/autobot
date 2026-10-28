@@ -17,15 +17,15 @@ from django_otp.oath import totp  # type: ignore[import-untyped]
 from django_otp.plugins.otp_totp.models import TOTPDevice  # type: ignore[import-untyped]
 from procrastinate.contrib.django.models import ProcrastinateJob
 
+from autobot.admin import queue_app
+from autobot.admin_db import admin_request
+from autobot.channels import adapters
+from autobot.runtime.models import Contact, OutboundMessage
+from autobot.runtime.outbound import send_message
+from autobot.tenancy.models import Tenant
 from config.urls import internal, public
 from core.replies import Text
 from core.serialization import dump_outbound
-from flowpilot.admin import queue_app
-from flowpilot.admin_db import admin_request
-from flowpilot.channels import adapters
-from flowpilot.runtime.models import Contact, OutboundMessage
-from flowpilot.runtime.outbound import send_message
-from flowpilot.tenancy.models import Tenant
 from tests.integration.helpers import tg_tenant
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
@@ -113,7 +113,7 @@ def message(tenants: Any) -> OutboundMessage:
 
 def action(client: Client, message: OutboundMessage, name: str, **extra: Any) -> Any:
     return client.post(
-        "/admin/flowpilot/outboundmessage/",
+        "/admin/autobot/outboundmessage/",
         {"action": name, "_selected_action": [str(message.pk)], "confirm": "yes", **extra},
     )
 
@@ -146,7 +146,7 @@ def test_resolve_unknown_owner_audited(
 def test_invalid_unknown_cannot_be_resolved(
     logged: Client, message: OutboundMessage, invalid: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from flowpilot.tenancy.registry import get_registry
+    from autobot.tenancy.registry import get_registry
 
     if invalid == "expired":
         message.payload = None
@@ -243,7 +243,7 @@ def test_resend_rolls_back_state_job_and_audit(
     def broken(*args: Any, **kwargs: Any) -> None:
         raise RuntimeError("audit unavailable")
 
-    monkeypatch.setattr("flowpilot.admin.audit", broken)
+    monkeypatch.setattr("autobot.admin.audit", broken)
     with pytest.raises(RuntimeError, match="audit unavailable"):
         action(logged, message, "resend")
     message.refresh_from_db(using="owner")
@@ -286,7 +286,7 @@ def test_panel_month_uses_tenant_timezone(
 
     # October began at 22:00 UTC in Madrid; 22:30 is this month, 21:30 is not.
     monkeypatch.setattr(
-        "flowpilot.admin.timezone.now", lambda: datetime(2026, 10, 1, 0, 30, tzinfo=UTC)
+        "autobot.admin.timezone.now", lambda: datetime(2026, 10, 1, 0, 30, tzinfo=UTC)
     )
     OutboundMessage.objects.using("owner").filter(pk=message.pk).update(
         created_at=datetime(2026, 9, 30, 22, 30, tzinfo=UTC),

@@ -51,7 +51,7 @@ precio *utility* del país; la tarifa se consulta en la cuenta de cada negocio.
 ### Precios aproximados de mensajería (resumen mensual)
 
 El "coste aproximado de mensajería" del resumen al dueño
-(`docs/mejoras/02-avisos-y-resumenes.md`, `flowpilot/runtime/summary.py:PRICE_EUR`) usa
+(`docs/mejoras/02-avisos-y-resumenes.md`, `autobot/runtime/summary.py:PRICE_EUR`) usa
 esta tabla, en euros por mensaje, para España:
 
 | Categoría de plantilla | Precio aprox. | Franja gratuita mensual |

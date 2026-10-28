@@ -46,7 +46,7 @@ class HealthIssue:
 
 @dataclass(frozen=True)
 class SummaryMetric:
-    """One line of the owner's periodic summary (`flowpilot.runtime.summary`), fed by
+    """One line of the owner's periodic summary (`autobot.runtime.summary`), fed by
     `RecordMetric` actions of the same `kind`."""
 
     kind: str

@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  IMAGE: ghcr.io/marianodelrio/flowpilot
+  IMAGE: ghcr.io/marianodelrio/autobot
 
 jobs:
   check:
@@ -24,16 +24,16 @@ jobs:
       db:
         image: postgres:18
         env:
-          POSTGRES_DB: flowpilot
+          POSTGRES_DB: autobot
           POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d flowpilot"
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d autobot"
           --health-interval 5s --health-timeout 3s --health-retries 10
     env:
       ENVIRONMENT: local
-      DB_APP_URL: postgres://fp_app:fp_app@localhost:5432/flowpilot
-      DB_OWNER_URL: postgres://fp_owner:fp_owner@localhost:5432/flowpilot
+      DB_APP_URL: postgres://fp_app:fp_app@localhost:5432/autobot
+      DB_OWNER_URL: postgres://fp_owner:fp_owner@localhost:5432/autobot
     steps:
       - uses: actions/checkout@v7
       - name: Database roles
@@ -43,8 +43,8 @@ jobs:
           PGHOST: localhost
           PGPASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_DB: flowpilot
-          POSTGRES_TEST_DB: test_flowpilot
+          POSTGRES_DB: autobot
+          POSTGRES_TEST_DB: test_autobot
           FP_OWNER_PASSWORD: fp_owner
           FP_APP_PASSWORD: fp_app
       # The same uv as the image: its version is read from the Dockerfile, so a

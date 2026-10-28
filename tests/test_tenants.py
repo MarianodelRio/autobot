@@ -3,7 +3,7 @@ the registered packs. CI has no secrets.yaml, so only disabled main channels are
 
 from django.conf import settings
 
-from flowpilot.tenancy.registry import load_registry
+from autobot.tenancy.registry import load_registry
 from packs.registry import PACKS
 
 

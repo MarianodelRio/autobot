@@ -1,0 +1,10 @@
+[Unit]
+Description=Autobot encrypted backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/srv/autobot
+ExecStart=/srv/autobot/deploy/backup.sh

@@ -184,7 +184,7 @@ def test_estado_caducado_vuelve_al_menu(
     phone = "34600000010"
     conv.handle_message(phone, phone, None, "menu_horarios")
     conv.handle_message(phone, phone, None, "loc:pozoblanco")
-    # En FlowPilot la caducidad (30 min) la aplica la plataforma: pasada, el siguiente
+    # En Autobot la caducidad (30 min) la aplica la plataforma: pasada, el siguiente
     # mensaje empieza en el menú.
     freeze_calendario(HOY, hora=(0, 31))
     conv.handle_message(phone, phone, None, "loc:cordoba")

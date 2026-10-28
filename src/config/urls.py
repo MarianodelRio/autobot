@@ -7,10 +7,10 @@ through the SSH tunnel to 127.0.0.1:8000.
 
 from django.urls import URLPattern, URLResolver, path
 
-from flowpilot.admin import site
-from flowpilot.channels import views as webhooks
-from flowpilot.channels.demo.views import telegram_demo, whatsapp_demo
-from flowpilot.ops.views import health
+from autobot.admin import site
+from autobot.channels import views as webhooks
+from autobot.channels.demo.views import telegram_demo, whatsapp_demo
+from autobot.ops.views import health
 
 public: list[URLPattern | URLResolver] = [
     path("webhooks/whatsapp/<str:public_id>", webhooks.whatsapp, name="webhook-whatsapp"),

@@ -12,7 +12,7 @@ pack: salon
 config:
   business_name: Peluquería de Prueba
   contact_phone: "600 000 000"
-  # Marcador explícito: sustitúyelo por el id real del calendario "FlowPilot
+  # Marcador explícito: sustitúyelo por el id real del calendario "Autobot
   # demo" (docs/mejoras/01-bot-de-demo.md §8) antes de pasar status a "active".
   calendar_id: PENDIENTE-calendario-de-demo
   services:
@@ -56,7 +56,7 @@ config:
     name: ''
     days: {}
   info_text: >-
-    Esto es una peluquería de prueba de FlowPilot. Las citas se guardan en un
+    Esto es una peluquería de prueba de Autobot. Las citas se guardan en un
     calendario de demostración.
   texts:
     welcome: 💈 ¡Bienvenido! ¿En qué podemos ayudarte hoy?

@@ -8,14 +8,14 @@ ids o aprobaciones.
 ## 1. Desarrollo local con servicios reales
 
 - **Bot de demo de desarrollo (puerta Telegram):** crear un bot con @BotFather (p. ej.
-  `flowpilot_dev_bot`), distinto del de producción, poner su token en
+  `autobot_dev_bot`), distinto del de producción, poner su token en
   `DEMO_TELEGRAM_TOKEN` y tu id de Telegram (@userinfobot) en `DEMO_TELEGRAM_USERS`
   del `.env` local. Verificar: `make telegram-poll` arranca y `/start` muestra la
   lista de negocios de demo.
 - **Google Cloud de la plataforma:** proyecto propio (no de un negocio), Google
   Calendar API habilitada y cuenta de servicio con clave JSON en `google_sa.json`
   (ignorado por git) y en el gestor de contraseñas.
-- **Calendario de la demo:** un calendario («FlowPilot demo»), compartido con la
+- **Calendario de la demo:** un calendario («Autobot demo»), compartido con la
   cuenta de servicio, como `calendar_id` de `tenants/demo-peluqueria/`; después,
   `status: active`. Verificar: una reserva desde cualquiera de las dos puertas de la
   demo aparece una sola vez en ese calendario.
@@ -36,7 +36,7 @@ la demo.
 - **Backups:** bucket en un proveedor distinto del de la VPS (Backblaze B2 o
   Cloudflare R2) con clave limitada a ese bucket, y contraseña de restic; los tres en
   el gestor de contraseñas. Verificar: `restic snapshots` lista el primer backup.
-- **Secretos de despliegue:** en la VPS, `/srv/flowpilot/.env`, `secrets.yaml`,
+- **Secretos de despliegue:** en la VPS, `/srv/autobot/.env`, `secrets.yaml`,
   `google_sa.json`, `backup.env` y la contraseña de restic como `deploy` con modo
   0600, `DEPLOY_UID`, deploy key de GitHub de solo lectura y acceso de lectura a GHCR.
   En GitHub, entorno `production` con aprobación requerida y secretos `DEPLOY_HOST`,

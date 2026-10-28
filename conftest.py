@@ -49,8 +49,8 @@ def _flush_as_owner() -> Iterator[None]:
 def _render_scenarios_with_both_adapters() -> Iterator[None]:
     """Every conversation scenario renders its messages with the WhatsApp and Telegram
     adapters; core's harness cannot import them itself."""
+    from autobot.channels.testing import check_rendering
     from core.testing.harness import RENDER_CHECKS
-    from flowpilot.channels.testing import check_rendering
 
     RENDER_CHECKS.append(check_rendering)
     yield

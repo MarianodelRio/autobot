@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from flowpilot.runtime.models import Contact
+from autobot.runtime.models import Contact
 from packs.salon.models import CalendarEvent
 from tools.migrate_salon_events import main
 
@@ -95,9 +95,9 @@ def test_migration_reuses_current_bsuid_and_preserves_opt_out(salon_setup: Any) 
 
     from django.utils import timezone
 
-    from flowpilot.runtime import periodic
-    from flowpilot.runtime.models import OutboundMessage
-    from flowpilot.tenancy.tx import tenant_tx
+    from autobot.runtime import periodic
+    from autobot.runtime.models import OutboundMessage
+    from autobot.tenancy.tx import tenant_tx
 
     setup, calendars = salon_setup
     tenant = setup(config={"reminders_enabled": True})
@@ -127,7 +127,7 @@ def test_migration_reuses_current_bsuid_and_preserves_opt_out(salon_setup: Any) 
 
 
 def test_migration_rejects_ambiguous_bsuid_and_does_not_create_contact(salon_setup: Any) -> None:
-    from flowpilot.tenancy.tx import tenant_tx
+    from autobot.tenancy.tx import tenant_tx
 
     setup, calendars = salon_setup
     tenant = setup()
@@ -153,11 +153,11 @@ def test_migration_rejects_ambiguous_bsuid_and_does_not_create_contact(salon_set
 def test_later_bsuid_can_manage_migrated_phone_identity(salon_setup: Any) -> None:
     from dataclasses import replace
 
+    from autobot.runtime.context import build_context
+    from autobot.runtime.models import Channel
+    from autobot.runtime.process import _contact_info
+    from autobot.tenancy.tx import tenant_tx
     from core.testing.clock import FixedClock
-    from flowpilot.runtime.context import build_context
-    from flowpilot.runtime.models import Channel
-    from flowpilot.runtime.process import _contact_info
-    from flowpilot.tenancy.tx import tenant_tx
     from packs.salon.booking import contact_events
 
     setup, calendars = salon_setup
@@ -192,7 +192,7 @@ def test_later_bsuid_can_manage_migrated_phone_identity(salon_setup: Any) -> Non
 
 
 def test_migration_preserves_opt_out_on_numeric_identity_without_phone(salon_setup: Any) -> None:
-    from flowpilot.tenancy.tx import tenant_tx
+    from autobot.tenancy.tx import tenant_tx
 
     setup, calendars = salon_setup
     tenant = setup()
@@ -222,7 +222,7 @@ def test_migration_preserves_opt_out_on_numeric_identity_without_phone(salon_set
 def test_explicit_legacy_bsuid_is_never_replaced_by_phone_match(
     salon_setup: Any, existing_bsuid: bool
 ) -> None:
-    from flowpilot.tenancy.tx import tenant_tx
+    from autobot.tenancy.tx import tenant_tx
 
     setup, calendars = salon_setup
     tenant = setup()

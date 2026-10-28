@@ -5,7 +5,7 @@ from xml.etree import ElementTree
 
 import pytest
 
-from flowpilot.tenancy.schema import TelegramChannel, WhatsAppChannel
+from autobot.tenancy.schema import TelegramChannel, WhatsAppChannel
 from tests.tenancy.helpers import demo_tenant_yaml, tenant_yaml, write_tenants
 from tools.qr import channel_link, main, tenant_link
 

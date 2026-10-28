@@ -9,7 +9,7 @@ deploy:
 	gh workflow run deploy.yml -f sha="$(SHA)"
 
 backup-now:
-	ssh deploy@$(HOST) /srv/flowpilot/deploy/backup.sh
+	ssh deploy@$(HOST) /srv/autobot/deploy/backup.sh
 
 restore-test:
 	bash deploy/restore-test.sh

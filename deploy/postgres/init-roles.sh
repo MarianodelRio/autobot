@@ -12,7 +12,7 @@ set -euo pipefail
 
 : "${FP_OWNER_PASSWORD:?FP_OWNER_PASSWORD is required}"
 : "${FP_APP_PASSWORD:?FP_APP_PASSWORD is required}"
-db="${POSTGRES_DB:-flowpilot}"
+db="${POSTGRES_DB:-autobot}"
 
 psql_su() {
   psql -v ON_ERROR_STOP=1 --no-psqlrc --quiet --username "${POSTGRES_USER:-postgres}" "$@"

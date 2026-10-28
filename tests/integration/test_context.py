@@ -16,18 +16,18 @@ from django.conf import settings
 from django.db import OperationalError, connections, transaction
 from pydantic import BaseModel
 
-from core.errors import TransientError
-from core.pack import ContactInfo
-from flowpilot.runtime import context
-from flowpilot.runtime.context import (
+from autobot.runtime import context
+from autobot.runtime.context import (
     CalendarUnavailable,
     advisory_lock,
     bound_calendar_id,
     build_context,
 )
-from flowpilot.runtime.models import Channel
-from flowpilot.tenancy.registry import LoadedTenant
-from flowpilot.tenancy.schema import TelegramChannel, TenantFile
+from autobot.runtime.models import Channel
+from autobot.tenancy.registry import LoadedTenant
+from autobot.tenancy.schema import TelegramChannel, TenantFile
+from core.errors import TransientError
+from core.pack import ContactInfo
 from tests.tenancy.helpers import demo_tenant_yaml, tenant_yaml
 from tests.toy_pack import pack as toy
 

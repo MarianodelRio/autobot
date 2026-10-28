@@ -10,7 +10,7 @@ import pytest
 from django.db import connections
 from procrastinate.contrib.django.django_connector import DjangoConnector
 
-from flowpilot.jobs import INBOUND, QUEUES, app
+from autobot.jobs import INBOUND, QUEUES, app
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 

@@ -3,7 +3,7 @@
 
 Aquellos tests llamaban a `conv.handle_message(...)`, leían los payloads de
 WhatsApp de un `mock_wa` y fijaban el reloj con `freeze_calendario`. Aquí lo
-mismo pasa por el arnés de FlowPilot (`core.testing.Conversation`): cada
+mismo pasa por el arnés de Autobot (`core.testing.Conversation`): cada
 mensaje recorre las reglas comunes, `plan_sends` y los límites de los dos
 canales, y las respuestas de `core.replies` se convierten al payload de
 WhatsApp que leían los tests (`wa`)."""

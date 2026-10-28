@@ -1,4 +1,4 @@
-# CLAUDE.md — FlowPilot
+# CLAUDE.md — Autobot
 
 Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de demo, por WhatsApp y Telegram, para enseñar los packs. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). Este fichero resume las reglas para trabajar en el repo.
 

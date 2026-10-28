@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
+from autobot.runtime import periodic
+from autobot.runtime.models import Contact, Notification, OutboundMessage
 from core.clock import SystemClock
-from flowpilot.runtime import periodic
-from flowpilot.runtime.models import Contact, Notification, OutboundMessage
 from packs.salon.models import CalendarEvent
 from tests.integration.helpers import Providers, drain, fixture, post_tg, post_wa, wa_press, wa_text
 from tests.integration.helpers import providers as recorded_providers  # noqa: F401
@@ -130,8 +130,8 @@ def test_delete_then_transient_failure_retries_with_owner_notice(
 ) -> None:
     from django.db import connections
 
+    from autobot.runtime.models import InboundEvent
     from core.errors import TransientError
-    from flowpilot.runtime.models import InboundEvent
 
     request.getfixturevalue("recorded_providers")
     setup, calendars = salon_setup

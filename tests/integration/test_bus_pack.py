@@ -15,11 +15,11 @@ import yaml
 from django.core.management import call_command
 from pytest_django import Settings
 
+from autobot.channels import adapters, views
+from autobot.channels.ratelimit import WindowLimiter
+from autobot.runtime import process
+from autobot.tenancy.registry import get_registry
 from core.clock import SystemClock
-from flowpilot.channels import adapters, views
-from flowpilot.channels.ratelimit import WindowLimiter
-from flowpilot.runtime import process
-from flowpilot.tenancy.registry import get_registry
 from packs.bus.datos import Datos
 from packs.bus.pack import DATASET_DIR
 from packs.bus.pack import pack as bus_pack

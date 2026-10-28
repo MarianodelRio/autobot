@@ -15,12 +15,12 @@ import pytest
 from django.test import Client
 from pytest_django import Settings
 
-from flowpilot.channels.demo import selector
-from flowpilot.channels.demo.doors import door
-from flowpilot.runtime import process
-from flowpilot.runtime.models import Contact, DemoEvent, InboundEvent, OutboundMessage
-from flowpilot.tenancy.registry import get_registry
-from flowpilot.tenancy.tx import tenant_tx
+from autobot.channels.demo import selector
+from autobot.channels.demo.doors import door
+from autobot.runtime import process
+from autobot.runtime.models import Contact, DemoEvent, InboundEvent, OutboundMessage
+from autobot.tenancy.registry import get_registry
+from autobot.tenancy.tx import tenant_tx
 from tests.integration.helpers import Providers, demo_tenant, drain, fixture, providers
 
 __all__ = ["providers"]  # re-exported fixture

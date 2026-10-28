@@ -15,12 +15,12 @@ from django.core.management.base import CommandError
 from django.db import OperationalError, connection, connections
 from django.utils import timezone
 
+from autobot.jobs import app
+from autobot.ops import check, health, state
+from autobot.runtime.models import Contact, OutboundMessage
+from autobot.tenancy.registry import get_registry
+from autobot.tenancy.tx import tenant_tx
 from core.pack import Periodic
-from flowpilot.jobs import app
-from flowpilot.ops import check, health, state
-from flowpilot.runtime.models import Contact, OutboundMessage
-from flowpilot.tenancy.registry import get_registry
-from flowpilot.tenancy.tx import tenant_tx
 from tests.integration.helpers import wa_tenant
 
 pytestmark = [
@@ -230,7 +230,7 @@ def test_registration() -> None:
 def test_command_success_and_failure(tenants: Any, monkeypatch: Any) -> None:
     tenants(wa_tenant())
     monkeypatch.setattr(
-        "flowpilot.management.commands.tenant_health.tenant_health", lambda tenant: []
+        "autobot.management.commands.tenant_health.tenant_health", lambda tenant: []
     )
     output = StringIO()
     call_command("tenant_health", "wa", stdout=output)
@@ -238,7 +238,7 @@ def test_command_success_and_failure(tenants: Any, monkeypatch: Any) -> None:
     with pytest.raises(CommandError, match="desconocido"):
         call_command("tenant_health", "missing")
     monkeypatch.setattr(
-        "flowpilot.management.commands.tenant_health.tenant_health",
+        "autobot.management.commands.tenant_health.tenant_health",
         lambda tenant: [health.Issue("x", "Problema")],
     )
     with pytest.raises(CommandError, match="problemas"):
@@ -304,8 +304,8 @@ def test_calendar_denial_is_detected_even_after_healthy_daily_check(
     from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
     from pydantic import BaseModel
 
-    from flowpilot.runtime.context import build_context
-    from flowpilot.runtime.models import Channel
+    from autobot.runtime.context import build_context
+    from autobot.runtime.models import Channel
     from integrations.google_calendar.client import CalendarPermanentError
 
     class CalendarConfig(BaseModel):

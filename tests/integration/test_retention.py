@@ -13,9 +13,9 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from pytest_django import Settings
 
-from flowpilot.jobs import app, retention_cleanup
-from flowpilot.runtime import privacy, retention
-from flowpilot.runtime.models import (
+from autobot.jobs import app, retention_cleanup
+from autobot.runtime import privacy, retention
+from autobot.runtime.models import (
     Contact,
     Conversation,
     DemoEvent,
@@ -24,7 +24,7 @@ from flowpilot.runtime.models import (
     Notification,
     OutboundMessage,
 )
-from flowpilot.tenancy.models import Tenant
+from autobot.tenancy.models import Tenant
 from tests.integration.helpers import demo_tenant, wa_tenant
 from tests.integration.test_models import contact, event, outbound, tenant
 
@@ -339,8 +339,8 @@ def test_demo_event_originals_follow_tenant_linkage(operation: str) -> None:
 def test_selector_refreshes_session_activity(
     tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
 ) -> None:
-    from flowpilot.channels.demo import selector
-    from flowpilot.channels.demo.doors import door
+    from autobot.channels.demo import selector
+    from autobot.channels.demo.doors import door
 
     settings.DEMO_TELEGRAM_TOKEN = "999:TEST-TOKEN"
     settings.DEMO_TELEGRAM_WEBHOOK_SECRET = "t" * 32

@@ -13,15 +13,15 @@ import httpx
 import pytest
 from django.test import RequestFactory
 
+from autobot.channels.base import Ambiguous, InboundItem, Rejected, RetryLater, Sent, parse_stored
+from autobot.channels.telegram import TelegramAdapter
+from autobot.channels.telegram.adapter import overflow
+from autobot.channels.testing import check_rendering
+from autobot.tenancy.schema import TelegramSecrets
 from core.conversation import global_command
 from core.proactive import ProactiveMessage, TemplateSpec
 from core.replies import Button, Buttons, List, Row, Section, Text
 from core.testing import Conversation
-from flowpilot.channels.base import Ambiguous, InboundItem, Rejected, RetryLater, Sent, parse_stored
-from flowpilot.channels.telegram import TelegramAdapter
-from flowpilot.channels.telegram.adapter import overflow
-from flowpilot.channels.testing import check_rendering
-from flowpilot.tenancy.schema import TelegramSecrets
 from tests.toy_pack import pack as toy
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "telegram"

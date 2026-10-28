@@ -14,9 +14,9 @@ import pytest
 from django.db import connections
 from django.test import Client
 
-from flowpilot.channels import adapters
-from flowpilot.runtime import outbound, process
-from flowpilot.runtime.models import DemoEvent, InboundEvent, OutboundMessage
+from autobot.channels import adapters
+from autobot.runtime import outbound, process
+from autobot.runtime.models import DemoEvent, InboundEvent, OutboundMessage
 from tests.tenancy.helpers import (
     TG_SECRETS,
     WA_SECRETS,
@@ -159,7 +159,7 @@ def providers(monkeypatch: pytest.MonkeyPatch) -> Providers:
 def drain(**process_kwargs: Any) -> None:
     """Run what the worker would: route a demo door's events (if any), process and
     send, in order."""
-    from flowpilot.channels.demo import selector
+    from autobot.channels.demo import selector
 
     for event in DemoEvent.objects.using("owner").filter(status="pending").order_by("received_at"):
         selector.route_demo_event(event.id)

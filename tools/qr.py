@@ -9,7 +9,7 @@ import qrcode.image.svg  # type: ignore[import-untyped]
 import yaml
 from pydantic import ValidationError
 
-from flowpilot.tenancy.schema import SLUG, Channel, TenantFile
+from autobot.tenancy.schema import SLUG, Channel, TenantFile
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

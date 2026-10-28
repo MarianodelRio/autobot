@@ -9,8 +9,8 @@ import yaml
 from django.core.management import CommandError, call_command
 from pytest_django import Settings
 
-from flowpilot.tenancy.models import Tenant
-from flowpilot.tenancy.registry import get_registry, load_registry
+from autobot.tenancy.models import Tenant
+from autobot.tenancy.registry import get_registry, load_registry
 from tests.tenancy.helpers import PACKS, tenant_yaml, write_tenants
 
 
@@ -171,7 +171,7 @@ def test_config_skeleton_dumps_complex_defaults() -> None:
 
     from pydantic import BaseModel
 
-    from flowpilot.management.commands.new_tenant import config_skeleton
+    from autobot.management.commands.new_tenant import config_skeleton
 
     class Item(BaseModel):
         at: time = time(9, 30)

@@ -17,7 +17,7 @@ if [[ -n $previous && ! $previous =~ ^[0-9a-f]{40}$ ]]; then
   exit 1
 fi
 export SHA="$target"
-compose=(docker compose --project-name flowpilot -f compose.prod.yaml)
+compose=(docker compose --project-name autobot -f compose.prod.yaml)
 
 wait_health() {
   local deadline=$((SECONDS + 60)) response attempt
@@ -52,7 +52,7 @@ restore_checkout() {
 # One attempt only: ambiguous Telegram delivery must not be retried blindly.
 alert_ops() {
   "${compose[@]}" run --rm web python manage.py shell -c \
-    "from flowpilot.runtime.notifications import send_ops_alert; send_ops_alert('$1', None, '$2')" \
+    "from autobot.runtime.notifications import send_ops_alert; send_ops_alert('$1', None, '$2')" \
     || echo 'Could not send ops alert; check deployment logs' >&2
 }
 

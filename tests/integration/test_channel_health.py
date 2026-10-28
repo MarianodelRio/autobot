@@ -9,10 +9,10 @@ import pytest
 from django.db import connections
 from django.utils import timezone
 
+from autobot.ops import health
+from autobot.tenancy.registry import get_registry
 from core.pack import HealthIssue
 from core.proactive import TemplateSpec
-from flowpilot.ops import health
-from flowpilot.tenancy.registry import get_registry
 from tests.integration.helpers import wa_tenant
 
 pytestmark = [

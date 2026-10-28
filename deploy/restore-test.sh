@@ -18,7 +18,7 @@ cleanup() {
   fi
   (cd "$source_dir" && docker compose --project-name "$source_project" -f compose.prod.yaml down -v) >/dev/null 2>&1 || true
   (cd "$target_dir" && docker compose --project-name "$target_project" -f compose.prod.yaml down -v) >/dev/null 2>&1 || true
-  docker image rm "ghcr.io/marianodelrio/flowpilot:$sha" >/dev/null 2>&1 || true
+  docker image rm "ghcr.io/marianodelrio/autobot:$sha" >/dev/null 2>&1 || true
   rm -rf "$test_root"
 }
 trap cleanup EXIT
@@ -35,8 +35,8 @@ SHA=$sha
 DEPLOY_UID=$(id -u)
 DJANGO_SECRET_KEY=local-restore-test-only
 DJANGO_ALLOWED_HOSTS=localhost
-DB_APP_URL=postgres://fp_app:local@db:5432/flowpilot
-DB_OWNER_URL=postgres://fp_owner:local@db:5432/flowpilot
+DB_APP_URL=postgres://fp_app:local@db:5432/autobot
+DB_OWNER_URL=postgres://fp_owner:local@db:5432/autobot
 POSTGRES_PASSWORD=local
 FP_OWNER_PASSWORD=local
 FP_APP_PASSWORD=local
@@ -78,11 +78,11 @@ RESTIC_PASSWORD_FILE=$test_root/restic-password
 HEALTHCHECKS_BACKUP_PING_URL=http://127.0.0.1:$ping_port/local-only
 EOF
 chmod 600 "$test_root/backup.env"
-export FLOWPILOT_BACKUP_CONFIG="$test_root/backup.env"
+export AUTOBOT_BACKUP_CONFIG="$test_root/backup.env"
 "$RESTIC_BIN" -r "$test_root/repository" --password-file "$test_root/restic-password" init >/dev/null
 
-docker build -q -t flowpilot:restore-test . >/dev/null
-docker tag flowpilot:restore-test "ghcr.io/marianodelrio/flowpilot:$sha"
+docker build -q -t autobot:restore-test . >/dev/null
+docker tag autobot:restore-test "ghcr.io/marianodelrio/autobot:$sha"
 (
   cd "$source_dir"
   docker compose --project-name "$source_project" -f compose.prod.yaml up -d db >/dev/null
@@ -91,18 +91,18 @@ docker tag flowpilot:restore-test "ghcr.io/marianodelrio/flowpilot:$sha"
   docker compose --project-name "$source_project" -f compose.prod.yaml run --rm web \
     python manage.py sync_tenants --strict >/dev/null
   docker compose --project-name "$source_project" -f compose.prod.yaml exec -T db \
-    psql -U postgres -d flowpilot -v ON_ERROR_STOP=1 -q -c \
+    psql -U postgres -d autobot -v ON_ERROR_STOP=1 -q -c \
     "INSERT INTO contact (id, tenant_id, channel, external_id, created_at) VALUES ('00000000-0000-7000-8000-000000000001', '01a163fd-bed0-7002-80df-8f2acdc7778b', 'test', 'local-fixture', now())" >/dev/null
 )
 counts() {
   local project=$1 dir=$2
   (cd "$dir" && docker compose --project-name "$project" -f compose.prod.yaml exec -T db \
-    psql -U postgres -d flowpilot -At -c \
+    psql -U postgres -d autobot -At -c \
     'SELECT t.slug, count(c.id) FROM tenant t LEFT JOIN contact c ON c.tenant_id=t.id GROUP BY t.slug ORDER BY t.slug')
 }
 before=$(counts "$source_project" "$source_dir")
-(cd "$source_dir" && FLOWPILOT_PROJECT="$source_project" deploy/backup.sh)
-(cd "$target_dir" && FLOWPILOT_PROJECT="$target_project" FLOWPILOT_RESTORE_DB_ONLY=true \
+(cd "$source_dir" && AUTOBOT_PROJECT="$source_project" deploy/backup.sh)
+(cd "$target_dir" && AUTOBOT_PROJECT="$target_project" AUTOBOT_RESTORE_DB_ONLY=true \
   deploy/restore.sh --confirm-empty-target)
 after=$(counts "$target_project" "$target_dir")
 if [[ $before != "$after" || $before != *'autocares-ss|1'* ]]; then

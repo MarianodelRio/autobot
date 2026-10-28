@@ -45,7 +45,7 @@ INSTALLED_APPS = [
     "procrastinate.contrib.django",
     "django_otp",
     "django_otp.plugins.otp_totp",
-    "flowpilot",
+    "autobot",
 ]
 # Development-only: provides `lintmigrations` for CI; absent from the image.
 if importlib.util.find_spec("django_migration_linter"):
@@ -58,11 +58,11 @@ if importlib.util.find_spec("django_migration_linter"):
         "ignore_name": ["0008_demo_channels"],
     }
 
-DATABASE_ROUTERS = ["flowpilot.admin_db.AdminDatabaseRouter"]
+DATABASE_ROUTERS = ["autobot.admin_db.AdminDatabaseRouter"]
 
 MIDDLEWARE = [
-    "flowpilot.admin_db.AdminDatabaseMiddleware",
-    "flowpilot.ops.logging.LogContextMiddleware",
+    "autobot.admin_db.AdminDatabaseMiddleware",
+    "autobot.ops.logging.LogContextMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -103,11 +103,11 @@ def _database(url: str) -> dict[str, Any]:
 
 
 DATABASES = {
-    "default": _database(env("DB_APP_URL", "postgres://fp_app:fp_app@localhost:5433/flowpilot")),
+    "default": _database(env("DB_APP_URL", "postgres://fp_app:fp_app@localhost:5433/autobot")),
 }
 # Unset → local default; set but empty (the worker) → no `owner` alias.
 _owner_url = os.environ.get(
-    "DB_OWNER_URL", "postgres://fp_owner:fp_owner@localhost:5433/flowpilot" if IS_LOCAL else ""
+    "DB_OWNER_URL", "postgres://fp_owner:fp_owner@localhost:5433/autobot" if IS_LOCAL else ""
 )
 if _owner_url:
     DATABASES["owner"] = _database(_owner_url)
@@ -115,7 +115,7 @@ if _owner_url:
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Job queue: Procrastinate on the `default` alias (fp_app); jobs are
-# declared in flowpilot/jobs.py.
+# declared in autobot/jobs.py.
 PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"
 
 # Tenants: config in git, channel secrets on the server (in local, the
@@ -188,8 +188,8 @@ STORAGES = {
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "filters": {"privacy": {"()": "flowpilot.ops.logging.PrivacyFilter"}},
-    "formatters": {"json": {"()": "flowpilot.ops.logging.JsonFormatter"}},
+    "filters": {"privacy": {"()": "autobot.ops.logging.PrivacyFilter"}},
+    "formatters": {"json": {"()": "autobot.ops.logging.JsonFormatter"}},
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
@@ -210,7 +210,7 @@ NOTIFY_BOT_TOKEN = os.environ.get("NOTIFY_BOT_TOKEN", "")
 OPS_TELEGRAM_CHAT_ID = os.environ.get("OPS_TELEGRAM_CHAT_ID", "")
 CACHES = {
     "default": {
-        "BACKEND": "flowpilot.cache.CooldownCache",
+        "BACKEND": "autobot.cache.CooldownCache",
         "LOCATION": "platform_cache",
     }
 }

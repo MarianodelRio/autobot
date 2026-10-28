@@ -9,11 +9,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from flowpilot.runtime import summary
-from flowpilot.runtime.models import Contact, MetricEvent, Notification, OutboundMessage
-from flowpilot.tenancy.models import Tenant
-from flowpilot.tenancy.registry import get_registry
-from flowpilot.tenancy.tx import tenant_tx
+from autobot.runtime import summary
+from autobot.runtime.models import Contact, MetricEvent, Notification, OutboundMessage
+from autobot.tenancy.models import Tenant
+from autobot.tenancy.registry import get_registry
+from autobot.tenancy.tx import tenant_tx
 from tests.integration.helpers import jobs, wa_tenant
 
 pytestmark = [

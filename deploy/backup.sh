@@ -6,7 +6,7 @@ umask 077
 exec 9>.backup.lock
 flock -n 9 || { echo 'Another backup is running' >&2; exit 1; }
 
-backup_config=${FLOWPILOT_BACKUP_CONFIG:-/srv/flowpilot/backup.env}
+backup_config=${AUTOBOT_BACKUP_CONFIG:-/srv/autobot/backup.env}
 if [[ ! -f $backup_config ]]; then
   echo 'Backup configuration is missing' >&2
   exit 1
@@ -23,20 +23,20 @@ export HEALTHCHECKS_BACKUP_PING_URL
 restic_bin=${RESTIC_BIN:-restic}
 
 mkdir -p backups
-dump_tmp=$(mktemp backups/.flowpilot.dump.XXXXXXXX)
+dump_tmp=$(mktemp backups/.autobot.dump.XXXXXXXX)
 trap 'rm -f "$dump_tmp"' EXIT
-project=${FLOWPILOT_PROJECT:-flowpilot}
-compose_file=${FLOWPILOT_COMPOSE_FILE:-compose.prod.yaml}
+project=${AUTOBOT_PROJECT:-autobot}
+compose_file=${AUTOBOT_COMPOSE_FILE:-compose.prod.yaml}
 docker compose --project-name "$project" -f "$compose_file" exec -T db \
-  pg_dump -U postgres -d flowpilot -Fc >"$dump_tmp"
+  pg_dump -U postgres -d autobot -Fc >"$dump_tmp"
 test -s "$dump_tmp"
-mv "$dump_tmp" backups/flowpilot.dump
-trap 'rm -f backups/flowpilot.dump' EXIT
+mv "$dump_tmp" backups/autobot.dump
+trap 'rm -f backups/autobot.dump' EXIT
 
-"$restic_bin" backup --tag flowpilot backups/flowpilot.dump .env .deployed-sha \
+"$restic_bin" backup --tag autobot backups/autobot.dump .env .deployed-sha \
   secrets.yaml google_sa.json Caddyfile
 # Group by tag: the dump path stays constant and all snapshots use the same policy.
-"$restic_bin" forget --tag flowpilot --group-by tags --keep-daily 7 --keep-weekly 4 \
+"$restic_bin" forget --tag autobot --group-by tags --keep-daily 7 --keep-weekly 4 \
   --keep-monthly 6 --prune
 python3 -c 'import os, urllib.request; urllib.request.urlopen(os.environ["HEALTHCHECKS_BACKUP_PING_URL"], timeout=10).close()'
 echo 'Backup completed'

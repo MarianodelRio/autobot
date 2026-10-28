@@ -29,7 +29,7 @@ x-app-env: &app-env
   RETENTION_CLEANUP_ENABLED: ${RETENTION_CLEANUP_ENABLED:-false}
 
 x-app: &app
-  image: ghcr.io/marianodelrio/flowpilot:${SHA:?Set the published image SHA}
+  image: ghcr.io/marianodelrio/autobot:${SHA:?Set the published image SHA}
   # Match the host owner of mode-0600 secret files, while remaining non-root.
   user: ${DEPLOY_UID:?Set the numeric uid of the deploy user}
   environment: *app-env
@@ -96,7 +96,7 @@ services:
   db:
     image: postgres:18
     environment:
-      POSTGRES_DB: flowpilot
+      POSTGRES_DB: autobot
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       FP_OWNER_PASSWORD: ${FP_OWNER_PASSWORD:?Set FP_OWNER_PASSWORD}
       FP_APP_PASSWORD: ${FP_APP_PASSWORD:?Set FP_APP_PASSWORD}
@@ -105,7 +105,7 @@ services:
       - ./deploy/postgres:/docker-entrypoint-initdb.d:ro
     command: ["postgres", "-c", "shared_buffers=512MB", "-c", "max_connections=100", "-c", "log_min_duration_statement=1000"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d flowpilot"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d autobot"]
       interval: 5s
       timeout: 3s
       retries: 10

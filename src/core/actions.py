@@ -43,7 +43,7 @@ class UpdateContact:
 
 @dataclass(frozen=True)
 class RecordMetric:
-    """A business event for the owner's periodic summary (`flowpilot.runtime.summary`).
+    """A business event for the owner's periodic summary (`autobot.runtime.summary`).
     `kind` must be one of the pack's declared `Pack.summary_metrics`."""
 
     kind: str

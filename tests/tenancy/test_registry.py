@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 import yaml
 
-from flowpilot.tenancy.registry import Registry, load_registry
+from autobot.tenancy.registry import Registry, load_registry
 from tests.tenancy.helpers import (
     PACKS,
     TG_SECRETS,

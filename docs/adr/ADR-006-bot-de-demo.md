@@ -11,7 +11,7 @@ calendario de pruebas propio). Eso complicaba cada pack (`test_calendar_id`,
 abrirlo, y enseñar la plataforma a un posible cliente nuevo.
 
 Un cliente real solo necesita su canal real (con `status: onboarding` y
-`testers.main` para probarlo en ese mismo canal antes de activarlo). Enseñar FlowPilot
+`testers.main` para probarlo en ese mismo canal antes de activarlo). Enseñar Autobot
 a alguien que aún no es cliente es un problema distinto: necesita un negocio de
 mentira, accesible por los dos canales que ofrece la plataforma (WhatsApp y
 Telegram), sin que cueste dinero por cada persona que lo prueba ni mezcle datos con un

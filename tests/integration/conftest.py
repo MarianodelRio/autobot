@@ -9,10 +9,10 @@ from django.core.management import call_command
 from django.db import connections
 from pytest_django import Settings
 
-from flowpilot.channels import views
-from flowpilot.channels.ratelimit import WindowLimiter
-from flowpilot.runtime import process
-from flowpilot.tenancy.registry import get_registry
+from autobot.channels import views
+from autobot.channels.ratelimit import WindowLimiter
+from autobot.runtime import process
+from autobot.tenancy.registry import get_registry
 from tests.tenancy.helpers import PACKS, TG_SECRETS, WA_SECRETS, write_secrets, write_tenants
 
 
@@ -44,7 +44,7 @@ def tenants(tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch)
 @pytest.fixture
 def clean_jobs(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """The flush does not reach Procrastinate's tables (unmanaged models)."""
-    from flowpilot.jobs import app
+    from autobot.jobs import app
 
     # Worker tests may cross a five-minute boundary and automatically enqueue this
     # new platform periodic. Its service checks have their own mocked integration

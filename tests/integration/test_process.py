@@ -12,6 +12,19 @@ import pytest
 from django.db import connections
 from django.utils import timezone
 
+from autobot.jobs import INBOUND, app
+from autobot.runtime import process
+from autobot.runtime.locks import contact_hash
+from autobot.runtime.models import (
+    Contact,
+    Conversation,
+    InboundEvent,
+    MetricEvent,
+    Notification,
+    OutboundMessage,
+)
+from autobot.tenancy.registry import LoadedTenant, get_registry
+from autobot.tenancy.tx import tenant_tx
 from core.actions import ContactRef, RecordMetric, SendProactive
 from core.conversation import OPT_IN_TEXT, OPT_OUT_TEXT, RECOVERY_TEXT, RESTART_TEXT
 from core.errors import TransientError
@@ -20,19 +33,6 @@ from core.pack import PackContext, PackResult
 from core.proactive import ProactiveMessage
 from core.replies import Buttons, Reply, Text
 from core.serialization import load_outbound
-from flowpilot.jobs import INBOUND, app
-from flowpilot.runtime import process
-from flowpilot.runtime.locks import contact_hash
-from flowpilot.runtime.models import (
-    Contact,
-    Conversation,
-    InboundEvent,
-    MetricEvent,
-    Notification,
-    OutboundMessage,
-)
-from flowpilot.tenancy.registry import LoadedTenant, get_registry
-from flowpilot.tenancy.tx import tenant_tx
 from tests.integration.helpers import (
     BSUID,
     events,
@@ -558,7 +558,7 @@ def test_the_job_runs_in_the_worker(tenants: Any) -> None:
 def test_is_last_attempt() -> None:
     from types import SimpleNamespace
 
-    from flowpilot.jobs import is_last_attempt
+    from autobot.jobs import is_last_attempt
 
     def ctx(attempts: int) -> Any:
         return SimpleNamespace(job=SimpleNamespace(attempts=attempts))

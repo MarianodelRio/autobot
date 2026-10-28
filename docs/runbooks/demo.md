@@ -1,6 +1,6 @@
 # Bot de demo
 
-**Qué es:** la plataforma, no ningún cliente, enseña FlowPilot con dos puertas (un bot
+**Qué es:** la plataforma, no ningún cliente, enseña Autobot con dos puertas (un bot
 de Telegram y un número de WhatsApp) y negocios de demostración normales en
 `tenants/demo-<pack>/` (`demo-peluqueria`, `demo-autobuses`). La primera respuesta de
 cualquier puerta pide elegir negocio; desde ahí la conversación es la del pack real de
@@ -36,7 +36,7 @@ de demo de la plataforma, no de ningún cliente:
 
 ## Puerta Telegram en el servidor
 
-`docker compose -p flowpilot -f compose.prod.yaml exec web python manage.py
+`docker compose -p autobot -f compose.prod.yaml exec web python manage.py
 telegram_set_webhook demo` registra `https://api.<dominio>/webhooks/telegram-demo` con
 `DEMO_TELEGRAM_WEBHOOK_SECRET`. En local, sin webhook, `make demo-up` mantiene el
 poller (`telegram_poll`) en segundo plano.

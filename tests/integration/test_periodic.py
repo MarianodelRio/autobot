@@ -10,10 +10,10 @@ from django.db import connections
 from procrastinate.contrib.django.django_connector import DjangoConnector
 from procrastinate.periodic import PeriodicRegistry
 
-from flowpilot.jobs import DISPATCH_PERIODIC, PERIODIC, app, cron_for, register_periodic
-from flowpilot.runtime import periodic
-from flowpilot.runtime.models import Notification
-from flowpilot.tenancy.registry import LoadedTenant, get_registry
+from autobot.jobs import DISPATCH_PERIODIC, PERIODIC, app, cron_for, register_periodic
+from autobot.runtime import periodic
+from autobot.runtime.models import Notification
+from autobot.tenancy.registry import LoadedTenant, get_registry
 from tests.integration.helpers import jobs, wa_tenant
 from tests.tenancy.helpers import PACKS, WA_SECRETS
 

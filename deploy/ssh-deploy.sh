@@ -7,7 +7,7 @@ if [[ ! $original =~ ^deploy/deploy[.]sh[[:space:]]([0-9a-f]{40})$ ]]; then
   exit 2
 fi
 sha=${BASH_REMATCH[1]}
-cd /srv/flowpilot
+cd /srv/autobot
 git diff --quiet
 git diff --cached --quiet
 git fetch --quiet origin main
@@ -15,4 +15,4 @@ git merge-base --is-ancestor "$sha" origin/main
 git cat-file -e "$sha:deploy/deploy.sh"
 git cat-file -e "$sha:compose.prod.yaml"
 git checkout --quiet --detach "$sha"
-exec /srv/flowpilot/deploy/deploy.sh "$sha"
+exec /srv/autobot/deploy/deploy.sh "$sha"

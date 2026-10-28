@@ -1,7 +1,7 @@
 # 6. Restauración y simulacro trimestral
 
 **Síntoma:** pérdida de datos/servidor o fecha de simulacro. **Diagnóstico:** comprueba
-en restic el último snapshot con tag `flowpilot`, su fecha y el ping del backup.
+en restic el último snapshot con tag `autobot`, su fecha y el ping del backup.
 Revisa que dispones de la contraseña y las credenciales S3 fuera del repositorio.
 No restaures sobre una instalación con volumen de BD existente.
 

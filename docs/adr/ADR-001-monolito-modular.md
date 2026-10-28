@@ -8,7 +8,7 @@ Una sola persona construye y opera la plataforma para 5–15 negocios. Hay que a
 
 ## Decisión
 
-- **Un solo proyecto Python 3.14 + Django 5.2 LTS**, dividido en `core/` e `integrations/` (sin Django), `packs/` (solo dependen de `core`) y `flowpilot/` (Django), con la regla de dependencias comprobada por `import-linter`.
+- **Un solo proyecto Python 3.14 + Django 5.2 LTS**, dividido en `core/` e `integrations/` (sin Django), `packs/` (solo dependen de `core`) y `autobot/` (Django), con la regla de dependencias comprobada por `import-linter`.
 - **Una imagen, dos procesos**: `web` (webhooks de WhatsApp y Telegram: verifica, guarda y encola; también sirve el Django Admin, solo accesible por túnel SSH) y `worker` (Procrastinate).
 - **Cola en el propio PostgreSQL con Procrastinate 3.x**: 3 colas (`inbound`, `outbound`, `periodic`) atendidas por un solo worker; candados por contacto; tareas periódicas integradas.
 

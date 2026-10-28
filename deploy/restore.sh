@@ -8,15 +8,15 @@ if [[ $# -ne 1 || $1 != --confirm-empty-target ]]; then
   echo 'Usage: deploy/restore.sh --confirm-empty-target' >&2
   exit 2
 fi
-project=${FLOWPILOT_PROJECT:-flowpilot}
-compose_file=${FLOWPILOT_COMPOSE_FILE:-compose.prod.yaml}
+project=${AUTOBOT_PROJECT:-autobot}
+compose_file=${AUTOBOT_COMPOSE_FILE:-compose.prod.yaml}
 if [[ -f .deployed-sha ]] || {
   docker volume inspect "${project}_pgdata" >/dev/null 2>&1 && [[ ! -f .restore-incomplete ]];
 }; then
   echo 'Existing deployment/database volume; restore only on an empty target' >&2
   exit 1
 fi
-backup_config=${FLOWPILOT_BACKUP_CONFIG:-/srv/flowpilot/backup.env}
+backup_config=${AUTOBOT_BACKUP_CONFIG:-/srv/autobot/backup.env}
 if [[ ! -f $backup_config ]]; then
   echo 'Backup configuration is missing' >&2
   exit 1
@@ -30,9 +30,9 @@ restic_bin=${RESTIC_BIN:-restic}
 
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
-"$restic_bin" restore latest --tag flowpilot --target "$stage"
+"$restic_bin" restore latest --tag autobot --target "$stage"
 # Restic restores paths relative to the root of the snapshot. Refuse incomplete backups.
-for file in .env .deployed-sha secrets.yaml google_sa.json Caddyfile backups/flowpilot.dump; do
+for file in .env .deployed-sha secrets.yaml google_sa.json Caddyfile backups/autobot.dump; do
   if [[ ! -s $stage/$file ]]; then
     echo "Missing from snapshot: $file" >&2
     exit 1
@@ -68,9 +68,9 @@ for file in .env secrets.yaml google_sa.json Caddyfile; do
 done
 docker compose --project-name "$project" -f "$compose_file" up -d --wait db
 docker compose --project-name "$project" -f "$compose_file" exec -T db \
-  sh -c 'PGPASSWORD="$FP_OWNER_PASSWORD" exec pg_restore -h 127.0.0.1 -U fp_owner -d flowpilot --clean --if-exists --no-owner --no-acl' \
-  <"$stage/backups/flowpilot.dump"
-if [[ ${FLOWPILOT_RESTORE_DB_ONLY:-false} != true ]]; then
+  sh -c 'PGPASSWORD="$FP_OWNER_PASSWORD" exec pg_restore -h 127.0.0.1 -U fp_owner -d autobot --clean --if-exists --no-owner --no-acl' \
+  <"$stage/backups/autobot.dump"
+if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
   docker compose --project-name "$project" -f "$compose_file" up -d web worker caddy
 fi
 printf '%s\n' "$SHA" >.deployed-sha

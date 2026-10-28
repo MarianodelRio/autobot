@@ -11,11 +11,11 @@ from django.test import Client
 from procrastinate.exceptions import ProcrastinateException
 from procrastinate.jobs import JobDeferrer
 
-from flowpilot.channels import views
-from flowpilot.runtime.locks import conversation_lock
-from flowpilot.runtime.models import InboundEvent
-from flowpilot.tenancy.registry import get_registry
-from flowpilot.tenancy.tx import tenant_tx
+from autobot.channels import views
+from autobot.runtime.locks import conversation_lock
+from autobot.runtime.models import InboundEvent
+from autobot.tenancy.registry import get_registry
+from autobot.tenancy.tx import tenant_tx
 from tests.integration.helpers import (
     BSUID,
     WA_URL,
@@ -274,7 +274,7 @@ def test_health_without_database_is_503(tenants: Any, monkeypatch: pytest.Monkey
         def cursor(self) -> None:
             raise OperationalError("down")
 
-    monkeypatch.setattr("flowpilot.ops.views.connections", {"default": Broken()})
+    monkeypatch.setattr("autobot.ops.views.connections", {"default": Broken()})
     response = Client().get("/health")
     assert response.status_code == 503
     assert response.json()["database"] is False

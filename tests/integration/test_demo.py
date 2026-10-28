@@ -14,11 +14,11 @@ import pytest
 from django.test import Client
 from pytest_django import Settings
 
-from flowpilot.channels.demo import selector
-from flowpilot.channels.demo.doors import door
-from flowpilot.channels.ratelimit import WindowLimiter
-from flowpilot.runtime.models import Contact, DemoEvent, InboundEvent, Notification, OutboundMessage
-from flowpilot.tenancy.registry import get_registry
+from autobot.channels.demo import selector
+from autobot.channels.demo.doors import door
+from autobot.channels.ratelimit import WindowLimiter
+from autobot.runtime.models import Contact, DemoEvent, InboundEvent, Notification, OutboundMessage
+from autobot.tenancy.registry import get_registry
 from tests.integration.helpers import (
     TELEGRAM_DEMO_URL,
     Providers,

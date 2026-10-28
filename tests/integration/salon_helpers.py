@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from flowpilot.runtime import context
-from flowpilot.tenancy.registry import get_registry
+from autobot.runtime import context
+from autobot.tenancy.registry import get_registry
 from packs.salon.pack import pack
 from packs.salon.testing import FakeCalendar
 from packs.salon.tests.test_config import configuration
