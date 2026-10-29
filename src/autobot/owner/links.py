@@ -1,5 +1,5 @@
 """Access to `OwnerLink` and the `/start <code>` linking flow
-(`docs/mejoras/02-avisos-y-resumenes.md` §5). No table here has RLS: the chat is not
+(ADR-007). No table here has RLS: the chat is not
 known to belong to any tenant until this module says so."""
 
 import hashlib
@@ -46,7 +46,7 @@ def new_invite(tenant_id: UUID) -> str:
 
 
 def unlink(tenant_id: UUID) -> bool:
-    """Clear the chat and any pending invite (§5.2). True if a connected chat was
+    """Clear the chat and any pending invite. True if a connected chat was
     removed."""
     had_chat = OwnerLink.objects.filter(tenant_id=tenant_id, chat_id__isnull=False).exists()
     OwnerLink.objects.filter(tenant_id=tenant_id).update(
@@ -62,7 +62,7 @@ class LinkResult:
 
 
 def start_link(code: str, chat_id: int) -> LinkResult:
-    """The `/start <code>` flow (§5.3). The code is single-use: linking clears the
+    """The `/start <code>` flow. The code is single-use: linking clears the
     invite, so a replay of the same code always answers `invalid`."""
     digest = hashlib.sha256(code.encode()).hexdigest()
     link = OwnerLink.objects.filter(
@@ -84,7 +84,7 @@ def start_link(code: str, chat_id: int) -> LinkResult:
 
 
 def _chat_taken_by_another_real_tenant(chat_id: int, tenant_id: UUID) -> bool:
-    """Decision 3 of the proposal: a chat may be connected to at most one real
+    """ADR-007: a chat may be connected to at most one real
     business; only demo tenants may share a chat."""
     registry = get_registry()
     other_ids = (

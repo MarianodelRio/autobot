@@ -1,5 +1,5 @@
 """The owner's summary line for `salon`, over a `FakeCalendar`
-(`docs/mejoras/02-avisos-y-resumenes.md` §4.2, §9)."""
+(ADR-007)."""
 
 import logging
 from datetime import UTC, datetime

@@ -1,5 +1,5 @@
 """Escenario del pack `bus` sobre el negocio de demo de la plataforma
-(`tenants/demo-autobuses/`, docs/mejoras/01-bot-de-demo.md §5.10, §6). A
+(`tenants/demo-autobuses/`, ADR-006). A
 diferencia de `test_escenarios.py` (que usa el dataset congelado de
 Autocares San Sebastián en `fixtures/`), este test lee el `tenant.yaml` y el
 dataset reales del repositorio: cualquier cambio que invalide el negocio de

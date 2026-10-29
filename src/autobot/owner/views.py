@@ -1,5 +1,5 @@
 """`POST /webhooks/telegram-notify`: the owner bot's webhook
-(`docs/mejoras/02-avisos-y-resumenes.md` §6.1). Same checks as `telegram_demo`, in the
+(ADR-007). Same checks as `telegram_demo`, in the
 same order; it only writes `owner_event`, which has no RLS, so the tenant need not be
 known yet."""
 

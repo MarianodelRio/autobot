@@ -1,5 +1,5 @@
 """Owner periodic summaries: periods, metric aggregation, rendering and the automatic
-hourly dispatch (`docs/mejoras/02-avisos-y-resumenes.md`). The on-demand status, as
+hourly dispatch (ADR-007). The on-demand status, as
 the owner bot answers it, is in `test_owner_bot.py`."""
 
 import logging
@@ -93,7 +93,7 @@ def test_previous_month_crosses_the_year() -> None:
 
 
 def test_generic_metrics_keeps_a_contact_also_active_afterwards(tenants: Any) -> None:
-    """Decision 9: counting over OutboundMessage (not Contact.last_activity_at) must not
+    """Counting over OutboundMessage (not Contact.last_activity_at) must not
     lose a contact that is also active after the period, before the summary runs."""
     tenants(wa_tenant())
     t = Tenant.objects.using("owner").get(slug="wa")
@@ -187,7 +187,7 @@ def test_build_summary_with_no_activity_shows_zeros_not_omitted(tenants: Any) ->
 
 
 def test_build_summary_runs_the_pack_hook_without_a_transaction(tenants: Any) -> None:
-    """§4.5: `salon` calls Google Calendar from its hook, so no transaction may be open."""
+    """`salon` calls Google Calendar from its hook, so no transaction may be open."""
     tenants(wa_tenant())
     loaded = get_registry().by_slug["wa"]
     assert loaded.pack is not None
@@ -209,7 +209,8 @@ def test_build_summary_runs_the_pack_hook_without_a_transaction(tenants: Any) ->
 
 
 def test_render_two_blocks_for_a_shared_demo_chat(tenants: Any) -> None:
-    """Decision 3: one header, one block per business, separated by a blank line."""
+    """A demo chat shared by two businesses: one header, one block per business,
+    separated by a blank line."""
     tenants(demo_tenant("demo-a"), demo_tenant("demo-b"))
     blocks = [
         summary.build_summary(get_registry().by_slug[slug], START, END)

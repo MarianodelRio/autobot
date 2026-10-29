@@ -47,7 +47,7 @@ configuración apropiados.
 
 El pack declara un gancho `summary` (`packs/salon/summary.py`) que lee las citas y los
 ingresos estimados **directamente del calendario**, no de mensajes ni de métricas
-(`docs/mejoras/02-avisos-y-resumenes.md`, decisión 4): el calendario es la fuente de
+(ADR-007): el calendario es la fuente de
 verdad, así que una cita cancelada o movida no se cuenta dos veces y una cita añadida a
 mano por el peluquero también cuenta.
 

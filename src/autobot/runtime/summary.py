@@ -1,9 +1,8 @@
-"""The owner's monthly summary and on-demand status
-(`docs/mejoras/02-avisos-y-resumenes.md`).
+"""The owner's monthly summary and on-demand status (ADR-007).
 
-Two distinct periods, always a calendar month or a prefix of one (decision 3 of the
-proposal): `previous_month` for the automatic send (day 1, the month just closed) and
-`month_to_date` for the on-demand status, used by `autobot.owner.menu`.
+Two distinct periods, always a calendar month or a prefix of one: `previous_month` for
+the automatic send (day 1, the month just closed) and `month_to_date` for the on-demand
+status, used by `autobot.owner.menu`.
 """
 
 import logging
@@ -33,7 +32,7 @@ log = logging.getLogger(__name__)
 # delivers it regardless of owner.notify, which only gates per-event notices).
 OWNER_SUMMARY_KIND = "owner_summary"
 
-SUMMARY_LOCAL_HOUR = 12  # decision 10 of the proposal
+SUMMARY_LOCAL_HOUR = 12  # local time of the tenant (ADR-007)
 
 # Approximate Meta price per delivered message, Spain, EUR. Not the account's real
 # tariff (Meta's rate card is per recipient country and lives in each business's
@@ -92,9 +91,9 @@ def dispatch_owner_summaries(now: datetime) -> int:
 
 
 def _due(tenant: LoadedTenant, now: datetime) -> bool:
-    """Decision 14 of the proposal: only an active, non-degraded tenant, with
+    """Only an active, non-degraded tenant, with
     `owner.summary_monthly` and a connected chat, on its own day 1 past noon local
-    time (decision 10)."""
+    time."""
     owner = tenant.file.owner
     if tenant.file.status != "active" or tenant.is_degraded:
         return False
@@ -210,9 +209,9 @@ class _Generic:
 
 
 def _generic_metrics(start: datetime, end: datetime) -> _Generic:
-    """ "Usuarios" and "mensajes" over the `OutboundMessage` actually sent in the period
-    (decision 9 of the proposal): `status="sent"`, by `sent_at`, never `created_at` (a
-    message can be created in one period and sent, or fail, in a later one) nor
+    """ "Usuarios" and "mensajes" over the `OutboundMessage` actually sent in the period:
+    `status="sent"`, by `sent_at`, never `created_at` (a message can be created in one
+    period and sent, or fail, in a later one) nor
     `Contact.last_activity_at` (that field only keeps the last activity instant, which
     would drop a contact active in this closed period but also later, before the
     automatic summary runs)."""
@@ -224,7 +223,7 @@ def _generic_metrics(start: datetime, end: datetime) -> _Generic:
 
 
 def _messaging_cost(start: datetime, end: datetime) -> Decimal:
-    """Decision 9: every message Meta actually billed (`billable=True`), by `sent_at`,
+    """Every message Meta actually billed (`billable=True`), by `sent_at`,
     priced per `pricing_category` at `PRICE_EUR`. Meta already applies its own free
     tiers and marks them `billable=False`, so none is computed here. A category not in
     `PRICE_EUR` (e.g. a new one Meta adds) is priced at the highest known rate, so the
@@ -250,7 +249,7 @@ def _messaging_cost(start: datetime, end: datetime) -> Decimal:
 
 def render(blocks: Sequence[SummaryBlock], *, monthly: bool) -> str:
     """One or several tenants' blocks for the same period (several only for a demo
-    chat shared between businesses, decision 3 of the proposal), as the text of a
+    chat shared between businesses, ADR-007), as the text of a
     `Notification` or the on-demand status."""
     head = header(blocks[0].start, blocks[0].end, monthly=monthly)
     sections = [f"{b.tenant.info.name}\n\n" + "\n".join(block_lines(b)) for b in blocks]
@@ -279,7 +278,7 @@ def block_lines(b: SummaryBlock) -> list[str]:
 
 
 def show_cost(tenant: LoadedTenant) -> bool:
-    """Decision 9: the cost line only means something for WhatsApp (or a demo tenant,
+    """The cost line only means something for WhatsApp (or a demo tenant,
     whose messages come through the shared WhatsApp door)."""
     channel = tenant.file.channel
     return tenant.is_demo or (channel is not None and channel.type == "whatsapp")

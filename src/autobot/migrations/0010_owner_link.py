@@ -1,15 +1,14 @@
 """Adds `owner_link` and `owner_event`, the platform tables behind the owner's
-notify bot (`docs/mejoras/02-avisos-y-resumenes.md` §5, §6; ADR-007).
+notify bot (ADR-007).
 
-Neither has RLS, on purpose (decision 2 of the proposal): a message arriving at the
+Neither has RLS, on purpose (ADR-007): a message arriving at the
 notify bot's webhook carries only a Telegram chat id, and the tenant is found *from*
 it, the same way `demo_event`/`demo_session` work for the demo doors (migration 0008,
 ADR-006). `owner_link.chat_id` also moves the owner's chat out of `tenant.yaml` and
 into the database: a personal datum that no longer needs to live in git, and whose
 upkeep (connecting or disconnecting an owner) no longer needs a commit or a deploy.
 
-Approved by the person on 2026-10-29 (see docs/adr/ADR-007-bot-de-duenos.md and
-docs/mejoras/02-avisos-y-resumenes.md §10)."""
+Approved by the person on 2026-10-29 (see docs/adr/ADR-007-bot-de-duenos.md)."""
 
 import uuid
 

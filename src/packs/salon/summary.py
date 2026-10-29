@@ -1,6 +1,5 @@
-"""The owner's summary line for `salon` (`docs/mejoras/02-avisos-y-resumenes.md` §4.2):
-citas and estimated revenue, straight from the calendar, which is the source of truth
-(decision 4 of the proposal)."""
+"""The owner's summary line for `salon` (ADR-007):
+citas and estimated revenue, straight from the calendar, which is the source of truth."""
 
 from collections.abc import Mapping
 from datetime import datetime
@@ -46,7 +45,8 @@ def summarize(
 
 
 def is_appointment(event: CalEvent, cfg: SalonConfig) -> bool:
-    """Decision 5 of the proposal."""
+    """A bot event, or one whose title starts with a service name the way the bot's
+    do (`"<Servicio> - <Nombre>"`); any other event is the owner's own (ADR-007)."""
     if parse_cfg(event.summary):
         return False
     if event.private.get("fp_key"):

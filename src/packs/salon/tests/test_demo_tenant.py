@@ -1,5 +1,5 @@
 """Escenario del pack `salon` sobre el negocio de demo de la plataforma
-(`tenants/demo-peluqueria/`, docs/mejoras/01-bot-de-demo.md §5.10, §6). Lee el
+(`tenants/demo-peluqueria/`, ADR-006). Lee el
 `tenant.yaml` real del repositorio y solo sustituye el marcador
 `PENDIENTE-calendario-de-demo` por un `calendar_id` de prueba, para probar el
 flujo completo de reserva con `FakeCalendar` sin depender de Google Calendar."""

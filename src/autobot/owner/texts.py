@@ -1,5 +1,5 @@
 """Reply texts of the owner's notify bot
-(`docs/mejoras/02-avisos-y-resumenes.md` §6.4). `*bold*` is Telegram's own markup,
+(ADR-007). `*bold*` is Telegram's own markup,
 which the adapter turns into `<b>`."""
 
 from django.conf import settings

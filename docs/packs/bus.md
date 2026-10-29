@@ -66,7 +66,7 @@ vigencia. El runbook 10 contiene las comprobaciones de operación.
 ### Resumen mensual al dueño
 
 El pack declara un único gancho `summary` para el resumen periódico al dueño
-(`docs/mejoras/02-avisos-y-resumenes.md`), que lee esta métrica de plataforma
+(ADR-007), que lee esta métrica de plataforma
 (`RecordMetric`, aún emitida por `conversation.py`):
 
 | Métrica | Unidad | Se emite cuando |

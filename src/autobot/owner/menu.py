@@ -1,5 +1,5 @@
 """The owner bot's menu: a declarative list, so a future option is one entry
-(`docs/mejoras/02-avisos-y-resumenes.md` §6.3). "Cómo va el mes" (`status_text`) and
+(ADR-007). "Cómo va el mes" (`status_text`) and
 "Contacto" are the first two."""
 
 from collections.abc import Callable
@@ -60,7 +60,7 @@ def _status_text(chat: OwnerChat, now: datetime) -> str:
 
 
 def _usable(tenant: LoadedTenant) -> bool:
-    """Decision 13 of the proposal: a demo tenant answers even `paused`; a real
+    """ADR-007: a demo tenant answers even `paused`; a real
     tenant must be `active` and not degraded."""
     if tenant.is_demo:
         return True

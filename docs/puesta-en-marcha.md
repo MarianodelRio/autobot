@@ -53,7 +53,7 @@ la demo.
   (checklist completo en `docs/runbooks/demo.md`). Variables `DEMO_WHATSAPP_*` en el
   `.env` del servidor. El cambio de `Caddyfile` y la verificación de firma del webhook
   necesitan aprobación humana explícita antes de desplegarse.
-- **Bot de avisos como asistente del dueño** (`docs/mejoras/02-avisos-y-resumenes.md`):
+- **Bot de avisos como asistente del dueño** (ADR-007):
   generar `NOTIFY_BOT_WEBHOOK_SECRET` (32+ caracteres aleatorios) y poner
   `OWNER_SUPPORT_EMAIL` en el `.env` del servidor; tras el despliegue,
   `manage.py telegram_set_webhook notify`. Por cada negocio con dueño,

@@ -1,6 +1,6 @@
 """The owner bot's conversation scenario: webhook authenticity, linking by invite
 code, the menu and its two options, and the common limits
-(`docs/mejoras/02-avisos-y-resumenes.md` §6, §9). Telegram is simulated as in
+(ADR-007). Telegram is simulated as in
 `test_notifications.py`, through the real webhook and the real database."""
 
 import hashlib

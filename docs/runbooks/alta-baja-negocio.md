@@ -56,7 +56,7 @@ precio *utility* del país; la tarifa se consulta en la cuenta de cada negocio.
 ### Precios aproximados de mensajería (resumen mensual)
 
 El "coste aproximado de mensajería" del resumen al dueño
-(`docs/mejoras/02-avisos-y-resumenes.md`, `autobot/runtime/summary.py:PRICE_EUR`) suma
+(ADR-007, `autobot/runtime/summary.py:PRICE_EUR`) suma
 todos los mensajes que Meta marca como facturables (`billable=True` en el webhook de
 estados) en el periodo, agrupados por la categoría que indica el propio webhook
 (`pricing_category`), con esta tabla de precios aproximados en euros por mensaje, para

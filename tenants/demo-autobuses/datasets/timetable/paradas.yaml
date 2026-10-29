@@ -1,6 +1,6 @@
 # horarios/paradas.yaml — demo-autobuses. Dataset inventado para enseñar el
-# pack bus: tres líneas entre Posadas y Córdoba (docs/mejoras/01-bot-de-demo.md
-# §5.10). No es un negocio real.
+# pack bus: tres líneas entre Posadas y Córdoba
+# (ADR-006). No es un negocio real.
 
 localidades:
   posadas: { nombre: Posadas }

@@ -1,7 +1,7 @@
 # tenants/demo-autobuses/tenant.yaml — negocio de demo del pack bus.
 # Creado con `manage.py new_tenant demo-autobuses --pack bus --demo "..."`.
-# Tres líneas inventadas entre Posadas y Córdoba (docs/mejoras/01-bot-de-demo.md
-# §5.10); no son un negocio real y no se publican con `make bus-publicar`.
+# Tres líneas inventadas entre Posadas y Córdoba (ADR-006);
+# no son un negocio real y no se publican con `make bus-publicar`.
 id: 01a179e5-6da7-7375-a641-d323beab9727
 slug: demo-autobuses
 name: Autobuses de Prueba

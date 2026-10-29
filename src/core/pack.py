@@ -48,8 +48,7 @@ class HealthIssue:
 
 @dataclass(frozen=True)
 class SummaryLine:
-    """One line of the owner's summary, contributed by the pack
-    (`docs/mejoras/02-avisos-y-resumenes.md` §4.1)."""
+    """One line of the owner's summary, contributed by the pack (ADR-007)."""
 
     icon: str  # one emoji
     label: str

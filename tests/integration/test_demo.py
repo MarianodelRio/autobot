@@ -177,7 +177,7 @@ def test_an_allowed_user_sees_the_list(tenants: Any, providers: Providers) -> No
 
 def test_unavailable_businesses_are_not_listed(tenants: Any, providers: Providers) -> None:
     """Unlike the retired test bot, a demo tenant with a calendar-needing pack is
-    available like any other: it has its own `config.calendar_id` (§4.4). Only
+    available like any other: it has its own `config.calendar_id` (ADR-006). Only
     `degraded` and non-`active` (e.g. `paused`, while its setup finishes) are kept out."""
     tenants(
         demo("wa"),

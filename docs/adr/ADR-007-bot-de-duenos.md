@@ -11,8 +11,8 @@ comando manual con `getUpdates` (`notify_link`) y guardar su `chat_id` en
 chat exigía un commit y un despliegue, por un dato que no es configuración del
 negocio, sino personal.
 
-`docs/mejoras/02-avisos-y-resumenes.md` añade un asistente: el dueño puede escribirle
-al bot y preguntar cómo va el mes en curso, o pedir el contacto del operador. Eso
+Se añade un asistente: el dueño puede escribirle al bot y preguntar cómo va el mes en
+curso, o pedir el contacto del operador. Eso
 exige que el bot tenga webhook entrante — hasta ahora era puramente de salida — y que
 la plataforma sepa, al recibir un mensaje, a qué negocio pertenece ese chat sin
 conocerlo todavía.
@@ -41,6 +41,40 @@ conocerlo todavía.
   (idempotente por `update_id`, marcado `done` antes de responder, candado por chat
   con solo un hash). El bot de avisos pasa a comprobarse con webhook, como el de
   demo, en vez de con `getUpdates`.
+- **Menú declarativo** (`autobot/owner/menu.py`): cada opción es una entrada de `MENU`
+  (id `owner:<nombre>`, título, respuesta y disponibilidad). Hoy hay dos: "📊 Cómo va
+  el mes" y "✉️ Contacto" (solo si `OWNER_SUPPORT_EMAIL` está definido). Hasta 3
+  opciones van como botones; de 4 a 10, como lista.
+
+### Resumen del dueño (decidido con la persona el 2026-10-29)
+
+- **Dos periodos de calendario**, en la zona horaria del negocio:
+  - **Automático:** el mes anterior completo. Sale el día 1 a partir de las 12:00
+    locales. El periodic corre cada hora y un envío perdido se recupera ese mismo día;
+    la clave `summary:<tenant>:<año-mes>` evita duplicados.
+  - **A demanda:** desde el día 1 a las 00:00 hasta ahora, **solo lo ya pasado**.
+- **Cada pack aporta sus líneas** con el gancho `Pack.summary(ctx, start, end, recorded)`,
+  que se ejecuta sin transacción abierta. La plataforma no sabe qué es una cita.
+  - **`salon`** lee las citas **del calendario, que es la fuente de verdad**: así cuenta
+    las manuales, y una cita cancelada (borrada) o movida nunca se cuenta dos veces. Es
+    cita un evento del bot o uno cuyo título empieza por el nombre de un servicio, igual
+    que los del bot (`"<Servicio> - <Nombre>"`). Gana el nombre más largo, sin distinguir
+    mayúsculas, acentos ni el tipo de guion. Los demás eventos (vacaciones,
+    `[CFG] …`, recados) y los de todo el día no cuentan, y no hay línea de canceladas.
+    Los ingresos estimados suman el `price_eur` **actual** del servicio de cada cita.
+  - **`bus`** cuenta consultas de horario con `RecordMetric`/`MetricEvent`, porque no
+    tiene calendario.
+- **Métricas de plataforma**, sobre `OutboundMessage` con `status="sent"`, por `sent_at`:
+  - clientes atendidos y mensajes enviados;
+  - **coste de WhatsApp**: los mensajes con `billable=True` por un precio aproximado por
+    categoría (`PRICE_EUR`). No se calcula la franja gratuita: Meta ya marca como no
+    cobrados los 1.000 "service" gratis al mes por número, incluido el número de demo
+    compartido. Una categoría desconocida se valora al precio más alto.
+- Si falla el gancho del pack, el resumen automático se reintenta en lugar de salir sin
+  citas; el estado a demanda muestra un aviso en su lugar.
+- Un negocio de demo responde a "Cómo va el mes" aunque esté `paused`, porque la demo
+  existe para enseñar la función. Un negocio real que no está `active` responde que aún
+  no está activo.
 
 ## Alternativas consideradas
 

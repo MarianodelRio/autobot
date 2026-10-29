@@ -1,5 +1,5 @@
 """Generate a one-time link for a business owner to connect their Telegram chat to
-the notify bot (`docs/mejoras/02-avisos-y-resumenes.md` §5.2). The code only ever
+the notify bot (ADR-007). The code only ever
 appears in this command's own output: never logged."""
 
 from datetime import timedelta

@@ -1,5 +1,5 @@
 """Storing and processing the owner bot's inbound events
-(`docs/mejoras/02-avisos-y-resumenes.md` §6). Follows the pattern of
+(ADR-007). Follows the pattern of
 `autobot.channels.demo.selector`: the event is marked done *before* any reply is
 sent, so a retry never repeats an answer."""
 

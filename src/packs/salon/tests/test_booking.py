@@ -208,7 +208,8 @@ def test_one_digit_calendar_hour_reaches_the_booking_flow(salon: Conversation) -
 
 def test_manual_calendar_booking_emits_no_metric(salon: Conversation) -> None:
     """A booking added straight to Calendar never goes through Turn.create(): it is
-    invisible to the owner's periodic summary (decision 6 of the proposal)."""
+    never emits a metric; the owner's summary counts it from the calendar instead
+    (`packs/salon/summary.py`)."""
     start = datetime.fromisoformat("2026-03-24T10:00:00+01:00")
     salon.calendar.add(
         CalendarEvent(

@@ -1,4 +1,4 @@
-"""The owner's summary line for `bus` (`docs/mejoras/02-avisos-y-resumenes.md` §4.3)."""
+"""The owner's summary line for `bus` (ADR-007)."""
 
 from decimal import Decimal
 

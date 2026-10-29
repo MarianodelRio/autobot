@@ -2,7 +2,7 @@
 
 Plataforma de automatización para pequeños negocios: atiende a sus clientes por WhatsApp o Telegram, gestiona reservas sobre la agenda que ya usan (peluquerías) o responde consultas de horarios (autobuses) y avisa al dueño por Telegram.
 
-Cada dueño tiene además un asistente en ese mismo bot de Telegram. Le manda los avisos y un resumen mensual (citas, ingresos estimados, clientes atendidos, mensajes y coste aproximado de WhatsApp), y con un menú puede pedir cómo va el mes o el contacto de soporte. El dueño se conecta con un enlace de un solo uso (`manage.py owner_invite <slug>`); ver [docs/mejoras/02-avisos-y-resumenes.md](docs/mejoras/02-avisos-y-resumenes.md).
+Cada dueño tiene además un asistente en ese mismo bot de Telegram. Le manda los avisos y un resumen mensual (citas, ingresos estimados, clientes atendidos, mensajes y coste aproximado de WhatsApp), y con un menú puede pedir cómo va el mes o el contacto de soporte. El dueño se conecta con un enlace de un solo uso (`manage.py owner_invite <slug>`); ver [ADR-007](docs/adr/ADR-007-bot-de-duenos.md).
 
 Una sola plataforma para 5–15 negocios, en una VPS con Docker Compose.
 

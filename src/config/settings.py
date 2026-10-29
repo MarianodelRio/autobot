@@ -54,7 +54,7 @@ if importlib.util.find_spec("django_migration_linter"):
     MIGRATION_LINTER_OPTIONS = {
         "exclude_apps": ["procrastinate", "otp_totp"],
         # Drops the retired test-bot tables: approved by the person (2026-10-26,
-        # docs/mejoras/01-bot-de-demo.md §2).
+        # see ADR-006).
         "ignore_name": ["0008_demo_channels"],
     }
 
@@ -206,7 +206,7 @@ LOGGING = {
 GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "")
 
 # The platform's one notify bot, also the owner's small assistant (inbound since
-# docs/mejoras/02-avisos-y-resumenes.md): unconfigured locally until it is created.
+# ADR-007): unconfigured locally until it is created.
 NOTIFY_BOT_TOKEN = os.environ.get("NOTIFY_BOT_TOKEN", "")
 NOTIFY_BOT_WEBHOOK_SECRET = os.environ.get("NOTIFY_BOT_WEBHOOK_SECRET", "")
 if NOTIFY_BOT_WEBHOOK_SECRET and len(NOTIFY_BOT_WEBHOOK_SECRET) < 32:
