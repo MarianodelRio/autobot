@@ -44,6 +44,7 @@ RUN_PERIODIC = "run_periodic"  # (tenant_id, name, scheduled_at), queueing lock 
 RETRY_STALLED_JOBS = "retry_stalled_jobs"  # (timestamp): every 5 min
 DISPATCH_OWNER_SUMMARIES = "dispatch_owner_summaries"  # (timestamp): hourly, platform-wide
 SEND_OWNER_SUMMARY = "send_owner_summary"  # (tenant_id, year, month), queueing_lock summary:<t>
+HANDLE_OWNER_EVENT = "handle_owner_event"  # (event_id) of owner_event, lock ownerchat:<h>
 
 SUMMARY_RETRY = RetryStrategy(max_attempts=3, wait=300, retry_exceptions={TransientError})
 
@@ -104,6 +105,17 @@ def route_demo_event(event_id: str) -> None:
     close_old_connections()
     try:
         selector.route_demo_event(UUID(event_id))
+    finally:
+        close_old_connections()
+
+
+@app.task(queue=INBOUND, name=HANDLE_OWNER_EVENT, retry=INBOUND_RETRY)
+def handle_owner_event(event_id: str) -> None:
+    from autobot.owner import inbox
+
+    close_old_connections()
+    try:
+        inbox.handle_owner_event(UUID(event_id))
     finally:
         close_old_connections()
 

@@ -315,11 +315,12 @@ def _contact_by_phone(tenant: LoadedTenant, channel: str, phone: str) -> Contact
 
 
 def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> None:
-    """Queue the notice if the owner has a chat and wants this kind; otherwise it
-    is only logged. A demo tenant's owner receives it the same way as a real one.
-    Delivery is `send_notification`, which reads `audience`."""
+    """Queue the notice if the owner wants this kind; `send_notification` is what
+    actually checks whether a chat is connected, and only logs it if not. A demo
+    tenant's owner receives it the same way as a real one. Delivery is
+    `send_notification`, which reads `audience`."""
     owner = tenant.file.owner
-    if owner is None or owner.telegram_chat_id is None or action.kind not in owner.notify:
+    if owner is None or action.kind not in owner.notify:
         log.info("NotifyOwner %s only logged: the owner does not receive it", action.kind)
         return
     row = Notification(

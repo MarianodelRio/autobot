@@ -135,7 +135,7 @@ def test_the_offset_moves_on_and_errors_do_not_stop_polling(
             raise RuntimeError("bug")
         return True
 
-    bot = polling.Source("demo bot", polling.source(None).secrets, flaky)
+    bot = polling.Source("demo bot", polling.source(None).secrets, flaky, "webhooks/telegram-demo")
     pauses: list[float] = []
     api = BotApi(
         httpx.Response(502),

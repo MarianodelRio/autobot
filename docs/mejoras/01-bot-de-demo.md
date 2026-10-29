@@ -42,7 +42,7 @@ de demo.
 | Cómo se elige negocio | Selector de la plataforma (no un pack: un pack no puede importar otros) |
 | Acceso | Lista cerrada en las dos puertas: `DEMO_TELEGRAM_USERS` y `DEMO_WHATSAPP_USERS` en `.env` |
 | Sin acceso | Telegram: "No tienes acceso a esta demo." como mucho 3 veces por hora y usuario. WhatsApp: ninguna respuesta |
-| Avisos al dueño de la demo | Como un cliente real: `owner.telegram_chat_id` del negocio de demo (el Telegram de la persona, con `notify_link`). Avisos por WhatsApp: fuera de alcance |
+| Avisos al dueño de la demo | Como un cliente real: el chat de Telegram de la persona, vinculado con `manage.py owner_invite`. Avisos por WhatsApp: fuera de alcance |
 | Calendario de la demo | Uno solo, el de la persona: `calendar_id` del negocio de demo |
 | Limpieza automática del calendario de demo | No, de momento |
 | Contenido | Lo inventa el agente (§5.10) |
@@ -424,9 +424,9 @@ mano) y después se completan.
 
 **`tenants/demo-peluqueria/tenant.yaml`** · `name: Peluquería de Prueba` · `pack:
 salon` · `demo.description: "Reserva, mueve o cancela una cita"` · `status: paused`
-hasta que la persona ponga su calendario (§8) · `owner` sin rellenar (lo añade la
-persona con `notify_link`; `notify: [booking_created, booking_cancelled,
-booking_moved, move_cancel_failed]`). `config`:
+hasta que la persona ponga su calendario (§8) · `owner` sin chat vinculado (lo
+vincula la persona con `manage.py owner_invite`; `notify: [booking_created,
+booking_cancelled, booking_moved, move_cancel_failed]`). `config`:
 
 - `business_name: Peluquería de Prueba`, `contact_phone: "600 000 000"`.
 - `calendar_id: PENDIENTE-calendario-de-demo` (marcador explícito, no un id
@@ -573,8 +573,8 @@ Tests nuevos, como mínimo:
 2. Proyecto de Google Cloud con cuenta de servicio (`google_sa.json`), un calendario
    "Autobot demo" compartido con ella ("Hacer cambios en los eventos"), y su id en
    `calendar_id` de `demo-peluqueria`; después `status: active`.
-3. Bot de avisos (`NOTIFY_BOT_TOKEN`) y `manage.py notify_link demo-peluqueria` para
-   rellenar `owner.telegram_chat_id`.
+3. Bot de avisos (`NOTIFY_BOT_TOKEN`) y `manage.py owner_invite demo-peluqueria` para
+   vincular el chat de Telegram de la persona.
 4. Rellenar `DEMO_TELEGRAM_USERS` y `DEMO_WHATSAPP_USERS`.
 5. Número de WhatsApp de demo: Business Portfolio, app, número, token permanente,
    plantillas aprobadas y webhook a `/webhooks/whatsapp-demo`; variables

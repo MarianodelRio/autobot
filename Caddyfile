@@ -3,7 +3,7 @@
         max_size 64KB
     }
 
-    @public path /webhooks/whatsapp/* /webhooks/telegram/* /webhooks/telegram-demo /webhooks/whatsapp-demo /health
+    @public path /webhooks/whatsapp/* /webhooks/telegram/* /webhooks/telegram-demo /webhooks/whatsapp-demo /webhooks/telegram-notify /health
     handle @public {
         reverse_proxy web:8000
     }

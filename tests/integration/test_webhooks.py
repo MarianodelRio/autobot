@@ -288,6 +288,7 @@ def test_admin_is_mounted_apart() -> None:
         "webhooks/telegram/<str:public_id>",
         "webhooks/telegram-demo",
         "webhooks/whatsapp-demo",
+        "webhooks/telegram-notify",
         "health",
     ]
     assert Client().get("/admin/").status_code == 302  # to its login

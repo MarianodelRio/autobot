@@ -18,6 +18,11 @@ def demo_user_lock(channel: str, external_id: str) -> str:
     return f"demo:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
 
 
+def owner_chat_lock(chat_id: int) -> str:
+    """`ownerchat:<h>`: the owner bot handles one chat's updates one at a time."""
+    return f"ownerchat:{hashlib.sha256(str(chat_id).encode()).hexdigest()[:16]}"
+
+
 def conversation_lock(tenant_id: UUID, channel: str, external_id: str) -> str:
     """`conv:<h>`: one contact's messages are processed one at a time, in order."""
     return f"conv:{contact_hash(tenant_id, channel, external_id)}"

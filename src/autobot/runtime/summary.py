@@ -1,9 +1,9 @@
-"""The owner's monthly summary (`docs/mejoras/02-avisos-y-resumenes.md`).
+"""The owner's monthly summary and on-demand status
+(`docs/mejoras/02-avisos-y-resumenes.md`).
 
 Two distinct periods, always a calendar month or a prefix of one (decision 3 of the
 proposal): `previous_month` for the automatic send (day 1, the month just closed) and
-`month_to_date` for the on-demand status (not wired yet: it needs the notify bot's
-inbound webhook, left for a separate change).
+`month_to_date` for the on-demand status, used by `autobot.owner.menu`.
 """
 
 import logging
@@ -18,6 +18,7 @@ from django.db.models import Count, Sum
 from procrastinate.exceptions import AlreadyEnqueued
 
 from autobot.jobs import OUTBOUND, PERIODIC, SEND_NOTIFICATION, SEND_OWNER_SUMMARY, app
+from autobot.owner import links
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
 from autobot.runtime.models import Channel, MetricEvent, Notification, OutboundMessage
 from autobot.tenancy.registry import LoadedTenant, get_registry
@@ -97,7 +98,7 @@ def _due(tenant: LoadedTenant, now: datetime) -> bool:
     owner = tenant.file.owner
     if tenant.file.status != "active" or tenant.is_degraded:
         return False
-    if owner is None or not owner.summary_monthly or owner.telegram_chat_id is None:
+    if owner is None or not owner.summary_monthly or links.owner_chat(tenant.id) is None:
         return False
     local = now.astimezone(tenant.info.timezone)
     return local.day == 1 and local.hour >= SUMMARY_LOCAL_HOUR
@@ -251,38 +252,40 @@ def render(blocks: Sequence[SummaryBlock], *, monthly: bool) -> str:
     """One or several tenants' blocks for the same period (several only for a demo
     chat shared between businesses, decision 3 of the proposal), as the text of a
     `Notification` or the on-demand status."""
-    header = _header(blocks[0], monthly=monthly)
-    sections = [f"{b.tenant.info.name}\n\n" + "\n".join(_block_lines(b)) for b in blocks]
-    text = header + "\n" + "\n\n".join(sections)
+    head = header(blocks[0].start, blocks[0].end, monthly=monthly)
+    sections = [f"{b.tenant.info.name}\n\n" + "\n".join(block_lines(b)) for b in blocks]
+    text = head + "\n" + "\n\n".join(sections)
     if any(line.unit == "eur" for b in blocks for line in b.pack_lines):
-        text += "\n\n" + _note(monthly=monthly)
+        text += "\n\n" + note(monthly=monthly)
     return text
 
 
-def _header(block: SummaryBlock, *, monthly: bool) -> str:
-    month = MONTHS_ES[block.start.month - 1]
+def header(start: datetime, end: datetime, *, monthly: bool) -> str:
+    month = MONTHS_ES[start.month - 1]
     if monthly:
         return f"📊 *Tu resumen de {month}*"
-    return f"📊 *Así va {month}* (hasta hoy, día {block.end.day})"
+    return f"📊 *Así va {month}* (hasta hoy, día {end.day})"
 
 
-def _block_lines(b: SummaryBlock) -> list[str]:
+def block_lines(b: SummaryBlock) -> list[str]:
+    """A block's metric lines, as `render` and the owner bot's on-demand status
+    (which substitutes a whole block for a tenant that is not usable) both need."""
     lines = [_line(line) for line in b.pack_lines]
     lines.append(f"👥 Clientes atendidos: {b.generic.users}")
     lines.append(f"💬 Mensajes enviados: {b.generic.messages}")
-    if _show_cost(b.tenant):
+    if show_cost(b.tenant):
         lines.append(f"📱 Coste de WhatsApp: {_eur(b.cost)}")
     return lines
 
 
-def _show_cost(tenant: LoadedTenant) -> bool:
+def show_cost(tenant: LoadedTenant) -> bool:
     """Decision 9: the cost line only means something for WhatsApp (or a demo tenant,
     whose messages come through the shared WhatsApp door)."""
     channel = tenant.file.channel
     return tenant.is_demo or (channel is not None and channel.type == "whatsapp")
 
 
-def _note(*, monthly: bool) -> str:
+def note(*, monthly: bool) -> str:
     base = "ℹ️ Ingresos según tus precios actuales; coste aproximado"
     return base + (" (la factura real está en tu cuenta de Meta)." if monthly else ".")
 

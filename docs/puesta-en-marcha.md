@@ -53,6 +53,15 @@ la demo.
   (checklist completo en `docs/runbooks/demo.md`). Variables `DEMO_WHATSAPP_*` en el
   `.env` del servidor. El cambio de `Caddyfile` y la verificación de firma del webhook
   necesitan aprobación humana explícita antes de desplegarse.
+- **Bot de avisos como asistente del dueño** (`docs/mejoras/02-avisos-y-resumenes.md`):
+  generar `NOTIFY_BOT_WEBHOOK_SECRET` (32+ caracteres aleatorios) y poner
+  `OWNER_SUPPORT_EMAIL` en el `.env` del servidor; tras el despliegue,
+  `manage.py telegram_set_webhook notify`. Por cada negocio con dueño,
+  `manage.py owner_invite <slug>` y enviarle el enlace. Contrastar `PRICE_EUR`
+  (`autobot/runtime/summary.py`) con el rate card del WhatsApp Manager de un negocio
+  real y anotar la fecha en `docs/runbooks/alta-baja-negocio.md`. Pedir a cada
+  peluquero que titule sus citas manuales como las del bot
+  (`"<Servicio> - <Nombre>"`), para que el resumen las cuente.
 - **Primer despliegue** con `make deploy SHA=<sha>`, prueba de vuelta atrás con un SHA
   roto a propósito y simulacro de restauración en una VPS temporal (objetivo: menos
   de 2 h). Requiere aprobación humana.

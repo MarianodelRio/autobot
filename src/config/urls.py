@@ -11,12 +11,14 @@ from autobot.admin import site
 from autobot.channels import views as webhooks
 from autobot.channels.demo.views import telegram_demo, whatsapp_demo
 from autobot.ops.views import health
+from autobot.owner.views import telegram_notify
 
 public: list[URLPattern | URLResolver] = [
     path("webhooks/whatsapp/<str:public_id>", webhooks.whatsapp, name="webhook-whatsapp"),
     path("webhooks/telegram/<str:public_id>", webhooks.telegram, name="webhook-telegram"),
     path("webhooks/telegram-demo", telegram_demo, name="webhook-telegram-demo"),
     path("webhooks/whatsapp-demo", whatsapp_demo, name="webhook-whatsapp-demo"),
+    path("webhooks/telegram-notify", telegram_notify, name="webhook-telegram-notify"),
     path("health", health, name="health"),
 ]
 

@@ -1,8 +1,9 @@
 """Long polling for local development: `getUpdates` instead of a
 webhook, so no tunnel nor domain is needed. Each update enters **the same way as the
 webhook** once authenticated: `selector.store_event` for the demo bot's Telegram door,
-`views.accept` for a business's own bot. A bot is never polled while it has a webhook
-(Telegram answers 409): `telegram_set_webhook <slug|demo> --delete` removes it.
+`inbox.store_owner_event` for the notify bot, `views.accept` for a business's own bot.
+A bot is never polled while it has a webhook (Telegram answers 409):
+`telegram_set_webhook <slug|demo|notify> --delete` removes it.
 """
 
 import logging
@@ -20,6 +21,7 @@ from autobot.channels.demo.doors import door
 from autobot.channels.demo.selector import store_event
 from autobot.channels.telegram.adapter import TelegramApiError, call
 from autobot.runtime.models import Channel
+from autobot.runtime.notifications import bot_secrets
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.schema import TelegramChannel, TelegramSecrets
 
@@ -41,15 +43,15 @@ class BotRefused(Exception):
 
 @dataclass(frozen=True)
 class Source:
-    name: str  # "demo bot" or the tenant's slug: never the token
+    name: str  # "demo bot", "notify bot" or the tenant's slug: never the token
     secrets: TelegramSecrets
     accept: Callable[[dict[str, Any]], object]  # the webhook's entry, after authenticity
-    public_id: str | None = None  # the tenant's, for its webhook URL
+    webhook_path: str  # for `telegram_set_webhook`, e.g. "webhooks/telegram-demo"
 
 
 def source(slug: str | None) -> Source:
-    """The demo bot's Telegram door (no slug) or the own bot of a tenant whose main
-    channel is Telegram."""
+    """The demo bot's Telegram door (`slug is None`), the notify bot
+    (`slug == "notify"`) or the own bot of a tenant whose main channel is Telegram."""
     if slug is None:
         door_ = door(Channel.DEMO_TG)
         if door_ is None:
@@ -60,7 +62,20 @@ def source(slug: str | None) -> Source:
                 if isinstance(item, InboundItem):
                     store_event(door_, item)
 
-        return Source("demo bot", door_.secrets, accept_demo)
+        return Source("demo bot", door_.secrets, accept_demo, "webhooks/telegram-demo")
+    if slug == "notify":
+        from autobot.owner.inbox import store_owner_event
+
+        secrets = bot_secrets()
+        if secrets is None:
+            raise ValueError("NOTIFY_BOT_TOKEN is not set")
+
+        def accept_notify(update: dict[str, Any]) -> None:
+            for item in TELEGRAM.parse(update, None):
+                if isinstance(item, InboundItem):
+                    store_owner_event(item)
+
+        return Source("notify bot", secrets, accept_notify, "webhooks/telegram-notify")
     found = get_registry().by_slug.get(slug)
     if found is None:
         raise ValueError(f"no tenant {slug!r}")
@@ -77,7 +92,7 @@ def source(slug: str | None) -> Source:
     def accept(update: dict[str, Any]) -> None:
         views.accept(tenant, update, lambda body: TELEGRAM.parse(body, channel))
 
-    return Source(slug, tenant.secrets, accept, channel.public_id)
+    return Source(slug, tenant.secrets, accept, f"webhooks/telegram/{channel.public_id}")
 
 
 def poll(

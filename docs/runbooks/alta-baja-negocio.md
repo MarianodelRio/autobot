@@ -15,10 +15,15 @@
 4. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de
    servicio («Hacer cambios en los eventos») y se pone su id en `calendar_id`. Si el
    canal es WhatsApp, crear las plantillas del pack en el WhatsApp Manager.
-5. **Avisos al dueño** (opcional): `manage.py notify_link <slug>`. Con el vínculo ya
-   hecho, el resumen mensual (opcional) se activa con `owner.summary_monthly: true`
-   en su `tenant.yaml` (ver `docs/packs/<pack>.md`); llega por el mismo bot el día 1
-   de cada mes, con los datos del mes anterior.
+5. **Avisos al dueño** (opcional): `manage.py owner_invite <slug>` genera un enlace
+   `t.me/<bot>?start=<código>` de un solo uso (caduca a los 7 días); se envía al
+   dueño, que lo abre y pulsa *Iniciar* para quedar conectado, sin editar YAML ni
+   desplegar. Con el vínculo ya hecho, el resumen mensual (opcional) se activa con
+   `owner.summary_monthly: true` en su `tenant.yaml` (ver `docs/packs/<pack>.md`);
+   llega por el mismo bot el día 1 de cada mes, con los datos del mes anterior, y el
+   dueño puede consultar el mes en curso en cualquier momento escribiéndole al bot.
+   `manage.py owner_unlink <slug>` desconecta el chat (cambio de dueño o petición
+   RGPD).
 6. Commit y despliegue. Si el canal `main` es Telegram, `manage.py telegram_set_webhook <slug>`.
 7. `manage.py tenant_health <slug>` en verde.
 8. **Pruebas:** añadir a `testers.main` los ids (Telegram) o teléfonos/BSUID

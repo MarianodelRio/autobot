@@ -9,6 +9,8 @@ from autobot.runtime.models import (
     MetricEvent,
     Notification,
     OutboundMessage,
+    OwnerEvent,
+    OwnerLink,
     PlatformCache,
 )
 from autobot.tenancy.models import Tenant
@@ -22,6 +24,8 @@ __all__ = [
     "MetricEvent",
     "Notification",
     "OutboundMessage",
+    "OwnerEvent",
+    "OwnerLink",
     "PlatformCache",
     "Tenant",
 ]

@@ -23,6 +23,8 @@ from autobot.runtime.models import (
     InboundEvent,
     Notification,
     OutboundMessage,
+    OwnerEvent,
+    OwnerLink,
 )
 from autobot.tenancy.models import Tenant
 from tests.integration.helpers import demo_tenant, wa_tenant
@@ -128,6 +130,12 @@ def test_selector_and_expired_conversations(tenants: Any, settings: Settings) ->
             tenant=a,
             selected_at=NOW - timedelta(days=days),
         )
+    for index, days in enumerate([6, 7]):
+        OwnerEvent.objects.create(
+            provider_event_id=f"owner{index}",
+            payload={},
+            received_at=NOW - timedelta(days=days),
+        )
     expired = Conversation.objects.using("owner").create(
         tenant=a,
         contact=contact(a),
@@ -140,6 +148,7 @@ def test_selector_and_expired_conversations(tenants: Any, settings: Settings) ->
     retention.cleanup(now=NOW)
     assert list(DemoEvent.objects.values_list("provider_event_id", flat=True)) == ["0"]
     assert list(DemoSession.objects.values_list("external_id", flat=True)) == ["0"]
+    assert list(OwnerEvent.objects.values_list("provider_event_id", flat=True)) == ["owner0"]
     expired.refresh_from_db(using="owner")
     recent.refresh_from_db(using="owner")
     assert expired.state == {} and recent.state == {"private": True}
@@ -255,6 +264,7 @@ def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: 
         DemoSession.objects.create(
             channel="demo_tg", external_id=str(1 if t == a else 2), tenant=t, selected_at=NOW
         )
+        OwnerLink.objects.create(tenant=t, chat_id=1 if t == a else 2, linked_at=NOW)
     DemoEvent.objects.create(channel="demo_tg", provider_event_id="99", payload={}, received_at=NOW)
     target = tmp_path / "tenant.json"
     call_command("export_tenant", "a", output=str(target), stdout=io.StringIO())

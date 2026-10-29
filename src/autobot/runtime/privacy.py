@@ -19,10 +19,19 @@ from autobot.runtime.models import (
     InboundEvent,
     Notification,
     OutboundMessage,
+    OwnerLink,
 )
 from autobot.tenancy.models import Tenant
 
-MODELS = (Contact, Conversation, InboundEvent, OutboundMessage, Notification, DemoSession)
+MODELS = (
+    Contact,
+    Conversation,
+    InboundEvent,
+    OutboundMessage,
+    Notification,
+    DemoSession,
+    OwnerLink,
+)
 
 
 def tenant_for(slug: str) -> Tenant:

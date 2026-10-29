@@ -205,8 +205,13 @@ LOGGING = {
 
 GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "")
 
-# Outbound-only notification bot; unconfigured locally until it is created.
+# The platform's one notify bot, also the owner's small assistant (inbound since
+# docs/mejoras/02-avisos-y-resumenes.md): unconfigured locally until it is created.
 NOTIFY_BOT_TOKEN = os.environ.get("NOTIFY_BOT_TOKEN", "")
+NOTIFY_BOT_WEBHOOK_SECRET = os.environ.get("NOTIFY_BOT_WEBHOOK_SECRET", "")
+if NOTIFY_BOT_WEBHOOK_SECRET and len(NOTIFY_BOT_WEBHOOK_SECRET) < 32:
+    raise ImproperlyConfigured("NOTIFY_BOT_WEBHOOK_SECRET must have 32 characters or more")
+OWNER_SUPPORT_EMAIL = os.environ.get("OWNER_SUPPORT_EMAIL", "")
 OPS_TELEGRAM_CHAT_ID = os.environ.get("OPS_TELEGRAM_CHAT_ID", "")
 CACHES = {
     "default": {

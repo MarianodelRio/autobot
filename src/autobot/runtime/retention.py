@@ -17,6 +17,7 @@ from autobot.runtime.models import (
     MetricEvent,
     Notification,
     OutboundMessage,
+    OwnerEvent,
 )
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
@@ -96,6 +97,7 @@ def cleanup(*, now: datetime | None = None) -> None:
     for query in (
         DemoEvent.objects.filter(received_at__lte=now - timedelta(days=7)),
         DemoSession.objects.filter(selected_at__lte=now - timedelta(days=30)),
+        OwnerEvent.objects.filter(received_at__lte=now - timedelta(days=7)),
     ):
         while apply_batches(query):
             pass

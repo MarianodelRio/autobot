@@ -28,7 +28,7 @@ class Issue:
     severity: str = "🟡"
 
 
-def telegram_health(token: str, *, outbound_only: bool = False) -> list[Issue]:
+def telegram_health(token: str) -> list[Issue]:
     secrets = TelegramSecrets(bot_token=SecretStr(token), webhook_secret=SecretStr("-" * 32))
     try:
         with httpx.Client() as client:
@@ -43,8 +43,6 @@ def telegram_health(token: str, *, outbound_only: bool = False) -> list[Issue]:
         ]
     if not isinstance(info, dict):
         return [Issue("telegram_response", "Respuesta de Telegram inválida.", "🔴")]
-    if outbound_only and info.get("url"):
-        return [Issue("notify_webhook", "El bot de avisos tiene un webhook activo.", "🔴")]
     # Telegram retains the last historical error. Only errors in the last day signal
     # current health; never include last_error_message (it may contain a secret URL).
     since = timezone.now().timestamp() - DAY_S

@@ -2,7 +2,7 @@
 # Creado con `manage.py new_tenant demo-peluqueria --pack salon --demo "..."`.
 # status queda en "paused" hasta que la persona ponga su calendario de verdad
 # (docs/mejoras/01-bot-de-demo.md §8) y lo pase a "active"; el owner lo completa
-# ella misma con `manage.py notify_link demo-peluqueria` y después debe añadir
+# ella misma con `manage.py owner_invite demo-peluqueria` y después debe añadir
 # `notify: [booking_created, booking_cancelled, booking_moved, move_cancel_failed]`.
 id: 01a179e5-5e58-70eb-be24-ae547d510745
 slug: demo-peluqueria

@@ -179,7 +179,7 @@ class Notification(TenantScoped):
         FAILED = "failed"
 
     class Audience(models.TextChoices):
-        OWNER = "owner"  # the business owner's chat (owner.telegram_chat_id)
+        OWNER = "owner"  # the business owner's chat (OwnerLink.chat_id)
 
     idem_key = models.TextField()
     audience = models.CharField(
@@ -280,6 +280,50 @@ class DemoSession(models.Model):
 
     def __str__(self) -> str:
         return f"demo_session {self.id}"  # never the external id
+
+
+class OwnerLink(models.Model):
+    """The owner's Telegram chat for a tenant, and its pending invite. No RLS: the
+    notify bot must find the tenant *from* the chat (like DemoSession, ADR-006/007)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
+    tenant = models.OneToOneField(Tenant, on_delete=models.CASCADE, related_name="+")
+    chat_id = models.BigIntegerField(null=True, blank=True)  # NULL until linked
+    linked_at = models.DateTimeField(null=True, blank=True)
+    invite_hash = models.CharField(max_length=64, null=True, blank=True, unique=True)  # sha256 hex
+    invite_expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "owner_link"
+        indexes = [models.Index(fields=["chat_id"], name="owner_link_chat_idx")]
+
+    def __str__(self) -> str:
+        return f"owner_link {self.id}"  # never the chat id
+
+
+class OwnerEvent(models.Model):
+    """A message received by the notify bot, before it is known which tenant it
+    belongs to (if any). No RLS, like DemoEvent."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending"
+        DONE = "done"
+        FAILED = "failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
+    provider_event_id = models.CharField(max_length=200, unique=True)  # Telegram's update_id
+    payload = models.JSONField()  # the item, as inbound_event.payload
+    status = models.CharField(
+        max_length=8, choices=Status, default=Status.PENDING, db_default=Status.PENDING
+    )
+    received_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "owner_event"
+        indexes = [models.Index(fields=["received_at"], name="owner_event_retention_idx")]
+
+    def __str__(self) -> str:
+        return f"owner_event {self.id}"
 
 
 class PlatformCache(models.Model):

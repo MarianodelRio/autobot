@@ -75,11 +75,6 @@ def test_telegram(responses: Any, response: Any, code: str | None) -> None:
     assert len(requests) == 1 and requests[0].url.path.endswith("/getWebhookInfo")
 
 
-def test_outbound_only_bot_rejects_webhook(responses: Any) -> None:
-    responses((200, {"ok": True, "result": {"url": "https://private.invalid/token"}}))
-    assert health.telegram_health("token", outbound_only=True)[0].code == "notify_webhook"
-
-
 @pytest.mark.parametrize(
     "response", [(401, {}), (400, {"error": {"code": 190, "message": "secret"}})]
 )

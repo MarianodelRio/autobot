@@ -153,17 +153,12 @@ def run() -> None:
         send_ops_alert(
             "bot:notify:auth", None, "🔴 Bot de avisos: envío rechazado por autenticación."
         )
-    for name, token, outbound_only in (
-        ("demo_tg", settings.DEMO_TELEGRAM_TOKEN, False),
-        ("notify", settings.NOTIFY_BOT_TOKEN, True),
+    for name, token in (
+        ("demo_tg", settings.DEMO_TELEGRAM_TOKEN),
+        ("notify", settings.NOTIFY_BOT_TOKEN),
     ):
         if token:
-            issues = health.daily(
-                f"bot:{name}",
-                lambda token=token, outbound_only=outbound_only: health.telegram_health(
-                    token, outbound_only=outbound_only
-                ),
-            )
+            issues = health.daily(f"bot:{name}", lambda token=token: health.telegram_health(token))
             for issue in issues:
                 send_ops_alert(
                     f"bot:{name}:{issue.code}",

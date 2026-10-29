@@ -25,6 +25,7 @@ from autobot.models import (
     MetricEvent,
     Notification,
     OutboundMessage,
+    OwnerLink,
     Tenant,
 )
 from autobot.tenancy.tx import tenant_tx
@@ -33,8 +34,8 @@ pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owne
 NOW = datetime(2026, 10, 5, 10, tzinfo=UTC)
 
 # Platform tables with tenant_id but no RLS by design (written before the tenant is
-# known, only used by the demo selector).
-PLATFORM_MODELS: set[type[models.Model]] = {DemoSession}
+# known, only used by the demo selector / the owner bot).
+PLATFORM_MODELS: set[type[models.Model]] = {DemoSession, OwnerLink}
 PLATFORM_TABLES = {m._meta.db_table for m in PLATFORM_MODELS}
 RLS_ERROR = "row-level security"
 

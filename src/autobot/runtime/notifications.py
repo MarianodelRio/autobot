@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import secrets as random_secrets
 from uuid import UUID, uuid4
 
 from django.conf import settings
@@ -13,6 +14,7 @@ from pydantic import SecretStr
 from autobot.channels.adapters import TELEGRAM
 from autobot.channels.base import Rejected, RetryLater, SendOutcome, Sent
 from autobot.ops.logging import bind, contextual
+from autobot.owner import links
 from autobot.runtime.models import Notification
 from autobot.runtime.outbound import SendRetry
 from autobot.runtime.summary import OWNER_SUMMARY_KIND
@@ -20,6 +22,7 @@ from autobot.tenancy.registry import get_registry
 from autobot.tenancy.schema import TelegramSecrets
 from autobot.tenancy.tx import tenant_tx
 from core.replies import Text
+from core.serialization import Outbound
 
 log = logging.getLogger(__name__)
 COOLDOWN_S = 30 * 60
@@ -28,17 +31,19 @@ COOLDOWN_S = 30 * 60
 def bot_secrets() -> TelegramSecrets | None:
     if not settings.NOTIFY_BOT_TOKEN:
         return None
-    # This bot has no inbound webhook; the schema still requires a secret.
+    # A random secret when unset makes the webhook's signature check always fail
+    # (settings.py requires 32+ characters when it IS set), like the demo door.
+    webhook_secret = settings.NOTIFY_BOT_WEBHOOK_SECRET or random_secrets.token_urlsafe(32)
     return TelegramSecrets(
-        bot_token=SecretStr(settings.NOTIFY_BOT_TOKEN), webhook_secret=SecretStr("-" * 32)
+        bot_token=SecretStr(settings.NOTIFY_BOT_TOKEN), webhook_secret=SecretStr(webhook_secret)
     )
 
 
-def deliver(text: str, chat_id: str, reference: UUID) -> SendOutcome | None:
+def deliver(reply: Outbound, chat_id: str, reference: UUID) -> SendOutcome | None:
     secrets = bot_secrets()
     if secrets is None:
         return None
-    outcome = TELEGRAM.send(TELEGRAM.render(Text(text), None), chat_id, None, secrets, reference)
+    outcome = TELEGRAM.send(TELEGRAM.render(reply, None), chat_id, None, secrets, reference)
     if isinstance(outcome, Rejected) and outcome.kind == "auth":
         cache.set("bot:notify:auth", True, timeout=None)
     elif isinstance(outcome, Sent):
@@ -64,19 +69,15 @@ def send_notification(
         # (owner.summary_monthly), already checked when send_owner_summary created this
         # row.
         allowed = row.kind == OWNER_SUMMARY_KIND or row.kind in owner.notify if owner else False
-        chat_id = (
-            str(owner.telegram_chat_id)
-            if owner and owner.telegram_chat_id is not None and allowed
-            else ""
-        )
+        chat = links.owner_chat(tenant_id) if allowed else None
         # Claim durably before network I/O. A crash or ambiguous result stays failed:
         # notification has no unknown state, and must never be resent blindly.
         row.status = Notification.Status.FAILED
         row.save(update_fields=["status"])
-    if not chat_id or bot_secrets() is None:
+    if chat is None or bot_secrets() is None:
         log.info("notification %s only logged: recipient or bot unconfigured", notification_id)
         return
-    outcome = deliver(row.text, str(chat_id), row.id)
+    outcome = deliver(Text(row.text), str(chat), row.id)
     retry = isinstance(outcome, RetryLater) and not last_attempt
     with tenant_tx(tenant_id):
         if isinstance(outcome, Sent):
@@ -110,5 +111,5 @@ def send_ops_alert(kind: str, tenant_id: UUID | None, text: str) -> bool:
             )
         if not cache.add(key, True, timeout=COOLDOWN_S):
             return False
-    outcome = deliver(text, str(settings.OPS_TELEGRAM_CHAT_ID), uuid4())
+    outcome = deliver(Text(text), str(settings.OPS_TELEGRAM_CHAT_ID), uuid4())
     return isinstance(outcome, Sent)

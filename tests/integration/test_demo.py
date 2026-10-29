@@ -308,7 +308,7 @@ def test_a_demo_tenant_never_uses_a_real_channel(tenants: Any, providers: Provid
 def test_owner_notices_from_a_demo_tenant_reach_its_owner(
     tenants: Any, providers: Providers
 ) -> None:
-    tenants(demo("wa", owner={"telegram_chat_id": 987654321, "notify": ["greeted"]}))
+    tenants(demo("wa", owner={"notify": ["greeted"]}))
     say(USER, "/start")
     press(USER, "fp_select:wa")
     press(USER, "greet")

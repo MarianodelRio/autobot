@@ -135,9 +135,7 @@ def test_delete_then_transient_failure_retries_with_owner_notice(
 
     request.getfixturevalue("recorded_providers")
     setup, calendars = salon_setup
-    tenant = setup(
-        slug="wa", owner={"telegram_chat_id": 987654321, "notify": ["booking_cancelled"]}
-    )
+    tenant = setup(slug="wa", owner={"notify": ["booking_cancelled"]})
     for value in [
         "hola",
         "menu_book",

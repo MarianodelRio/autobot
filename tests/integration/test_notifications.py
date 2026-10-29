@@ -2,20 +2,17 @@
 
 import json
 from datetime import timedelta
-from io import StringIO
 from typing import Any
 
 import httpx
 import pytest
 from django.core.cache import caches
-from django.core.management import call_command
-from django.core.management.base import CommandError
 from django.db import connections
 from django.utils import timezone
 
 from autobot.channels.adapters import TELEGRAM
 from autobot.runtime import notifications, process
-from autobot.runtime.models import Notification, PlatformCache
+from autobot.runtime.models import Notification, OwnerLink, PlatformCache
 from autobot.runtime.outbound import SendRetry
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
@@ -74,11 +71,17 @@ def reload(row: Notification) -> Notification:
 
 
 def owner() -> dict[str, Any]:
-    return wa_tenant(owner={"telegram_chat_id": 100, "notify": ["booking"]})
+    return wa_tenant(owner={"notify": ["booking"]})
+
+
+def link(slug: str = "wa", chat_id: int = 100) -> None:
+    tenant = get_registry().by_slug[slug]
+    OwnerLink.objects.create(tenant_id=tenant.id, chat_id=chat_id, linked_at=timezone.now())
 
 
 def test_delivery_once_and_job(tenants: Any, telegram: Any) -> None:
     tenants(owner())
+    link()
     seen = telegram(ok())
     row = notice()
     assert notice().id == row.id
@@ -103,6 +106,7 @@ def test_notify_owner_reaches_the_owner_on_any_channel(
     """A demo tenant's owner is notified the same way as a real one (no "ops" audience
     survives: a demo channel is not special-cased)."""
     tenants(owner())
+    link()
     seen = telegram(ok())
     row = notice(channel)
     send(row)
@@ -110,7 +114,7 @@ def test_notify_owner_reaches_the_owner_on_any_channel(
     assert row.audience == "owner" and body["chat_id"] == "100"
 
 
-@pytest.mark.parametrize("config", [None, {"telegram_chat_id": 100, "notify": []}])
+@pytest.mark.parametrize("config", [None, {"notify": []}])
 def test_unsubscribed_only_logs(tenants: Any, telegram: Any, caplog: Any, config: Any) -> None:
     tenants(wa_tenant(owner=config))
     seen = telegram()
@@ -124,6 +128,7 @@ def test_unsubscribed_only_logs(tenants: Any, telegram: Any, caplog: Any, config
 @pytest.mark.parametrize("code", [429, 500, 503])
 def test_safe_retry(tenants: Any, telegram: Any, code: int) -> None:
     tenants(owner())
+    link()
     seen = telegram(httpx.Response(code, json={"parameters": {"retry_after": 7}}), ok())
     row = notice()
     with pytest.raises(SendRetry) as caught:
@@ -136,6 +141,7 @@ def test_safe_retry(tenants: Any, telegram: Any, code: int) -> None:
 @pytest.mark.parametrize("answer", [httpx.ReadTimeout("secret"), httpx.Response(403)])
 def test_ambiguous_or_rejected_never_retried(tenants: Any, telegram: Any, answer: Any) -> None:
     tenants(owner())
+    link()
     seen = telegram(answer)
     row = notice()
     send(row)
@@ -145,6 +151,7 @@ def test_ambiguous_or_rejected_never_retried(tenants: Any, telegram: Any, answer
 
 def test_final_retry_is_failed(tenants: Any, telegram: Any) -> None:
     tenants(owner())
+    link()
     telegram(httpx.Response(500))
     row = notice()
     send(row, last_attempt=True)
@@ -153,6 +160,7 @@ def test_final_retry_is_failed(tenants: Any, telegram: Any) -> None:
 
 def test_crash_after_claim_never_resends(tenants: Any, telegram: Any) -> None:
     tenants(owner())
+    link()
     seen = telegram(RuntimeError("interrupted"))
     row = notice()
     with pytest.raises(RuntimeError):
@@ -163,6 +171,7 @@ def test_crash_after_claim_never_resends(tenants: Any, telegram: Any) -> None:
 
 def test_rls_wrong_tenant_does_not_send(tenants: Any, telegram: Any) -> None:
     tenants(owner(), wa_tenant("other"))
+    link()
     seen = telegram()
     row = notice()
     notifications.send_notification(get_registry().by_slug["other"].id, row.id)
@@ -184,53 +193,13 @@ def test_ops_cooldown_type_tenant_and_expiration(tenants: Any, telegram: Any) ->
 
 def test_unconfigured_does_not_send(tenants: Any, telegram: Any, settings: Any) -> None:
     tenants(owner())
+    link()
     seen = telegram()
     settings.NOTIFY_BOT_TOKEN = ""
     row = notice()
     send(row)
     assert reload(row).status == "failed"
     assert not notifications.send_ops_alert("stuck", None, "alert") and not seen
-
-
-def test_notify_link_private_matching_code(tenants: Any, telegram: Any, monkeypatch: Any) -> None:
-    tenants(owner())
-    monkeypatch.setattr(
-        "autobot.management.commands.notify_link.secrets.token_urlsafe", lambda n: "code"
-    )
-    updates = [
-        {
-            "update_id": 1,
-            "message": {"text": "/start wrong", "chat": {"id": 999, "type": "private"}},
-        },
-        {"update_id": 2, "message": {"text": "/start code", "chat": {"id": -1, "type": "group"}}},
-        {
-            "update_id": 3,
-            "message": {
-                "text": "/start code",
-                "chat": {"id": 123, "type": "private"},
-                "from": {"id": 123},
-            },
-        },
-    ]
-    seen = telegram(
-        httpx.Response(200, json={"ok": True, "result": {"url": ""}}),
-        httpx.Response(200, json={"ok": True, "result": {"username": "notify_bot"}}),
-        httpx.Response(200, json={"ok": True, "result": updates}),
-    )
-    out = StringIO()
-    call_command("notify_link", "wa", stdout=out)
-    assert "owner.telegram_chat_id: 123" in out.getvalue()
-    assert len(seen) == 3
-
-
-def test_notify_link_webhook_refused(tenants: Any, telegram: Any) -> None:
-    tenants(owner())
-    seen = telegram(
-        httpx.Response(200, json={"ok": True, "result": {"url": "https://example.com"}})
-    )
-    with pytest.raises(CommandError, match="sin webhook"):
-        call_command("notify_link", "wa")
-    assert len(seen) == 1
 
 
 def test_ops_cooldown_concurrent_after_expiry(telegram: Any) -> None:
@@ -251,20 +220,6 @@ def test_ops_cooldown_concurrent_after_expiry(telegram: Any) -> None:
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(lambda _: check(), range(2))) == [False, True]
-
-
-def test_notify_link_timeout(tenants: Any, telegram: Any, monkeypatch: Any) -> None:
-    tenants(owner())
-    telegram(
-        httpx.Response(200, json={"ok": True, "result": {"url": ""}}),
-        httpx.Response(200, json={"ok": True, "result": {"username": "notify_bot"}}),
-    )
-    ticks = iter([0, 301])
-    monkeypatch.setattr(
-        "autobot.management.commands.notify_link.time.monotonic", lambda: next(ticks)
-    )
-    with pytest.raises(CommandError, match="caducado"):
-        call_command("notify_link", "wa", stdout=StringIO())
 
 
 def test_ops_cooldown_survives_cache_pressure(telegram: Any, monkeypatch: Any) -> None:

@@ -1,6 +1,6 @@
-"""`manage.py telegram_poll [<slug>]`: long polling of the demo bot's Telegram door (by
-default) or of a tenant's own Telegram bot, for local development. The worker
-must be running to process what it receives."""
+"""`manage.py telegram_poll [<slug>|notify]`: long polling of the demo bot's Telegram
+door (by default), the notify bot, or a tenant's own Telegram bot, for local
+development. The worker must be running to process what it receives."""
 
 from typing import Any
 
@@ -20,7 +20,9 @@ class Command(BaseCommand):
     help = "Receive a Telegram bot's updates by long polling (local development)."
 
     def add_arguments(self, parser: CommandParser) -> None:
-        parser.add_argument("slug", nargs="?", help="a tenant with a Telegram main channel")
+        parser.add_argument(
+            "slug", nargs="?", help="a tenant with a Telegram main channel, or `notify`"
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         try:

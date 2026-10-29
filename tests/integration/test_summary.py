@@ -9,9 +9,10 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.utils import timezone
 
 from autobot.runtime import summary
-from autobot.runtime.models import Contact, MetricEvent, Notification, OutboundMessage
+from autobot.runtime.models import Contact, MetricEvent, Notification, OutboundMessage, OwnerLink
 from autobot.tenancy.models import Tenant
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
@@ -30,6 +31,11 @@ END = datetime(2026, 11, 1, tzinfo=MADRID)
 
 def contact(t: Tenant, external_id: str) -> Contact:
     return Contact.objects.using("owner").create(tenant=t, channel="main", external_id=external_id)
+
+
+def link(slug: str, chat_id: int = 555) -> None:
+    tenant = get_registry().by_slug[slug]
+    OwnerLink.objects.create(tenant_id=tenant.id, chat_id=chat_id, linked_at=timezone.now())
 
 
 def message(
@@ -192,7 +198,8 @@ def test_build_summary_with_no_activity_shows_zeros_not_omitted(tenants: Any) ->
     ],
 )
 def test_due_checks_day_and_hour_local(tenants: Any, when: datetime, expected: bool) -> None:
-    tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
+    tenants(wa_tenant(owner={"summary_monthly": True}))
+    link("wa")
     wa = get_registry().by_slug["wa"]
     assert summary._due(wa, when) is expected
 
@@ -208,23 +215,21 @@ def test_due_skips_a_tenant_without_a_connected_chat(tenants: Any) -> None:
 
 def test_dispatch_skips_inactive_and_unsubscribed_tenants(tenants: Any) -> None:
     tenants(
-        wa_tenant(
-            "paused", status="paused", owner={"telegram_chat_id": 1, "summary_monthly": True}
-        ),
-        wa_tenant(
-            "onboarding",
-            status="onboarding",
-            owner={"telegram_chat_id": 1, "summary_monthly": True},
-        ),
-        wa_tenant("off", owner={"telegram_chat_id": 1, "summary_monthly": False}),
+        wa_tenant("paused", status="paused", owner={"summary_monthly": True}),
+        wa_tenant("onboarding", status="onboarding", owner={"summary_monthly": True}),
+        wa_tenant("off", owner={"summary_monthly": False}),
     )
+    link("paused", 1)
+    link("onboarding", 1)
+    link("off", 1)
     now = datetime(2026, 11, 1, 12, tzinfo=MADRID)
     assert summary.dispatch_owner_summaries(now) == 0
     assert [j for j in jobs() if j[0] == "send_owner_summary"] == []
 
 
 def test_dispatch_only_fires_on_day_one_past_noon_local(tenants: Any) -> None:
-    tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
+    tenants(wa_tenant(owner={"summary_monthly": True}))
+    link("wa")
     mid_month = datetime(2026, 11, 15, 12, tzinfo=MADRID)
     assert summary.dispatch_owner_summaries(mid_month) == 0
     assert [j for j in jobs() if j[0] == "send_owner_summary"] == []
@@ -233,7 +238,8 @@ def test_dispatch_only_fires_on_day_one_past_noon_local(tenants: Any) -> None:
 def test_dispatch_queues_send_owner_summary_once_for_the_closed_previous_month(
     tenants: Any,
 ) -> None:
-    tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
+    tenants(wa_tenant(owner={"summary_monthly": True}))
+    link("wa")
     wa = get_registry().by_slug["wa"]
     now = datetime(2026, 11, 1, 12, tzinfo=MADRID)
     assert summary.dispatch_owner_summaries(now) == 1
@@ -248,7 +254,8 @@ def test_dispatch_queues_send_owner_summary_once_for_the_closed_previous_month(
 
 
 def test_send_owner_summary_is_idempotent_and_skips_calendar_on_replay(tenants: Any) -> None:
-    tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
+    tenants(wa_tenant(owner={"summary_monthly": True}))
+    link("wa")
     t = Tenant.objects.using("owner").get(slug="wa")
     wa = get_registry().by_slug["wa"]
     c = contact(t, "a")
@@ -272,7 +279,8 @@ def test_send_owner_summary_is_idempotent_and_skips_calendar_on_replay(tenants: 
 
 
 def test_send_owner_summary_raises_transient_error_on_a_failed_pack_hook(tenants: Any) -> None:
-    tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
+    tenants(wa_tenant(owner={"summary_monthly": True}))
+    link("wa")
     wa = get_registry().by_slug["wa"]
     assert wa.pack is not None
 

@@ -79,9 +79,10 @@ negocio, añade en su `tenant.yaml`:
 
 ```yaml
 owner:
-  telegram_chat_id: 123456789
   summary_monthly: true
 ```
 
-Requiere `owner.telegram_chat_id`. Llega por el bot de avisos el día 1 de cada
-mes, con los datos del mes anterior ya cerrado.
+Requiere que el dueño ya esté vinculado al bot de avisos (`manage.py owner_invite
+<slug>`: ver `docs/runbooks/alta-baja-negocio.md`). Llega por el mismo bot el día 1 de
+cada mes, con los datos del mes anterior ya cerrado, y también se puede consultar en
+cualquier momento escribiéndole al bot ("Cómo va el mes").

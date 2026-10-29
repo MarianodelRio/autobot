@@ -391,7 +391,7 @@ def test_no_proactive_to_a_contact_of_another_channel(
 
 
 def test_notify_owner_is_queued_only_if_the_owner_wants_it(tenants: Any) -> None:
-    tenants(wa_tenant(owner={"telegram_chat_id": 987654321, "notify": ["greeted"]}))
+    tenants(wa_tenant(owner={"notify": ["greeted"]}))
     receive(wa_text("hola"))
     receive(wa_press("greet"))
     receive(wa_text("Lucía"))

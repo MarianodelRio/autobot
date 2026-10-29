@@ -22,7 +22,7 @@ pytestmark = [
     pytest.mark.usefixtures("clean_jobs"),
 ]
 
-OWNER = {"telegram_chat_id": 987654321, "notify": ["daily"]}
+OWNER = {"notify": ["daily"]}
 
 
 def tenant(slug: str) -> LoadedTenant:
