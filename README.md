@@ -53,20 +53,22 @@ apto para imprimir. Los archivos de `qr/` son generados y no se suben a git.
 
 ### Bot de demo en local
 
-Con un bot de Telegram de desarrollo propio, distinto del de producción (ver
-[docs/puesta-en-marcha.md](docs/puesta-en-marcha.md)): pon su token en
-`DEMO_TELEGRAM_TOKEN` y tu id de Telegram en `DEMO_TELEGRAM_USERS`, en `.env`, y después:
+Con un bot de Telegram de desarrollo propio, distinto del de producción, y un túnel
+de [ngrok](https://ngrok.com) hacia `web` (mismo mecanismo que producción: webhook,
+no polling). Ver el detalle en [docs/runbooks/demo.md](docs/runbooks/demo.md).
 
 ```bash
-make up         # el worker procesa lo que llega; tras cambiar .env: docker compose up -d
-make demo-up    # arranca también el poller de la puerta Telegram de demo (make demo-down la para)
+ngrok http 8000                                              # anota la URL https
+# en .env: PUBLIC_URL=<esa URL>, DEMO_TELEGRAM_TOKEN, DEMO_TELEGRAM_USERS,
+# DEMO_TELEGRAM_WEBHOOK_SECRET (p. ej. `openssl rand -hex 32`)
+make up && docker compose restart web worker
+docker compose exec web python manage.py telegram_set_webhook demo
 ```
 
 En Telegram, escribe `/start` al bot: muestra los negocios de demo disponibles
-(`demo-autobuses`, siempre; `demo-peluqueria` solo si está `active`). `make
-telegram-poll SLUG=<slug>` hace lo mismo con el bot propio de un negocio (o sin
-`SLUG`, con la puerta Telegram de demo, en primer plano). Un bot con webhook no
-admite polling: `docker compose exec web python manage.py telegram_set_webhook
-demo --delete` se lo quita (nunca a un bot que use el servidor).
+(`demo-autobuses`, siempre; `demo-peluqueria` solo si está `active`).
 
-La puerta WhatsApp de la demo solo funciona en el servidor: un número de Meta tiene una única URL de webhook, así que no hay equivalente local. Ver [docs/runbooks/demo.md](docs/runbooks/demo.md).
+Para un bot sin webhook (p. ej. grabar fixtures de un negocio real antes de darlo de
+alta), `make telegram-poll SLUG=<slug>` sigue disponible; un bot con webhook no
+admite polling a la vez (`docker compose exec web python manage.py
+telegram_set_webhook demo --delete` se lo quita, nunca a un bot que use el servidor).

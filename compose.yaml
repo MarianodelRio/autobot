@@ -13,6 +13,10 @@ x-app: &app
     - ./src:/app/src
     - ./tenants:/app/tenants
     - ./manage.py:/app/manage.py
+    # Only mounted if present (see .env.example / docs/puesta-en-marcha.md §1); both
+    # ignored by git.
+    - ./secrets.yaml:/app/secrets.yaml:ro
+    - ./google_sa.json:/app/google_sa.json:ro
   depends_on:
     db:
       condition: service_healthy
@@ -37,14 +41,6 @@ services:
     command: python manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50
     stop_grace_period: 60s
     init: true
-
-  # Keeps the demo bot's Telegram door always on in local, without a foreground
-  # terminal: `make demo-up` / `make demo-down`.
-  demo-poller:
-    <<: *app
-    profiles: [demo]
-    command: python manage.py telegram_poll
-    restart: unless-stopped
 
   db:
     image: postgres:18

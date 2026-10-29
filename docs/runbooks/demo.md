@@ -15,7 +15,7 @@ ese negocio. Solo una lista cerrada de personas puede usar cada puerta (ver ADR-
 | Un negocio de demo | `status: active` o `paused` en su `tenant.yaml` y desplegar |
 | Quién entra en Telegram | `DEMO_TELEGRAM_USERS` (ids de Telegram separados por comas) y reiniciar |
 | Quién entra en WhatsApp | `DEMO_WHATSAPP_USERS` (teléfonos con prefijo de país o BSUID, separados por comas) y reiniciar |
-| Demo local (solo Telegram) | `make demo-up` / `make demo-down`, con un bot de Telegram de desarrollo propio |
+| Demo local | un túnel de ngrok hacia `web` (puerto 8000) y un webhook real, con un bot de Telegram (y, si procede, una app de WhatsApp) de desarrollo propio — ver más abajo |
 
 ## Alta de la puerta WhatsApp
 
@@ -38,8 +38,27 @@ de demo de la plataforma, no de ningún cliente:
 
 `docker compose -p autobot -f compose.prod.yaml exec web python manage.py
 telegram_set_webhook demo` registra `https://api.<dominio>/webhooks/telegram-demo` con
-`DEMO_TELEGRAM_WEBHOOK_SECRET`. En local, sin webhook, `make demo-up` mantiene el
-poller (`telegram_poll`) en segundo plano.
+`DEMO_TELEGRAM_WEBHOOK_SECRET`.
+
+## Puerta Telegram en local (ngrok)
+
+Mismo mecanismo que el servidor (webhook), sobre un túnel de
+[ngrok](https://ngrok.com) hacia `web`, en vez de una URL de dominio propio:
+
+1. `ngrok http 8000` (con cuenta gratuita, la URL cambia cada vez que se reinicia el
+   túnel; con un dominio reservado de la cuenta, se mantiene).
+2. En `.env`: `PUBLIC_URL=<la URL https de ngrok>`, `DEMO_TELEGRAM_TOKEN` (bot de
+   desarrollo propio, distinto del de producción), `DEMO_TELEGRAM_USERS` y
+   `DEMO_TELEGRAM_WEBHOOK_SECRET` (aleatorio, p. ej. `openssl rand -hex 32`).
+3. `docker compose restart web worker` y después `docker compose exec web python
+   manage.py telegram_set_webhook demo`.
+4. Si la URL de ngrok cambia (reinicio sin dominio reservado), repetir los pasos 2-3
+   con la URL nueva.
+
+Para un bot sin webhook (p. ej. grabar fixtures de un negocio real antes de darlo de
+alta), `manage.py telegram_poll <slug>` (`make telegram-poll SLUG=<slug>`) sigue
+disponible; un bot con webhook no admite polling a la vez (`telegram_set_webhook
+demo --delete` se lo quita, nunca a un bot que use el servidor).
 
 ## Añadir o quitar personas
 

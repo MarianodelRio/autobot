@@ -1,6 +1,5 @@
 .PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
 .PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test admin-tunnel
-.PHONY: demo-up demo-down
 
 check-prod-config:
 	uv run python tools/check_prod_config.py
@@ -42,18 +41,12 @@ check:
 shell:
 	docker compose exec web python manage.py shell
 
-# Long polling of the development demo bot, or of a tenant's own bot with SLUG=<slug>.
-# Needs the worker running (`make up`) and DEMO_TELEGRAM_TOKEN in .env.
+# Long polling of a tenant's own bot (SLUG=<slug>), e.g. to record Telegram
+# fixtures. Needs the worker running (`make up`) and no webhook set on that bot.
+# Local development of the demo bot's Telegram door uses a webhook through ngrok
+# instead (see docs/runbooks/demo.md), the same mechanism as production.
 telegram-poll:
 	docker compose exec web python manage.py telegram_poll $(SLUG)
-
-# Keeps the demo bot's Telegram door polling in the background (needs DEMO_TELEGRAM_*
-# in .env). demo-down only stops the poller, not the rest of the stack.
-demo-up:
-	docker compose --profile demo up -d
-
-demo-down:
-	docker compose --profile demo stop demo-poller
 
 # Bus timetable tools: make bus-<tool> TENANT=<slug>. They run on the
 # developer machine against tenants/<slug>/datasets/timetable/.

@@ -10,8 +10,10 @@ ids o aprobaciones.
 - **Bot de demo de desarrollo (puerta Telegram):** crear un bot con @BotFather (p. ej.
   `autobot_dev_bot`), distinto del de producción, poner su token en
   `DEMO_TELEGRAM_TOKEN` y tu id de Telegram (@userinfobot) en `DEMO_TELEGRAM_USERS`
-  del `.env` local. Verificar: `make telegram-poll` arranca y `/start` muestra la
-  lista de negocios de demo.
+  del `.env` local; con un túnel de ngrok hacia `web` como `PUBLIC_URL` y
+  `DEMO_TELEGRAM_WEBHOOK_SECRET`, se registra el webhook igual que en producción
+  (`docs/runbooks/demo.md`). Verificar: `/start` muestra la lista de negocios de
+  demo.
 - **Google Cloud de la plataforma:** proyecto propio (no de un negocio), Google
   Calendar API habilitada y cuenta de servicio con clave JSON en `google_sa.json`
   (ignorado por git) y en el gestor de contraseñas.
