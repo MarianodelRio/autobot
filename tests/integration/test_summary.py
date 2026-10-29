@@ -1,5 +1,5 @@
 """Owner periodic summaries: periods, metric aggregation, rendering and the automatic
-daily dispatch (`docs/mejoras/02-avisos-y-resumenes.md`). The on-demand status (the
+hourly dispatch (`docs/mejoras/02-avisos-y-resumenes.md`). The on-demand status (the
 notify bot's inbound webhook) is a separate, not-yet-implemented change."""
 
 import logging
@@ -15,6 +15,7 @@ from autobot.runtime.models import Contact, MetricEvent, Notification, OutboundM
 from autobot.tenancy.models import Tenant
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
+from core.errors import TransientError
 from tests.integration.helpers import jobs, wa_tenant
 
 pytestmark = [
@@ -178,6 +179,30 @@ def test_build_summary_with_no_activity_shows_zeros_not_omitted(tenants: Any) ->
     )
 
 
+# ── _due ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("when", "expected"),
+    [
+        (datetime(2026, 11, 1, 11, 59, tzinfo=MADRID), False),
+        (datetime(2026, 11, 1, 12, 0, tzinfo=MADRID), True),
+        (datetime(2026, 11, 1, 18, 0, tzinfo=MADRID), True),  # recovery after an outage
+        (datetime(2026, 11, 2, 12, 0, tzinfo=MADRID), False),
+    ],
+)
+def test_due_checks_day_and_hour_local(tenants: Any, when: datetime, expected: bool) -> None:
+    tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
+    wa = get_registry().by_slug["wa"]
+    assert summary._due(wa, when) is expected
+
+
+def test_due_skips_a_tenant_without_a_connected_chat(tenants: Any) -> None:
+    tenants(wa_tenant())  # no owner section at all: summary_monthly defaults to False
+    wa = get_registry().by_slug["wa"]
+    assert summary._due(wa, datetime(2026, 11, 1, 12, tzinfo=MADRID)) is False
+
+
 # ── dispatch_owner_summaries ────────────────────────────────────────────
 
 
@@ -193,28 +218,44 @@ def test_dispatch_skips_inactive_and_unsubscribed_tenants(tenants: Any) -> None:
         ),
         wa_tenant("off", owner={"telegram_chat_id": 1, "summary_monthly": False}),
     )
-    now = datetime(2026, 11, 1, 11, tzinfo=UTC)
+    now = datetime(2026, 11, 1, 12, tzinfo=MADRID)
     assert summary.dispatch_owner_summaries(now) == 0
-    assert not Notification.objects.using("owner").exists()
+    assert [j for j in jobs() if j[0] == "send_owner_summary"] == []
 
 
-def test_dispatch_only_fires_on_day_one_local(tenants: Any) -> None:
+def test_dispatch_only_fires_on_day_one_past_noon_local(tenants: Any) -> None:
     tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
-    mid_month = datetime(2026, 11, 15, 11, tzinfo=UTC)
+    mid_month = datetime(2026, 11, 15, 12, tzinfo=MADRID)
     assert summary.dispatch_owner_summaries(mid_month) == 0
-    assert not Notification.objects.using("owner").exists()
+    assert [j for j in jobs() if j[0] == "send_owner_summary"] == []
 
 
-def test_dispatch_uses_the_closed_previous_month_and_is_idempotent(tenants: Any) -> None:
+def test_dispatch_queues_send_owner_summary_once_for_the_closed_previous_month(
+    tenants: Any,
+) -> None:
+    tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
+    wa = get_registry().by_slug["wa"]
+    now = datetime(2026, 11, 1, 12, tzinfo=MADRID)
+    assert summary.dispatch_owner_summaries(now) == 1
+    (job,) = [j for j in jobs() if j[0] == "send_owner_summary"]
+    assert job[2] == {"tenant_id": str(wa.id), "year": 2026, "month": 10}
+    # A second dispatch within the same pending run is deduped by the queueing lock.
+    assert summary.dispatch_owner_summaries(now) == 0
+    assert len([j for j in jobs() if j[0] == "send_owner_summary"]) == 1
+
+
+# ── send_owner_summary ──────────────────────────────────────────────────
+
+
+def test_send_owner_summary_is_idempotent_and_skips_calendar_on_replay(tenants: Any) -> None:
     tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
     t = Tenant.objects.using("owner").get(slug="wa")
     wa = get_registry().by_slug["wa"]
     c = contact(t, "a")
     message(t, c, "oct", datetime(2026, 10, 15, tzinfo=MADRID))  # closed month: counted
     message(t, c, "nov", datetime(2026, 11, 1, 9, tzinfo=MADRID))  # current month: not counted
-    now = datetime(2026, 11, 1, 11, tzinfo=UTC)
 
-    assert summary.dispatch_owner_summaries(now) == 1
+    summary.send_owner_summary(wa.id, 2026, 10)
     (notice,) = Notification.objects.using("owner").all()
     assert notice.tenant_id == wa.id and notice.kind == "owner_summary"
     assert "Tu resumen de octubre" in notice.text
@@ -224,6 +265,27 @@ def test_dispatch_uses_the_closed_previous_month_and_is_idempotent(tenants: Any)
         (f"owner:{wa.id}", {"tenant_id": str(wa.id), "notification_id": str(notice.id)})
     ]
 
-    # A second run the same day 1 (e.g. a retried job) must not duplicate the send.
-    assert summary.dispatch_owner_summaries(now) == 0
+    # A replay (e.g. a retried job) must not call Calendar again or duplicate the send.
+    summary.send_owner_summary(wa.id, 2026, 10)
     assert Notification.objects.using("owner").count() == 1
+    assert len([j for j in jobs() if j[0] == "send_notification"]) == 1
+
+
+def test_send_owner_summary_raises_transient_error_on_a_failed_pack_hook(tenants: Any) -> None:
+    tenants(wa_tenant(owner={"telegram_chat_id": 555, "summary_monthly": True}))
+    wa = get_registry().by_slug["wa"]
+    assert wa.pack is not None
+
+    def broken(ctx: Any, start: Any, end: Any, recorded: Any) -> Any:
+        raise RuntimeError("calendar offline")
+
+    # Pack is a frozen dataclass and this is the module-level singleton shared by the
+    # registry: patch it directly and restore it, rather than mutating it for good.
+    original = wa.pack.summary
+    object.__setattr__(wa.pack, "summary", broken)
+    try:
+        with pytest.raises(TransientError):
+            summary.send_owner_summary(wa.id, 2026, 10)
+        assert not Notification.objects.using("owner").exists()
+    finally:
+        object.__setattr__(wa.pack, "summary", original)

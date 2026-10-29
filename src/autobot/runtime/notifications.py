@@ -61,8 +61,8 @@ def send_notification(
             return
         owner = tenant.file.owner
         # owner.notify only gates per-event notices; the summary has its own toggle
-        # (owner.summary_monthly), already checked when dispatch_owner_summaries created
-        # this row.
+        # (owner.summary_monthly), already checked when send_owner_summary created this
+        # row.
         allowed = row.kind == OWNER_SUMMARY_KIND or row.kind in owner.notify if owner else False
         chat_id = (
             str(owner.telegram_chat_id)

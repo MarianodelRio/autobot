@@ -42,7 +42,10 @@ ROUTE_DEMO_EVENT = "route_demo_event"  # (event_id) of demo_event, lock demo:<h>
 DISPATCH_PERIODIC = "dispatch_periodic"  # (timestamp, pack, name): one per pack Periodic
 RUN_PERIODIC = "run_periodic"  # (tenant_id, name, scheduled_at), queueing lock per both
 RETRY_STALLED_JOBS = "retry_stalled_jobs"  # (timestamp): every 5 min
-DISPATCH_OWNER_SUMMARIES = "dispatch_owner_summaries"  # (timestamp): daily, platform-wide
+DISPATCH_OWNER_SUMMARIES = "dispatch_owner_summaries"  # (timestamp): hourly, platform-wide
+SEND_OWNER_SUMMARY = "send_owner_summary"  # (tenant_id, year, month), queueing_lock summary:<t>
+
+SUMMARY_RETRY = RetryStrategy(max_attempts=3, wait=300, retry_exceptions={TransientError})
 
 # `inbound` jobs are retried 3 times, only on TransientError, after 2, 4 and 8 s.
 INBOUND_RETRIES = 3
@@ -241,9 +244,10 @@ def retention_cleanup(timestamp: int) -> None:
         close_old_connections()
 
 
-# Daily, platform-wide (not per-pack, so it does not use dispatch_periodic/run_periodic):
-# dispatch_owner_summaries itself only acts on a tenant on its own day 1.
-@app.periodic(cron="0 11 * * *", periodic_id=DISPATCH_OWNER_SUMMARIES)
+# Hourly, platform-wide (not per-pack, so it does not use dispatch_periodic/run_periodic):
+# dispatch_owner_summaries itself only acts on a tenant on its own day 1, past noon
+# local time; ">=" rather than "==" recovers a send if the worker was down at noon.
+@app.periodic(cron="0 * * * *", periodic_id=DISPATCH_OWNER_SUMMARIES)
 @app.task(queue=PERIODIC, name=DISPATCH_OWNER_SUMMARIES, queueing_lock=DISPATCH_OWNER_SUMMARIES)
 def dispatch_owner_summaries(timestamp: int) -> None:
     from autobot.runtime import summary
@@ -251,5 +255,16 @@ def dispatch_owner_summaries(timestamp: int) -> None:
     close_old_connections()
     try:
         summary.dispatch_owner_summaries(timezone.now())
+    finally:
+        close_old_connections()
+
+
+@app.task(queue=PERIODIC, name=SEND_OWNER_SUMMARY, retry=SUMMARY_RETRY)
+def send_owner_summary(tenant_id: str, year: int, month: int) -> None:
+    from autobot.runtime import summary
+
+    close_old_connections()
+    try:
+        summary.send_owner_summary(UUID(tenant_id), year, month)
     finally:
         close_old_connections()

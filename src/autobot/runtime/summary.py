@@ -11,16 +11,19 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Sum
+from procrastinate.exceptions import AlreadyEnqueued
 
-from autobot.jobs import OUTBOUND, SEND_NOTIFICATION, app
+from autobot.jobs import OUTBOUND, PERIODIC, SEND_NOTIFICATION, SEND_OWNER_SUMMARY, app
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
 from autobot.runtime.models import Channel, MetricEvent, Notification, OutboundMessage
 from autobot.tenancy.registry import LoadedTenant, get_registry
 from autobot.tenancy.tx import tenant_tx
 from core.dates import MONTHS_ES
+from core.errors import TransientError
 from core.pack import SummaryLine
 
 log = logging.getLogger(__name__)
@@ -28,6 +31,8 @@ log = logging.getLogger(__name__)
 # The kind of Notification an owner summary is sent as (autobot.runtime.notifications
 # delivers it regardless of owner.notify, which only gates per-event notices).
 OWNER_SUMMARY_KIND = "owner_summary"
+
+SUMMARY_LOCAL_HOUR = 12  # decision 10 of the proposal
 
 # Approximate Meta price per delivered message, Spain, EUR. Not the account's real
 # tariff (Meta's rate card is per recipient country and lives in each business's
@@ -66,53 +71,70 @@ def _add_months(at: datetime, months: int) -> datetime:
 
 
 def dispatch_owner_summaries(now: datetime) -> int:
-    """Queue the automatic monthly summary for every active tenant whose owner wants it
-    and whose local day is 1. Returns how many were queued.
-
-    The hourly cron, the per-tenant `send_owner_summary` job and its retries are a
-    separate change (step 3 of the plan); for now a failed pack hook just skips that
-    tenant's summary and is logged, rather than retried."""
+    """Queue `send_owner_summary` for every tenant due for its automatic monthly
+    summary. Returns how many were queued. Runs hourly; `_due`'s `>=` lets a worker
+    outage at noon be recovered later the same day, and `send_owner_summary`'s own
+    idempotency key is what actually prevents a duplicate send."""
     queued = 0
     for tenant in get_registry().tenants:
         if not _due(tenant, now):
             continue
-        owner = tenant.file.owner
-        assert owner is not None and owner.telegram_chat_id is not None  # validated at load
-        start, end = previous_month(now, tenant.info.timezone)
-        idem_key = f"summary:{tenant.id}:{start.year}-{start.month:02d}"
-        block = build_summary(tenant, start, end)
-        if block.pack_failed:
-            log.warning("owner summary of tenant %s skipped: pack hook failed", tenant.slug)
+        start, _ = previous_month(now, tenant.info.timezone)
+        try:
+            app.configure_task(
+                SEND_OWNER_SUMMARY, queue=PERIODIC, queueing_lock=f"summary:{tenant.id}"
+            ).defer(tenant_id=str(tenant.id), year=start.year, month=start.month)
+        except AlreadyEnqueued:
             continue
-        text = render([block], monthly=True)
-        with tenant_tx(tenant.id):
-            row = Notification(
-                tenant_id=tenant.id,
-                idem_key=idem_key,
-                audience=Notification.Audience.OWNER,
-                kind=OWNER_SUMMARY_KIND,
-                text=text,
-            )
-            Notification.objects.bulk_create([row], ignore_conflicts=True)
-            sent = Notification.objects.filter(id=row.id).exists()
-            if sent:
-                app.configure_task(
-                    SEND_NOTIFICATION, queue=OUTBOUND, lock=f"owner:{tenant.id}"
-                ).defer(tenant_id=str(tenant.id), notification_id=str(row.id))
-        if sent:
-            queued += 1
+        queued += 1
     return queued
 
 
 def _due(tenant: LoadedTenant, now: datetime) -> bool:
     """Decision 14 of the proposal: only an active, non-degraded tenant, with
-    `owner.summary_monthly`, on its own day 1."""
+    `owner.summary_monthly` and a connected chat, on its own day 1 past noon local
+    time (decision 10)."""
     owner = tenant.file.owner
     if tenant.file.status != "active" or tenant.is_degraded:
         return False
-    if owner is None or not owner.summary_monthly:
+    if owner is None or not owner.summary_monthly or owner.telegram_chat_id is None:
         return False
-    return now.astimezone(tenant.info.timezone).day == 1
+    local = now.astimezone(tenant.info.timezone)
+    return local.day == 1 and local.hour >= SUMMARY_LOCAL_HOUR
+
+
+def send_owner_summary(tenant_id: UUID, year: int, month: int) -> None:
+    """The job behind `dispatch_owner_summaries`: idempotent on
+    `summary:<tenant_id>:<year>-<month>`, checked before ever calling Calendar. A
+    failed pack hook raises `TransientError` so Procrastinate retries it (sending a
+    summary with no citas would be misleading)."""
+    tenant = get_registry().by_id.get(tenant_id)
+    if tenant is None:
+        log.error("owner summary of unknown tenant %s", tenant_id)
+        return
+    idem_key = f"summary:{tenant_id}:{year}-{month:02d}"
+    with tenant_tx(tenant_id):
+        if Notification.objects.filter(idem_key=idem_key).exists():
+            return
+    start = datetime(year, month, 1, tzinfo=tenant.info.timezone)
+    end = _add_months(start, 1)
+    block = build_summary(tenant, start, end)
+    if block.pack_failed:
+        raise TransientError(f"owner summary of tenant {tenant.slug}: pack hook failed")
+    text = render([block], monthly=True)
+    with tenant_tx(tenant_id):
+        row = Notification(
+            tenant_id=tenant_id,
+            idem_key=idem_key,
+            audience=Notification.Audience.OWNER,
+            kind=OWNER_SUMMARY_KIND,
+            text=text,
+        )
+        Notification.objects.bulk_create([row], ignore_conflicts=True)
+        if Notification.objects.filter(id=row.id).exists():
+            app.configure_task(SEND_NOTIFICATION, queue=OUTBOUND, lock=f"owner:{tenant_id}").defer(
+                tenant_id=str(tenant_id), notification_id=str(row.id)
+            )
 
 
 @dataclass(frozen=True)
