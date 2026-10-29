@@ -46,12 +46,13 @@ def new_invite(tenant_id: UUID) -> str:
 
 
 def unlink(tenant_id: UUID) -> bool:
-    """True if a connected chat was removed."""
-    return bool(
-        OwnerLink.objects.filter(tenant_id=tenant_id, chat_id__isnull=False).update(
-            chat_id=None, linked_at=None, invite_hash=None, invite_expires_at=None
-        )
+    """Clear the chat and any pending invite (§5.2). True if a connected chat was
+    removed."""
+    had_chat = OwnerLink.objects.filter(tenant_id=tenant_id, chat_id__isnull=False).exists()
+    OwnerLink.objects.filter(tenant_id=tenant_id).update(
+        chat_id=None, linked_at=None, invite_hash=None, invite_expires_at=None
     )
+    return had_chat
 
 
 @dataclass(frozen=True)

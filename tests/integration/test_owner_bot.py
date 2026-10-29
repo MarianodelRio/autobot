@@ -4,12 +4,16 @@ code, the menu and its two options, and the common limits
 `test_notifications.py`, through the real webhook and the real database."""
 
 import hashlib
+import io
 import json
+import re
 from collections.abc import Iterator
 from decimal import Decimal
 from typing import Any
 
+import httpx
 import pytest
+from django.core.management import CommandError, call_command
 from django.test import Client
 from django.utils import timezone
 from pytest_django import Settings
@@ -27,6 +31,7 @@ pytestmark = [
     pytest.mark.usefixtures("clean_jobs"),
 ]
 
+REAL_CLIENT = httpx.Client  # the commands' httpx.Client is patched to build these
 URL = "/webhooks/telegram-notify"
 SECRET = "n" * 32
 OWNER_CHAT = 555
@@ -193,6 +198,18 @@ def test_chat_taken_by_another_real_tenant_leaves_the_code_intact(
     assert link_b.chat_id is None and link_b.invite_hash == digest
 
 
+def test_chat_taken_without_support_email_names_no_empty_address(
+    tenants: Any, providers: Providers, settings: Settings
+) -> None:
+    settings.OWNER_SUPPORT_EMAIL = ""
+    tenants(wa_tenant("a"), wa_tenant("b"))
+    link("a", OWNER_CHAT)
+    assert post(say(OWNER_CHAT, f"/start {invite('b')}")) == 200
+    text = texts(providers)[-1]
+    assert "conectado con otro negocio" in text
+    assert "escribe a ." not in text and "quien te dio de alta" in text
+
+
 def test_two_demo_tenants_can_share_the_same_chat(tenants: Any, providers: Providers) -> None:
     tenants(demo_tenant("demo-a"), demo_tenant("demo-b"))
     link("demo-a", OWNER_CHAT)
@@ -276,6 +293,92 @@ def test_a_paused_demo_tenant_still_shows_its_figures(tenants: Any, providers: P
     metric("demo-a", 5)
     assert post(press(OWNER_CHAT, "owner:status")) == 200
     assert "Saludos: 5" in texts(providers)[-1]
+
+
+def test_a_chat_shared_by_two_demo_tenants_gets_one_block_each(
+    tenants: Any, providers: Providers
+) -> None:
+    tenants(demo_tenant("demo-a"), demo_tenant("demo-b"))
+    link("demo-a", OWNER_CHAT)
+    link("demo-b", OWNER_CHAT)
+    metric("demo-a", 2)
+    assert post(press(OWNER_CHAT, "owner:status")) == 200
+    text = texts(providers)[-1]
+    assert text.count("Así va") == 1
+    assert text.count("Saludos:") == 2 and "Saludos: 2" in text
+
+
+# ── Operation commands ─────────────────────────────────────────────────────
+
+
+def get_me() -> httpx.Response:
+    return httpx.Response(200, json={"ok": True, "result": {"username": "AvisosBot"}})
+
+
+def run(command: str, *args: str, monkeypatch: pytest.MonkeyPatch, answer: Any = None) -> str:
+    transport = httpx.MockTransport(lambda request: answer or get_me())
+    monkeypatch.setattr("httpx.Client", lambda **kwargs: REAL_CLIENT(transport=transport))
+    out = io.StringIO()
+    call_command(command, *args, stdout=out)
+    return out.getvalue()
+
+
+def test_owner_invite_prints_a_link_that_links_the_chat(
+    tenants: Any, providers: Providers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenants(wa_tenant())
+    out = run("owner_invite", "wa", monkeypatch=monkeypatch)
+    match = re.search(r"https://t\.me/AvisosBot\?start=([A-Za-z0-9_-]+)", out)
+    assert match is not None and "Ya hay un chat" not in out
+    assert post(say(OWNER_CHAT, f"/start {match[1]}")) == 200
+    assert links.owner_chat(get_registry().by_slug["wa"].id) == OWNER_CHAT
+
+
+def test_owner_invite_replaces_the_pending_code_and_warns_if_linked(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenants(wa_tenant())
+    first = invite("wa")
+    link_row = OwnerLink.objects.get(tenant_id=get_registry().by_slug["wa"].id)
+    OwnerLink.objects.filter(id=link_row.id).update(chat_id=OWNER_CHAT)
+    out = run("owner_invite", "wa", monkeypatch=monkeypatch)
+    assert "Ya hay un chat conectado" in out
+    assert first not in out
+    assert OwnerLink.objects.get(id=link_row.id).invite_hash != (
+        hashlib.sha256(first.encode()).hexdigest()
+    )
+
+
+def test_owner_invite_errors(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    tenants(wa_tenant(), wa_tenant("gone", status="offboarded"))
+    with pytest.raises(CommandError, match="Negocio desconocido"):
+        run("owner_invite", "nobody", monkeypatch=monkeypatch)
+    with pytest.raises(CommandError, match="dado de baja"):
+        run("owner_invite", "gone", monkeypatch=monkeypatch)
+    refused = httpx.Response(401, json={"ok": False, "error_code": 401})
+    with pytest.raises(CommandError, match="Telegram rechazó"):
+        run("owner_invite", "wa", monkeypatch=monkeypatch, answer=refused)
+    settings.NOTIFY_BOT_TOKEN = ""
+    with pytest.raises(CommandError, match="NOTIFY_BOT_TOKEN"):
+        run("owner_invite", "wa", monkeypatch=monkeypatch)
+    assert not OwnerLink.objects.exists()  # no failed run leaves an invite behind
+
+
+def test_owner_unlink_clears_the_chat_and_any_pending_invite(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenants(wa_tenant())
+    wa = get_registry().by_slug["wa"]
+    assert "no tenía ningún chat" in run("owner_unlink", "wa", monkeypatch=monkeypatch)
+    link("wa")
+    OwnerLink.objects.filter(tenant_id=wa.id).update(invite_hash="x" * 64)
+    assert "desconectado" in run("owner_unlink", "wa", monkeypatch=monkeypatch)
+    row = OwnerLink.objects.get(tenant_id=wa.id)
+    assert (row.chat_id, row.linked_at, row.invite_hash) == (None, None, None)
+    with pytest.raises(CommandError, match="Negocio desconocido"):
+        run("owner_unlink", "nobody", monkeypatch=monkeypatch)
 
 
 # ── Logs never carry the chat id or the invite code ────────────────────────

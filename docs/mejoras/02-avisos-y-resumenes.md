@@ -1,429 +1,626 @@
-# Mejora 02 · Resúmenes periódicos al dueño
+# Mejora 02 · Bot de dueños: avisos, resumen mensual y estado a demanda
 
-**Estado:** propuesta, pendiente de revisión. Ningún agente la implementa sin que la
-persona confirme las decisiones de la sección 2.
+**Estado:** implementada (2026-10-29), con el diseño cerrado con la persona ese mismo
+día. Las aprobaciones de §10 las dio la persona antes del paso 4. Commits: `1fc88f6`
+(pasos 1 y 2), `0181aff` (paso 3) y `785d9ef` (pasos 4 y 5), más uno de cierre con los
+tests y la documentación que faltaban. Siguen pendientes los pasos manuales de §10
+(anotados en `docs/puesta-en-marcha.md`); no se ha probado nada contra Telegram, Meta
+ni Google reales.
 
-## 1. Introducción
+La primera versión (resumen mensual sobre `MetricEvent`, commit `f3dd9df`) es el punto de
+partida que describe §3; el resto del documento describe el estado final.
 
-Hoy el dueño de un negocio solo recibe avisos puntuales (`NotifyOwner`), y solo en el
-pack `salon`: una cita creada, cancelada, movida, o un fallo al mover. No hay ninguna
-vista agregada: para saber "cómo va el negocio esta semana" no hay nada que lo diga.
+## 1. Qué se construye
 
-Se añade un resumen con al menos: número de citas (o la métrica de negocio que
-corresponda), número de usuarios, mensajes y coste (ingresos estimados y coste
-aproximado de mensajería). El dueño puede recibirlo periódicamente y también pedirlo
-él mismo al bot de avisos cuando quiera un estado al día.
+El dueño de cada negocio tiene **un único bot de Telegram de la plataforma** (el bot de
+avisos que ya existe, `NOTIFY_BOT_TOKEN`). Ese bot pasa de ser solo de salida a ser un
+pequeño asistente:
 
-## 2. Decisiones de diseño (propuestas)
+1. **Avisos puntuales** (ya existen, no cambian): cita creada, cancelada, movida, fallo
+   al mover (`NotifyOwner` + `owner.notify`).
+2. **Resumen mensual automático** (ya existe, se rehace): el día 1 de cada mes a las
+   12:00 hora del negocio, con las cifras del mes anterior completo. Se activa con
+   `owner.summary_monthly: true`.
+3. **Asistente con menú** (nuevo): el dueño escribe cualquier cosa y el bot responde con
+   un saludo y botones. De momento hay dos opciones:
+   - **📊 Cómo va el mes**: cifras del mes en curso, desde el día 1 hasta este momento.
+   - **✉️ Contacto**: el correo del administrador de la plataforma.
 
-1. **Un resumen por negocio, no por tipo de aviso.** Un solo mensaje con todas las
-   cifras, no uno por métrica. Mantiene el límite de frecuencia de Telegram y es más
-   legible.
-2. **Una sola cadencia: mensual, activable o no.** `owner.summary_monthly: bool`
-   (por defecto `False`). No hay elección de frecuencia (ni `daily`/`weekly`/`monthly`
-   como lista): o se recibe el resumen mensual, o no se recibe nada automático.
-   Simplifica lo que antes eran varias frecuencias combinables.
-3. **Dos periodos distintos, según quién lo pide — no uno solo.** Es la aclaración
-   importante de esta versión:
-   - **Resumen automático** (decisión 2): se dispara **el día 1 de cada mes** y
-     reporta sobre **el mes anterior completo** (cerrado, de principio a fin). El día 1
-     de noviembre llega el resumen de octubre entero. Es lo que un dueño espera de un
-     "resumen mensual": el mes ya terminado, no un fragmento.
-   - **Estado a demanda** (decisión 11): reporta sobre **el mes en curso, desde el día
-     1 hasta el momento de la pregunta** — un parcial, a propósito, porque la pregunta
-     es "¿cómo va este mes hasta ahora?".
-   - En ningún caso hay ventana corrediza: ambos son periodos de calendario (un mes
-     natural completo, o el trozo del mes natural en curso), calculados en la zona
-     horaria del tenant (`tenant.timezone`, ya existente para todo lo demás en la
-     plataforma). Como cada uno de los dos es siempre un mes natural o un trozo de un
-     único mes natural, ninguno cruza nunca la frontera de fin de mes a mitad de
-     cálculo — simplifica el coste de mensajería (decisión 10), que no necesita
-     partirse en sub-periodos.
-4. **El "coste" de negocio es una estimación de ingresos**, no un cobro confirmado: se
-   calcula con el precio configurado del servicio en el momento de la reserva
-   (`services.<id>.price_eur` en `salon`), sumando el precio de **cada** reserva, no un
-   precio fijo multiplicado por un recuento. No hay cobro real que el sistema conozca;
-   si el cliente no se presenta o paga distinto, el resumen no lo sabrá. Se dice así en
-   el texto del resumen y en la documentación, para que el dueño no lo lea como
-   contabilidad real.
-5. **Las citas canceladas no restan de los ingresos estimados.** Se muestran como una
-   cifra aparte ("citas canceladas"); restarlas mezclaría "se reservó" con "se hizo", y
-   ese segundo dato no existe en el sistema (no hay confirmación de asistencia).
-6. **Las citas creadas manualmente en Google Calendar no cuentan.** `RecordMetric` se
-   emite en `conversation.py` al reservar/cancelar por el bot; una cita que el dueño
-   añade a mano en Calendar nunca pasa por ahí, así que nunca genera una métrica. Es el
-   comportamiento correcto (igual que `bus` no tiene ingresos: no es una limitación a
-   resolver), pero se documenta explícitamente para que no sorprenda.
-7. **Cada pack declara sus propias métricas de negocio** (`Pack.summary_metrics`), con
-   su nombre para mostrar y si es un recuento o un importe en euros. La plataforma no
-   sabe qué es una "cita"; solo sabe sumar lo que el pack le dice que sume.
-8. **Las métricas de pack se guardan como eventos de negocio genéricos**
-   (`RecordMetric`, tabla `metric_event`), nunca leyendo directamente la agenda o el
-   calendario en el momento del resumen. Evita recalcular desde Google Calendar (que no
-   guarda histórico de cancelaciones: `cancel_event` borra el evento), evita mezclar
-   citas manuales con las del bot, y mantiene la regla de que un pack no toca la base de
-   datos: emite una acción, como ya hace `NotifyOwner`.
-9. **Las métricas genéricas las calcula la plataforma**, no el pack, y se reducen a
-   tres: **usuarios** (contactos distintos con al menos un mensaje del bot en el
-   periodo), **mensajes** (enviados por el bot) y **coste aproximado de mensajería**
-   (ver decisión 10). "Usuarios" se calcula sobre `OutboundMessage` (contactos
-   distintos con una fila en el periodo), **no** sobre `Contact.last_activity_at`: ese
-   campo solo guarda el último instante de actividad, así que para el resumen
-   automático, que reporta sobre el mes **anterior ya cerrado** (decisión 3), un
-   contacto activo dentro de ese mes pero también después (en el mes en curso, antes de
-   que se genere el resumen el día 1) desaparecería incorrectamente. Para el estado a
-   demanda esto no pasaría (su periodo siempre termina "ahora"), pero usar la misma
-   consulta en los dos casos evita tener dos formas distintas de contar "usuarios"
-   según quién pregunta. `OutboundMessage` ya hace falta para "mensajes" y "coste", así
-   que no añade ninguna tabla ni consulta nueva, solo un `distinct("contact")`. No se
-   desglosan "usuarios nuevos" ni "bajas": no se pidieron y añaden ruido a lo que se
-   pidió (número de citas, número de usuarios, coste). Tampoco se desglosa "mensajes"
-   por categoría de plantilla (servicio/utility/marketing): en la práctica casi todos
-   los negocios usan una sola categoría, así que una cifra total basta; el desglose por
-   categoría solo existe internamente, para calcular el coste (decisión 10).
-10. **Coste aproximado de mensajería, nuevo en esta versión** (antes estaba fuera de
-    alcance). Desde el 1 de octubre de 2026 Meta cobra por los mensajes de WhatsApp
-    salientes: los de categoría "service" (respuesta dentro de la ventana de 24h) tienen
-    1.000 gratis al mes por número de negocio y se cobran a partir del 1.001; las
-    plantillas "utility"/"marketing"/"authentication" se cobran desde el primer mensaje,
-    sin franja gratuita. Telegram no tiene coste por mensaje (Bot API gratuita), así que
-    solo los mensajes de WhatsApp entran en el cálculo.
-    - Ya existe la tabla que hace falta, `OutboundMessage` (`tenant`, `channel`,
-      `created_at`, `pricing_category`, `billable`): no se crea nada nuevo, solo se
-      agrega sobre ella.
-    - Tanto `previous_month` como `month_to_date` (decisión 3) empiezan siempre en el
-      día 1 de un mes natural, así que la franja gratuita de "service" se calcula
-      directo, sin partir nada por mes: de los mensajes "service" del tenant dentro
-      del periodo, los que superan 1.000 se facturan
-      (`facturables = max(0, recuento_periodo - 1000)`); nunca hay que mirar fuera del
-      periodo ni preguntarse "cuántos llevaba ya el mes pasado", porque el periodo
-      siempre coincide con un mes natural entero o con el principio de uno. Para
-      "utility"/"marketing"/"authentication", se multiplica directamente
-      (`recuento_periodo × precio_categoría`), sin franja.
-    - El precio por categoría es una tabla configurable y documentada como
-      **aproximada**, no la tarifa real de la cuenta (Meta publica el rate card exacto,
-      por país y moneda, dentro del panel de facturación de WhatsApp Business Manager,
-      y cambia como máximo una vez por trimestre). El texto del resumen lo dice, igual
-      que ya se dice de los ingresos estimados.
-11. **El dueño puede pedir el estado al bot de avisos**, no solo recibirlo
-    periódicamente: una única frase fija ("estado", a falta de decidir el texto exacto)
-    que devuelve **el mes en curso hasta ahora** — distinto del resumen automático, que
-    da el mes anterior completo (decisión 3). Una sola frase basta porque solo hay un
-    periodo posible para la pregunta a demanda (no hace falta "estado de este
-    mes"/"estado del mes pasado": el mes pasado ya lo mandó el resumen automático). **No
-    depende de tener `summary_monthly` activado**: basta con
-    tener `owner.telegram_chat_id` configurado (lo que ya tiene cualquier negocio con
-    avisos puntuales activados); pedir el estado a demanda no activa ni sustituye al
-    resumen periódico. Esto requiere que el bot de avisos, hoy solo de salida
-    (`notifications.py`: *"This bot has no inbound webhook"*), reciba mensajes: un
-    webhook nuevo, y resolver qué tenant corresponde al `chat_id` que escribe. Es un
-    cambio de arquitectura, no solo de cálculo; se registra como ADR al implementarlo
-    (sección 9). Si el `chat_id` no está vinculado a ningún negocio, el bot pregunta en
-    vez de adivinar (regla general del CLAUDE.md). **Sin cerrar en esta propuesta:** si
-    el mismo `chat_id` correspondiera a más de un negocio (una misma persona dueña de
-    varios), cómo el dueño le dice al bot "a cuál de los dos me refiero" no está
-    diseñado — probablemente baste con que el bot liste los nombres y el dueño responda
-    con uno, pero es una conversación con estado (pregunta → espera respuesta) que hay
-    que detallar al implementarlo, no inventarla aquí.
-12. **Un negocio de demo puede activar su propio resumen** igual que un negocio real
-    (le sirve a quien lo mantenga para ver cuánto se usa la demo). No hay caso especial.
-13. **Se entrega por el bot de avisos de Telegram ya existente** (`NOTIFY_BOT_TOKEN`,
-    `owner.telegram_chat_id`), reutilizando `send_notification` para el envío
-    periódico; el canal de petición a demanda (decisión 11) usa el mismo bot, en modo
-    entrante. No se añade un canal nuevo (WhatsApp, email...).
-14. **Sin resumen mientras el negocio no está `active`.** Un negocio en `onboarding`,
-    `paused` u `offboarded` no manda ni responde resúmenes (igual que ya no recibe
-    recordatorios ni barrido de calendario, `runtime/periodic.is_active`).
+   El menú es una lista declarativa: añadir una opción en el futuro es añadir una entrada
+   (§6.3).
+4. **Vinculación cómoda** (nuevo, sustituye a `notify_link`): el operador genera un
+   enlace `t.me/<bot>?start=<código>`. El dueño lo abre, pulsa *Iniciar* y queda
+   conectado al momento, sin editar YAML ni desplegar (§5).
 
-## 3. Métricas
+## 2. Decisiones (cerradas con la persona, 2026-10-29)
 
-### Genéricas (toda la plataforma, cualquier pack)
+| # | Decisión | Por qué |
+|---|---|---|
+| D1 | El `chat_id` del dueño se guarda en base de datos (tabla `owner_link`) y **sale del YAML** (`owner.telegram_chat_id` desaparece). | Es lo que escala: dar de alta a un dueño no exige commit ni despliegue, y un dato personal deja de estar en git. Con el `chat_id` en YAML, el enlace solo podría decirle al operador qué línea añadir. |
+| D2 | `owner_link` y `owner_event` son **tablas de plataforma sin RLS**, igual que `demo_session`/`demo_event` (ADR-006). | Al llegar un mensaje al bot no se sabe aún de qué negocio es: hay que buscar el negocio *por* `chat_id`. **Requiere aprobación explícita** (§10). |
+| D3 | Un `chat_id` puede estar conectado como mucho a **un negocio real**. Solo los negocios de demo pueden compartir chat entre sí. | Lo pidió la persona. Con varios negocios de demo, "Cómo va el mes" responde con un bloque por negocio, sin preguntar a cuál se refiere. |
+| D4 | **Las citas de `salon` salen del calendario**, no de mensajes ni de `MetricEvent`. | Hay citas manuales. El calendario es la fuente de verdad: una cita borrada (cancelada) o movida ya no está, y nunca se cuenta dos veces. |
+| D5 | Una cita es **un evento cuyo título empieza por el nombre de un servicio**, igual que los que crea el bot (`"<Servicio> - <Nombre>"`), o un evento creado por el bot. Cualquier otro evento (vacaciones, comida, `[CFG] …`, recados) es del peluquero y **no cuenta**. | Se pedirá a cada peluquero que titule sus citas manuales como las automáticas. |
+| D6 | **Sin línea de citas canceladas.** Solo cuentan las citas que hay en el calendario en el periodo. | Lo pidió la persona. |
+| D7 | Los **ingresos estimados** son la suma, cita a cita, del `price_eur` **actual** del servicio de cada cita. | Una cita manual no guarda precio. Si cambia una tarifa, el resumen de un mes pasado pedido más tarde cambia también; se documenta. |
+| D8 | El **estado a demanda solo mira el pasado**: citas cuyo inicio está entre el día 1 a las 00:00 y ahora. No se muestran "citas por venir". | Lo pidió la persona. |
+| D9 | El **coste de mensajería** suma todo lo que Meta cobra, usando lo que Meta dice de cada mensaje (`billable` y `pricing_category` del webhook de estados), por un precio aproximado por categoría. Ya no se calcula la franja gratuita por nuestra cuenta. | Desde el 1-10-2026 Meta cobra también "service" (con 1.000 gratis al mes **por número**) y "utility" dentro de la ventana de 24 h. Meta ya aplica esas reglas y las marca en `billable`, incluido el número de demo compartido entre negocios. |
+| D10 | El resumen automático sale **el día 1 a las 12:00 hora local** del negocio. | Lo pidió la persona. |
+| D11 | Un chat no conectado recibe una respuesta de "no vinculado" con el correo de contacto. | Aprobado por la persona. |
+| D12 | El webhook entrante del bot lleva `secret_token`, como los demás bots de Telegram. | Aprobado por la persona el 2026-10-29 (cambio en la firma de webhooks). |
+| D13 | Los negocios de demo responden a "Cómo va el mes" aunque estén `paused`, porque lo importante en la demo es enseñar la función. Un negocio real que no está `active` responde con un aviso (§6.4). | Lo pidió la persona: la demo no necesita un resumen perfecto. |
+| D14 | `bus` sigue contando "consultas de horario" con `RecordMetric`/`MetricEvent`. | No tiene calendario. `salon` deja de emitir `RecordMetric`. |
 
-| Métrica | Cómo se calcula |
+## 3. Punto de partida (lo que ya hay en `main`)
+
+- `src/autobot/runtime/summary.py` contiene `previous_month`, `month_to_date`,
+  `dispatch_owner_summaries`, `build_summary` (sobre `MetricEvent` + `OutboundMessage`),
+  `_messaging_cost` (franja gratuita calculada a mano, precios `PRICE_EUR` erróneos) y
+  `_render`.
+- `src/autobot/jobs.py` tiene el periodic diario `DISPATCH_OWNER_SUMMARIES` a las 11:00 UTC.
+- `src/core/actions.py:RecordMetric` y `src/autobot/runtime/models.py:MetricEvent` (tabla
+  `metric_event`, migración `0009`, con RLS) se **mantienen**.
+- `src/core/pack.py` contiene `SummaryMetric` y `Pack.summary_metrics`, que **se sustituyen**
+  por un gancho `Pack.summary` (§4.1).
+- `src/packs/salon/conversation.py` emite `RecordMetric` en `create()` y en `cancel()`; esas
+  emisiones **se eliminan**.
+- `src/packs/bus/conversation.py:539` emite `RecordMetric("schedule_query")`; **se mantiene**.
+- `src/autobot/tenancy/schema.py:Owner` tiene `telegram_chat_id`, `notify` y
+  `summary_monthly` con su validador. **Se quitan** `telegram_chat_id` y el validador.
+- `src/autobot/runtime/notifications.py` tiene `bot_secrets()` con un secreto de webhook
+  ficticio (`"-" * 32`) y `deliver(text, …)`.
+- `src/autobot/management/commands/notify_link.py` exige que el bot no tenga webhook,
+  porque usa `getUpdates`. **Se elimina**: con webhook ya no puede funcionar.
+- `src/autobot/ops/health.py:telegram_health(..., outbound_only=True)` da error si el bot
+  de avisos tiene webhook. **Cambia**: ahora tiene que tenerlo.
+- Hay tests en `tests/integration/test_summary.py`, `tests/integration/test_notifications.py`,
+  `tests/integration/test_process.py` (RecordMetric), `src/packs/salon/tests/test_booking.py`,
+  `src/packs/salon/tests/test_management.py` y `src/packs/bus/tests/test_metrics.py`.
+
+## 4. Resumen: cálculo
+
+### 4.1 Contrato pack ↔ plataforma (`src/core/pack.py`)
+
+Se elimina `SummaryMetric` y `Pack.summary_metrics`. Se añade:
+
+```python
+@dataclass(frozen=True)
+class SummaryLine:
+    """One line of the owner's summary, contributed by the pack."""
+
+    icon: str  # one emoji
+    label: str
+    value: Decimal
+    unit: Literal["count", "eur"] = "count"
+    note: str | None = None  # shown in brackets after the value
+
+
+type SummaryHook = Callable[[PackContext, datetime, datetime, Mapping[str, Decimal]], list[SummaryLine]]
+
+# in Pack:
+    summary: SummaryHook | None = None
+```
+
+- La plataforma llama a `pack.summary(ctx, start, end, recorded)`. `ctx` es un
+  `PackContext` sin contacto, como el de un periodic: se construye con `build_context(tenant,
+  Channel.MAIN, contact=None, state={}, event_id=None)`. Para un negocio de demo,
+  `bound_calendar_id` ya da su calendario con cualquier canal. `[start, end)` es el
+  periodo, con fechas *aware* en la zona horaria del tenant. `recorded` son los totales
+  de `MetricEvent` del tenant en ese periodo, por `kind`.
+- El gancho **se ejecuta sin transacción abierta**, porque `salon` llama a Google Calendar.
+  Puede lanzar `TransientError`/`PermanentError` (de `core.errors`) o las de Calendar.
+- La plataforma no sabe qué es una cita: solo pinta las líneas.
+
+### 4.2 `salon` (`src/packs/salon/summary.py`, nuevo)
+
+```python
+def summarize(ctx, start, end, recorded) -> list[SummaryLine]:
+    cfg = configuration(ctx)
+    count, revenue, unpriced = 0, Decimal(0), 0
+    for event in calendar(ctx).list_events(start, end):
+        if event.all_day or not (start <= event.start < end):
+            continue  # list_events also returns events that only overlap the window
+        if not is_appointment(event, cfg):
+            continue
+        count += 1
+        key = service_of(event, cfg)
+        price = cfg.services[key].price_eur if key is not None else None
+        if price is None:
+            unpriced += 1
+        else:
+            revenue += price
+    return [
+        SummaryLine("✂️", "Citas", Decimal(count)),
+        SummaryLine("💶", "Ingresos estimados", revenue, unit="eur",
+                    note=f"{unpriced} sin precio" if unpriced else None),
+    ]
+```
+
+Reglas exactas de `is_appointment` / `service_of`:
+
+1. Si `parse_cfg(event.summary)` devuelve algo (`[CFG] …`), **no** es cita.
+2. **Evento del bot** (`event.private.get("fp_key")` no vacío): **siempre** es cita.
+   El servicio es `event.private["fp_service"]` si está en `cfg.services`. Si no (servicio
+   retirado de la configuración), se intenta por título (regla 3). Si tampoco, cuenta como
+   cita sin precio.
+3. **Por título**, para eventos manuales y como reserva de la regla 2. Se normaliza el
+   título con `core.text.fold` y se colapsan los espacios (`" ".join(s.split())`); lo mismo
+   con el `name` de cada servicio. Coincide si el título normalizado:
+   - es **exactamente** el nombre del servicio (`"tinte"`), o
+   - empieza por el nombre seguido de espacios opcionales y un guion `-`, `–` o `—`
+     (`"corte de pelo - juan"`, `"corte de pelo– juan"`).
+
+   Si coinciden varios servicios, gana el **nombre más largo** (`"Corte y barba - X"` no
+   debe tomarse por `"Corte"`). Un evento manual sin coincidencia **no es cita** (D5),
+   aunque tenga `Telefono:` en la descripción.
+4. Los eventos `cancelled` ya los descarta `CalendarClient._list`. Los de todo el día
+   (`all_day`) nunca son cita.
+
+Se elimina en `src/packs/salon/conversation.py`:
+- los `RecordMetric` de `create()` (incluido `booking_revenue`) y de `cancel()`;
+- el import de `RecordMetric` y `Decimal` si quedan sin uso;
+- el comentario "Decision 11 of the summary proposal".
+
+En `src/packs/salon/pack.py`, `summary_metrics=[…]` se sustituye por `summary=summary.summarize`.
+
+### 4.3 `bus` (`src/packs/bus/pack.py`)
+
+```python
+def summarize(ctx, start, end, recorded):
+    return [SummaryLine("🚌", "Consultas de horario", recorded.get("schedule_query", Decimal(0)))]
+```
+
+Va en `src/packs/bus/summary.py`. Identificadores nuevos en inglés, según la excepción
+de CLAUDE.md. `RecordMetric("schedule_query")` en `conversation.py` se queda como está.
+
+### 4.4 Métricas de plataforma (`src/autobot/runtime/summary.py`)
+
+Todas sobre `OutboundMessage` del tenant, dentro de `tenant_tx`:
+
+| Línea | Cálculo |
 |---|---|
-| Usuarios | `Contact` distintos con algún `OutboundMessage` dentro del periodo (no `last_activity_at`: ver decisión 9) |
-| Mensajes | `OutboundMessage` enviados por el bot dentro del periodo |
-| Coste aproximado de mensajería | Ver decisión 10: por categoría de plantilla de WhatsApp, con la franja gratuita de "service" |
+| 👥 Clientes atendidos | `contact_id` distintos de los mensajes con `status="sent"` y `sent_at` en `[start, end)` |
+| 💬 Mensajes enviados | número de esos mismos mensajes (los `failed`, `pending`, `sending` y `unknown` no cuentan) |
+| 📱 Coste de WhatsApp | ver abajo; **solo se muestra** si el canal principal del tenant es WhatsApp o si el tenant es de demo |
 
-### Del pack `salon`
+**Coste** (D9). Se suman los mensajes con `billable=True` y `sent_at` en el periodo,
+agrupados por `pricing_category`, multiplicando cada grupo por su precio:
 
-| Métrica | `kind` de `RecordMetric` | Unidad | Se emite cuando |
-|---|---|---|---|
-| Citas creadas | `booking_created` | recuento | se confirma una reserva nueva o un movimiento (`conversation.py: create()`) |
-| Citas canceladas | `booking_cancelled` | recuento | se cancela una cita (`conversation.py: cancel()`) |
-| Ingresos estimados | `booking_revenue` | euros | junto con `booking_created`, por el precio del servicio reservado (`self.cfg.services[...].price_eur`, el de esa reserva en concreto, no un precio fijo) |
-
-Las citas creadas a mano en Google Calendar no generan ninguna de estas tres métricas
-(decisión 6): no pasan por `conversation.py`.
-
-### Del pack `bus`
-
-| Métrica | `kind` de `RecordMetric` | Unidad | Se emite cuando |
-|---|---|---|---|
-| Consultas de horario | `schedule_query` | recuento | la conversación devuelve un itinerario encontrado: `consulta.estado == "con_salidas"` dentro de `_resultado()`, no cualquier llamada a esa función (menús, errores o "sin horarios" no cuentan) |
-
-`bus` no tiene ingresos: el bot no vende nada, solo informa. No declarar una métrica de
-euros para este pack es correcto, no una limitación a resolver.
-
-## 4. Modelo resultante
-
-```
-RecordMetric(kind, value=1, idem_key)         # nueva Action, en core/actions.py
-    -> MetricEvent(tenant, kind, value, idem_key, created_at)   # tabla nueva, CON RLS (TenantScoped)
-
-Pack.summary_metrics: list[SummaryMetric]      # metadatos estáticos, en core/pack.py
-    SummaryMetric(kind, label, unit="count"|"eur")
-
-Owner.summary_monthly: bool   # tenancy/schema.py — por defecto False
-
-runtime/summary.py:
-    previous_month(now, tz) -> (start, end)      # para el resumen automático
-        el mes natural completo anterior al mes de "now", en la zona horaria del tenant
-        (si now es 1 de noviembre, da [1 de octubre, 1 de noviembre))
-
-    month_to_date(now, tz) -> (start, now)        # para el estado a demanda
-        start = día 1 del mes de "now", 00:00, en la zona horaria del tenant
-
-    dispatch_owner_summaries(now):
-        para cada tenant activo con owner.telegram_chat_id, owner.summary_monthly y
-        hoy es día 1 del mes (en su zona horaria):
-            start, end = previous_month(now, tenant.timezone)
-            build_summary(tenant, start, end) -> texto
-            Notification(kind="owner_summary", idem_key=f"summary:{tenant_id}:{start.year}-{start.month:02d}")
-            -> send_notification (ya existente)
-
-    build_summary(tenant, start, end) -> str:
-        - _generic_metrics(tenant, start, end): usuarios, mensajes
-        - _messaging_cost(tenant, start, end): coste aproximado del periodo (decisión 10)
-        - _pack_metrics(tenant, start, end): agregados de MetricEvent por SummaryMetric
-        - _render(...): el texto (sección 7)
-
-    estado a demanda (decisión 11), sobre el webhook entrante:
-        build_summary(tenant, *month_to_date(timezone.now(), tenant.timezone))
+```python
+# Approximate Meta price per delivered message, Spain, EUR. Not the account's real
+# tariff (Meta's rate card is per recipient country and lives in each business's
+# WhatsApp Manager billing panel). Last checked 2026-10-29; see
+# docs/runbooks/alta-baja-negocio.md.
+PRICE_EUR: dict[str, Decimal] = {
+    "marketing": Decimal("0.0585"),
+    "utility": Decimal("0.0166"),
+    "authentication": Decimal("0.0166"),
+    "service": Decimal("0.0166"),
+}
 ```
 
-El `idem_key` se identifica por el mes que se reporta (`{año}-{mes}` de `start`, el mes
-anterior), no por la fecha de envío: solo hay un disparo automático al mes (el día 1),
-así que la clave del mes reportado ya es única por sí misma.
+- **Desaparecen** `SERVICE_FREE_TIER` y el cálculo manual de la franja: los 1.000
+  "service" gratis por número ya llegan como `billable=false` desde Meta (el
+  `pricing.type` es `free_customer_service`), igual que las entradas gratuitas por
+  anuncio. Los mensajes de Telegram nunca tienen `billable`, así que no cuentan.
+- Un mensaje con `billable=True` y una categoría que no está en `PRICE_EUR` (por ejemplo
+  `authentication_international` o `marketing_lite`) se valora al precio **más alto** de la
+  tabla y se registra un `log.warning` con la categoría, sin datos personales. Así el
+  coste nunca se queda corto en silencio.
+- Un mensaje cuyo estado aún no ha llegado (`billable=None`) no cuenta.
+- El resultado se redondea a céntimos (`ROUND_HALF_UP`).
+- Los precios de 2026-10-29 son de fuentes públicas no oficiales. "service" a la tarifa
+  de utility no está confirmado. **Acción manual**: la persona los contrasta con el rate
+  card de su WhatsApp Manager (§10).
 
-`MetricEvent` lleva `tenant_id` y RLS como cualquier dato de negocio (no es como
-`DemoEvent`, que no tiene tenant todavía cuando se crea). No contiene teléfonos, ids de
-usuario ni texto libre: solo `kind` (una cadena fija del pack) y `value` (un número).
+### 4.5 `build_summary` y periodos
 
-## 5. Configuración
+`previous_month` y `month_to_date` se quedan como están (ya probados). Nueva forma de
+`build_summary`:
 
-`tenancy/schema.py`, `Owner`:
+```python
+def build_summary(tenant, start, end, *, calendars=google_calendar) -> SummaryBlock:
+    with tenant_tx(tenant.id):                       # 1. DB only
+        recorded = _recorded_metrics(start, end)     #    MetricEvent totals by kind
+        generic = _generic_metrics(start, end)
+        cost = _messaging_cost(start, end)
+    pack_lines, pack_failed = _pack_lines(tenant, start, end, recorded, calendars)  # 2. no tx
+    return SummaryBlock(tenant, start, end, pack_lines, pack_failed, generic, cost)
+```
+
+- `_pack_lines` devuelve `[]` si el tenant no tiene pack (degradado) o el pack no tiene
+  `summary`. Si el gancho lanza una excepción, devuelve `([], True)` y registra un
+  `log.warning` con el tipo de excepción.
+- El **resumen automático** no se envía si `pack_failed`: lanza `TransientError` para
+  reintentar (§7). Mandar un resumen sin citas sería engañoso.
+- El **estado a demanda** sí se envía con `pack_failed`, poniendo una línea de aviso en
+  lugar de las líneas del pack (§6.4).
+- `render(blocks: list[SummaryBlock], *, monthly: bool) -> str` pinta uno o varios
+  bloques (varios solo en el caso de demo, D3). Cada importe en euros va con el formato
+  actual de `_eur` (`1.234,50 €`) y cada recuento como entero.
+
+## 5. Vinculación del dueño
+
+### 5.1 Tabla `owner_link` (`src/autobot/runtime/models.py`, plataforma, sin RLS)
+
+```python
+class OwnerLink(models.Model):
+    """The owner's Telegram chat for a tenant, and its pending invite. No RLS: the
+    notify bot must find the tenant *from* the chat (like DemoSession, ADR-006/007)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
+    tenant = models.OneToOneField(Tenant, on_delete=models.CASCADE, related_name="+")
+    chat_id = models.BigIntegerField(null=True, blank=True)       # NULL until linked
+    linked_at = models.DateTimeField(null=True, blank=True)
+    invite_hash = models.CharField(max_length=64, null=True, blank=True, unique=True)  # sha256 hex
+    invite_expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "owner_link"
+        indexes = [models.Index(fields=["chat_id"], name="owner_link_chat_idx")]
+
+    def __str__(self) -> str:
+        return f"owner_link {self.id}"  # never the chat id
+```
+
+- Una fila por tenant como máximo, con su vínculo y su invitación pendiente.
+- En la base de datos **no** hay restricción única sobre `chat_id`, porque los negocios de
+  demo lo comparten. La regla D3 se aplica en código al vincular (§5.3).
+- Funciones de acceso en `src/autobot/owner/links.py`, el módulo nuevo (§6):
+  - `owner_chat(tenant_id) -> int | None`;
+  - `tenants_of_chat(chat_id) -> list[LoadedTenant]`: tenants del registro con ese chat,
+    sin `offboarded` ni `ambiguous`.
+
+### 5.2 Comandos de operación
+
+- **`manage.py owner_invite <slug>`** (nuevo):
+  - genera un código con `secrets.token_urlsafe(24)` (32 caracteres, válido para el
+    parámetro `start` de Telegram, que admite `[A-Za-z0-9_-]{1,64}`);
+  - guarda su `sha256` en `invite_hash`, con caducidad a 7 días
+    (`OWNER_INVITE_DAYS = 7`). Un código pendiente anterior queda sustituido;
+  - obtiene el `username` del bot con `getMe` y muestra:
+    `Enlace para <Nombre> (caduca el dd/mm/aaaa): https://t.me/<username>?start=<código>`;
+  - si el tenant ya tiene chat, avisa: "Ya hay un chat conectado; este enlace lo
+    sustituirá cuando se use";
+  - da error si el slug no existe, si es `offboarded` o si falta `NOTIFY_BOT_TOKEN`.
+
+  El código solo se muestra en la salida del comando. Nunca se registra en logs.
+- **`manage.py owner_unlink <slug>`** (nuevo): pone a `NULL` `chat_id`, `linked_at` y la
+  invitación. Sirve para un cambio de dueño o una petición RGPD.
+- **`manage.py notify_link`**: se **elimina**, con sus tests en
+  `tests/integration/test_notifications.py` y `tests/integration/test_telegram_commands.py`
+  si los hay.
+
+### 5.3 Flujo `/start <código>` (lo atiende el bot, §6)
+
+1. Se busca `OwnerLink` por `invite_hash = sha256(código)` con `invite_expires_at > now`.
+   Si no existe o ha caducado: texto `INVITE_INVALID`.
+2. Si el tenant del enlace es `offboarded`: `INVITE_INVALID`.
+3. **Regla D3.** Si el tenant **no** es de demo y el chat ya está conectado a otro tenant
+   real (no demo, no `offboarded`): texto `CHAT_TAKEN`. El código **no** se consume.
+4. Si no, en una transacción: `chat_id = <chat>`, `linked_at = now`,
+   `invite_hash = NULL`, `invite_expires_at = NULL`. El código es de un solo uso. Se
+   responde `LINKED` con el menú.
+5. Un `/start` sin código, o con un código cuando el chat ya está conectado a ese mismo
+   tenant, se trata como un mensaje normal (saludo y menú).
+
+## 6. El bot de dueños (entrante)
+
+Módulo nuevo `src/autobot/owner/`:
+- `views.py`: webhook;
+- `inbox.py`: guardar y procesar eventos;
+- `links.py`: §5;
+- `menu.py`: opciones;
+- `texts.py`: todos los textos.
+
+Sigue el patrón de `src/autobot/channels/demo/` (`views.py` + `selector.py`).
+
+### 6.1 Entrada
+
+- **Ruta** `webhooks/telegram-notify` → `owner.views.telegram_notify`, en
+  `src/config/urls.py` dentro de `public`. Mismas comprobaciones y en el mismo orden que
+  `telegram_demo`: IP bloqueada → 429; sin `NOTIFY_BOT_TOKEN` o sin
+  `NOTIFY_BOT_WEBHOOK_SECRET` → 404; cuerpo grande → 400; `TELEGRAM.verify` → 401 (cuenta
+  para el límite por IP); JSON → 400. Después `TELEGRAM.parse(body, None)` y, por cada
+  `InboundItem`, `store_owner_event(item)`. Un error de base de datos o de cola → 503.
+- **`bot_secrets()`** en `notifications.py`: `webhook_secret` pasa a ser
+  `settings.NOTIFY_BOT_WEBHOOK_SECRET` o, si está vacío, un valor aleatorio, como
+  `_telegram_door()`, para que la verificación falle siempre.
+- **Tabla `owner_event`** (plataforma, sin RLS, copia de `DemoEvent` sin `channel`):
+  `id`, `provider_event_id` (`update_id`, único), `payload` (JSON del item), `status`
+  (`pending`/`done`/`failed`) y `received_at`, con índice de retención. Se guarda con
+  `INSERT … ON CONFLICT (provider_event_id) DO NOTHING RETURNING id` (como `INSERT_EVENT`
+  del selector) y en la misma transacción se encola el trabajo.
+- **Trabajo** `HANDLE_OWNER_EVENT = "handle_owner_event"` en `src/autobot/jobs.py`: cola
+  `INBOUND`, argumento solo `event_id`, `retry=INBOUND_RETRY` y candado
+  `owner_chat_lock(chat_id)`. Este candado es nuevo en `src/autobot/runtime/locks.py` y
+  usa un hash, como `demo_user_lock`, sin el id en claro.
+- **Desarrollo local**:
+  - `telegram_poll notify` y `telegram_set_webhook notify [--delete]`: nuevo destino
+    `notify` en `polling.source()`, que entra por el mismo `store_owner_event`;
+  - URL `/webhooks/telegram-notify`;
+  - `telegram_set_webhook notify` exige `NOTIFY_BOT_WEBHOOK_SECRET`.
+
+### 6.2 Proceso (`inbox.handle_owner_event`)
+
+Patrón de `route_demo_event`: el evento se marca `done` **antes** de enviar; se envía
+como mucho una vez y un envío ambiguo nunca se repite.
+
+1. Se vuelve a parsear el `payload`. Si es un callback, `TELEGRAM.acknowledge(...)`.
+2. `chat_id = int(item.external_id)`. En chats privados, el id de usuario coincide con el
+   del chat, y `parse` ya descarta grupos y bots.
+3. Si el texto es `/start <algo>` → flujo de §5.3.
+4. `tenants = tenants_of_chat(chat_id)`:
+   - vacío → `NOT_LINKED`, con un máximo de 3 respuestas por hora y chat. Se usa un
+     `WindowLimiter(limit=3, window_s=3600)` como `selector.refusals`; pasado el
+     límite, silencio;
+   - si no, según el `payload` del botón:
+     - `owner:status` → §6.4;
+     - `owner:contact` → `CONTACT`;
+     - cualquier otro botón, texto o mensaje no soportado → `GREETING`.
+5. Cada respuesta lleva el menú (§6.3), salvo `NOT_LINKED` e `INVITE_INVALID`.
+6. Se envía con `deliver(reply, chat_id, reference=event.id)`. `deliver` se generaliza
+   para recibir un `Outbound` en lugar de un `str`. `send_notification` y
+   `send_ops_alert` pasan a envolver su texto en `Text(...)`.
+7. Logs: solo `event_id` y, si se conoce, el slug del tenant. Nunca el `chat_id`, el
+   nombre ni el código.
+
+### 6.3 Menú ampliable (`owner/menu.py`)
+
+```python
+@dataclass(frozen=True)
+class MenuOption:
+    id: str                                   # button payload, "owner:<name>", ≤ 64 bytes
+    title: str                                # ≤ 20 characters (MAX_BUTTON_TITLE)
+    answer: Callable[[OwnerChat], str]        # the reply text
+    available: Callable[[OwnerChat], bool] = lambda chat: True
+
+MENU: list[MenuOption] = [
+    MenuOption("owner:status", "📊 Cómo va el mes", status_text),
+    MenuOption("owner:contact", "✉️ Contacto", contact_text,
+               available=lambda chat: bool(settings.OWNER_SUPPORT_EMAIL)),
+]
+```
+
+- `OwnerChat` es un dataclass con `chat_id` y `tenants: list[LoadedTenant]`.
+- `menu_reply(chat, body)` construye la respuesta con las opciones disponibles:
+  `buttons_msg` si hay 3 o menos, `list_msg` si hay entre 4 y 10. Así se respetan los
+  límites comunes. Un test comprueba que `MENU` cumple los límites de id y título.
+- Añadir una opción = añadir su función y una entrada en `MENU`, con su test.
+
+### 6.4 Textos (`owner/texts.py`)
+
+Los textos usan `*negrita*`, que el adaptador de Telegram convierte en `<b>`.
+
+| Clave | Texto |
+|---|---|
+| `GREETING` (1 negocio) | `👋 ¡Hola! Soy el asistente de *{name}*.\n¿Qué necesitas?` |
+| `GREETING` (varios, demo) | `👋 ¡Hola! Soy tu asistente de Autobot.\n¿Qué necesitas?` |
+| `CONTACT` | `✉️ ¿Dudas, cambios o algo que no va?\nEscríbeme a {email} y te respondo lo antes posible.` |
+| `NOT_LINKED` | `🤔 Este chat no está conectado a ningún negocio.\nSi eres cliente de Autobot, pide tu enlace de activación a {email}.` (sin correo configurado: `…pide tu enlace de activación a quien te dio de alta.`) |
+| `LINKED` | `✅ ¡Listo! Este chat ya está conectado con *{name}*.\nPor aquí te llegarán los avisos y resúmenes de tu negocio.` |
+| `INVITE_INVALID` | `⌛ Este enlace ya no es válido. Pide uno nuevo a {email}.` (sin correo: `Pide uno nuevo a quien te lo envió.`) |
+| `CHAT_TAKEN` | `⚠️ Este chat ya está conectado con otro negocio. Si necesitas cambiarlo, escribe a {email}.` |
+| `NOT_ACTIVE` | `⏸️ El bot de *{name}* todavía no está activo. Cuando lo esté, aquí verás tus cifras.` |
+| `PACK_FAILED` | `⚠️ Ahora no puedo leer tu agenda; prueba en unos minutos.` |
+
+**"Cómo va el mes"** (`status_text`): para cada tenant del chat, ordenados por nombre:
+- un tenant real que no está `active` (o está degradado) da `NOT_ACTIVE`;
+- un tenant de demo `active` o `paused` (D13), o un tenant real `active`, da
+  `build_summary(tenant, *month_to_date(now, tz))` pintado así:
+
+```
+📊 *Así va noviembre* (hasta hoy, día 12)
+Peluquería Ana
+
+✂️ Citas: 20
+💶 Ingresos estimados: 340,00 €
+👥 Clientes atendidos: 15
+💬 Mensajes enviados: 110
+📱 Coste de WhatsApp: 0,42 €
+
+ℹ️ Ingresos según tus precios actuales; coste aproximado.
+```
+
+Con varios negocios (solo demo), un bloque por negocio separado por una línea en blanco,
+y la nota `ℹ️` una sola vez al final.
+
+**Resumen automático** (texto de la `Notification`, sin botones):
+
+```
+📊 *Tu resumen de octubre*
+Peluquería Ana
+
+✂️ Citas: 42
+💶 Ingresos estimados: 680,00 € (3 sin precio)
+👥 Clientes atendidos: 31
+💬 Mensajes enviados: 210
+📱 Coste de WhatsApp: 1,25 €
+
+ℹ️ Ingresos según tus precios actuales; coste aproximado (la factura real está en tu cuenta de Meta).
+```
+
+- Una línea a 0 se muestra igual.
+- La línea de coste solo aparece para WhatsApp o demo (§4.4).
+- `bus` muestra `🚌 Consultas de horario: N` en lugar de citas e ingresos.
+- La nota `ℹ️` menciona los ingresos solo si alguna línea del pack es `eur`.
+
+## 7. Envío automático
+
+- **Periodic** `DISPATCH_OWNER_SUMMARIES`: cron `"0 * * * *"`, cada hora en punto (antes
+  `"0 11 * * *"`). `dispatch_owner_summaries(now)` encola, por cada tenant que cumple
+  `_due`, el trabajo **nuevo** `SEND_OWNER_SUMMARY = "send_owner_summary"`. Ese trabajo
+  va en la cola `PERIODIC`, con argumentos `tenant_id`, `year` y `month` del mes
+  reportado, `queueing_lock=f"summary:{tenant_id}"` y
+  `retry=RetryStrategy(max_attempts=3, wait=300, retry_exceptions={TransientError})`.
+  Las llamadas a Calendar ya no van en el dispatcher.
+- **`_due(tenant, now)`**: todas estas condiciones a la vez:
+  - `status == "active"` y no degradado;
+  - `owner.summary_monthly`;
+  - `owner_chat(tenant.id)` no es `None`;
+  - en la zona del tenant, `day == 1` y `hour >= SUMMARY_LOCAL_HOUR` (12).
+
+  Que sea `>=` y no `==` permite recuperar el envío más tarde ese mismo día si el worker
+  estuvo parado a las 12. La clave de idempotencia evita duplicados.
+- **`send_owner_summary`**:
+  1. si ya existe la `Notification` con `idem_key = f"summary:{tenant_id}:{YYYY-MM}"`,
+     termina sin llamar a Calendar;
+  2. si no, `build_summary` (`pack_failed` → `TransientError`);
+  3. en `tenant_tx`, `bulk_create(ignore_conflicts=True)` de la `Notification` y
+     `defer` de `SEND_NOTIFICATION`, como ahora.
+- **`send_notification`**: el destinatario sale de `owner_chat(tenant_id)` en lugar de
+  `owner.telegram_chat_id`. La regla `allowed` (resumen siempre, avisos solo si están en
+  `owner.notify`) no cambia. `process._notify_owner` deja de mirar `telegram_chat_id`:
+  crea la notificación si `action.kind in owner.notify`, y `send_notification` solo la
+  registra en el log si no hay chat, como hoy.
+
+## 8. Configuración
+
+`src/autobot/tenancy/schema.py`:
 
 ```python
 class Owner(Strict):
-    telegram_chat_id: int | None = None
     notify: list[str] = []
     summary_monthly: bool = False
-
-    @model_validator(mode="after")
-    def _summary_needs_chat(self) -> "Owner":
-        if self.summary_monthly and self.telegram_chat_id is None:
-            raise ValueError("summary_monthly needs telegram_chat_id")
-        return self
 ```
 
-Ejemplo en un `tenant.yaml`:
+Sin `telegram_chat_id` (extra=forbid hace fallar en CI cualquier YAML que lo tenga;
+ninguno en `tenants/` lo tiene hoy) y sin validador.
 
-```yaml
-owner:
-  telegram_chat_id: 123456789
-  notify: [booking_created, booking_cancelled, move_cancel_failed]
-  summary_monthly: true
-```
+`src/config/settings.py` + `.env.example` + `compose.prod.yaml` (variables explícitas):
 
-## 6. Cambios en el código
+| Variable | Uso |
+|---|---|
+| `NOTIFY_BOT_WEBHOOK_SECRET` | `secret_token` del webhook del bot de avisos (≥ 32 caracteres). Vacío → webhook en 404. |
+| `OWNER_SUPPORT_EMAIL` | Correo de contacto que ve el dueño. Vacío → la opción "Contacto" no aparece. |
 
-1. **`core/actions.py`**: nueva `RecordMetric(kind: str, value: Decimal = Decimal(1), idem_key: str)`;
-   se añade a `type Action`.
-2. **`core/pack.py`**: nueva `SummaryMetric(kind: str, label: str, unit: Literal["count", "eur"] = "count")`;
-   `Pack` gana `summary_metrics: list[SummaryMetric] = field(default_factory=list)`.
-3. **`autobot/runtime/models.py`**: nuevo modelo `MetricEvent(TenantScoped)` —
-   `kind` (`CharField`, máx. 64), `value` (`DecimalField`), `idem_key` (`TextField`),
-   `created_at` (`auto_now_add`); índice `(tenant, kind, created_at)`; restricción única
-   `(tenant, idem_key)`, igual que `Notification`. Migración nueva (no destructiva: solo
-   crea tabla e índices, sin aprobación especial).
-4. **`autobot/runtime/process.py`**: nuevo `case RecordMetric():` que inserta la fila
-   con `bulk_create(..., ignore_conflicts=True)`, igual que `_notify_owner`; sin cola ni
-   llamada externa (es solo un registro).
-5. **`autobot/tenancy/schema.py`**: `Owner.summary_monthly` (sección 5).
-6. **`autobot/runtime/summary.py`** (nuevo): `previous_month`, `month_to_date`,
-   `dispatch_owner_summaries`, `build_summary`, `_generic_metrics`, `_messaging_cost`,
-   `_pack_metrics`, `_render` (sección 4). `_generic_metrics` cuenta "usuarios" como
-   contactos distintos con `OutboundMessage` en el periodo (decisión 9, no
-   `last_activity_at`, válido tanto para `previous_month` como para `month_to_date`).
-   `_messaging_cost` hace la cuenta de la decisión 10 sobre `OutboundMessage`, con la
-   tabla de precios por categoría como constante configurable y documentada como
-   aproximada.
-7. **`autobot/jobs.py`**: un periodic nuevo, diario, en UTC a una hora fija (p. ej.
-   `"0 7 * * *"`, las 7:00 UTC — por decidir con la persona si prefiere otra hora),
-   `DISPATCH_OWNER_SUMMARIES`, que llama a `dispatch_owner_summaries` (que internamente
-   solo actúa para cada tenant si hoy es el día 1 de su mes, en su zona horaria — el job
-   en sí es diario, el envío real es mensual, y reporta sobre el mes que acaba de
-   cerrarse). Un solo disparo
-   para toda la plataforma (no uno por pack): esta pieza no es del pack, es de la
-   plataforma, así que no usa `dispatch_periodic`/`run_periodic` (eso es para el trabajo
-   propio de cada pack, con su `PackContext`).
-8. **Webhook entrante del bot de avisos** (decisión 11, nuevo frente de trabajo):
-   - Ruta nueva, p. ej. `webhooks/telegram-notify` (`config/urls.py`), análoga a las ya
-     existentes de `channels/views.py` pero para el bot de avisos, hoy sin webhook.
-   - Resolver `chat_id` → tenant: buscar en el registro los tenants activos cuyo
-     `owner.telegram_chat_id` coincide. Si no hay ninguno, o hay más de uno, el bot
-     responde preguntando (nunca adivina).
-   - Reconocimiento de una única frase fija ("estado"), sin variantes libres ni NLP;
-     cualquier otro texto se ignora o responde con ayuda mínima (a decidir el texto
-     exacto al implementarlo).
-   - Llama a `build_summary(tenant, *month_to_date(timezone.now(), tenant.timezone))`
-     y responde por el mismo canal.
-   - Disambiguación cuando el `chat_id` corresponde a más de un negocio: pendiente de
-     detallar (decisión 11) — no se implementa a ciegas, se diseña ese flujo concreto
-     cuando se aborde esta pieza.
-9. **`autobot/runtime/retention.py`**: añade `MetricEvent` a la lista de tablas con
-   recorte anual (`annual`, igual que `Notification`), dentro del bucle por tenant.
-10. **`packs/salon/pack.py`**: `summary_metrics=[SummaryMetric("booking_created", "Citas creadas"), SummaryMetric("booking_cancelled", "Citas canceladas"), SummaryMetric("booking_revenue", "Ingresos estimados", unit="eur")]`.
-11. **`packs/salon/conversation.py`**:
-    - en `create()`, junto a `NotifyOwner`, añadir
-      `RecordMetric("booking_created", idem_key=self.ctx.idem.event("metric:booking_created"))`
-      y `RecordMetric("booking_revenue", value=Decimal(str(svc.price_eur)), idem_key=self.ctx.idem.event("metric:booking_revenue"))`.
-    - en `cancel()`, junto al `NotifyOwner` de `booking_cancelled`, añadir
-      `RecordMetric("booking_cancelled", idem_key=self.ctx.idem.event("metric:booking_cancelled"))`.
-    - Un movimiento de cita (`moving`) ya cuenta como `booking_created` de la nueva y no
-      genera `booking_cancelled` de la antigua (la cancelación de la fuente en un
-      movimiento no pasa por `cancel()`); se documenta así, no se intenta "neutralizar"
-      el movimiento en las métricas.
-12. **`packs/bus/pack.py`**: `summary_metrics=[SummaryMetric("schedule_query", "Consultas de horario")]`.
-13. **`packs/bus/conversation.py`**: en `_resultado()` (`conversation.py:521-536`),
-    añadir `RecordMetric("schedule_query", idem_key=...)` a las acciones solo cuando
-    `consulta.estado == "con_salidas"`, no en cualquier llamada a esa función. Al
-    implementarlo, revisar que `PackResult.actions` se propaga en todas las ramas que
-    llegan a ese punto (hoy `bus` no usa `actions` en ningún sitio).
+`src/autobot/ops/health.py` y `ops/check.py`: el bot de avisos pasa a comprobarse como el
+de demo (`outbound_only=False`, se espera webhook). El `Issue("notify_webhook")` se
+elimina.
 
-## 7. Formato del mensaje
+`Caddyfile`: se añade `/webhooks/telegram-notify` a `@public`.
 
-Orden: métricas del pack primero (lo que importa al negocio), genéricas después. Las
-dos variantes comparten formato, pero **no** el mismo periodo (decisión 3) — la
-cabecera deja claro cuál es cuál:
+`src/autobot/runtime/retention.py`: `owner_event` a 7 días, como `demo_event`.
+`owner_link` no caduca; se borra con el tenant (`CASCADE`). Hay que comprobar que
+`purge_tenant` lo cubre y añadirlo a su test.
 
-**Resumen automático** (día 1, sobre el mes anterior completo):
+## 9. Tests
 
-```
-📊 Resumen de octubre
-• Citas creadas: 12
-• Citas canceladas: 1
-• Ingresos estimados: 180,00 €
-• Usuarios: 9
-• Mensajes: 64
-• Coste aproximado de mensajería: 1,06 €
-```
+**Contrato y packs**
+- `src/packs/salon/tests/test_summary.py` (nuevo, con `FakeCalendar`):
+  - cuentan las citas del bot y las manuales con título `"Servicio - X"`, `"Servicio"`,
+    con mayúsculas o acentos distintos y con `–`/`—`;
+  - **no** cuentan `[CFG] VACACIONES`, "Comida", un evento con `Telefono:` pero título
+    libre, los eventos de todo el día ni uno que empieza antes de `start`;
+  - el nombre más largo gana (`"Corte y barba - X"` frente a `"Corte"`);
+  - un evento del bot con `fp_service` retirado, por título o sin precio;
+  - suma de ingresos, "N sin precio" y `end` exclusivo.
+- `test_booking.py` / `test_management.py`: `create()`/`cancel()` ya **no** emiten
+  `RecordMetric`. Las aserciones antiguas se sustituyen por `salon.metrics == []`.
+- `src/packs/bus/tests/test_summary.py`: la línea sale de `recorded["schedule_query"]` y
+  vale 0 si falta. `test_metrics.py` no cambia.
 
-**Estado a demanda** (en cualquier momento, sobre el mes en curso hasta ahora):
+**Plataforma** (`tests/integration/`)
+- `test_summary.py`, actualizar:
+  - `_generic_metrics` cuenta solo `sent` por `sent_at`;
+  - `_messaging_cost` sobre `billable=True`, con categorías mezcladas, una categoría
+    desconocida al precio máximo, `billable=None`/`False` fuera y Telegram fuera. Se
+    borran los tests de la franja de 1.000;
+  - `build_summary` sin transacción durante el gancho del pack: un `FakeCalendar` que
+    afirma `not connection.in_atomic_block`, como el `handler` de
+    `test_notifications.py`;
+  - `pack_failed`: el automático lanza `TransientError`, el de demanda pinta `PACK_FAILED`;
+  - `_due` según la hora: día 1 a las 11:59 locales no, a las 12:00 sí, a las 18:00 sí
+    (recuperación); día 2 no; sin chat conectado no;
+  - `send_owner_summary` idempotente: dos ejecuciones dan una sola `Notification` y la
+    segunda no llama a Calendar;
+  - el renderizado con 1 bloque y con 2 (demo).
+- `test_owner_bot.py` (nuevo). Es el **escenario de conversación** del bot de dueños, con
+  Telegram simulado como en `test_notifications.py`:
+  - webhook: 404 sin secreto, 401 con secreto erróneo, update duplicado guardado una vez;
+  - `/start <código>` válido → conectado + `LINKED` con menú; caducado o desconocido →
+    `INVITE_INVALID`; reutilizado → `INVITE_INVALID`;
+  - D3: chat ya conectado a un negocio real + invitación de otro real → `CHAT_TAKEN` y
+    código intacto; dos negocios de demo con el mismo chat → permitido;
+  - texto libre → `GREETING` con botones; `owner:status` → cifras del mes en curso;
+    `owner:contact` → correo; sin `OWNER_SUPPORT_EMAIL` el menú solo tiene un botón;
+  - chat no conectado → `NOT_LINKED`; a la cuarta vez en una hora, silencio;
+  - negocio real `paused` → `NOT_ACTIVE`; demo `paused` → cifras (D13);
+  - todas las respuestas cumplen los límites comunes (`core.limits`, `overflow` de
+    Telegram);
+  - ningún log contiene el `chat_id` ni el código (`caplog`).
+- `test_notifications.py`: el destinatario sale de `OwnerLink`; se eliminan los tests de
+  `notify_link`.
+- `tenancy/test_commands.py` (o equivalente): `owner_invite` (enlace, sustitución, slug
+  desconocido, sin token) y `owner_unlink`.
+- `test_models.py` / `test_db_roles.py`: `owner_link` y `owner_event` en la lista de tablas
+  de plataforma **sin** RLS (la de la línea ~213 enumera las que sí la tienen).
+- `test_retention.py`: purga de `owner_event` a 7 días.
 
-```
-📊 Estado de noviembre (hasta hoy, día 12)
-• Consultas de horario: 85
-• Usuarios: 15
-• Mensajes: 110
-• Coste aproximado de mensajería: 0,00 € (dentro de los mensajes gratuitos del mes)
-```
+## 10. Aprobaciones y acciones manuales
 
-Una métrica en 0 se muestra igual (distingue "no pasó nada" de "no se sabe"). El texto
-cabe sin problema en el límite de 4.096 caracteres de un mensaje; no necesita paginarse.
+**Requieren aprobación explícita de la persona antes de implementarlas** (CLAUDE.md):
+1. La migración que crea `owner_link` y `owner_event` **sin RLS** (D2), una tabla de
+   plataforma con el `chat_id` del dueño.
+2. Los cambios de infraestructura: la ruta nueva en `Caddyfile` y las variables nuevas en
+   `compose.prod.yaml`.
+3. La firma del webhook nuevo (D12) ya la aprobó la persona el 2026-10-29.
 
-## 8. Tests
+**Pasos manuales de puesta en marcha** (a anotar en `docs/puesta-en-marcha.md`; ningún
+agente los hace contra producción):
+- Generar `NOTIFY_BOT_WEBHOOK_SECRET` y poner `OWNER_SUPPORT_EMAIL` en el `.env` del servidor.
+- Desplegar y después `manage.py telegram_set_webhook notify`.
+- Por cada negocio con dueño: `manage.py owner_invite <slug>` y enviarle el enlace.
+- Contrastar `PRICE_EUR` con el rate card del WhatsApp Manager y anotar la fecha en el
+  runbook.
+- Pedir a cada peluquero que titule sus citas manuales como las del bot
+  (`"<Servicio> - <Nombre>"`).
 
-- `tests/core/test_actions.py` (o donde correspondan): `RecordMetric` se transforma en
-  `MetricEvent`, es idempotente (dos acciones con el mismo `idem_key` crean una sola fila).
-- `tests/autobot/test_summary.py` (nuevo):
-  - `previous_month`: dado el 1 de noviembre, da `[1 de octubre, 1 de noviembre)`
-    completo — ni un día de más ni de menos; caso de borde de cambio de año (1 de
-    enero → diciembre del año anterior).
-  - `month_to_date`: `start` es el día 1 del mes de `now` a las 00:00 en la zona
-    horaria del tenant, incluido el caso de borde (hoy es día 1: el periodo es solo
-    ese día, no se adelanta al mes anterior — a diferencia de `previous_month`, que sí
-    lo haría).
-  - `_generic_metrics` ("usuarios"): un contacto activo dentro del mes anterior
-    (`previous_month`) pero también en el mes en curso (antes del día 1, cuando se
-    genera el resumen automático) sí cuenta en el resumen del mes anterior — el caso
-    que `last_activity_at` habría dejado fuera (decisión 9).
-  - construcción del texto con datos variados (cero, varias cifras, redondeo de euros);
-    un mes sin actividad da todo a cero, no omite el resumen.
-  - un negocio `paused` u `onboarding` no lo recibe; uno con `summary_monthly=False`
-    no lo recibe.
-  - el disparo automático solo ocurre el día 1 del mes (en la zona horaria del
-    tenant), y siempre con los datos de `previous_month`, no de `month_to_date`: un
-    día cualquiera de en medio del mes no manda nada, aunque `summary_monthly` esté
-    activado.
-  - idempotencia del `idem_key` por mes reportado (`{año}-{mes}` de `previous_month`):
-    dos disparos del job el mismo día 1 no duplican el envío.
-  - `_messaging_cost`: franja gratuita de "service" consumida parcialmente y agotada
-    dentro del periodo (el corte exacto entre mensajes gratis y facturables), probado
-    tanto con `previous_month` como con `month_to_date`; categorías sin franja se
-    multiplican directo; Telegram no cuenta.
-  - estado a demanda: funciona con `summary_monthly=False` si hay `telegram_chat_id`;
-    da los datos del mes en curso (`month_to_date`), distintos de los que daría el
-    resumen automático (que sería del mes anterior); `chat_id` sin tenant responde
-    preguntando, no adivina.
-- `tests/packs/salon`: `create()` y `cancel()` emiten los `RecordMetric` esperados,
-  con el valor de euros correcto; un movimiento de cita no emite `booking_cancelled`;
-  una cita manual en Calendar no emite nada (vía `classify()`, sin pasar por el bot).
-- `tests/packs/bus`: una consulta con itinerario encontrado (`con_salidas`) emite
-  `schedule_query`; un menú, error o "no hay horarios" no lo emite.
-- Escenario de conversación (CLAUDE.md lo exige para cualquier cambio de flujo): no es
-  estrictamente un cambio de flujo (no cambia ninguna respuesta al cliente en los packs),
-  así que no hace falta un escenario nuevo para la parte periódica; **el estado a
-  demanda sí es una conversación nueva con el dueño** y necesita su propio escenario
-  (petición → respuesta, chat_id desconocido → pregunta, chat_id ambiguo → pregunta).
+## 11. Plan de implementación (un commit por paso, con tests y documentación)
 
-## 9. Documentación
+1. **Coste y métricas de plataforma**: `PRICE_EUR` nuevo, coste por `billable`, mensajes y
+   clientes por `status="sent"`/`sent_at`. Runbook de precios actualizado.
+2. **Gancho `Pack.summary`**: `SummaryLine` en `core`, `salon/summary.py` sobre el calendario,
+   `bus/summary.py`, quitar `SummaryMetric`/`summary_metrics` y los `RecordMetric` de
+   `salon`, `build_summary` en dos fases. `docs/packs/salon.md` y `bus.md` actualizados.
+3. **Envío a las 12:00 locales**: cron por horas, `_due` con hora, trabajo
+   `send_owner_summary` con reintentos.
+4. **Vinculación y bot entrante** (**tras la aprobación de §10**): migración `0010`
+   (`owner_link`, `owner_event`), `owner_invite`/`owner_unlink`, se quita `notify_link` y
+   `Owner.telegram_chat_id`, `send_notification` lee de `OwnerLink`, webhook +
+   `owner_event` + `handle_owner_event`, destinos `notify` de `telegram_poll` y
+   `telegram_set_webhook`, salud del bot, `Caddyfile`, variables y **ADR-007**.
+5. **Menú**: `menu.py`, `texts.py`, "Cómo va el mes", "Contacto", escenario
+   `test_owner_bot.py` completo.
 
-- `docs/packs/salon.md` y `docs/packs/bus.md`: tabla de métricas de la sección 3,
-  y cómo activar `owner.summary_monthly`.
-- `docs/runbooks/alta-baja-negocio.md`: mencionar el resumen y el estado a demanda como
-  pasos opcionales del alta (si el dueño lo quiere).
-- ADR nuevo en `docs/adr/` (al implementarlo, no antes), con al menos estas decisiones:
-  - un evento de negocio genérico (`RecordMetric`/`MetricEvent`) en vez de leer la
-    agenda o el calendario en el momento del resumen;
-  - un periodic de plataforma en vez de uno por pack para el envío;
-  - **dar al bot de avisos un webhook entrante** (hoy solo de salida), con la resolución
-    de `chat_id` → tenant y su manejo de ambigüedad.
-- Tabla de precios aproximados de WhatsApp por categoría: documentar la fuente y la
-  fecha de la última comprobación (los precios reales están en el panel de facturación
-  de WhatsApp Business Manager de cada negocio, no en este repo), y recordar revisarla
-  si Meta cambia tarifas (hasta 4 veces al año, el día 1 de cada trimestre).
+Documentación que hay que tocar a lo largo del plan:
+- `README.md`: menciona el bot de dueños.
+- `docs/packs/salon.md`: sección "Resumen mensual" con la regla de títulos de D5, sin
+  métricas `RecordMetric`.
+- `docs/packs/bus.md`: sin `telegram_chat_id`.
+- `docs/runbooks/alta-baja-negocio.md`: paso 5 con `owner_invite` en lugar de
+  `notify_link`, y precios.
+- `docs/runbooks/09-rotar-secretos.md`: `NOTIFY_BOT_WEBHOOK_SECRET`.
+- `docs/puesta-en-marcha.md`: §10.
+- `docs/mejoras/01-bot-de-demo.md`: las menciones a `notify_link` pasan a `owner_invite`.
+- El comentario de cabecera de `tenants/demo-peluqueria/tenant.yaml`.
+- `docs/adr/ADR-007-bot-de-duenos.md`: webhook entrante del bot de avisos, `chat_id` en
+  BD sin RLS (y por qué no en YAML), resumen con el calendario como fuente de verdad
+  mediante el gancho del pack.
 
-## 10. Acciones manuales
+> **Ojo al implementar:** en el árbol de trabajo hay cambios sin confirmar de la persona
+> (`Makefile`, `README.md`, `compose.yaml`, `docs/puesta-en-marcha.md`,
+> `docs/runbooks/demo.md`, `tenants/demo-peluqueria/tenant.yaml`,
+> `docs/mejoras/03-…`, `docs/mejoras/04-…`). Al editar esos ficheros hay que conservar
+> esos cambios y no incluirlos en los commits de esta mejora salvo que la persona lo diga.
 
-Ninguna para el envío periódico: reutiliza el bot de avisos (`NOTIFY_BOT_TOKEN`) y el
-`telegram_chat_id` que ya tiene cada negocio con avisos activados. Activar el resumen de
-un negocio es solo editar su `tenant.yaml` (`owner.summary_monthly: true`).
+## 12. Fuera de alcance
 
-Para el estado a demanda (decisión 11), al activar el webhook entrante del bot de avisos
-hay que registrarlo contra la API de Telegram (`setWebhook`), igual que ya se hace para
-los bots de negocio — es un paso de puesta en marcha, no algo que un agente haga contra
-producción sin aprobación.
-
-## 11. Fuera de alcance
-
-- **Elegir qué métricas se muestran por negocio** (en vez de "todas las que declare su
-  pack"). Se añade si algún negocio concreto lo necesita.
-- **"Qué se pidió más"** (el servicio más reservado, la línea más consultada): pide
-  agrupar por una dimensión de texto, no solo sumar un número, y una regla de qué hacer
-  si hay empate o pocos datos. Se deja para una iteración posterior si se quiere.
-- **Resumen por email o PDF**: el canal es el mismo bot de avisos de Telegram; un
-  resumen más largo (por ejemplo con gráfica) es un formato distinto, no una extensión
-  de este.
-- **Comparar con el periodo anterior** ("un 10% más que el mes pasado"): útil, pero
-  exige guardar o recalcular el periodo previo; se deja para cuando haya varios
-  resúmenes reales que comparar.
-- **Más comandos a demanda que "estado"** (por ejemplo "estado del mes pasado", un
-  rango de fechas libre, u otras preguntas al bot): el webhook entrante que añade esta
-  mejora se limita a esa única frase, sobre el mes en curso; un lenguaje de comandos
-  más amplio es una pieza distinta.
-- **Cualquier periodo que no sea "mes anterior completo" (automático) o "mes en curso
-  hasta ahora" (a demanda)** — semana, día, trimestre, año...: se simplificó
-  deliberadamente a estos dos (decisión 3). Si hiciera falta otro grano, es una
-  iteración posterior, no esta.
+- Más opciones en el menú (el mes pasado, rangos libres, "qué servicio se pidió más",
+  desvincularse uno mismo): el menú está preparado, pero cada opción es una mejora aparte.
+- Comparar con el mes anterior, gráficas, email o PDF.
+- Citas canceladas o "no presentados" (D6).
+- Reconocer citas manuales con títulos libres o por la descripción (D5).
+- Precio por país del destinatario: todo se valora con la tabla de España.
+- Varios dueños (varios chats) por negocio: una fila `owner_link` por tenant.
+- Ver los resúmenes en `/admin/estado/` (mejora 03).

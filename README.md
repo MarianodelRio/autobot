@@ -2,6 +2,8 @@
 
 Plataforma de automatización para pequeños negocios: atiende a sus clientes por WhatsApp o Telegram, gestiona reservas sobre la agenda que ya usan (peluquerías) o responde consultas de horarios (autobuses) y avisa al dueño por Telegram.
 
+Cada dueño tiene además un asistente en ese mismo bot de Telegram. Le manda los avisos y un resumen mensual (citas, ingresos estimados, clientes atendidos, mensajes y coste aproximado de WhatsApp), y con un menú puede pedir cómo va el mes o el contacto de soporte. El dueño se conecta con un enlace de un solo uso (`manage.py owner_invite <slug>`); ver [docs/mejoras/02-avisos-y-resumenes.md](docs/mejoras/02-avisos-y-resumenes.md).
+
 Una sola plataforma para 5–15 negocios, en una VPS con Docker Compose.
 
 Cada negocio usa un **pack** con su lógica: `salon` (pedir, ver, mover y cancelar citas sobre Google Calendar, recordatorios y avisos al dueño) o `bus` (consulta de horarios origen → destino → día). Un bot de demo, por Telegram y por WhatsApp, enseña cada pack con negocios de demostración propios, sin tocar el canal real de ningún cliente.

@@ -1,6 +1,6 @@
 """Owner periodic summaries: periods, metric aggregation, rendering and the automatic
-hourly dispatch (`docs/mejoras/02-avisos-y-resumenes.md`). The on-demand status (the
-notify bot's inbound webhook) is a separate, not-yet-implemented change."""
+hourly dispatch (`docs/mejoras/02-avisos-y-resumenes.md`). The on-demand status, as
+the owner bot answers it, is in `test_owner_bot.py`."""
 
 import logging
 from datetime import UTC, datetime
@@ -9,6 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.db import connections
 from django.utils import timezone
 
 from autobot.runtime import summary
@@ -17,7 +18,7 @@ from autobot.tenancy.models import Tenant
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
 from core.errors import TransientError
-from tests.integration.helpers import jobs, wa_tenant
+from tests.integration.helpers import demo_tenant, jobs, wa_tenant
 
 pytestmark = [
     pytest.mark.django_db(transaction=True, databases=["default", "owner"]),
@@ -183,6 +184,43 @@ def test_build_summary_with_no_activity_shows_zeros_not_omitted(tenants: Any) ->
         "💬 Mensajes enviados: 0\n"
         "📱 Coste de WhatsApp: 0,00 €"
     )
+
+
+def test_build_summary_runs_the_pack_hook_without_a_transaction(tenants: Any) -> None:
+    """§4.5: `salon` calls Google Calendar from its hook, so no transaction may be open."""
+    tenants(wa_tenant())
+    loaded = get_registry().by_slug["wa"]
+    assert loaded.pack is not None
+    seen: list[bool] = []
+    original = loaded.pack.summary
+    assert original is not None
+
+    def watching(ctx: Any, start: Any, end: Any, recorded: Any) -> Any:
+        seen.append(connections["default"].in_atomic_block)
+        return original(ctx, start, end, recorded)
+
+    object.__setattr__(loaded.pack, "summary", watching)
+    try:
+        block = summary.build_summary(loaded, START, END)
+    finally:
+        object.__setattr__(loaded.pack, "summary", original)
+    assert seen == [False]
+    assert not block.pack_failed
+
+
+def test_render_two_blocks_for_a_shared_demo_chat(tenants: Any) -> None:
+    """Decision 3: one header, one block per business, separated by a blank line."""
+    tenants(demo_tenant("demo-a"), demo_tenant("demo-b"))
+    blocks = [
+        summary.build_summary(get_registry().by_slug[slug], START, END)
+        for slug in ("demo-a", "demo-b")
+    ]
+    text = summary.render(blocks, monthly=True)
+    assert text.startswith("📊 *Tu resumen de octubre*\n")
+    assert text.count("📊") == 1
+    a, b = (block.tenant.info.name for block in blocks)
+    assert text.index(f"{a}\n\n") < text.index(f"\n\n{b}\n\n")
+    assert text.count("👥 Clientes atendidos: 0") == 2
 
 
 # ── _due ────────────────────────────────────────────────────────────────

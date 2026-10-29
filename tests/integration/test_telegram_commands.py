@@ -14,7 +14,7 @@ from pytest_django import Settings
 from autobot.channels import views
 from autobot.channels.demo.doors import door
 from autobot.channels.telegram import polling
-from autobot.runtime.models import Channel, DemoEvent, InboundEvent
+from autobot.runtime.models import Channel, DemoEvent, InboundEvent, OwnerEvent
 from tests.integration.helpers import jobs, tg_tenant
 from tests.tenancy.helpers import TG_SECRETS
 
@@ -112,6 +112,24 @@ def test_polling_the_demo_bot_stores_and_queues_like_the_webhook(tenants: Any) -
     ((where, params),) = api.calls
     assert where == "999:TEST-TOKEN/getUpdates"
     assert params == {"timeout": 25, "allowed_updates": ["message", "callback_query"]}
+
+
+def test_polling_the_notify_bot_stores_and_queues_like_its_webhook(settings: Settings) -> None:
+    settings.NOTIFY_BOT_TOKEN = "777:NOTIFY-TOKEN"
+    bot = polling.source("notify")
+    assert bot.name == "notify bot"
+    api = BotApi(updates(message(30, user_id=555)))
+    polling.poll(bot, api.client, stop=lambda: not api.answers)
+    (event,) = OwnerEvent.objects.using("owner").all()
+    assert (event.provider_event_id, event.status) == ("30", "pending")
+    assert [j[0] for j in jobs()] == ["handle_owner_event"]
+    assert api.calls[0][0] == "777:NOTIFY-TOKEN/getUpdates"
+
+
+def test_the_notify_bot_source_needs_its_token(settings: Settings) -> None:
+    settings.NOTIFY_BOT_TOKEN = ""
+    with pytest.raises(ValueError, match="NOTIFY_BOT_TOKEN"):
+        polling.source("notify")
 
 
 def test_polling_a_tenant_bot_stores_like_its_webhook(tenants: Any) -> None:
@@ -223,6 +241,35 @@ def test_set_a_tenant_bot_webhook(tenants: Any, monkeypatch: pytest.MonkeyPatch)
     assert where == f"{TG_SECRETS['bot_token']}/setWebhook"
     assert params["url"] == "https://api.example.org/webhooks/telegram/pubtg0000"
     assert params["secret_token"] == TG_SECRETS["webhook_secret"]
+
+
+def test_set_the_notify_bot_webhook(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None:
+    settings.NOTIFY_BOT_TOKEN = "777:NOTIFY-TOKEN"
+    settings.NOTIFY_BOT_WEBHOOK_SECRET = "n" * 32
+    api = BotApi(httpx.Response(200, json={"ok": True, "result": True}))
+    out = set_webhook(api, monkeypatch, "notify")
+    ((where, params),) = api.calls
+    assert where == "777:NOTIFY-TOKEN/setWebhook"
+    assert params == {
+        "url": "https://api.example.org/webhooks/telegram-notify",
+        "secret_token": "n" * 32,
+        "allowed_updates": ["message", "callback_query"],
+    }
+    assert "NOTIFY-TOKEN" not in out and "n" * 32 not in out
+
+
+def test_the_notify_bot_needs_its_token_and_webhook_secret(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    api = BotApi()
+    settings.NOTIFY_BOT_TOKEN = ""
+    with pytest.raises(CommandError, match="NOTIFY_BOT_TOKEN"):
+        set_webhook(api, monkeypatch, "notify")
+    settings.NOTIFY_BOT_TOKEN = "777:NOTIFY-TOKEN"
+    settings.NOTIFY_BOT_WEBHOOK_SECRET = ""
+    with pytest.raises(CommandError, match="NOTIFY_BOT_WEBHOOK_SECRET"):
+        set_webhook(api, monkeypatch, "notify")
+    assert api.calls == []
 
 
 def test_delete_a_webhook(monkeypatch: pytest.MonkeyPatch) -> None:

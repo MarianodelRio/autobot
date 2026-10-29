@@ -48,10 +48,12 @@ def invite_invalid() -> str:
 
 
 def chat_taken() -> str:
-    return (
-        "⚠️ Este chat ya está conectado con otro negocio. Si necesitas cambiarlo, "
+    where = (
         f"escribe a {settings.OWNER_SUPPORT_EMAIL}."
+        if settings.OWNER_SUPPORT_EMAIL
+        else "habla con quien te dio de alta."
     )
+    return f"⚠️ Este chat ya está conectado con otro negocio. Si necesitas cambiarlo, {where}"
 
 
 def not_active(tenant: LoadedTenant) -> str:

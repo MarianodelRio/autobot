@@ -160,10 +160,12 @@ def test_dispatch_and_run_through_the_worker(tenants: Any) -> None:
     for _ in range(3):  # the dispatch queues the run, which a later pass may take
         run_jobs()
     assert Notification.objects.using("owner").count() == 1
+    # The platform's own periodics (every 5 min, hourly) may also fire in this run,
+    # depending on the wall clock: only the pack's dispatch and run are checked here.
     with connections["owner"].cursor() as cursor:
         cursor.execute(
             "SELECT task_name, status FROM procrastinate_jobs WHERE queue_name = 'periodic'"
-            " AND task_name NOT IN ('retry_stalled_jobs', 'ops_check')"
+            " AND task_name NOT IN ('retry_stalled_jobs', 'ops_check', 'dispatch_owner_summaries')"
         )
         statuses = dict(cursor.fetchall())
     assert statuses == {"dispatch_periodic": "succeeded", "run_periodic": "succeeded"}
