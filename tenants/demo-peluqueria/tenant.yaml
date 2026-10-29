@@ -12,9 +12,7 @@ pack: salon
 config:
   business_name: Peluquería de Prueba
   contact_phone: "600 000 000"
-  # Marcador explícito: sustitúyelo por el id real del calendario "Autobot
-  # demo" (docs/mejoras/01-bot-de-demo.md §8) antes de pasar status a "active".
-  calendar_id: PENDIENTE-calendario-de-demo
+  calendar_id: 3bcf89f949952084660bfacd4db22164871eb33c41f92f53c733d052d9c074fa@group.calendar.google.com
   services:
     corte:
       name: Corte de pelo
@@ -72,6 +70,6 @@ config:
     move_cancel_failed: Tu nueva cita está reservada. No hemos podido cancelar la
       anterior; hemos avisado al negocio.
     event_no_days: No hay fechas disponibles para el evento en este momento.
-status: paused
+status: active
 demo:
   description: Reserva, mueve o cancela una cita
