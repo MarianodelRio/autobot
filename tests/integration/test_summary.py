@@ -2,6 +2,7 @@
 daily dispatch (`docs/mejoras/02-avisos-y-resumenes.md`). The on-demand status (the
 notify bot's inbound webhook) is a separate, not-yet-implemented change."""
 
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -30,11 +31,31 @@ def contact(t: Tenant, external_id: str) -> Contact:
     return Contact.objects.using("owner").create(tenant=t, channel="main", external_id=external_id)
 
 
-def message(t: Tenant, c: Contact, idem: str, created: datetime, **extra: Any) -> OutboundMessage:
+def message(
+    t: Tenant,
+    c: Contact,
+    idem: str,
+    created: datetime,
+    *,
+    sent_at: datetime | None = None,
+    **extra: Any,
+) -> OutboundMessage:
+    status = extra.pop("status", OutboundMessage.Status.SENT)
     row = OutboundMessage.objects.using("owner").create(
-        tenant=t, contact=c, channel="main", idem_key=idem, kind="reply", payload={}, **extra
+        tenant=t,
+        contact=c,
+        channel="main",
+        idem_key=idem,
+        kind="reply",
+        payload={},
+        status=status,
+        **extra,
     )
-    OutboundMessage.objects.using("owner").filter(pk=row.pk).update(created_at=created)
+    if sent_at is None:
+        sent_at = created if status == OutboundMessage.Status.SENT else None
+    OutboundMessage.objects.using("owner").filter(pk=row.pk).update(
+        created_at=created, sent_at=sent_at
+    )
     return row
 
 
@@ -80,74 +101,80 @@ def test_generic_metrics_keeps_a_contact_also_active_afterwards(tenants: Any) ->
 # ── _messaging_cost ───────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(("count", "billed"), [(3, 0), (4, 1), (5, 2)])
-def test_messaging_cost_service_free_tier_cutoff(
-    tenants: Any, monkeypatch: pytest.MonkeyPatch, count: int, billed: int
-) -> None:
-    monkeypatch.setattr(summary, "SERVICE_FREE_TIER", 3)
-    tenants(wa_tenant())
-    t = Tenant.objects.using("owner").get(slug="wa")
-    c = contact(t, "a")
-    for i in range(count):
-        message(t, c, f"s{i}", datetime(2026, 10, 10, tzinfo=MADRID), pricing_category="service")
-    with tenant_tx(t.id):
-        cost = summary._messaging_cost(START, END)
-    assert cost == (billed * summary.PRICE_EUR["service"]).quantize(Decimal("0.01"))
-
-
-def test_messaging_cost_other_categories_have_no_free_tier_and_telegram_is_excluded(
-    tenants: Any,
-) -> None:
+def test_messaging_cost_sums_billable_messages_by_category(tenants: Any) -> None:
     tenants(wa_tenant())
     t = Tenant.objects.using("owner").get(slug="wa")
     c = contact(t, "a")
     when = datetime(2026, 10, 10, tzinfo=MADRID)
-    message(t, c, "u1", when, pricing_category="utility")
-    message(t, c, "mk1", when, pricing_category="marketing")
-    message(t, c, "auth1", when, pricing_category="authentication")
-    message(t, c, "tg1", when)  # a Telegram send: no pricing_category
+    message(t, c, "u1", when, pricing_category="utility", billable=True)
+    message(t, c, "mk1", when, pricing_category="marketing", billable=True)
+    message(t, c, "auth1", when, pricing_category="authentication", billable=True)
+    message(t, c, "svc1", when, pricing_category="service", billable=True)
+    message(t, c, "free1", when, pricing_category="service", billable=False)  # Meta's free tier
+    message(t, c, "unknown1", when, pricing_category="service", billable=None)  # status not in yet
+    message(t, c, "tg1", when)  # a Telegram send: no pricing_category, no billable
     with tenant_tx(t.id):
         cost = summary._messaging_cost(START, END)
     expected = (
         summary.PRICE_EUR["utility"]
         + summary.PRICE_EUR["marketing"]
         + summary.PRICE_EUR["authentication"]
+        + summary.PRICE_EUR["service"]
     )
     assert cost == expected.quantize(Decimal("0.01"))
 
 
-# ── build_summary / _render ───────────────────────────────────────────────
+def test_messaging_cost_unknown_category_uses_the_highest_price_and_warns(
+    tenants: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    tenants(wa_tenant())
+    t = Tenant.objects.using("owner").get(slug="wa")
+    c = contact(t, "a")
+    when = datetime(2026, 10, 10, tzinfo=MADRID)
+    message(t, c, "weird1", when, pricing_category="marketing_lite", billable=True)
+    with tenant_tx(t.id), caplog.at_level(logging.WARNING):
+        cost = summary._messaging_cost(START, END)
+    assert cost == max(summary.PRICE_EUR.values()).quantize(Decimal("0.01"))
+    assert "marketing_lite" in caplog.text
 
 
-def test_build_summary_renders_pack_metrics_first_then_generic(tenants: Any) -> None:
+# ── build_summary / render ───────────────────────────────────────────────
+
+
+def test_build_summary_renders_pack_lines_first_then_generic(tenants: Any) -> None:
     tenants(wa_tenant())
     loaded = get_registry().by_slug["wa"]
     t = Tenant.objects.using("owner").get(slug="wa")
     c = contact(t, "a")
     metric(t, "g1", "greeted", Decimal(3), datetime(2026, 10, 5, tzinfo=MADRID))
     message(t, c, "m1", datetime(2026, 10, 6, tzinfo=MADRID))
-    with tenant_tx(t.id):
-        text = summary.build_summary(loaded, START, END)
+    block = summary.build_summary(loaded, START, END)
+    assert not block.pack_failed
+    text = summary.render([block], monthly=True)
     assert text == (
-        "📊 Resumen de octubre\n"
-        "• Saludos: 3\n"
-        "• Usuarios: 1\n"
-        "• Mensajes: 1\n"
-        "• Coste aproximado de mensajería: 0,00 €"
+        "📊 *Tu resumen de octubre*\n"
+        "Wa\n"
+        "\n"
+        "👋 Saludos: 3\n"
+        "👥 Clientes atendidos: 1\n"
+        "💬 Mensajes enviados: 1\n"
+        "📱 Coste de WhatsApp: 0,00 €"
     )
 
 
 def test_build_summary_with_no_activity_shows_zeros_not_omitted(tenants: Any) -> None:
     tenants(wa_tenant())
     loaded = get_registry().by_slug["wa"]
-    with tenant_tx(loaded.id):
-        text = summary.build_summary(loaded, START, END)
+    block = summary.build_summary(loaded, START, END)
+    text = summary.render([block], monthly=True)
     assert text == (
-        "📊 Resumen de octubre\n"
-        "• Saludos: 0\n"
-        "• Usuarios: 0\n"
-        "• Mensajes: 0\n"
-        "• Coste aproximado de mensajería: 0,00 €"
+        "📊 *Tu resumen de octubre*\n"
+        "Wa\n"
+        "\n"
+        "👋 Saludos: 0\n"
+        "👥 Clientes atendidos: 0\n"
+        "💬 Mensajes enviados: 0\n"
+        "📱 Coste de WhatsApp: 0,00 €"
     )
 
 
@@ -190,8 +217,8 @@ def test_dispatch_uses_the_closed_previous_month_and_is_idempotent(tenants: Any)
     assert summary.dispatch_owner_summaries(now) == 1
     (notice,) = Notification.objects.using("owner").all()
     assert notice.tenant_id == wa.id and notice.kind == "owner_summary"
-    assert "Resumen de octubre" in notice.text
-    assert "Usuarios: 1" in notice.text
+    assert "Tu resumen de octubre" in notice.text
+    assert "Clientes atendidos: 1" in notice.text
     queued = [j for j in jobs() if j[0] == "send_notification"]
     assert [(j[1], j[2]) for j in queued] == [
         (f"owner:{wa.id}", {"tenant_id": str(wa.id), "notification_id": str(notice.id)})

@@ -4,6 +4,8 @@ import logging
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -45,13 +47,23 @@ class HealthIssue:
 
 
 @dataclass(frozen=True)
-class SummaryMetric:
-    """One line of the owner's periodic summary (`autobot.runtime.summary`), fed by
-    `RecordMetric` actions of the same `kind`."""
+class SummaryLine:
+    """One line of the owner's summary, contributed by the pack
+    (`docs/mejoras/02-avisos-y-resumenes.md` §4.1)."""
 
-    kind: str
+    icon: str  # one emoji
     label: str
+    value: Decimal
     unit: Literal["count", "eur"] = "count"
+    note: str | None = None  # shown in brackets after the value
+
+
+# ctx has contact=None and no calendar lock; [start, end) is the reported period, aware
+# in the tenant's own timezone; recorded are the tenant's MetricEvent totals by kind in
+# that period. Runs without an open transaction: the pack may call Calendar.
+type SummaryHook = Callable[
+    [PackContext, datetime, datetime, Mapping[str, Decimal]], list[SummaryLine]
+]
 
 
 @dataclass(frozen=True)
@@ -100,4 +112,4 @@ class Pack:
     load_data: Callable[[TenantInfo, BaseModel, Path], object] | None = None
     health: Callable[[PackContext], list[HealthIssue]] | None = None
     templates: list[TemplateSpec] = field(default_factory=list)
-    summary_metrics: list[SummaryMetric] = field(default_factory=list)
+    summary: SummaryHook | None = None

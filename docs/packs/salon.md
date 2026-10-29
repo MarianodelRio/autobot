@@ -45,19 +45,23 @@ configuración apropiados.
 
 ### Resumen mensual al dueño
 
-El pack declara estas métricas de negocio para el resumen periódico
-(`docs/mejoras/02-avisos-y-resumenes.md`):
+El pack declara un gancho `summary` (`packs/salon/summary.py`) que lee las citas y los
+ingresos estimados **directamente del calendario**, no de mensajes ni de métricas
+(`docs/mejoras/02-avisos-y-resumenes.md`, decisión 4): el calendario es la fuente de
+verdad, así que una cita cancelada o movida no se cuenta dos veces y una cita añadida a
+mano por el peluquero también cuenta.
 
-| Métrica | Unidad | Se emite cuando |
-|---|---|---|
-| Citas creadas | recuento | se confirma una reserva nueva o un movimiento (`create()`) |
-| Citas canceladas | recuento | se cancela una cita (`cancel()`) |
-| Ingresos estimados | euros | junto con cada cita creada, por el `price_eur` de ese servicio; si el servicio no tiene precio configurado, esa reserva no suma ingresos (pero sí cuenta como cita creada) |
-
-Un movimiento de cita cuenta solo como cita creada de la nueva, nunca como
-cancelación de la antigua. Las citas añadidas a mano en Google Calendar no pasan
-por `conversation.py`, así que no generan ninguna de estas métricas: es el
-comportamiento esperado, no una limitación.
+Un evento del periodo cuenta como cita si lo creó el bot, o si no, cuando su título
+(normalizado, sin acentos ni mayúsculas) es exactamente el nombre de un servicio, o
+empieza por ese nombre seguido de un guion (`-`, `–` o `—`): por ejemplo
+`"Corte de pelo - Juan"`. Si varios servicios coinciden, gana el de nombre más largo
+(`"Corte y barba - X"` no se confunde con `"Corte"`). Cualquier otro evento (vacaciones,
+`[CFG] …`, comidas, recados) no cuenta, aunque tenga un teléfono en la descripción: hay
+que pedir a cada peluquero que titule sus citas manuales como las del bot. Los ingresos
+son la suma del `price_eur` **actual** de cada cita con servicio reconocido; una cita sin
+precio (servicio retirado, o sin coincidencia de título) cuenta como cita pero no suma
+ingresos. No hay línea de citas canceladas: solo se cuenta lo que hay en el calendario en
+el periodo.
 
 Para activar el resumen mensual del negocio, añade en su `tenant.yaml`:
 

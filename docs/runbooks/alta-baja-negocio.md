@@ -51,23 +51,33 @@ precio *utility* del país; la tarifa se consulta en la cuenta de cada negocio.
 ### Precios aproximados de mensajería (resumen mensual)
 
 El "coste aproximado de mensajería" del resumen al dueño
-(`docs/mejoras/02-avisos-y-resumenes.md`, `autobot/runtime/summary.py:PRICE_EUR`) usa
-esta tabla, en euros por mensaje, para España:
+(`docs/mejoras/02-avisos-y-resumenes.md`, `autobot/runtime/summary.py:PRICE_EUR`) suma
+todos los mensajes que Meta marca como facturables (`billable=True` en el webhook de
+estados) en el periodo, agrupados por la categoría que indica el propio webhook
+(`pricing_category`), con esta tabla de precios aproximados en euros por mensaje, para
+España:
 
-| Categoría de plantilla | Precio aprox. | Franja gratuita mensual |
-|---|---|---|
-| `service` (ventana de 24 h) | 0,0730 € | 1.000 mensajes por número |
-| `utility` | 0,0394 € | ninguna |
-| `marketing` | 0,0988 € | ninguna |
-| `authentication` | 0,0363 € | ninguna |
+| Categoría | Precio aprox. |
+|---|---|
+| `marketing` | 0,0585 € |
+| `utility` | 0,0166 € |
+| `authentication` | 0,0166 € |
+| `service` (ventana de 24 h) | 0,0166 € |
+
+Ya no se calcula ninguna franja gratuita por nuestra cuenta: desde el 1/10/2026 Meta
+aplica sus propias franjas (1.000 mensajes `service` gratis al mes por número, entradas
+gratuitas por anuncio, etc.) y marca esos mensajes como `billable=False`, así que
+simplemente no cuentan. Una categoría que no esté en la tabla (por ejemplo, una nueva
+que añada Meta) se valora al precio más alto de la tabla, para que el coste nunca se
+quede corto en silencio.
 
 **No es la tarifa real de ninguna cuenta.** Meta publica el rate card exacto, por
 país y moneda, en el panel de facturación de WhatsApp Business Manager de cada
 negocio, y cambia como máximo una vez por trimestre (el día 1). Estos valores son
 una estimación interna sin contrastar contra ese panel, comprobada por última vez
-el 27/10/2026; revísalos si Meta anuncia un cambio de tarifas y, sobre todo, antes
-de presentar el coste del resumen como una cifra fiable. Telegram no tiene coste
-por mensaje y no entra en este cálculo.
+el 29/10/2026 ("service" a la tarifa de `utility`, sin confirmar); revísalos si Meta
+anuncia un cambio de tarifas y, sobre todo, antes de presentar el coste del resumen
+como una cifra fiable. Telegram no tiene coste por mensaje y no entra en este cálculo.
 
 ## Negocio de demo de un pack nuevo
 

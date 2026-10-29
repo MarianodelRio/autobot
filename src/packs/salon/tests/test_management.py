@@ -38,7 +38,7 @@ def test_view_and_cancel(salon: Conversation) -> None:
     salon.press("cancel_appt:0").expect(text_contains="cancelada")
     assert salon.calendar.get_event(gcal_id) is None
     assert salon.notifications[-1].kind == "booking_cancelled"
-    assert salon.metrics[-1].kind == "booking_cancelled"
+    assert salon.metrics == []
 
 
 def test_move_creates_then_cancels_and_replays(salon: Conversation) -> None:
@@ -48,15 +48,7 @@ def test_move_creates_then_cancels_and_replays(salon: Conversation) -> None:
     assert salon.calendar.created[-1].start.hour == 11
     assert salon.calendar.created[-1].private["fp_key"].startswith("move:")
     assert salon.calendar.calls.index("insert_event") < salon.calendar.calls.index("cancel_event")
-    # A move counts only as a new booking_created, never as a booking_cancelled of
-    # the old one (decision 11 of the summary proposal): the old side is cancelled
-    # directly on Calendar, never through Turn.cancel().
-    assert [m.kind for m in salon.metrics] == [
-        "booking_created",
-        "booking_revenue",
-        "booking_created",
-        "booking_revenue",
-    ]
+    assert salon.metrics == []
     salon.replay().expect(text_contains="movida")
     assert len(salon.calendar.created) == 2
     assert salon.calendar.cancelled == [old]

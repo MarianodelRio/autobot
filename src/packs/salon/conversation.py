@@ -1,10 +1,9 @@
 """Salon state machine on PackContext; JSON state, no channel or database imports."""
 
 from datetime import date, time
-from decimal import Decimal
 from typing import Any
 
-from core.actions import NotifyOwner, RecordMetric, UpdateContact
+from core.actions import NotifyOwner, UpdateContact
 from core.dates import format_date_es
 from core.errors import PermanentError, TransientError
 from core.messages import IncomingMessage
@@ -157,9 +156,6 @@ class Turn:
                 self.ctx.idem.event("notify:booking_cancelled"),
             )
         )
-        result.actions.append(
-            RecordMetric("booking_cancelled", self.ctx.idem.event("metric:booking_cancelled"))
-        )
         return result
 
     def proactive(self, value: str) -> PackResult:
@@ -220,18 +216,7 @@ class Turn:
                 f"{svc.name}, {event.start:%d/%m %H:%M}",
                 self.ctx.idem.event(f"notify:{kind}"),
             ),
-            # Decision 11 of the summary proposal: a move counts only as the new
-            # booking_created, never as a booking_cancelled of the old one.
-            RecordMetric("booking_created", self.ctx.idem.event("metric:booking_created")),
         ]
-        if svc.price_eur is not None:
-            result.actions.append(
-                RecordMetric(
-                    "booking_revenue",
-                    self.ctx.idem.event("metric:booking_revenue"),
-                    value=Decimal(str(svc.price_eur)),
-                )
-            )
         if cancel_failed:
             result.replies.append(Text(self.cfg.texts.move_cancel_failed))
             result.actions.append(

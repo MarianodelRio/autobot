@@ -3,12 +3,11 @@
 Two distinct periods, always a calendar month or a prefix of one (decision 3 of the
 proposal): `previous_month` for the automatic send (day 1, the month just closed) and
 `month_to_date` for the on-demand status (not wired yet: it needs the notify bot's
-inbound webhook, left for a separate change). Because of that, `build_summary` never
-crosses a month boundary mid-calculation, which is why `_messaging_cost`'s free tier
-needs no sub-period splitting.
+inbound webhook, left for a separate change).
 """
 
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -17,11 +16,12 @@ from zoneinfo import ZoneInfo
 from django.db.models import Count, Sum
 
 from autobot.jobs import OUTBOUND, SEND_NOTIFICATION, app
-from autobot.runtime.models import MetricEvent, Notification, OutboundMessage
+from autobot.runtime.context import CalendarFactory, build_context, google_calendar
+from autobot.runtime.models import Channel, MetricEvent, Notification, OutboundMessage
 from autobot.tenancy.registry import LoadedTenant, get_registry
 from autobot.tenancy.tx import tenant_tx
 from core.dates import MONTHS_ES
-from core.pack import SummaryMetric
+from core.pack import SummaryLine
 
 log = logging.getLogger(__name__)
 
@@ -29,17 +29,16 @@ log = logging.getLogger(__name__)
 # delivers it regardless of owner.notify, which only gates per-event notices).
 OWNER_SUMMARY_KIND = "owner_summary"
 
-# Approximate WhatsApp per-message price by template category (EUR), for Spain. Not the
-# real tariff of any account: Meta's rate card is per country/currency and lives in each
-# business's WhatsApp Business Manager billing panel. Last checked 2026-10-27, documented
-# in docs/runbooks/alta-baja-negocio.md.
+# Approximate Meta price per delivered message, Spain, EUR. Not the account's real
+# tariff (Meta's rate card is per recipient country and lives in each business's
+# WhatsApp Manager billing panel). Last checked 2026-10-29; see
+# docs/runbooks/alta-baja-negocio.md.
 PRICE_EUR: dict[str, Decimal] = {
-    "service": Decimal("0.0730"),
-    "utility": Decimal("0.0394"),
-    "marketing": Decimal("0.0988"),
-    "authentication": Decimal("0.0363"),
+    "marketing": Decimal("0.0585"),
+    "utility": Decimal("0.0166"),
+    "authentication": Decimal("0.0166"),
+    "service": Decimal("0.0166"),
 }
-SERVICE_FREE_TIER = 1000  # free "service" messages per WhatsApp number per month
 
 
 def previous_month(now: datetime, tz: ZoneInfo) -> tuple[datetime, datetime]:
@@ -68,7 +67,11 @@ def _add_months(at: datetime, months: int) -> datetime:
 
 def dispatch_owner_summaries(now: datetime) -> int:
     """Queue the automatic monthly summary for every active tenant whose owner wants it
-    and whose local day is 1. Returns how many were queued."""
+    and whose local day is 1. Returns how many were queued.
+
+    The hourly cron, the per-tenant `send_owner_summary` job and its retries are a
+    separate change (step 3 of the plan); for now a failed pack hook just skips that
+    tenant's summary and is logged, rather than retried."""
     queued = 0
     for tenant in get_registry().tenants:
         if not _due(tenant, now):
@@ -77,8 +80,12 @@ def dispatch_owner_summaries(now: datetime) -> int:
         assert owner is not None and owner.telegram_chat_id is not None  # validated at load
         start, end = previous_month(now, tenant.info.timezone)
         idem_key = f"summary:{tenant.id}:{start.year}-{start.month:02d}"
+        block = build_summary(tenant, start, end)
+        if block.pack_failed:
+            log.warning("owner summary of tenant %s skipped: pack hook failed", tenant.slug)
+            continue
+        text = render([block], monthly=True)
         with tenant_tx(tenant.id):
-            text = build_summary(tenant, start, end)
             row = Notification(
                 tenant_id=tenant.id,
                 idem_key=idem_key,
@@ -108,26 +115,69 @@ def _due(tenant: LoadedTenant, now: datetime) -> bool:
     return now.astimezone(tenant.info.timezone).day == 1
 
 
-def build_summary(tenant: LoadedTenant, start: datetime, end: datetime) -> str:
-    """The summary text for `[start, end)`, run inside the caller's `tenant_tx`."""
-    pack_metrics = _pack_metrics(tenant, start, end)
-    generic = _generic_metrics(start, end)
-    cost = _messaging_cost(start, end)
-    return _render(start, end, pack_metrics, generic, cost)
+@dataclass(frozen=True)
+class SummaryBlock:
+    """One tenant's summary for `[start, end)`."""
+
+    tenant: LoadedTenant
+    start: datetime
+    end: datetime
+    pack_lines: list[SummaryLine]
+    pack_failed: bool
+    generic: _Generic
+    cost: Decimal
 
 
-def _pack_metrics(
-    tenant: LoadedTenant, start: datetime, end: datetime
-) -> list[tuple[SummaryMetric, Decimal]]:
-    if tenant.pack is None:
-        return []
-    totals = dict(
+def build_summary(
+    tenant: LoadedTenant,
+    start: datetime,
+    end: datetime,
+    *,
+    calendars: CalendarFactory = google_calendar,
+) -> SummaryBlock:
+    """The platform metrics are read inside one short transaction; the pack's own hook
+    (`Pack.summary`) runs afterwards, with none open, because `salon` calls Google
+    Calendar from it."""
+    with tenant_tx(tenant.id):
+        recorded = _recorded_metrics(start, end)
+        generic = _generic_metrics(start, end)
+        cost = _messaging_cost(start, end)
+    pack_lines, pack_failed = _pack_lines(tenant, start, end, recorded, calendars)
+    return SummaryBlock(tenant, start, end, pack_lines, pack_failed, generic, cost)
+
+
+def _recorded_metrics(start: datetime, end: datetime) -> dict[str, Decimal]:
+    """`MetricEvent` totals of the tenant in `[start, end)`, by `kind`."""
+    return dict(
         MetricEvent.objects.filter(created_at__gte=start, created_at__lt=end)
         .values("kind")
         .annotate(total=Sum("value"))
         .values_list("kind", "total")
     )
-    return [(m, totals.get(m.kind, Decimal(0))) for m in tenant.pack.summary_metrics]
+
+
+def _pack_lines(
+    tenant: LoadedTenant,
+    start: datetime,
+    end: datetime,
+    recorded: Mapping[str, Decimal],
+    calendars: CalendarFactory,
+) -> tuple[list[SummaryLine], bool]:
+    """`([], False)` for a degraded tenant or a pack without `summary`. A hook that
+    raises is logged by exception type only (never tenant data) and reported as
+    failed: the caller decides whether that means skipping or retrying the send."""
+    if tenant.pack is None or tenant.pack.summary is None:
+        return [], False
+    try:
+        ctx = build_context(
+            tenant, Channel.MAIN, contact=None, state={}, event_id=None, calendars=calendars
+        )
+        return tenant.pack.summary(ctx, start, end, recorded), False
+    except Exception as exc:
+        log.warning(
+            "owner summary: pack hook of tenant %s failed (%s)", tenant.slug, type(exc).__name__
+        )
+        return [], True
 
 
 @dataclass(frozen=True)
@@ -137,56 +187,87 @@ class _Generic:
 
 
 def _generic_metrics(start: datetime, end: datetime) -> _Generic:
-    """ "Usuarios" over `OutboundMessage`, never `Contact.last_activity_at` (decision 9):
-    that field only keeps the last activity instant, which would drop a contact active
-    in this closed period but also later, before the automatic summary runs."""
-    messages = OutboundMessage.objects.filter(created_at__gte=start, created_at__lt=end)
-    users = messages.values("contact_id").distinct().count()
-    return _Generic(users=users, messages=messages.count())
+    """ "Usuarios" and "mensajes" over the `OutboundMessage` actually sent in the period
+    (decision 9 of the proposal): `status="sent"`, by `sent_at`, never `created_at` (a
+    message can be created in one period and sent, or fail, in a later one) nor
+    `Contact.last_activity_at` (that field only keeps the last activity instant, which
+    would drop a contact active in this closed period but also later, before the
+    automatic summary runs)."""
+    sent = OutboundMessage.objects.filter(
+        status=OutboundMessage.Status.SENT, sent_at__gte=start, sent_at__lt=end
+    )
+    users = sent.values("contact_id").distinct().count()
+    return _Generic(users=users, messages=sent.count())
 
 
 def _messaging_cost(start: datetime, end: datetime) -> Decimal:
-    """Decision 10: WhatsApp only (a Telegram send never gets `pricing_category`); the
-    "service" category has a 1,000-message monthly free tier, the others are billed from
-    the first message. Both periods always start on day 1, so this never needs to look
-    outside `[start, end)` to know how many free messages are left."""
+    """Decision 9: every message Meta actually billed (`billable=True`), by `sent_at`,
+    priced per `pricing_category` at `PRICE_EUR`. Meta already applies its own free
+    tiers and marks them `billable=False`, so none is computed here. A category not in
+    `PRICE_EUR` (e.g. a new one Meta adds) is priced at the highest known rate, so the
+    cost never falls short in silence, and is logged without any personal data."""
     counts = dict(
-        OutboundMessage.objects.filter(
-            created_at__gte=start, created_at__lt=end, pricing_category__isnull=False
-        )
+        OutboundMessage.objects.filter(billable=True, sent_at__gte=start, sent_at__lt=end)
         .values("pricing_category")
         .annotate(total=Count("id"))
         .values_list("pricing_category", "total")
     )
+    highest = max(PRICE_EUR.values())
     cost = Decimal(0)
-    for category, price in PRICE_EUR.items():
-        count = counts.get(category, 0)
-        if category == "service":
-            count = max(0, count - SERVICE_FREE_TIER)
+    for category, count in counts.items():
+        price = PRICE_EUR.get(category) if category is not None else None
+        if price is None:
+            log.warning(
+                "owner summary: unknown pricing category %r priced at the highest rate", category
+            )
+            price = highest
         cost += price * count
     return cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _render(
-    start: datetime,
-    end: datetime,
-    pack_metrics: list[tuple[SummaryMetric, Decimal]],
-    generic: _Generic,
-    cost: Decimal,
-) -> str:
-    month = MONTHS_ES[start.month - 1]
-    full_month = end == _add_months(start, 1)
-    header = (
-        f"📊 Resumen de {month}"
-        if full_month
-        else f"📊 Estado de {month} (hasta hoy, día {end.day})"
-    )
-    lines = [header]
-    lines += [f"• {metric.label}: {_format(total, metric.unit)}" for metric, total in pack_metrics]
-    lines.append(f"• Usuarios: {generic.users}")
-    lines.append(f"• Mensajes: {generic.messages}")
-    lines.append(f"• Coste aproximado de mensajería: {_eur(cost)}")
-    return "\n".join(lines)
+def render(blocks: Sequence[SummaryBlock], *, monthly: bool) -> str:
+    """One or several tenants' blocks for the same period (several only for a demo
+    chat shared between businesses, decision 3 of the proposal), as the text of a
+    `Notification` or the on-demand status."""
+    header = _header(blocks[0], monthly=monthly)
+    sections = [f"{b.tenant.info.name}\n\n" + "\n".join(_block_lines(b)) for b in blocks]
+    text = header + "\n" + "\n\n".join(sections)
+    if any(line.unit == "eur" for b in blocks for line in b.pack_lines):
+        text += "\n\n" + _note(monthly=monthly)
+    return text
+
+
+def _header(block: SummaryBlock, *, monthly: bool) -> str:
+    month = MONTHS_ES[block.start.month - 1]
+    if monthly:
+        return f"📊 *Tu resumen de {month}*"
+    return f"📊 *Así va {month}* (hasta hoy, día {block.end.day})"
+
+
+def _block_lines(b: SummaryBlock) -> list[str]:
+    lines = [_line(line) for line in b.pack_lines]
+    lines.append(f"👥 Clientes atendidos: {b.generic.users}")
+    lines.append(f"💬 Mensajes enviados: {b.generic.messages}")
+    if _show_cost(b.tenant):
+        lines.append(f"📱 Coste de WhatsApp: {_eur(b.cost)}")
+    return lines
+
+
+def _show_cost(tenant: LoadedTenant) -> bool:
+    """Decision 9: the cost line only means something for WhatsApp (or a demo tenant,
+    whose messages come through the shared WhatsApp door)."""
+    channel = tenant.file.channel
+    return tenant.is_demo or (channel is not None and channel.type == "whatsapp")
+
+
+def _note(*, monthly: bool) -> str:
+    base = "ℹ️ Ingresos según tus precios actuales; coste aproximado"
+    return base + (" (la factura real está en tu cuenta de Meta)." if monthly else ".")
+
+
+def _line(line: SummaryLine) -> str:
+    text = f"{line.icon} {line.label}: {_format(line.value, line.unit)}"
+    return f"{text} ({line.note})" if line.note else text
 
 
 def _format(value: Decimal, unit: str) -> str:

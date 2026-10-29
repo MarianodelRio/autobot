@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from core.actions import Action, ContactRef, NotifyOwner, RecordMetric, SendProactive
 from core.errors import TransientError
 from core.messages import IncomingMessage
-from core.pack import Pack, PackContext, PackResult, Periodic, SummaryMetric
+from core.pack import Pack, PackContext, PackResult, Periodic, SummaryLine
 from core.proactive import TemplateSpec
 from core.replies import Text
 from core.ui import button, buttons_msg, list_msg, paginate, row, section
@@ -98,6 +98,10 @@ def daily_summary(ctx: PackContext) -> list[Action]:
     return [NotifyOwner("daily", "Resumen del día", ctx.idem.stable(f"daily:{day}"))]
 
 
+def summarize(ctx: PackContext, start, end, recorded) -> list[SummaryLine]:  # type: ignore[no-untyped-def]
+    return [SummaryLine("👋", "Saludos", recorded.get("greeted", 0))]
+
+
 pack = Pack(
     name="toy",
     config_schema=ToyConfig,
@@ -105,5 +109,5 @@ pack = Pack(
     handle_message=handle,
     periodic=[Periodic("daily_summary", every_min=1440, handler=daily_summary)],
     templates=[TEMPLATE_THANKS],
-    summary_metrics=[SummaryMetric("greeted", "Saludos")],
+    summary=summarize,
 )
