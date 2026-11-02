@@ -1,5 +1,6 @@
 """Internal, OTP protected operations. All changes and their audit share owner transactions."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -30,6 +31,13 @@ OWNER = "owner"
 
 def queue_app() -> App:
     return App(connector=DjangoConnector(alias=OWNER))
+
+
+def _deferrer(task: Any, *, tenant_id: Any, outbound_id: Any) -> Callable[[], None]:
+    """A closure over `task.defer`'s ids, for `transaction.on_commit`: calling
+    `task.defer` directly there would re-evaluate `tenant_id`/`outbound_id` against
+    whatever the loop variable holds by the time it runs, not the row being resolved."""
+    return lambda: task.defer(tenant_id=str(tenant_id), outbound_id=str(outbound_id))
 
 
 def audit(request: HttpRequest, obj: models.Model, message: str) -> None:
@@ -280,16 +288,17 @@ class OutboundAdmin(ReadOnlyAdmin):
                 if resend:
                     contact = message.contact
                     lock = contact_hash(message.tenant_id, contact.channel, contact.external_id)
-                    job = (
-                        queue_app()
-                        .configure_task(
-                            name="send_message",
-                            queue="outbound",
-                            lock=f"out:{lock}",
-                        )
-                        .defer(tenant_id=str(message.tenant_id), outbound_id=str(message.pk))
+                    task = queue_app().configure_task(
+                        name="send_message",
+                        queue="outbound",
+                        lock=f"out:{lock}",
                     )
-                    detail = f"Operador autoriza reenvío con riesgo de duplicado; nuevo job {job}."
+                    # After commit: the worker runs on its own connection, so a job
+                    # deferred here could start before this row's own save is visible to it.
+                    transaction.on_commit(
+                        _deferrer(task, tenant_id=message.tenant_id, outbound_id=message.pk)
+                    )
+                    detail = "Operador autoriza reenvío con riesgo de duplicado."
                 audit(request, message, detail)
         return None
 

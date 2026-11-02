@@ -16,7 +16,14 @@ from zoneinfo import ZoneInfo
 from django.db.models import Count, Sum
 from procrastinate.exceptions import AlreadyEnqueued
 
-from autobot.jobs import OUTBOUND, PERIODIC, SEND_NOTIFICATION, SEND_OWNER_SUMMARY, app
+from autobot.jobs import (
+    OUTBOUND,
+    PERIODIC,
+    SEND_NOTIFICATION,
+    SEND_OWNER_SUMMARY,
+    app,
+    defer_after_commit,
+)
 from autobot.owner import links
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
 from autobot.runtime.models import Channel, MetricEvent, Notification, OutboundMessage
@@ -132,8 +139,12 @@ def send_owner_summary(tenant_id: UUID, year: int, month: int) -> None:
         )
         Notification.objects.bulk_create([row], ignore_conflicts=True)
         if Notification.objects.filter(id=row.id).exists():
-            app.configure_task(SEND_NOTIFICATION, queue=OUTBOUND, lock=f"owner:{tenant_id}").defer(
-                tenant_id=str(tenant_id), notification_id=str(row.id)
+            defer_after_commit(
+                SEND_NOTIFICATION,
+                queue=OUTBOUND,
+                lock=f"owner:{tenant_id}",
+                tenant_id=str(tenant_id),
+                notification_id=str(row.id),
             )
 
 

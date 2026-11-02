@@ -13,7 +13,7 @@ import logging
 import math
 from uuid import UUID
 
-from django.db import close_old_connections
+from django.db import close_old_connections, transaction
 from django.utils import timezone
 from procrastinate import BaseRetryStrategy, JobContext, RetryDecision, RetryStrategy
 from procrastinate.contrib.django import app as app
@@ -45,6 +45,22 @@ RETRY_STALLED_JOBS = "retry_stalled_jobs"  # (timestamp): every 5 min
 DISPATCH_OWNER_SUMMARIES = "dispatch_owner_summaries"  # (timestamp): hourly, platform-wide
 SEND_OWNER_SUMMARY = "send_owner_summary"  # (tenant_id, year, month), queueing_lock summary:<t>
 HANDLE_OWNER_EVENT = "handle_owner_event"  # (event_id) of owner_event, lock ownerchat:<h>
+
+
+def defer_after_commit(name: str, *, queue: str, lock: str | None = None, **kwargs: str) -> None:
+    """Defer a job once the current transaction commits, immediately if none is open.
+
+    Workers run jobs in their own threads, each with its own database connection
+    (separate from the one the caller is writing with): a job deferred while that
+    write is still uncommitted can start, and find nothing, before the row it needs
+    becomes visible to it. Never use this where the caller needs the deferred job's
+    id or must catch `AlreadyEnqueued` synchronously (`dispatch_periodic`,
+    `dispatch_owner_summaries`): the `.defer()` call itself moves past the point
+    where either is available.
+    """
+    task = app.configure_task(name, queue=queue, lock=lock)
+    transaction.on_commit(lambda: task.defer(**kwargs))
+
 
 SUMMARY_RETRY = RetryStrategy(max_attempts=3, wait=300, retry_exceptions={TransientError})
 

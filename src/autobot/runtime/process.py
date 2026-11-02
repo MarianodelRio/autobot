@@ -27,7 +27,7 @@ from autobot.channels.adapters import endpoint
 from autobot.channels.base import InboundItem, StatusItem, parse_stored
 from autobot.channels.demo.doors import allowed_identity, door
 from autobot.channels.ratelimit import WindowLimiter
-from autobot.jobs import OUTBOUND, SEND_NOTIFICATION, app
+from autobot.jobs import OUTBOUND, SEND_NOTIFICATION, defer_after_commit
 from autobot.ops.logging import bind, contextual
 from autobot.ops.state import record
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
@@ -332,8 +332,12 @@ def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> No
     )
     Notification.objects.bulk_create([row], ignore_conflicts=True)
     if Notification.objects.filter(id=row.id).exists():
-        app.configure_task(SEND_NOTIFICATION, queue=OUTBOUND, lock=f"owner:{tenant.id}").defer(
-            tenant_id=str(tenant.id), notification_id=str(row.id)
+        defer_after_commit(
+            SEND_NOTIFICATION,
+            queue=OUTBOUND,
+            lock=f"owner:{tenant.id}",
+            tenant_id=str(tenant.id),
+            notification_id=str(row.id),
         )
 
 

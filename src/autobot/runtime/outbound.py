@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from autobot.channels.adapters import endpoint
 from autobot.channels.base import Ambiguous, Rejected, RetryLater, SendOutcome, Sent
-from autobot.jobs import OUTBOUND, SEND_MESSAGE, app
+from autobot.jobs import OUTBOUND, SEND_MESSAGE, defer_after_commit
 from autobot.ops.logging import bind, contextual
 from autobot.runtime.locks import contact_hash
 from autobot.runtime.models import Contact, InboundEvent, OutboundMessage
@@ -75,8 +75,12 @@ def defer_sends(tenant_id: UUID, messages: list[OutboundMessage]) -> None:
     for message in messages:
         contact = message.contact
         lock = f"out:{contact_hash(tenant_id, contact.channel, contact.external_id)}"
-        app.configure_task(SEND_MESSAGE, queue=OUTBOUND, lock=lock).defer(
-            tenant_id=str(tenant_id), outbound_id=str(message.id)
+        defer_after_commit(
+            SEND_MESSAGE,
+            queue=OUTBOUND,
+            lock=lock,
+            tenant_id=str(tenant_id),
+            outbound_id=str(message.id),
         )
 
 
