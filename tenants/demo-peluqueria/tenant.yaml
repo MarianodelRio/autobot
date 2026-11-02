@@ -70,5 +70,8 @@ config:
       anterior; hemos avisado al negocio.
     event_no_days: No hay fechas disponibles para el evento en este momento.
 status: active
+owner:
+  notify: [booking_created, booking_cancelled, booking_moved, move_cancel_failed]
+  summary_monthly: true
 demo:
   description: Reserva, mueve o cancela una cita

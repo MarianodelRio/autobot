@@ -74,3 +74,8 @@ Para un bot sin webhook (p. ej. grabar fixtures de un negocio real antes de darl
 alta), `make telegram-poll SLUG=<slug>` sigue disponible; un bot con webhook no
 admite polling a la vez (`docker compose exec web python manage.py
 telegram_set_webhook demo --delete` se lo quita, nunca a un bot que use el servidor).
+
+Tras editar cualquier `tenants/<slug>/tenant.yaml`, `make tenant-sync`: `web` y
+`worker` cachean el registro de negocios en memoria mientras viven (en producción no
+importa porque el deploy ya los reinicia), así que un `sync_tenants` suelto no basta
+en local.
