@@ -121,7 +121,7 @@ def route_demo_event(event_id: UUID) -> None:
             if refusals.hit(item.external_id):
                 _finish(event)  # someone insisting: the bot must not answer without limit
             else:
-                _finish_and_reply(event, door_, item.external_id, [Text(NO_ACCESS_TEXT)])
+                _finish_and_reply(event, door_, item, [Text(NO_ACCESS_TEXT)])
         else:
             _finish(event)  # WhatsApp: never answer (Meta bills every message)
         return
@@ -130,7 +130,7 @@ def route_demo_event(event_id: UUID) -> None:
 
     if payload.startswith(PAGE):
         page = business_list(available, _page(payload))
-        _finish_and_reply(event, door_, item.external_id, [page])
+        _finish_and_reply(event, door_, item, [page])
     elif payload.startswith(SELECT):
         slug = payload.removeprefix(SELECT)
         tenant = next((t for t in available if t.slug == slug), None)
@@ -138,13 +138,13 @@ def route_demo_event(event_id: UUID) -> None:
             _finish_and_reply(
                 event,
                 door_,
-                item.external_id,
+                item,
                 [Text(NOT_AVAILABLE_TEXT), business_list(available, 0)],
             )
         else:
             _pick(event, door_, item, tenant)
     elif _is_selector_command(message.text):
-        _finish_and_reply(event, door_, item.external_id, [business_list(available, 0)])
+        _finish_and_reply(event, door_, item, [business_list(available, 0)])
     else:
         session = DemoSession.objects.filter(
             channel=door_.channel, external_id=item.external_id
@@ -153,13 +153,13 @@ def route_demo_event(event_id: UUID) -> None:
         if session is not None:
             tenant = next((t for t in available if t.id == session.tenant_id), None)
         if session is None:
-            _finish_and_reply(event, door_, item.external_id, [business_list(available, 0)])
+            _finish_and_reply(event, door_, item, [business_list(available, 0)])
         elif tenant is None:
             session.delete()  # no longer available (paused, degraded, ambiguous)
             _finish_and_reply(
                 event,
                 door_,
-                item.external_id,
+                item,
                 [Text(NOT_AVAILABLE_TEXT), business_list(available, 0)],
             )
         else:
@@ -199,7 +199,7 @@ def _pick(event: DemoEvent, door_: Door, item: InboundItem, tenant: LoadedTenant
     """Save the choice, say which business it is and send it a synthetic `menu`, so its
     pack answers with its menu. The notice goes first, so it arrives before the menu; if
     the job is cut before the end, a retry may repeat it, never the menu."""
-    _reply(door_, item.external_id, [Text(PICKED_TEXT.format(name=tenant.file.name))])
+    _reply(door_, item, [Text(PICKED_TEXT.format(name=tenant.file.name))])
     DemoSession.objects.update_or_create(
         channel=door_.channel,
         external_id=item.external_id,
@@ -262,11 +262,11 @@ def _finish(event: DemoEvent) -> None:
 
 
 def _finish_and_reply(
-    event: DemoEvent, door_: Door, external_id: str, replies: list[Reply]
+    event: DemoEvent, door_: Door, item: InboundItem, replies: list[Reply]
 ) -> None:
     """Mark the event done, then answer: a retry never repeats the answer."""
     _finish(event)
-    _reply(door_, external_id, replies)
+    _reply(door_, item, replies)
 
 
 def route_demo_status(item: StatusItem) -> None:
@@ -294,11 +294,14 @@ def route_demo_status(item: StatusItem) -> None:
     log.info("demo WhatsApp status for an unknown outbound message")
 
 
-def _reply(door_: Door, external_id: str, replies: list[Reply]) -> None:
+def _reply(door_: Door, item: InboundItem, replies: list[Reply]) -> None:
+    # WhatsApp: the phone when known (a BSUID recipient needs a feature Meta's test
+    # numbers lack), like runtime.outbound._recipient; Telegram: the chat id.
+    recipient = item.phone or item.external_id
     for reply in plan_sends(replies):
         outcome = door_.adapter.send(
             door_.adapter.render(reply, door_.description),
-            external_id,
+            recipient,
             door_.description,
             door_.secrets,
             uuid.uuid7(),

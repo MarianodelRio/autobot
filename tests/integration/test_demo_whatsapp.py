@@ -76,6 +76,15 @@ def text_body(phone: str, text: str, **kwargs: Any) -> dict[str, Any]:
     return body
 
 
+def text_body_with_bsuid(phone: str, bsuid: str, text: str, **kwargs: Any) -> dict[str, Any]:
+    """Like text_body, but keeps the BSUID Meta sends alongside the phone."""
+    body = text_body(phone, text, **kwargs)
+    value = body["entry"][0]["changes"][0]["value"]
+    value["messages"][0]["from_user_id"] = bsuid
+    value["contacts"][0]["user_id"] = bsuid
+    return body
+
+
 def press_body(phone: str, payload: str, **kwargs: Any) -> dict[str, Any]:
     body = _body("button_reply.json", phone, **kwargs)
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
@@ -182,6 +191,19 @@ def test_an_allowed_user_sees_the_list(tenants: Any, providers: Providers) -> No
     tenants(demo("wa"))
     say(USER, "hola")
     assert wa_buttons(providers, USER) == ["fp_select:wa", "fp_page:0"]
+
+
+def test_the_selector_replies_to_the_phone_even_with_a_bsuid(
+    tenants: Any, providers: Providers
+) -> None:
+    """Meta's test numbers cannot message a BSUID recipient (#131030): like
+    runtime.outbound._recipient does for a tenant's own conversation, the selector
+    must use the phone when the inbound message carries both."""
+    tenants(demo("wa"))
+    bsuid = "ES.demo000000001"
+    post(text_body_with_bsuid(USER, bsuid, "hola"))
+    assert wa_sent(providers, USER)
+    assert wa_sent(providers, bsuid) == []
 
 
 # ── Picking and talking ───────────────────────────────────────────────────
