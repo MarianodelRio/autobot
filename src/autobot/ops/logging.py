@@ -74,6 +74,7 @@ def redact(value: str) -> str:
     # is present. Access only an already-loaded registry, avoiding recursive logging.
     secrets = [
         settings.SECRET_KEY,
+        *settings.SECRETS_ENCRYPTION_KEYS,
         settings.DEMO_TELEGRAM_TOKEN,
         settings.DEMO_TELEGRAM_WEBHOOK_SECRET,
         settings.DEMO_WHATSAPP_APP_SECRET,

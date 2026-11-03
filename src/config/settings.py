@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import dj_database_url
+from cryptography.fernet import Fernet
 from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -31,6 +32,21 @@ def env(name: str, local_default: str | None = None) -> str:
 
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", "local-insecure-secret-key")
+SECRETS_ENCRYPTION_KEYS: list[str] = [
+    key.strip()
+    for key in env("SECRETS_ENCRYPTION_KEY", "UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=").split(
+        ","
+    )
+]
+if not IS_LOCAL:
+    try:
+        for key in SECRETS_ENCRYPTION_KEYS:
+            Fernet(key)
+    except ValueError, TypeError:
+        raise ImproperlyConfigured(
+            "SECRETS_ENCRYPTION_KEY must contain valid Fernet keys"
+        ) from None
+
 DEBUG = IS_LOCAL
 _hosts = env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 ALLOWED_HOSTS = [h.strip() for h in _hosts.split(",") if h.strip()]

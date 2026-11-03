@@ -119,3 +119,7 @@ nginx, DuckDNS) y archivar los repositorios de los bots anteriores.
 
 Activar un canal real, cambiar un webhook y tocar datos de producción necesitan
 aprobación humana explícita.
+
+Antes del primer despliegue del panel, genera una clave Fernet propia para
+`SECRETS_ENCRYPTION_KEY` y conserva una copia cifrada con los backups. La clave local
+solo sirve en desarrollo; procedimiento en [rotar secretos](runbooks/09-rotar-secretos.md).

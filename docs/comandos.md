@@ -47,3 +47,4 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `purge_tenant <slug>` | Borra los datos de un negocio, con confirmación escribiendo el slug |
 | `outbound_resolve <uuid> (--mark-sent\|--resend) --confirm` | Resuelve un envío ambiguo a mano; sin `--confirm` explica el riesgo y no hace nada |
 | `job_retry <id>` | Reintenta un trabajo fallido idempotente a mano; rechaza los de envío (`send_message`, `send_notification`) |
+| `tenant_secrets_reencrypt` | Recifra todos los secretos de canal con la primera clave de `SECRETS_ENCRYPTION_KEY`, atómicamente y con auditoría; ver [rotación](runbooks/09-rotar-secretos.md) |

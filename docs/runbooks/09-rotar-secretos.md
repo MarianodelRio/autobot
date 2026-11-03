@@ -21,3 +21,25 @@ reintenta. Comprueba que un "hola" al bot recibe el menú. Los vínculos de los 
 
 **Verificación:** `tenant_health` verde, firma nueva aceptada y antigua rechazada,
 un mensaje de prueba responde una vez y no hay fallos de autenticación en el panel.
+
+## Rotar la clave de cifrado de la base de datos
+
+`SECRETS_ENCRYPTION_KEY` admite claves Fernet separadas por comas. La primera cifra;
+todas pueden descifrar. La clave fija de desarrollo nunca se usa en producción.
+
+1. Genera una clave con `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+   y guárdala en el gestor de contraseñas, sin enviarla a logs ni a git.
+2. En el `.env` del servidor, pon `SECRETS_ENCRYPTION_KEY=<nueva>,<anterior>`.
+   La persona recrea `web` y `worker` para que reciban el nuevo entorno.
+3. La persona ejecuta `docker compose -p autobot -f compose.prod.yaml exec -T web python manage.py tenant_secrets_reencrypt`.
+   Recifra todas las filas de `tenant_secret` con la primera clave, en una transacción
+   `owner`; cada cambio deja una auditoría `tenant.secrets` con `reencrypted: true`.
+   Si alguna fila es ilegible, revierte toda la operación. Revisa las claves y repite.
+4. Cuando termine correctamente, deja solo la nueva clave en `.env` y recrea ambos
+   servicios. Comprueba la salud de los canales.
+5. Guarda la clave anterior cifrada fuera del servidor mientras existan backups que la
+   necesiten (retención de restic: seis meses). Los backups antiguos no se recifran;
+   restaurarlos requiere las claves con las que se generaron.
+
+Esto rota el cifrado en reposo; no cambia los tokens en Meta o Telegram. Antes del
+primer despliegue, configura una clave propia y conserva `.env` junto con los backups.

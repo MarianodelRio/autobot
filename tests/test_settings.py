@@ -14,7 +14,7 @@ def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:
     base = {
         k: v
         for k, v in os.environ.items()
-        if k not in ("ENVIRONMENT", "DJANGO_SECRET_KEY", "DB_OWNER_URL")
+        if k not in ("ENVIRONMENT", "DJANGO_SECRET_KEY", "DB_OWNER_URL", "SECRETS_ENCRYPTION_KEY")
     }
     return subprocess.run(
         [sys.executable, *args],
@@ -66,6 +66,7 @@ def test_prod_with_all_variables_passes_check() -> None:
         DJANGO_SECRET_KEY="k",
         DJANGO_ALLOWED_HOSTS="api.x,",
         DB_APP_URL="postgres://u:p@127.0.0.1:1/none",
+        SECRETS_ENCRYPTION_KEY="UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=",
         SECRETS_FILE="/run/secrets/secrets.yaml",
         WHATSAPP_GRAPH_VERSION="v23.0",
     )
@@ -85,3 +86,19 @@ def test_owner_alias_only_when_configured() -> None:
     )
     assert run("-c", code).stdout.strip() == "['default', 'owner']"
     assert run("-c", code, DB_OWNER_URL="").stdout.strip() == "['default']"
+
+
+def test_prod_rejects_invalid_encryption_key_without_disclosing_it() -> None:
+    for key in ("invalid-private-key", "UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=,bad-key", ","):
+        result = run(
+            "-c",
+            "import sys; sys.path.insert(0, 'src'); import config.settings",
+            ENVIRONMENT="prod",
+            DJANGO_SECRET_KEY="k",
+            SECRETS_ENCRYPTION_KEY=key,
+        )
+        assert result.returncode != 0
+        assert "ImproperlyConfigured" in result.stderr
+        assert "SECRETS_ENCRYPTION_KEY must contain valid Fernet keys" in result.stderr
+        for part in filter(None, key.split(",")):
+            assert part not in result.stderr

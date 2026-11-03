@@ -11,6 +11,8 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+from cryptography.fernet import Fernet
+
 ROOT = Path(__file__).resolve().parent.parent
 NAME = f"fp-config-{uuid.uuid4().hex[:12]}"
 BACKEND = f"{NAME}-backend"
@@ -27,6 +29,7 @@ def run(*args: str, check: bool = True) -> str:
 def main() -> None:
     env = {
         **os.environ,
+        "SECRETS_ENCRYPTION_KEY": Fernet.generate_key().decode(),
         "SHA": "a" * 40,
         "PUBLIC_HOST": "localhost",
         "DJANGO_SECRET_KEY": "local-config-check-only",
@@ -114,7 +117,7 @@ def main() -> None:
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1)
                 break
-            except urllib.error.URLError, TimeoutError:
+            except urllib.error.URLError, TimeoutError, ConnectionError:
                 time.sleep(0.3)
         else:
             raise RuntimeError("Caddy/upstream did not start")
