@@ -70,6 +70,11 @@ docker compose --project-name "$project" -f "$compose_file" up -d --wait db
 docker compose --project-name "$project" -f "$compose_file" exec -T db \
   sh -c 'PGPASSWORD="$FP_OWNER_PASSWORD" exec pg_restore -h 127.0.0.1 -U fp_owner -d autobot --clean --if-exists --no-owner --no-acl' \
   <"$stage/backups/autobot.dump"
+# pg_restore --no-acl drops the GRANT/REVOKE state; reapply roles and permissions.
+docker compose --project-name "$project" -f "$compose_file" exec -T db \
+  bash /docker-entrypoint-initdb.d/init-roles.sh
+docker compose --project-name "$project" -f "$compose_file" run --rm web \
+  python manage.py apply_grants
 if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
   docker compose --project-name "$project" -f "$compose_file" up -d web worker caddy
 fi

@@ -36,6 +36,7 @@ def main() -> None:
         "POSTGRES_PASSWORD": "local",
         "FP_OWNER_PASSWORD": "local",
         "FP_APP_PASSWORD": "local",
+        "FP_READONLY_PASSWORD": "local",
         "DEPLOY_UID": "10001",
     }
     config = subprocess.run(

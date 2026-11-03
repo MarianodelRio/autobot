@@ -26,6 +26,10 @@ def django_db_setup(django_db_blocker: DjangoDbBlocker) -> Iterator[None]:
         settings.DATABASES[alias]["NAME"] = test_name
     with django_db_blocker.unblock():
         call_command("migrate", database="owner", verbosity=0, interactive=False)
+        # Mirrors deploy.sh/restore.sh: a migration cannot assume every third-party app's
+        # migrations (e.g. otp_totp's) already ran, so the final state is only correct
+        # once apply_grants runs again after every migration has.
+        call_command("apply_grants")
     yield
 
 

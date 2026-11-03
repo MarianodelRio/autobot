@@ -49,6 +49,7 @@ services:
       POSTGRES_PASSWORD: postgres
       FP_OWNER_PASSWORD: fp_owner
       FP_APP_PASSWORD: fp_app
+      FP_READONLY_PASSWORD: fp_readonly
       POSTGRES_TEST_DB: test_autobot  # for the tests run from the host (make check)
     volumes:
       - pgdata:/var/lib/postgresql

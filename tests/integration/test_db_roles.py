@@ -1,9 +1,12 @@
 """Database roles: web and worker use fp_app, which cannot
-bypass RLS or change the schema; migrations run as fp_owner."""
+bypass RLS or change the schema; migrations run as fp_owner; the panel's read-only SQL
+console uses fp_readonly, which can only SELECT and not read SENSITIVE_TABLES."""
 
 import pytest
-from django.core.management import get_commands, load_command_class
+from django.core.management import call_command, get_commands, load_command_class
 from django.db import DatabaseError, connections, transaction
+
+from autobot import db_grants
 
 pytestmark = pytest.mark.django_db(databases=["default", "owner"])
 
@@ -74,3 +77,51 @@ def test_migrate_uses_the_owner_alias_by_default() -> None:
     command = load_command_class("autobot", "migrate")
     options = command.create_parser("manage.py", "migrate").parse_args([])
     assert options.database == "owner"
+
+
+def test_fp_readonly_exists_without_bypassrls() -> None:
+    assert query(
+        "owner",
+        "SELECT rolbypassrls, rolsuper, rolcreatedb, rolcreaterole FROM pg_roles"
+        " WHERE rolname = 'fp_readonly'",
+    ) == (False, False, False, False)
+
+
+def test_fp_readonly_cannot_read_sensitive_tables() -> None:
+    for table in db_grants.SENSITIVE_TABLES:
+        assert query(
+            "owner", f"SELECT has_table_privilege('fp_readonly', '{table}', 'SELECT')"
+        ) == (False,)
+
+
+def test_fp_readonly_can_read_ordinary_tables() -> None:
+    assert query("owner", "SELECT has_table_privilege('fp_readonly', 'tenant', 'SELECT')") == (
+        True,
+    )
+    assert query("owner", "SELECT has_table_privilege('fp_readonly', 'tenant', 'INSERT')") == (
+        False,
+    )
+
+
+def test_fp_app_cannot_write_tenant() -> None:
+    for privilege in ("INSERT", "UPDATE", "DELETE"):
+        assert query("owner", f"SELECT has_table_privilege('fp_app', 'tenant', '{privilege}')") == (
+            False,
+        )
+
+
+def test_apply_grants_is_idempotent() -> None:
+    db_grants.apply(connections["owner"])
+    db_grants.apply(connections["owner"])
+
+
+def test_apply_grants_reapplies_a_revoked_grant() -> None:
+    with connections["owner"].cursor() as cursor:
+        cursor.execute("REVOKE SELECT ON tenant FROM fp_readonly")
+    assert query("owner", "SELECT has_table_privilege('fp_readonly', 'tenant', 'SELECT')") == (
+        False,
+    )
+    call_command("apply_grants")
+    assert query("owner", "SELECT has_table_privilege('fp_readonly', 'tenant', 'SELECT')") == (
+        True,
+    )

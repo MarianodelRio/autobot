@@ -81,8 +81,10 @@ abort() {
 
 # The first deployment needs PostgreSQL before a one-shot migration container.
 "${compose[@]}" up -d --wait db || abort
+"${compose[@]}" exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh || abort
 "${compose[@]}" pull web worker || abort
 "${compose[@]}" run --rm web python manage.py migrate --noinput || abort
+"${compose[@]}" run --rm web python manage.py apply_grants || abort
 "${compose[@]}" run --rm web python manage.py sync_tenants --strict || abort
 
 rollback() {

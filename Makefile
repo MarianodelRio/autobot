@@ -1,5 +1,6 @@
 .PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
 .PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test admin-tunnel
+.PHONY: db-roles
 
 check-prod-config:
 	uv run python tools/check_prod_config.py
@@ -24,6 +25,11 @@ down:
 
 status:
 	docker compose ps
+
+# Creates fp_owner, fp_app and fp_readonly (or updates their passwords) without
+# recreating the db container; needed after adding a role or rotating a password.
+db-roles:
+	docker compose exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh
 
 logs:
 	docker compose logs --tail=100 --follow $(SERVICE)

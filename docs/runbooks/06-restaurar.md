@@ -8,7 +8,9 @@ No restaures sobre una instalación con volumen de BD existente.
 **Pasos:** prepara una VPS temporal o un proyecto local aislado, instala Docker y
 restic, clona el SHA que contenga `deploy/restore.sh`, y crea `backup.env` y
 `restic-password` como `deploy` con modo 0600. Ejecuta
-`deploy/restore.sh --confirm-empty-target`. Si falla tras crear el volumen, conserva
+`deploy/restore.sh --confirm-empty-target`. El script reaplica los roles de PostgreSQL
+(`init-roles.sh`) y los permisos (`manage.py apply_grants`) después de restaurar el
+volcado, porque `pg_restore --no-acl` los pierde. Si falla tras crear el volumen, conserva
 `.restore-incomplete` y vuelve a ejecutar el mismo comando tras arreglar la causa;
 el script solo admite ese reintento controlado. Si el snapshot era inválido y aún no
 se creó volumen, corrige la fuente antes de repetir. No apuntes DNS hasta verificar.

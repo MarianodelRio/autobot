@@ -102,6 +102,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       FP_OWNER_PASSWORD: ${FP_OWNER_PASSWORD:?Set FP_OWNER_PASSWORD}
       FP_APP_PASSWORD: ${FP_APP_PASSWORD:?Set FP_APP_PASSWORD}
+      FP_READONLY_PASSWORD: ${FP_READONLY_PASSWORD:?Set FP_READONLY_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql
       - ./deploy/postgres:/docker-entrypoint-initdb.d:ro

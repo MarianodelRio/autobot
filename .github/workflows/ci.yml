@@ -47,6 +47,7 @@ jobs:
           POSTGRES_TEST_DB: test_autobot
           FP_OWNER_PASSWORD: fp_owner
           FP_APP_PASSWORD: fp_app
+          FP_READONLY_PASSWORD: fp_readonly
       # The same uv as the image: its version is read from the Dockerfile, so a
       # Dependabot bump of the image's uv updates CI too.
       - id: uv

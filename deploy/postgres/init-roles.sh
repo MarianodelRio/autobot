@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Database roles: fp_owner owns the tables and bypasses RLS (migrations,
-# Admin, cross-tenant operation commands); fp_app is what web and worker use, with only
-# SELECT/INSERT/UPDATE/DELETE and no DDL.
+# Database roles: fp_owner owns the tables and bypasses RLS (migrations, the panel,
+# cross-tenant operation commands); fp_app is what web and worker use, with only
+# SELECT/INSERT/UPDATE/DELETE and no DDL; fp_readonly is the panel's read-only SQL
+# console, with only SELECT and no BYPASSRLS.
 #
 # Runs as the PostgreSQL superuser. The postgres image runs it on the first start of an
 # empty volume (/docker-entrypoint-initdb.d); it is idempotent, so it can also be run by
@@ -12,6 +13,7 @@ set -euo pipefail
 
 : "${FP_OWNER_PASSWORD:?FP_OWNER_PASSWORD is required}"
 : "${FP_APP_PASSWORD:?FP_APP_PASSWORD is required}"
+: "${FP_READONLY_PASSWORD:?FP_READONLY_PASSWORD is required}"
 db="${POSTGRES_DB:-autobot}"
 
 psql_su() {
@@ -20,16 +22,20 @@ psql_su() {
 
 # Passwords are read from the environment inside psql (\getenv), so they never appear in
 # the process list. Do not enable log_statement for DDL: it would log them.
-export FP_OWNER_PASSWORD FP_APP_PASSWORD
+export FP_OWNER_PASSWORD FP_APP_PASSWORD FP_READONLY_PASSWORD
 psql_su --dbname postgres <<'SQL'
 \getenv owner_pw FP_OWNER_PASSWORD
 \getenv app_pw FP_APP_PASSWORD
+\getenv ro_pw FP_READONLY_PASSWORD
 SELECT 'CREATE ROLE fp_owner' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fp_owner')\gexec
 SELECT 'CREATE ROLE fp_app' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fp_app')\gexec
+SELECT 'CREATE ROLE fp_readonly' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fp_readonly')\gexec
 ALTER ROLE fp_owner WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS
   PASSWORD :'owner_pw';
 ALTER ROLE fp_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
   PASSWORD :'app_pw';
+ALTER ROLE fp_readonly WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
+  PASSWORD :'ro_pw';
 -- The application roles only reach their own databases.
 REVOKE CONNECT, TEMPORARY ON DATABASE postgres, template1 FROM PUBLIC;
 SQL
@@ -39,14 +45,16 @@ for name in "$db" ${POSTGRES_TEST_DB:+"$POSTGRES_TEST_DB"}; do
 SELECT format('CREATE DATABASE %I OWNER fp_owner', :'name')
   WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'name')\gexec
 SELECT format('ALTER DATABASE %I OWNER TO fp_owner', :'name')\gexec
--- No CONNECT or TEMP for everyone else; fp_app only connects.
+-- No CONNECT or TEMP for everyone else; fp_app and fp_readonly only connect.
 SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'name')\gexec
 SELECT format('GRANT CONNECT ON DATABASE %I TO fp_app', :'name')\gexec
+SELECT format('GRANT CONNECT ON DATABASE %I TO fp_readonly', :'name')\gexec
 SQL
   psql_su --dbname "$name" <<'SQL'
 ALTER SCHEMA public OWNER TO fp_owner;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO fp_app;
+GRANT USAGE ON SCHEMA public TO fp_readonly;
 -- Tables and sequences that fp_owner creates (Django's and Procrastinate's migrations).
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO fp_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO fp_app;

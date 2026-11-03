@@ -40,6 +40,7 @@ DB_OWNER_URL=postgres://fp_owner:local@db:5432/autobot
 POSTGRES_PASSWORD=local
 FP_OWNER_PASSWORD=local
 FP_APP_PASSWORD=local
+FP_READONLY_PASSWORD=local
 EOF
 printf '{}\n' >"$source_dir/secrets.yaml"
 printf '{}\n' >"$source_dir/google_sa.json"
@@ -107,6 +108,14 @@ before=$(counts "$source_project" "$source_dir")
 after=$(counts "$target_project" "$target_dir")
 if [[ $before != "$after" || $before != *'autocares-ss|1'* ]]; then
   echo 'Per-tenant counts differ after restore' >&2
+  exit 1
+fi
+# restore.sh reapplies roles and permissions (pg_restore --no-acl drops them).
+grants=$(cd "$target_dir" && docker compose --project-name "$target_project" -f compose.prod.yaml \
+  exec -T db psql -U postgres -d autobot -At -c \
+  "SELECT has_table_privilege('fp_app', 'tenant', 'INSERT'), has_table_privilege('fp_readonly', 'auth_user', 'SELECT')")
+if [[ $grants != 'f|f' ]]; then
+  echo "Permissions were not reapplied after restore: $grants" >&2
   exit 1
 fi
 echo "Local restore verified: $after"
