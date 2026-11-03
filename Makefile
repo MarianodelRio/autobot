@@ -89,7 +89,7 @@ prod-manage:
 tenant-push:
 	bash tools/tenant_push.sh
 
-.PHONY: dev-bootstrap dev-reset tenant-import ngrok
+.PHONY: dev-bootstrap dev-reset dev-activity tenant-import ngrok
 export DIR
 
 dev-bootstrap:
@@ -99,12 +99,15 @@ dev-bootstrap:
 	docker compose run --rm -T web python manage.py migrate --database owner --noinput
 	docker compose run --rm -T web python manage.py apply_grants
 	docker compose run --rm -T web python manage.py seed_demos
-	docker compose up -d --no-build web worker
+	docker compose up -d --no-build web worker victorialogs
 
 dev-reset:
 	@read -r -p "Borrar la BD local y reiniciar (escribe RESET): " answer; test "$$answer" = RESET
 	docker compose down -v
 	$(MAKE) dev-bootstrap
+
+dev-activity:
+	docker compose exec web python manage.py seed_dev_activity
 
 tenant-import:
 	bash tools/tenant_import.sh

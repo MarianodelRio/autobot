@@ -33,6 +33,12 @@ ya preparados; `make down` los para y `make shell` abre Django en `web`.
 de los demos. `make dev-reset` exige escribir `RESET`, borra el volumen local y repite
 el bootstrap, incluida la creación de la base de pruebas.
 
+`make dev-activity` crea actividad falsa y realista (mensajes, respuestas, avisos,
+alertas abiertas y resueltas, un trabajo fallido y muestras de sistema) para ver el
+panel con datos; `--days` y `--reset` se pasan con
+`docker compose exec web python manage.py seed_dev_activity --days 7 --reset`. Se
+niega fuera de `local`.
+
 La imagen local instala las dependencias de desarrollo (`INSTALL_DEV=true`); la de
 producción mantiene `--no-dev`. El worker usa `watchfiles` y reinicia su proceso al
 cambiar Python en `src/`, respetando el cierre del worker antes de sustituirlo.
