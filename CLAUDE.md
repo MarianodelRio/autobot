@@ -20,15 +20,18 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 ## Arquitectura
 
-- Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `worker`, `db`).
+- Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `worker`, `db`, `panel`, `victorialogs`).
 - `core/` e `integrations/` no importan Django; `packs/*` solo importan `core` (nunca Django, `integrations` ni otro pack). Lo comprueba `import-linter`.
 - Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de demo solo en `channels/demo/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio.
-- Config y datasets de cada negocio en `tenants/<slug>/` (YAML validado en CI). Secretos en `.env` y `secrets.yaml` del servidor; nunca en git.
-- Cada pack nuevo incluye su negocio de demo en `tenants/demo-<pack>/` y su escenario de conversación.
+- Config y datasets de cada negocio en PostgreSQL, versionados (ADR-009); nada en git ni en la imagen. Secretos de canal cifrados en la base de datos; secretos de la plataforma en `.env` del servidor. Nunca en git.
+- Cada pack nuevo incluye su plantilla en `src/packs/<pack>/template/` (de ahí sale su negocio de demo) y su escenario de conversación.
+- Panel interno (`panel/`) en TypeScript, Biome y Vitest; sustituye al Django Admin. Su API (`/api/panel/`) solo es accesible por túnel SSH (ADR-008); el frontend nunca es la única barrera de validación ni de permisos.
 
 ## Reglas obligatorias
 
-- Todo dato de cliente lleva `tenant_id` y RLS; el tenant se fija solo con `tenant_tx`. Nunca se salta RLS en código de aplicación (el rol `fp_owner`, con `BYPASSRLS`, solo lo usan migraciones, el Admin y comandos de operación).
+- Todo dato de cliente lleva `tenant_id` y RLS; el tenant se fija solo con `tenant_tx`. Nunca se salta RLS en código de aplicación (el rol `fp_owner`, con `BYPASSRLS`, solo lo usan migraciones, comandos de operación, `tenancy.store` y los servicios del panel, siempre con `.using("owner")` explícito).
+- Toda tabla nueva con RLS lleva las dos políticas: `tenant_isolation` y `readonly_all` (para la consola SQL del panel, rol `fp_readonly`). Toda tabla nueva sensible se añade a `SENSITIVE_TABLES` en `db_grants.py`. Los permisos de base de datos se declaran en `db_grants.py`, nunca solo en una migración; `apply_grants` los reaplica tras cada despliegue y restauración.
+- `tenant_document_version`, `tenant_dataset_version`, `tenant_secret` y `audit_event` llevan `tenant_id` sin RLS por diseño (ADR-009): son configuración u operación de la plataforma, no datos de cliente.
 - Todo efecto externo es idempotente; no se reintenta a ciegas un envío ambiguo (`unknown`).
 - Ninguna transacción abierta durante llamadas a Meta, Google o Telegram.
 - Los trabajos de la cola reciben solo ids; nunca teléfonos, ids de usuario ni datos personales en argumentos, candados o logs.
@@ -41,4 +44,4 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 ## Referencias
 
-- Decisiones: `docs/adr/`. Operación: `docs/runbooks/`. Configuración de cada pack: `docs/packs/`.
+- Decisiones: `docs/adr/`. Operación: `docs/runbooks/`. Configuración de cada pack: `docs/packs/`. Comandos: `docs/comandos.md`.

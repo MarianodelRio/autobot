@@ -16,6 +16,8 @@ Varios negocios comparten la plataforma. Un error de código que muestre datos d
 - El enrutado de webhooks y la lista de tenants salen del registro en memoria (`tenants/*.yaml`), así que **no hacen falta funciones `SECURITY DEFINER`**.
 - Test genérico de aislamiento que recorre todas las tablas con `tenant_id` y deja CI en rojo si alguna tabla no tiene política.
 
+Modificada por [ADR-008](ADR-008-panel.md) y [ADR-009](ADR-009-config-en-bd.md): el Django Admin desaparece, sustituido por el panel, que accede a `fp_owner` de forma explícita (`.using("owner")`); aparece un tercer rol, `fp_readonly` (`NOBYPASSRLS`, solo `SELECT`), para la consola SQL del panel, con una política `readonly_all` adicional en toda tabla con RLS; y la config y los datasets de los negocios pasan a vivir en cuatro tablas con `tenant_id` pero sin RLS (excepción explícita del test de aislamiento), porque cada proceso necesita leerlas enteras.
+
 ## Alternativas consideradas
 
 - **Base de datos o esquema por cliente**: aislamiento fuerte, pero migraciones, conexiones y backups multiplicados.
