@@ -1,5 +1,6 @@
 """Deployment orchestration, exercised locally with fake Docker and health responses."""
 
+import json
 import os
 import shutil
 import subprocess
@@ -45,14 +46,21 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
     return deploy / "deploy.sh", binaries
 
 
-def invoke(script: Path, binaries: Path, **environment: str) -> subprocess.CompletedProcess[str]:
+def deploy_results(tmp_path: Path) -> list[str]:
+    path = tmp_path / "state" / "ops" / "deploys.jsonl"
+    return [json.loads(line)["result"] for line in path.read_text().splitlines()]
+
+
+def invoke(
+    script: Path, binaries: Path, *, sha: str = NEW, **environment: str
+) -> subprocess.CompletedProcess[str]:
     env = {
         **os.environ,
         "PATH": f"{binaries}:{os.environ['PATH']}",
         "TEST_LOG": str(script.parent.parent / "docker.log"),
     }
     return subprocess.run(
-        ["bash", str(script), NEW],
+        ["bash", str(script), sha],
         env={**env, **environment},
         capture_output=True,
         text=True,
@@ -70,6 +78,14 @@ def test_success_records_image_after_health(tmp_path: Path) -> None:
     assert any("tenant_config validate --all" in line for line in lines)
     assert any("seed_demos" in line for line in lines)
     assert lines[-1].startswith(NEW) and "up --no-deps -d caddy" in lines[-1]
+    assert deploy_results(tmp_path) == ["deployed"]
+
+
+def test_already_deployed_and_healthy_is_recorded(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, sha=OLD)
+    assert result.returncode == 0, result.stderr
+    assert deploy_results(tmp_path) == ["already"]
 
 
 def test_health_failure_restores_previous_image_and_alerts(tmp_path: Path) -> None:
@@ -80,6 +96,7 @@ def test_health_failure_restores_previous_image_and_alerts(tmp_path: Path) -> No
     lines = (tmp_path / "docker.log").read_text().splitlines()
     assert any(line.startswith(OLD) and "up --no-deps -d web worker" in line for line in lines)
     assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
+    assert deploy_results(tmp_path) == ["rolled_back"]
 
 
 def test_worker_restarting_restores_previous_image_and_alerts(tmp_path: Path) -> None:
@@ -91,6 +108,7 @@ def test_worker_restarting_restores_previous_image_and_alerts(tmp_path: Path) ->
     assert any(line.startswith(OLD) and "up --no-deps -d web worker" in line for line in lines)
     assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
     assert not any(line.startswith(NEW) and "-d caddy" in line for line in lines)
+    assert deploy_results(tmp_path) == ["rolled_back"]
 
 
 def test_migration_failure_never_switches_web(tmp_path: Path) -> None:
@@ -101,6 +119,7 @@ def test_migration_failure_never_switches_web(tmp_path: Path) -> None:
     log = (tmp_path / "docker.log").read_text()
     assert "up --no-deps -d web worker" not in log
     assert any(line.startswith(OLD) and "deploy_aborted" in line for line in log.splitlines())
+    assert deploy_results(tmp_path) == ["aborted"]
 
 
 def test_failure_before_switch_restores_previous_checkout(tmp_path: Path) -> None:

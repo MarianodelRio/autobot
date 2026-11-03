@@ -200,6 +200,7 @@ CACHES = {
 }
 
 
+OPS_STATE_DIR = Path(os.environ.get("OPS_STATE_DIR", BASE_DIR / "state" / "ops"))
 HEALTHCHECKS_PING_URL = os.environ.get("HEALTHCHECKS_PING_URL", "")
 SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 RELEASE_SHA = os.environ.get("RELEASE_SHA", os.environ.get("SHA", ""))

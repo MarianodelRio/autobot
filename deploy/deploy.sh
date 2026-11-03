@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 exec 9>.deploy.lock
 flock -n 9 || { echo 'Another deployment is running' >&2; exit 1; }
+mkdir -p state/ops
 
 if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Usage: deploy/deploy.sh <full-40-character-sha>' >&2
@@ -56,15 +57,26 @@ alert_ops() {
     || echo 'Could not send ops alert; check deployment logs' >&2
 }
 
+# One line per attempt (DESIGN §7.4), read by the panel; `web` mounts state/ops read-only.
+record_deploy() {
+  printf '{"at":"%s","sha":"%s","previous":"%s","result":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$target" "$previous" "$1" >>state/ops/deploys.jsonl
+}
+
 if [[ $previous == "$target" ]]; then
   if wait_health; then
     echo 'Already deployed and healthy'
+    record_deploy already
     exit 0
   fi
   echo 'Recorded image is unhealthy; restarting services' >&2
   "${compose[@]}" up --no-deps -d web worker
-  wait_health
-  exit $?
+  if wait_health; then
+    record_deploy already
+    exit 0
+  fi
+  record_deploy rollback_failed
+  exit 1
 fi
 
 # A failure before switching images leaves the previous containers running: only the
@@ -76,6 +88,7 @@ abort() {
     export SHA="$previous"  # the new image may not even have been pulled
   fi
   alert_ops deploy_aborted '🔴 Despliegue abortado antes de cambiar la imagen: revisar logs'
+  record_deploy aborted
   exit 1
 }
 
@@ -90,25 +103,33 @@ abort() {
 
 rollback() {
   echo 'New image failed its health checks; restoring previous image' >&2
+  local result=rollback_failed
   if [[ -n $previous ]]; then
     export SHA="$previous"
     restore_checkout
+    local failed=0
     if ! "${compose[@]}" up --no-deps -d web worker; then
       echo 'Could not restart previous image; operator action required' >&2
+      failed=1
     fi
     if ! wait_health; then
       echo 'Rollback health check failed; operator action required' >&2
+      failed=1
     fi
     if ! wait_worker; then
       echo 'Rollback worker check failed; operator action required' >&2
+      failed=1
     fi
     if ! "${compose[@]}" up --no-deps -d caddy; then
       echo 'Could not restart Caddy; operator action required' >&2
+      failed=1
     fi
+    [[ $failed -eq 0 ]] && result=rolled_back
   else
     echo 'No previous SHA; first deployment needs operator action' >&2
   fi
   alert_ops deploy_rollback '🔴 Despliegue fallido: revisar estado de salud'
+  record_deploy "$result"
   exit 1
 }
 
@@ -118,4 +139,5 @@ wait_worker || rollback
 "${compose[@]}" up --no-deps -d caddy || rollback
 printf '%s\n' "$target" >.deployed-sha.tmp
 mv .deployed-sha.tmp .deployed-sha
+record_deploy deployed
 echo "Deployed $target"

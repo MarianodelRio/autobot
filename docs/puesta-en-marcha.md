@@ -64,7 +64,9 @@ la demo.
   (`"<Servicio> - <Nombre>"`), para que el resumen las cuente.
 - **Primer despliegue** con `make deploy SHA=<sha>`, prueba de vuelta atrás con un SHA
   roto a propósito y simulacro de restauración en una VPS temporal (objetivo: menos
-  de 2 h). Requiere aprobación humana.
+  de 2 h). Requiere aprobación humana. Tras el despliegue, comparar la primera
+  `system_sample` (CPU, memoria, carga) con `htop` en la misma VPS, para confirmar que
+  lee los valores reales del host y no los del contenedor.
 - **Uptime externo:** monitor de `https://api.<dominio>/health` cada 5 min, con aviso
   de caducidad del certificado.
 

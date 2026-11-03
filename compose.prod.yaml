@@ -75,6 +75,12 @@ services:
       <<: *app-env
       DB_OWNER_URL: ${DB_OWNER_URL:?Set DB_OWNER_URL}
       SERVICE_NAME: web
+      OPS_STATE_DIR: /run/ops
+    # Overriding the anchor's volumes replaces the whole list (YAML does not merge
+    # sequences): google_sa.json must be repeated here alongside the new mount.
+    volumes:
+      - ./google_sa.json:/run/secrets/google_sa.json:ro
+      - ./state/ops:/run/ops:ro
     command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4 --no-control-socket
     ports:
       - "127.0.0.1:8000:8000"

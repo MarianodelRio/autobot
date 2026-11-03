@@ -66,3 +66,11 @@ Los secretos de canal están cifrados en la BD; no hay YAML de secretos montado 
 despliegue y conserva su copia con los backups. `deploy/manage.sh` usa el SHA de
 `.deployed-sha` para los comandos de operación; desde local se invoca mediante
 `make prod-manage HOST=<servidor> CMD="..."` (`TTY=1` si pide una confirmación).
+
+**Sistema (DESIGN §7.4):** cada cinco minutos `ops.check.run()` guarda una muestra
+(`system_sample`: CPU, memoria, carga, disco y tamaño de la base) y borra las de más de
+62 días. `deploy/backup.sh` escribe `state/ops/backup.json` de forma atómica
+(`{finished_at, ok, dump_bytes}`) y `deploy/deploy.sh` añade una línea a
+`state/ops/deploys.jsonl` por cada intento (`deployed`, `already`, `aborted`,
+`rolled_back` o `rollback_failed`). `web` monta `state/ops` en solo lectura en
+`/run/ops`; `worker` no la necesita.

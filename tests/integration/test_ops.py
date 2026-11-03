@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from autobot.jobs import app
 from autobot.ops import check, health, state
-from autobot.ops.models import OpsAlert
+from autobot.ops.models import OpsAlert, SystemSample
 from autobot.runtime.models import Contact, OutboundMessage
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
@@ -221,6 +221,17 @@ def test_heartbeat_only_after_success(
     with pytest.raises(OperationalError):
         check.run()
     assert len(seen) == 1
+
+
+def test_run_saves_a_system_sample_and_purges_old_ones(tenants: Any, alerts: Any) -> None:
+    tenants()
+    old = SystemSample.objects.using("owner").create(
+        taken_at=timezone.now() - timedelta(days=63), db_bytes=1
+    )
+    check.run()
+    assert not SystemSample.objects.using("owner").filter(id=old.id).exists()
+    sample = SystemSample.objects.using("owner").latest("taken_at")
+    assert sample.db_bytes > 0
 
 
 def test_registration() -> None:

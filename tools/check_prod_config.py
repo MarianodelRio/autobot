@@ -53,6 +53,9 @@ def main() -> None:
     services = json.loads(config.stdout)["services"]
     assert services["web"]["ports"][0]["host_ip"] == "127.0.0.1"
     assert not services["db"].get("ports")
+    web_mounts = {mount["target"]: mount for mount in services["web"]["volumes"]}
+    assert web_mounts["/run/secrets/google_sa.json"]["read_only"]
+    assert web_mounts["/run/ops"]["read_only"]
     assert services["web"]["read_only"] and services["worker"]["read_only"]
     assert services["web"]["user"] == "10001"
     assert services["caddy"]["user"] == "10001"

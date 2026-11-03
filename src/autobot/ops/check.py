@@ -1,7 +1,6 @@
 """Five-minute worker checks; external calls happen after tenant transactions."""
 
 import logging
-import shutil
 from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID
@@ -14,13 +13,15 @@ from django.db.models import Q
 from django.utils import timezone
 
 from autobot.channels.demo.doors import door
-from autobot.ops import health, state
-from autobot.ops.models import OpsAlert
+from autobot.ops import health, state, system
+from autobot.ops.models import OpsAlert, SystemSample
 from autobot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
 from autobot.runtime.notifications import resolve_alert, send_ops_alert
 from autobot.runtime.periodic import channels_for
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
+
+SAMPLE_RETENTION = timedelta(days=62)
 
 DEMO_LABELS = {Channel.DEMO_TG: "Telegram", Channel.DEMO_WA: "WhatsApp"}
 
@@ -211,8 +212,8 @@ def collect() -> list[Finding]:
                     f"{issue.severity} Bot de demo (WhatsApp): {issue.message}",
                 )
             )
-    disk = shutil.disk_usage(settings.BASE_DIR)
-    if disk.used / disk.total > 0.85:
+    disk_used_pct = system.disk()
+    if disk_used_pct is not None and disk_used_pct > 85:
         findings.append(Finding("disk", None, "🟠 Disco por encima del 85 %."))
     return findings
 
@@ -228,8 +229,23 @@ def sync_alerts(findings: list[Finding]) -> None:
             resolve_alert(alert, by="auto")
 
 
+def take_sample() -> None:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_database_size(current_database())")
+        (db_bytes,) = cursor.fetchone()
+    SystemSample.objects.create(
+        cpu_pct=system.cpu_percent(),
+        mem_used_pct=system.memory(),
+        load1=system.load(),
+        disk_used_pct=system.disk(),
+        db_bytes=db_bytes,
+    )
+    SystemSample.objects.filter(taken_at__lt=timezone.now() - SAMPLE_RETENTION).delete()
+
+
 def run() -> None:
     sync_alerts(collect())
+    take_sample()
     # No finally: a failed DB/global check must prevent a success heartbeat.
     if settings.HEALTHCHECKS_PING_URL:
         try:

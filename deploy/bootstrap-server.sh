@@ -51,6 +51,7 @@ if [[ -f $marker && $(cat "$marker") == "$fingerprint" ]] && \
    cmp -s /srv/autobot/deploy/autobot-backup.service /etc/systemd/system/autobot-backup.service && \
    [[ $(stat -c '%u:%g:%a' /srv/autobot/state/caddy-data) == "$(id -u deploy):$(id -g deploy):700" ]] && \
    [[ $(stat -c '%u:%g:%a' /srv/autobot/state/caddy-config) == "$(id -u deploy):$(id -g deploy):700" ]] && \
+   [[ $(stat -c '%u:%g:%a' /srv/autobot/state/ops) == "$(id -u deploy):$(id -g deploy):700" ]] && \
    [[ $(sshd -T | awk '/^permitrootlogin / {print $2}') == no ]] && \
    [[ $(sshd -T | awk '/^passwordauthentication / {print $2}') == no ]]; then
   echo 'Bootstrap already configured'
@@ -106,6 +107,7 @@ runuser -u deploy -- git -C /srv/autobot config core.sshCommand \
   'ssh -i /home/deploy/.ssh/github_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/deploy/.ssh/known_hosts -o StrictHostKeyChecking=yes'
 install -d -m 0700 -o deploy -g deploy /srv/autobot/state/caddy-data
 install -d -m 0700 -o deploy -g deploy /srv/autobot/state/caddy-config
+install -d -m 0700 -o deploy -g deploy /srv/autobot/state/ops
 
 cat >/etc/ssh/sshd_config.d/00-00-autobot.conf <<'EOF'
 PermitRootLogin no

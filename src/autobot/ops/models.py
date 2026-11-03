@@ -54,3 +54,18 @@ class AuditEvent(models.Model):
 
     def __str__(self) -> str:
         return f"{self.action} {self.id}"
+
+
+class SystemSample(models.Model):
+    taken_at = models.DateTimeField(default=timezone.now, db_index=True)
+    cpu_pct = models.FloatField(null=True, blank=True)
+    mem_used_pct = models.FloatField(null=True, blank=True)
+    load1 = models.FloatField(null=True, blank=True)
+    disk_used_pct = models.FloatField(null=True, blank=True)
+    db_bytes = models.BigIntegerField()
+
+    class Meta:
+        db_table = "system_sample"
+
+    def __str__(self) -> str:
+        return f"system_sample {self.id} {self.taken_at}"

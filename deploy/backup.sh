@@ -22,16 +22,30 @@ export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE AWS_ACCESS_KEY_ID AWS_SECRET_ACCES
 export HEALTHCHECKS_BACKUP_PING_URL
 restic_bin=${RESTIC_BIN:-restic}
 
-mkdir -p backups
+mkdir -p backups state/ops
 dump_tmp=$(mktemp backups/.autobot.dump.XXXXXXXX)
-trap 'rm -f "$dump_tmp"' EXIT
+dump_bytes=0
+
+# Runs on every exit, success or failure: records the outcome for the panel (DESIGN
+# §7.4) and never leaves the plaintext dump on disk once restic has it.
+write_status() {
+  local code=$? ok=false status_tmp
+  [[ $code -eq 0 ]] && ok=true
+  rm -f "$dump_tmp" backups/autobot.dump
+  status_tmp=$(mktemp state/ops/.backup.json.XXXXXXXX)
+  printf '{"finished_at":"%s","ok":%s,"dump_bytes":%s}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ok" "$dump_bytes" >"$status_tmp"
+  mv "$status_tmp" state/ops/backup.json
+}
+trap write_status EXIT
+
 project=${AUTOBOT_PROJECT:-autobot}
 compose_file=${AUTOBOT_COMPOSE_FILE:-compose.prod.yaml}
 docker compose --project-name "$project" -f "$compose_file" exec -T db \
   pg_dump -U postgres -d autobot -Fc >"$dump_tmp"
 test -s "$dump_tmp"
 mv "$dump_tmp" backups/autobot.dump
-trap 'rm -f backups/autobot.dump' EXIT
+dump_bytes=$(stat -c '%s' backups/autobot.dump)
 
 "$restic_bin" backup --tag autobot backups/autobot.dump .env .deployed-sha \
   google_sa.json Caddyfile
