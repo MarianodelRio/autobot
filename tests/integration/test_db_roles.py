@@ -125,3 +125,32 @@ def test_apply_grants_reapplies_a_revoked_grant() -> None:
     assert query("owner", "SELECT has_table_privilege('fp_readonly', 'tenant', 'SELECT')") == (
         True,
     )
+
+
+@pytest.mark.parametrize(
+    "table",
+    ["tenant_document_version", "tenant_dataset_version", "tenant_secret", "config_revision"],
+)
+def test_fp_app_reads_config_tables_but_cannot_write_them(table: str) -> None:
+    assert query("owner", f"SELECT has_table_privilege('fp_app', '{table}', 'SELECT')") == (True,)
+    for privilege in ("INSERT", "UPDATE", "DELETE"):
+        assert query(
+            "owner", f"SELECT has_table_privilege('fp_app', '{table}', '{privilege}')"
+        ) == (False,)
+
+
+@pytest.mark.parametrize(
+    "table",
+    ["tenant_document_version", "tenant_dataset_version", "tenant_secret", "config_revision"],
+)
+def test_fp_owner_writes_config_tables(table: str) -> None:
+    for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+        assert query(
+            "owner", f"SELECT has_table_privilege('fp_owner', '{table}', '{privilege}')"
+        ) == (True,)
+
+
+def test_fp_readonly_cannot_read_tenant_secret() -> None:
+    assert query(
+        "owner", "SELECT has_table_privilege('fp_readonly', 'tenant_secret', 'SELECT')"
+    ) == (False,)

@@ -28,6 +28,7 @@ from autobot.models import (
     OwnerLink,
     Tenant,
 )
+from autobot.tenancy.models import TenantDatasetVersion, TenantDocumentVersion, TenantSecret
 from autobot.tenancy.tx import tenant_tx
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
@@ -35,8 +36,19 @@ NOW = datetime(2026, 10, 5, 10, tzinfo=UTC)
 
 # Platform tables with tenant_id but no RLS by design (written before the tenant is
 # known, only used by the demo selector / the owner bot).
-PLATFORM_MODELS: set[type[models.Model]] = {DemoSession, OwnerLink}
+# Config tables (ADR-009) also belong here: the panel and the operator commands read
+# and write them across tenants.
+PLATFORM_MODELS: set[type[models.Model]] = {
+    DemoSession,
+    OwnerLink,
+    TenantDocumentVersion,
+    TenantDatasetVersion,
+    TenantSecret,
+}
 PLATFORM_TABLES = {m._meta.db_table for m in PLATFORM_MODELS}
+# Operation tables with tenant_id but no RLS by design (ADR-009): the panel and the
+# operator commands read and write them across tenants.
+NO_RLS_TABLES = {"audit_event"}
 RLS_ERROR = "row-level security"
 
 
@@ -230,7 +242,7 @@ def test_every_table_with_tenant_id_has_its_policy() -> None:
             "SELECT table_name FROM information_schema.columns"
             " WHERE table_schema = 'public' AND column_name = 'tenant_id'"
         )
-        tables = {name for (name,) in cursor.fetchall()} - PLATFORM_TABLES
+        tables = {name for (name,) in cursor.fetchall()} - PLATFORM_TABLES - NO_RLS_TABLES
     assert tables  # the query found the tenant tables
     assert {t: isolation_problems(t) for t in tables if isolation_problems(t)} == {}
 

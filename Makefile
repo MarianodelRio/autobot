@@ -1,5 +1,5 @@
 .PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
-.PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test admin-tunnel
+.PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test
 .PHONY: db-roles
 
 check-prod-config:
@@ -13,9 +13,6 @@ backup-now:
 
 restore-test:
 	bash deploy/restore-test.sh
-
-admin-tunnel:
-	ssh -o ExitOnForwardFailure=yes -N -L 127.0.0.1:18000:127.0.0.1:8000 deploy@$(HOST)
 
 up:
 	docker compose up -d --build

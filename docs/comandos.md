@@ -27,13 +27,13 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make deploy [SHA=]` | Lanza el workflow de despliegue en GitHub Actions |
 | `make backup-now` | Ejecuta `deploy/backup.sh` en el servidor por SSH |
 | `make restore-test` | `bash deploy/restore-test.sh`: simulacro de restauración |
-| `make admin-tunnel` | Túnel SSH al Django Admin |
 
 ## `manage.py`
 
 | Comando | Qué hace |
 |---|---|
 | `migrate` | El `migrate` de Django, pero corre por defecto sobre el alias `owner` (`fp_app` no puede hacer DDL) |
+| `apply_grants` | Reaplica los permisos deseados de PostgreSQL (`db_grants.py`); se ejecuta tras `migrate`, en cada despliegue y tras cada restauración |
 | `new_tenant <slug> --pack <pack> --channel whatsapp\|telegram` | Crea `tenants/<slug>/tenant.yaml`: id UUIDv7, `public_id` aleatorio, `status: onboarding` y los campos del pack (sin valor por defecto quedan `null`) |
 | `sync_tenants [--strict]` | Vuelca la parte común del registro en memoria a la tabla `tenant` |
 | `tenant_health <slug>` | Comprueba la salud del pack y del canal de un negocio, forzando la comprobación |
@@ -45,3 +45,5 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `export_tenant <slug> --output <fichero>` | Exporta todos los datos de un negocio a un fichero privado (derechos RGPD) |
 | `forget_contact <slug> <external_id> [--channel ...]` | Borra los datos de un contacto |
 | `purge_tenant <slug>` | Borra los datos de un negocio, con confirmación escribiendo el slug |
+| `outbound_resolve <uuid> (--mark-sent\|--resend) --confirm` | Resuelve un envío ambiguo a mano; sin `--confirm` explica el riesgo y no hace nada |
+| `job_retry <id>` | Reintenta un trabajo fallido idempotente a mano; rechaza los de envío (`send_message`, `send_notification`) |

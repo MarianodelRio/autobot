@@ -9,7 +9,11 @@ la conexión se cortase.
 **Pasos:** comprueba por el panel del proveedor o con el destinatario si llegó.
 Si llegó y lleva más de diez minutos en `unknown`, usa «Marcar enviado». Si no
 llegó, lleva más de diez minutos en `unknown` y el payload y canal siguen
-disponibles, usa «Reenviar» y confirma la posibilidad de duplicado. Estas
+disponibles, usa «Reenviar» y confirma la posibilidad de duplicado. Si el Admin
+no es accesible, usa
+`docker compose exec web python manage.py outbound_resolve <id> --mark-sent --confirm`
+o `--resend --confirm` en su lugar; sin `--confirm` el comando explica el riesgo
+y no hace nada. Estas
 acciones no admiten mensajes `failed`: corrige su causa siguiendo el
 procedimiento de canal o proveedor correspondiente. El `failed` permanente
 queda registrado; corrige la causa para envíos futuros y comprueba con un

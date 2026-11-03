@@ -70,8 +70,7 @@ la demo.
 
 Verificación del servidor:
 
-- [ ] `/health` responde 200 con certificado válido; `/admin/` da 404 desde fuera y
-      funciona con `make admin-tunnel`.
+- [ ] `/health` responde 200 con certificado válido.
 - [ ] Consulta completa de `demo-autobuses` y reserva de `demo-peluqueria` por la
       puerta Telegram de la demo de producción, y lo mismo por la puerta WhatsApp una
       vez dada de alta.

@@ -8,7 +8,9 @@ errores de BD o de un proveedor externo.
 
 **Pasos:** si el contenedor terminó, reinícialo con `docker compose -p autobot
 -f compose.prod.yaml up -d worker`. Si hay trabajos fallidos, inspecciona el tipo y
-la causa en Admin antes de reintentarlos. Nunca reintentes a ciegas un envío de
+la causa en Admin antes de reintentarlos; si no es accesible, usa
+`docker compose exec web python manage.py job_retry <id>` (rechaza trabajos de
+envío, que no se reintentan a ciegas). Nunca reintentes a ciegas un envío de
 estado `unknown`; usa el runbook 5. Si el problema es capacidad sostenida, registra
 métricas antes de cambiar concurrencia o número de workers.
 

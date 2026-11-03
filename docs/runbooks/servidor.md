@@ -53,8 +53,10 @@ distintos del despliegue, `docker compose version` responde, el timer está acti
 configuración. El primer despliegue y el escaneo externo son pasos de la puesta en marcha (`docs/puesta-en-marcha.md`);
 este runbook no los da por hechos.
 
-Para entrar al Admin tras el despliegue, en tu máquina ejecuta
-`make admin-tunnel HOST=<host>` con la clave de operación. Abre
-`http://127.0.0.1:18000/admin/` y usa TOTP. El puerto 8000 del servidor no se
-expone públicamente. Para un backup manual, `make backup-now HOST=<host>` usa esa
-misma clave de operación; la clave de CI no puede ejecutarlo.
+El Django Admin se eliminó (ADR-008); todavía no hay interfaz web (`docs/runbooks/panel.md`).
+La operación tras el despliegue se hace por SSH con la clave de operación y
+`docker compose -p autobot -f compose.prod.yaml exec web python manage.py <comando>`
+(`docs/comandos.md`), o con los comandos de resolución (`outbound_resolve`, `job_retry`).
+El puerto 8000 del servidor no se expone públicamente. Para un backup manual,
+`make backup-now HOST=<host>` usa esa misma clave de operación; la clave de CI no
+puede ejecutarlo.

@@ -280,7 +280,7 @@ def test_health_without_database_is_503(tenants: Any, monkeypatch: pytest.Monkey
     assert response.json()["database"] is False
 
 
-def test_admin_is_mounted_apart() -> None:
+def test_only_webhooks_and_health_are_public() -> None:
     from config import urls
 
     assert [str(p.pattern) for p in urls.public] == [
@@ -291,4 +291,5 @@ def test_admin_is_mounted_apart() -> None:
         "webhooks/telegram-notify",
         "health",
     ]
-    assert Client().get("/admin/").status_code == 302  # to its login
+    assert urls.urlpatterns == urls.public
+    assert Client().get("/admin/").status_code == 404

@@ -36,12 +36,9 @@ _hosts = env("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 ALLOWED_HOSTS = [h.strip() for h in _hosts.split(",") if h.strip()]
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
     "procrastinate.contrib.django",
     "django_otp",
     "django_otp.plugins.otp_totp",
@@ -58,10 +55,7 @@ if importlib.util.find_spec("django_migration_linter"):
         "ignore_name": ["0008_demo_channels"],
     }
 
-DATABASE_ROUTERS = ["autobot.admin_db.AdminDatabaseRouter"]
-
 MIDDLEWARE = [
-    "autobot.admin_db.AdminDatabaseMiddleware",
     "autobot.ops.logging.LogContextMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -69,35 +63,16 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django_otp.middleware.OTPMiddleware",
-    "django.contrib.messages.middleware.MessageMiddleware",
-    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-if not IS_LOCAL:
-    MIDDLEWARE.insert(3, "whitenoise.middleware.WhiteNoiseMiddleware")
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
-TEMPLATES = [
-    {
-        "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
-        "APP_DIRS": True,
-        "OPTIONS": {
-            "context_processors": [
-                "django.template.context_processors.request",
-                "django.contrib.auth.context_processors.auth",
-                "django.contrib.messages.context_processors.messages",
-            ],
-        },
-    },
-]
-
 
 # Two aliases: `default` is fp_app (no BYPASSRLS, no DDL), used by web
 # and worker; `owner` is fp_owner (owns the tables, BYPASSRLS), used only by migrations,
-# the Admin and operation commands. The worker runs without DB_OWNER_URL, so without the
-# alias. Local defaults match compose.yaml, whose db is published on port 5433.
+# operation commands and (from T14) the panel. The worker runs without DB_OWNER_URL, so
+# without the alias. Local defaults match compose.yaml, whose db is published on port 5433.
 def _database(url: str) -> dict[str, Any]:
     return dict(dj_database_url.parse(url, conn_max_age=60, conn_health_checks=True))
 
@@ -174,16 +149,6 @@ LANGUAGE_CODE = "es-es"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
-
-STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
-STORAGES = {
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
-        if not IS_LOCAL
-        else "django.contrib.staticfiles.storage.StaticFilesStorage"
-    }
-}
 
 LOGGING = {
     "version": 1,
