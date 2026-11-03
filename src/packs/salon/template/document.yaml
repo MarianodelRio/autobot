@@ -1,5 +1,5 @@
 # Pack salon template: initial demo document (ADR-009).
-# Creado con `manage.py new_tenant demo-peluqueria --pack salon --demo "..."`.
+# Seeded once by seed_demos; later changes belong in the database.
 # Usa un calendario de Google de demostración (docs/runbooks/demo.md). El chat del
 # dueño se conecta con `manage.py owner_invite demo-peluqueria`; los avisos que recibe
 # se eligen en `owner.notify`.

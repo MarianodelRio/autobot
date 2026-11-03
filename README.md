@@ -44,9 +44,10 @@ el negocio desde `web`; este último necesita las credenciales de los servicios 
 Para generar el QR público del negocio sin contenedores, credenciales ni acceso de red:
 
 ```bash
-make qr SLUG=<slug>                         # qr/<slug>.svg
-make qr SLUG=<slug> ARGS="--output /ruta/qr.svg"
-# Equivalente: PYTHONPATH=src uv run python -m tools.qr <slug>
+uv run python manage.py tenant_config export <slug> datos/<slug>
+make qr FILE=datos/<slug>/document.yaml
+make qr FILE=datos/<slug>/document.yaml ARGS="--output /ruta/qr.svg"
+# Equivalente: PYTHONPATH=src uv run python -m tools.qr datos/<slug>/document.yaml
 ```
 
 El canal debe declarar `display_phone` internacional (WhatsApp) o `bot_username`
@@ -81,9 +82,16 @@ y trabajo conserva el mismo registro durante su ejecución. Un fallo al comproba
 revisión mantiene el último registro válido; `/health` responde 503 si no puede hacer
 la primera carga.
 
-La migración del panel está en curso: las plantillas ya se validan desde los packs y
-los tests siembran configuración cifrada en BD. `tenant_config import/export/validate`,
-`tenant_dataset`, `seed_demos` y `tenant_status` ya gestionan versiones en BD; ver
-[comandos](docs/comandos.md). `tenant-sync` es un comando heredado que solo actualiza
-el espejo `tenant` y no publica versiones para el runtime. No hay despliegue previo ni
-tráfico real; el arranque local completo se automatiza en T08c.
+La configuración y los secretos de negocio ya no se copian del repositorio ni se
+montan desde un YAML. `tenant_config import/export/validate`, `tenant_dataset`,
+`seed_demos` y `tenant_status` gestionan las versiones en PostgreSQL; ver
+[comandos](docs/comandos.md). La publicación no requiere commits ni reinicios.
+El arranque local completo se automatiza en T08c; mientras tanto, después de levantar
+`db`, ejecuta `uv run python manage.py migrate`, `apply_grants` y `seed_demos`.
+
+Para el QR, exporta primero `document.yaml` y ejecuta `make qr FILE=<ruta/document.yaml>`.
+Las acciones de producción se ejecutan con `make prod-manage HOST=<servidor> CMD="..."`;
+`TTY=1` permite confirmaciones interactivas. `make tenant-push HOST=<servidor> SLUG=<slug>`
+transfiere el documento y los datasets de la BD local por SSH; `SECRETS=<yaml-privado>`
+añade solo los secretos del slug seleccionado al tar temporal. Los exports ordinarios
+no incluyen secretos. Nunca se versionan `tenants/` ni `datos/`.

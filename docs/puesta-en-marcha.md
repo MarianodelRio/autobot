@@ -38,7 +38,7 @@ la demo.
 - **Backups:** bucket en un proveedor distinto del de la VPS (Backblaze B2 o
   Cloudflare R2) con clave limitada a ese bucket, y contraseña de restic; los tres en
   el gestor de contraseñas. Verificar: `restic snapshots` lista el primer backup.
-- **Secretos de despliegue:** en la VPS, `/srv/autobot/.env`, `secrets.yaml`,
+- **Secretos de despliegue:** en la VPS, `/srv/autobot/.env`,
   `google_sa.json`, `backup.env` y la contraseña de restic como `deploy` con modo
   0600, `DEPLOY_UID`, deploy key de GitHub de solo lectura y acceso de lectura a GHCR.
   En GitHub, entorno `production` con aprobación requerida y secretos `DEPLOY_HOST`,
@@ -82,12 +82,12 @@ Verificación del servidor:
 
 ### DM Barber Shop (`salon`, WhatsApp)
 
-- Crear `tenants/dm-barber/tenant.yaml` con la config actual del
+- Preparar un `document.yaml` de importación con la config actual del
   bot anterior (horario, servicios, ventana, evento especial e
   interruptores de envío con sus valores actuales), canal WhatsApp de la app
   existente en `onboarding` y `manual_confirmations_since` igual a la fecha de arranque.
 - El negocio comparte su calendario real.
-- Secretos de la app de Meta existente en `secrets.yaml` y plantillas
+- Secretos de la app de Meta existente en un YAML privado de importación y plantillas
   `confirmacion_cita` y `recordatorio_cita` aprobadas. Verificar: `tenant_health
   dm-barber` en verde.
 - Migrar las citas antiguas: `tools/migrate_salon_events.py dm-barber --dry-run`,
@@ -108,7 +108,9 @@ Verificación del servidor:
 - La empresa revisa el bot en `onboarding` por su canal real y confirma el PDF de
   `make bus-revision`.
 - Alta de WhatsApp con el checklist de `docs/runbooks/alta-baja-negocio.md`, ids de
-  Meta en `tenant.yaml`, secretos, `status: active` y despliegue.
+  Meta en el documento de importación y secretos cifrados en la BD. Importar primero
+  en local, transferir con `make tenant-push HOST=<servidor> SLUG=<slug> SECRETS=<yaml>`
+  y comprobar la activación cuando el panel esté disponible.
 
 ### Comprobación final
 
@@ -123,3 +125,14 @@ aprobación humana explícita.
 Antes del primer despliegue del panel, genera una clave Fernet propia para
 `SECRETS_ENCRYPTION_KEY` y conserva una copia cifrada con los backups. La clave local
 solo sirve en desarrollo; procedimiento en [rotar secretos](runbooks/09-rotar-secretos.md).
+
+### Configuración del primer despliegue del panel
+
+La persona importa la copia local de cada negocio con `tenant_config import <dir>
+--secrets <yaml>`; el nombre antiguo `tenant.yaml` se admite solo como entrada. Las
+plantillas de demo se siembran con `seed_demos`. Los comandos de producción pasan por
+`make prod-manage HOST=<servidor> CMD="..."`; para transferir la configuración local se
+usa `make tenant-push HOST=<servidor> SLUG=<slug> SECRETS=<yaml>`. El tar de entrada puede
+llevar un `secrets.yaml` temporal con solo ese slug; los exports ordinarios no lo incluyen.
+Al comprobar el resultado, retirar las copias locales de importación o guardarlas
+cifradas fuera del repositorio. La lista completa del panel se termina en T33.

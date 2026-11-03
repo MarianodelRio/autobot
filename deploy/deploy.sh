@@ -85,7 +85,8 @@ abort() {
 "${compose[@]}" pull web worker || abort
 "${compose[@]}" run --rm web python manage.py migrate --noinput || abort
 "${compose[@]}" run --rm web python manage.py apply_grants || abort
-"${compose[@]}" run --rm web python manage.py sync_tenants --strict || abort
+"${compose[@]}" run --rm web python manage.py tenant_config validate --all || abort
+"${compose[@]}" run --rm web python manage.py seed_demos || abort
 
 rollback() {
   echo 'New image failed its health checks; restoring previous image' >&2

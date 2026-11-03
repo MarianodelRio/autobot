@@ -110,11 +110,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # declared in autobot/jobs.py.
 PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"
 
-# Tenants: config in git, channel secrets on the server (in local, the
-# repository root, ignored by git).
-TENANTS_DIR = Path(os.environ.get("TENANTS_DIR", BASE_DIR / "tenants"))
-SECRETS_FILE = Path(env("SECRETS_FILE", str(BASE_DIR / "secrets.yaml")))
-
 # Channels. Graph API version of the WhatsApp Cloud API (reviewed every six
 # months).
 WHATSAPP_GRAPH_VERSION = env("WHATSAPP_GRAPH_VERSION", "v23.0")

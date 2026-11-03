@@ -11,11 +11,9 @@ x-app: &app
     DB_OWNER_URL: postgres://fp_owner:fp_owner@db:5432/autobot
   volumes:
     - ./src:/app/src
-    - ./tenants:/app/tenants
     - ./manage.py:/app/manage.py
-    # Only mounted if present (see .env.example / docs/puesta-en-marcha.md §1); both
+    # Only mounted if present (see .env.example / docs/puesta-en-marcha.md §1);
     # ignored by git.
-    - ./secrets.yaml:/app/secrets.yaml:ro
     - ./google_sa.json:/app/google_sa.json:ro
   depends_on:
     db:

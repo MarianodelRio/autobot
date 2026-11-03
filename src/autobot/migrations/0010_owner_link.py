@@ -4,7 +4,7 @@ notify bot (ADR-007).
 Neither has RLS, on purpose (ADR-007): a message arriving at the
 notify bot's webhook carries only a Telegram chat id, and the tenant is found *from*
 it, the same way `demo_event`/`demo_session` work for the demo doors (migration 0008,
-ADR-006). `owner_link.chat_id` also moves the owner's chat out of `tenant.yaml` and
+ADR-006). `owner_link.chat_id` also moves the owner's chat out of `tenant document` and
 into the database: a personal datum that no longer needs to live in git, and whose
 upkeep (connecting or disconnecting an owner) no longer needs a commit or a deploy.
 

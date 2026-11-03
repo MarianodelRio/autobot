@@ -34,7 +34,7 @@ mv "$dump_tmp" backups/autobot.dump
 trap 'rm -f backups/autobot.dump' EXIT
 
 "$restic_bin" backup --tag autobot backups/autobot.dump .env .deployed-sha \
-  secrets.yaml google_sa.json Caddyfile
+  google_sa.json Caddyfile
 # Group by tag: the dump path stays constant and all snapshots use the same policy.
 "$restic_bin" forget --tag autobot --group-by tags --keep-daily 7 --keep-weekly 4 \
   --keep-monthly 6 --prune

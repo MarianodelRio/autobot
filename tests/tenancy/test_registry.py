@@ -97,7 +97,7 @@ def test_missing_secrets_disable_only_the_main_channel(tmp_path: Path) -> None:
     a, b = registry.tenants
     assert a.main_enabled
     assert not b.main_enabled and not b.is_degraded
-    assert b.main_disabled == ["no secrets in secrets.yaml"]
+    assert b.main_disabled == ["no channel secrets"]
 
 
 def test_no_secrets_file_disables_every_main_channel(tmp_path: Path) -> None:

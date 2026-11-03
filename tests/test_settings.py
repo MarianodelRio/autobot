@@ -67,7 +67,6 @@ def test_prod_with_all_variables_passes_check() -> None:
         DJANGO_ALLOWED_HOSTS="api.x,",
         DB_APP_URL="postgres://u:p@127.0.0.1:1/none",
         SECRETS_ENCRYPTION_KEY="UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=",
-        SECRETS_FILE="/run/secrets/secrets.yaml",
         WHATSAPP_GRAPH_VERSION="v23.0",
     )
     assert result.returncode == 0, result.stderr

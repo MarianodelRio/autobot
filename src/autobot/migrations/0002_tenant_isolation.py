@@ -71,7 +71,7 @@ class Migration(migrations.Migration):
     operations = [
         *(composite_fk(*fk) for fk in COMPOSITE_FKS),
         *(rls(table, column) for table, column in RLS_TABLES),
-        # Only sync_tenants (as fp_owner) writes the tenant mirror; fp_app just reads it.
+        # The tenant mirror is written as fp_owner; fp_app just reads it.
         migrations.RunSQL(
             sql="REVOKE INSERT, UPDATE, DELETE ON tenant FROM fp_app",
             reverse_sql="GRANT INSERT, UPDATE, DELETE ON tenant TO fp_app",

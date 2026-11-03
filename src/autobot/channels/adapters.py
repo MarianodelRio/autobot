@@ -19,7 +19,7 @@ TELEGRAM = TelegramAdapter()
 @dataclass(frozen=True)
 class Endpoint:
     adapter: ChannelAdapter[Any, Any]
-    channel: Any  # the tenant.yaml channel, or the demo door's description
+    channel: Any  # the tenant document channel, or the demo door's description
     secrets: Any
 
 

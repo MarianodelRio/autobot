@@ -1,5 +1,5 @@
 # Pack bus template: initial demo document (ADR-009).
-# Creado con `manage.py new_tenant demo-autobuses --pack bus --demo "..."`.
+# Seeded once by seed_demos; later changes belong in the database.
 # Tres líneas inventadas entre Posadas y Córdoba (ADR-006);
 # no son un negocio real y no se publican con `make bus-publicar`.
 id: 01a179e5-6da7-7375-a641-d323beab9727

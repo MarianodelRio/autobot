@@ -67,7 +67,8 @@ def test_success_records_image_after_health(tmp_path: Path) -> None:
     assert (tmp_path / ".deployed-sha").read_text().strip() == NEW
     lines = (tmp_path / "docker.log").read_text().splitlines()
     assert any("migrate" in line for line in lines)
-    assert any("sync_tenants" in line for line in lines)
+    assert any("tenant_config validate --all" in line for line in lines)
+    assert any("seed_demos" in line for line in lines)
     assert lines[-1].startswith(NEW) and "up --no-deps -d caddy" in lines[-1]
 
 

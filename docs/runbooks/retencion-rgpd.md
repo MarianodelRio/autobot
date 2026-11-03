@@ -50,6 +50,6 @@ fecha límite de borrado de como máximo 30 días en el registro operativo de la
 Ejecuta `tenant_status <slug> offboard` confirmando el slug y realiza la exportación acordada y ejecuta `purge_tenant` dentro de
 ese plazo; comprueba la versión depurada y la ausencia de secretos y datasets antes
 de retirar las copias locales y los accesos externos. No se retira la entrada del registro antes del borrado: el worker
-recorre ese registro. `synced_at` se actualiza en cada sincronización y nunca demuestra
+recorre ese registro. `synced_at` se actualiza al publicar configuración y nunca demuestra
 la fecha de baja. La gestión de calendarios pertenece al negocio y la retención de
 backups corresponde a restic (`deploy/backup.sh`); estos comandos no modifican ninguno de ellos.

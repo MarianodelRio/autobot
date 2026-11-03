@@ -60,6 +60,8 @@ jobs:
           version: ${{ steps.uv.outputs.version }}
           enable-cache: true
       - run: uv sync --locked
+      - name: No tenant data in git
+        run: test -z "$(git ls-files tenants datos)"
       - name: ruff
         run: |
           uv run ruff check .
@@ -68,7 +70,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck
-          shellcheck deploy/*.sh deploy/postgres/*.sh
+          shellcheck deploy/*.sh deploy/postgres/*.sh tools/*.sh
       - name: mypy
         run: uv run mypy
       - name: import-linter

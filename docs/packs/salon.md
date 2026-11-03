@@ -6,7 +6,8 @@ la reserva del evento; si `info_text` contiene texto aparece Contacto. La reserv
 ofrece solo huecos libres, vuelve a comprobar el hueco antes de escribir y usa un
 id determinista para que reintentar el mismo mensaje no duplique la cita.
 
-La configuración está en `tenants/<slug>/tenant.yaml`, bloque `config`:
+La configuración vigente está en PostgreSQL. Se edita en el bloque `config` de un
+`document.yaml` exportado con `tenant_config export` y se publica con `tenant_config import`:
 
 | Campo | Uso |
 |---|---|
@@ -63,7 +64,7 @@ precio (servicio retirado, o sin coincidencia de título) cuenta como cita pero 
 ingresos. No hay línea de citas canceladas: solo se cuenta lo que hay en el calendario en
 el periodo.
 
-Para activar el resumen mensual del negocio, añade en su `tenant.yaml`:
+Para activar el resumen mensual del negocio, añade en su documento exportado:
 
 ```yaml
 owner:
@@ -77,7 +78,7 @@ puede consultar en cualquier momento escribiéndole al bot ("Cómo va el mes").
 
 Para cambiar horario o servicios, edita YAML, ejecuta `make check`, prueba una
 reserva completa y una cancelación con `FakeCalendar` o con `demo-peluqueria`,
-y despliega el SHA aprobado. Usa `tenant_health <slug>` para comprobar acceso
+y publica con `tenant_config import <dir> --comment "Motivo"`. Usa `tenant_health <slug>` para comprobar acceso
 Calendar y plantillas antes de activar el canal real. Los procedimientos de
 incidencia y de secretos están en `docs/runbooks/04-calendar.md` y
 `docs/runbooks/09-rotar-secretos.md`.

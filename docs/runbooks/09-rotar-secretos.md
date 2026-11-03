@@ -6,8 +6,12 @@ Telegram, bot de demo, avisos u otra integración. La firma del webhook usa
 `app_secret` o `webhook_secret`; cambiarla exige coordinación con el proveedor.
 
 **Pasos:** con aprobación humana, genera el nuevo valor en el proveedor y guárdalo en
-el gestor de contraseñas. Actualiza `secrets.yaml` o `.env` en la VPS como `deploy`,
-modo 0600; reinicia solo `web` y `worker` si necesitan recargarlo. Coordina el cambio
+el gestor de contraseñas. Para un canal, exporta el documento con `tenant_config export
+<slug> <dir>` y vuelve a importarlo con `tenant_config import <dir> --secrets <yaml>
+--comment "Rotación de canal"`. Ese YAML privado solo es una entrada de importación
+(slug → campos); se cifra al escribirlo en BD y no se monta en el servidor.
+Los secretos de plataforma se cambian en `.env` (0600), recreando `web` y `worker`.
+Coordina el cambio
 de webhook y ventana de solape; prueba primero con `testers.main`. Nunca incluyas
 valores en Git, argumentos de jobs, logs ni mensajes de revisión.
 

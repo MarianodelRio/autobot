@@ -34,6 +34,7 @@ PUBLIC_HOST=localhost
 SHA=$sha
 DEPLOY_UID=$(id -u)
 DJANGO_SECRET_KEY=local-restore-test-only
+SECRETS_ENCRYPTION_KEY=$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
 DJANGO_ALLOWED_HOSTS=localhost
 DB_APP_URL=postgres://fp_app:local@db:5432/autobot
 DB_OWNER_URL=postgres://fp_owner:local@db:5432/autobot
@@ -42,11 +43,10 @@ FP_OWNER_PASSWORD=local
 FP_APP_PASSWORD=local
 FP_READONLY_PASSWORD=local
 EOF
-printf '{}\n' >"$source_dir/secrets.yaml"
 printf '{}\n' >"$source_dir/google_sa.json"
 printf '%s\n' "$sha" >"$source_dir/.deployed-sha"
 printf '%s\n' local-restore-password >"$test_root/restic-password"
-chmod 600 "$source_dir/.env" "$source_dir/secrets.yaml" \
+chmod 600 "$source_dir/.env" \
   "$source_dir/google_sa.json" "$test_root/restic-password"
 cat >"$test_root/ping.py" <<'PY'
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -90,10 +90,12 @@ docker tag autobot:restore-test "ghcr.io/marianodelrio/autobot:$sha"
   docker compose --project-name "$source_project" -f compose.prod.yaml run --rm web \
     python manage.py migrate --noinput >/dev/null
   docker compose --project-name "$source_project" -f compose.prod.yaml run --rm web \
-    python manage.py sync_tenants --strict >/dev/null
+    python manage.py tenant_config validate --all >/dev/null
+  docker compose --project-name "$source_project" -f compose.prod.yaml run --rm web \
+    python manage.py seed_demos >/dev/null
   docker compose --project-name "$source_project" -f compose.prod.yaml exec -T db \
     psql -U postgres -d autobot -v ON_ERROR_STOP=1 -q -c \
-    "INSERT INTO contact (id, tenant_id, channel, external_id, created_at) VALUES ('00000000-0000-7000-8000-000000000001', '01a163fd-bed0-7002-80df-8f2acdc7778b', 'test', 'local-fixture', now())" >/dev/null
+    "INSERT INTO contact (id, tenant_id, channel, external_id, created_at) VALUES ('00000000-0000-7000-8000-000000000001', (SELECT id FROM tenant WHERE slug='demo-autobuses'), 'test', 'local-fixture', now())" >/dev/null
 )
 counts() {
   local project=$1 dir=$2
@@ -106,7 +108,7 @@ before=$(counts "$source_project" "$source_dir")
 (cd "$target_dir" && AUTOBOT_PROJECT="$target_project" AUTOBOT_RESTORE_DB_ONLY=true \
   deploy/restore.sh --confirm-empty-target)
 after=$(counts "$target_project" "$target_dir")
-if [[ $before != "$after" || $before != *'autocares-ss|1'* ]]; then
+if [[ $before != "$after" || $before != *'demo-autobuses|1'* ]]; then
   echo 'Per-tenant counts differ after restore' >&2
   exit 1
 fi

@@ -70,14 +70,18 @@ bus-revision:
 bus-publicar:
 	$(BUS_TOOL).bus_publicar $(TENANT)
 
-# Legacy mirror sync until T08b; it does not publish the versioned runtime config.
-tenant-sync:
-	docker compose exec web python manage.py sync_tenants
-	docker compose restart web worker
-
 tenant-health:
 	docker compose exec web python manage.py tenant_health $(SLUG)
 
 # Public QR generated on the developer machine, without containers or secrets.
 qr:
-	PYTHONPATH=src uv run python -m tools.qr "$(SLUG)" $(ARGS)
+	PYTHONPATH=src uv run python -m tools.qr "$(FILE)" $(ARGS)
+
+.PHONY: prod-manage tenant-push
+export HOST SLUG SECRETS
+
+prod-manage:
+	@ssh $(if $(TTY),-t,) deploy@$(HOST) /srv/autobot/deploy/manage.sh $(CMD)
+
+tenant-push:
+	bash tools/tenant_push.sh

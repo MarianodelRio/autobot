@@ -7,13 +7,14 @@ máximo ocho pueblos frecuentes de `config.start_menu_towns`; el resto se busca
 por nombre o alias. Un dato sin horario se muestra como «horario no disponible»,
 no como «sin servicio».
 
-`config` en `tenants/<slug>/tenant.yaml` contiene `business_name`,
+`config` del documento versionado contiene `business_name`,
 `contact_phone`, `office_hours` (lista de `days` y `ranges`), `links` (`web`,
 `compra_online`, `bonos`, `pdf_horarios`), `start_menu_towns` (1–8 nombres
 presentes en el dataset) y `next_day_search_days` (45 por defecto). Los días
 de oficina se declaran una vez, con franjas `HH:MM-HH:MM` sin solapes.
 
-El dataset vive en `tenants/<slug>/datasets/timetable/`:
+El dataset está versionado en la BD. `tenant_dataset export <slug> timetable <dir>`
+lo saca a un directorio con esta estructura:
 
 | Archivo | Campos y formato |
 |---|---|
@@ -75,7 +76,7 @@ El pack declara un único gancho `summary` para el resumen periódico al dueño
 
 `bus` no vende nada, así que no declara ninguna métrica en euros: es el
 comportamiento esperado, no una limitación. Para activar el resumen mensual del
-negocio, añade en su `tenant.yaml`:
+negocio, añade en su documento exportado:
 
 ```yaml
 owner:

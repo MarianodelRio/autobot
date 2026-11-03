@@ -22,7 +22,6 @@ ENV PATH=/opt/venv/bin:$PATH \
 WORKDIR /app
 COPY manage.py ./
 COPY src ./src
-COPY tenants ./tenants
 USER app
 EXPOSE 8000
 CMD ["gunicorn", "config.wsgi", "-b", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--no-control-socket"]

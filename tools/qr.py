@@ -9,7 +9,7 @@ import qrcode.image.svg  # type: ignore[import-untyped]
 import yaml
 from pydantic import ValidationError
 
-from autobot.tenancy.schema import SLUG, Channel, TenantDocument
+from autobot.tenancy.schema import Channel, TenantDocument
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -31,20 +31,18 @@ def channel_link(channel: Channel) -> str:
     return f"https://wa.me/{digits}"
 
 
-def tenant_link(slug: str, tenants_dir: Path = REPO_ROOT / "tenants") -> str:
-    if len(slug) > 64 or re.fullmatch(SLUG, slug) is None:
-        raise ValueError("Slug de negocio inválido.")
+def _document(path: Path) -> TenantDocument:
     try:
-        file = TenantDocument.model_validate(
-            yaml.safe_load((tenants_dir / slug / "tenant.yaml").read_text(encoding="utf-8"))
-        )
+        return TenantDocument.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
     except OSError, UnicodeError, yaml.YAMLError, ValidationError:
-        raise ValueError(f"No se pudo leer una configuración válida para {slug}.") from None
-    if file.slug != slug:
-        raise ValueError("El slug de tenant.yaml no coincide con su directorio.")
-    if file.channel is None:
+        raise ValueError("No se pudo leer un documento de negocio válido.") from None
+
+
+def tenant_link_from_file(path: Path) -> str:
+    document = _document(path)
+    if document.channel is None:
         raise ValueError("Un negocio de demo no tiene canal propio.")
-    return channel_link(file.channel)
+    return channel_link(document.channel)
 
 
 def generate(link: str, output: Path) -> None:
@@ -58,12 +56,15 @@ def generate(link: str, output: Path) -> None:
 
 def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
     parser = argparse.ArgumentParser(description="Genera el QR del canal público de un negocio.")
-    parser.add_argument("slug")
+    parser.add_argument("file", type=Path, help="document.yaml exportado del negocio.")
     parser.add_argument("--output", type=Path, help="Archivo SVG (por defecto qr/<slug>.svg).")
     args = parser.parse_args(argv)
     try:
-        link = tenant_link(args.slug, repo_root / "tenants")
-        output = args.output or repo_root / "qr" / f"{args.slug}.svg"
+        document = _document(args.file)
+        if document.channel is None:
+            raise ValueError("Un negocio de demo no tiene canal propio.")
+        link = channel_link(document.channel)
+        output = args.output or repo_root / "qr" / f"{document.slug}.svg"
         generate(link, output)
     except ValueError as exc:
         parser.exit(2, f"{exc}\n")

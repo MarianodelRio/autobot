@@ -286,7 +286,7 @@ def _with_secrets(tenant: LoadedTenant, raw: Any) -> LoadedTenant:
     schema = SECRETS_SCHEMA[channel.type]
     secrets = None
     if raw is None:
-        disabled.append("no secrets in secrets.yaml")
+        disabled.append("no channel secrets")
     else:
         try:
             secrets = schema.model_validate(raw)

@@ -320,7 +320,7 @@ def test_owner_notices_from_a_demo_tenant_reach_its_owner(
 def test_a_telegram_main_business_is_not_reachable_through_the_demo_bot(
     tenants: Any, providers: Providers
 ) -> None:
-    """A demo tenant never uses a business's own bot (its bot_token in secrets.yaml)."""
+    """A demo tenant never uses a business's own bot (its encrypted bot_token)."""
     tenants(demo("wa"), tg_tenant("tg"))
     say(USER, "/start")
     press(USER, "fp_select:wa")

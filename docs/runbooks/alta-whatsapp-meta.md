@@ -61,7 +61,7 @@ persona operadora en remoto.
   ese negocio, si algún día la necesita para subir de límite de mensajería).
 - **Datos que se guardan por negocio:** de cada App se sacan tres datos (el id del
   número, el id de la cuenta de WhatsApp, y un token de acceso) y se guardan en la
-  configuración de ese tenant (secretos en `secrets.yaml` del servidor, nunca en
+  configuración de ese tenant (secretos cifrados en la BD, importados desde un YAML privado, nunca en
   claro ni en git). Cada negocio tiene su propio conjunto, completamente aislado de
   los demás — igual que ya aísla sus datos de cliente con `tenant_id` y RLS.
 - **Plantillas de mensaje:** las crea la persona operadora directamente en la App

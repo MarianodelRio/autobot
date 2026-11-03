@@ -20,13 +20,14 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make bus-formatear TENANT=<slug>` | Realinea las columnas de las tablas de horarios sin tocar el YAML |
 | `make bus-revision TENANT=<slug> [ARGS="..."]` | Genera `revision/<slug>/horarios.{html,pdf}` con los cambios desde la última publicación |
 | `make bus-publicar TENANT=<slug>` | Tras el commit y el despliegue: marca como publicada la versión actual del dataset (tag `datos/<slug>/<fecha>`) |
-| `make tenant-sync` | Heredado durante la migración: sincroniza el espejo `tenant` y reinicia `web`/`worker`; no publica versiones de configuración para el runtime |
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
-| `make qr SLUG=<slug> [ARGS="..."]` | Genera el QR del enlace público del canal, en la máquina del desarrollador, sin secretos |
+| `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
 | `make check-prod-config` | Ejecuta `tools/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
 | `make deploy [SHA=]` | Lanza el workflow de despliegue en GitHub Actions |
 | `make backup-now` | Ejecuta `deploy/backup.sh` en el servidor por SSH |
 | `make restore-test` | `bash deploy/restore-test.sh`: simulacro de restauración |
+| `make prod-manage HOST=<servidor> CMD="..." [TTY=1]` | Ejecuta el comando con la imagen desplegada mediante SSH; `TTY=1` para comandos interactivos, sin TTY para streams binarios |
+| `make tenant-push HOST=<servidor> SLUG=<slug> [SECRETS=<yaml>]` | Exporta la BD local y la importa por SSH. El YAML privado aporta solo la entrada del slug; el temporal se borra al salir |
 
 ## `manage.py`
 
@@ -34,8 +35,6 @@ o cambia un comando amplía esta tabla en el mismo commit.
 |---|---|
 | `migrate` | El `migrate` de Django, pero corre por defecto sobre el alias `owner` (`fp_app` no puede hacer DDL) |
 | `apply_grants` | Reaplica los permisos deseados de PostgreSQL (`db_grants.py`); se ejecuta tras `migrate`, en cada despliegue y tras cada restauración |
-| `new_tenant <slug> --pack <pack> --channel whatsapp\|telegram` | Crea `tenants/<slug>/tenant.yaml`: id UUIDv7, `public_id` aleatorio, `status: onboarding` y los campos del pack (sin valor por defecto quedan `null`) |
-| `sync_tenants [--strict]` | Vuelca la parte común del registro en memoria a la tabla `tenant` |
 | `tenant_health <slug>` | Comprueba la salud del pack y del canal de un negocio, forzando la comprobación |
 | `telegram_set_webhook <target> [--delete]` | Fija o borra el webhook de Telegram de un tenant, del bot de demo (`demo`) o del bot de avisos (`notify`) |
 | `telegram_poll [<slug>]` | *Long polling* de un bot de Telegram (desarrollo local) |

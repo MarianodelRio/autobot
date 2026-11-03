@@ -32,7 +32,7 @@ con tu clave en la VPS recién creada.
    `ufw status numbered`. Desde otra máquina, escanea los puertos públicos; solo deben
    aparecer 22, 80 y 443. El puerto 8000 escucha únicamente en 127.0.0.1.
 5. En `/srv/autobot/.env`, usa `.env.example` como guía y fija `DEPLOY_UID` con
-   `id -u deploy`. Crea `secrets.yaml`, `google_sa.json`, `backup.env` y
+   `id -u deploy`. Crea `google_sa.json`, `backup.env` y
    `restic-password` como propietario `deploy`, modo 0600. El usuario no root de
    `web` y `worker` usa ese UID para leer los dos secretos montados. La cuenta de
    servicio y los tokens reales dependen de Google Cloud, del bot de avisos y de los secretos de GitHub. En
@@ -60,3 +60,9 @@ La operación tras el despliegue se hace por SSH con la clave de operación y
 El puerto 8000 del servidor no se expone públicamente. Para un backup manual,
 `make backup-now HOST=<host>` usa esa misma clave de operación; la clave de CI no
 puede ejecutarlo.
+
+Los secretos de canal están cifrados en la BD; no hay YAML de secretos montado en
+`web` ni `worker`. Configura `SECRETS_ENCRYPTION_KEY` en `.env` antes del primer
+despliegue y conserva su copia con los backups. `deploy/manage.sh` usa el SHA de
+`.deployed-sha` para los comandos de operación; desde local se invoca mediante
+`make prod-manage HOST=<servidor> CMD="..."` (`TTY=1` si pide una confirmación).

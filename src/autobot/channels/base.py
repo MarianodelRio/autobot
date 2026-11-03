@@ -81,7 +81,7 @@ type SendOutcome = Sent | Rejected | RetryLater | Ambiguous
 
 
 class ChannelAdapter[C, S](Protocol):
-    """`C` is the channel's description (its tenant.yaml `channel`, or the test bot) and
+    """`C` is the channel's description (its tenant document `channel`, or the test bot) and
     `S` its secrets."""
 
     @property

@@ -31,6 +31,6 @@ state/
 *.key
 *credentials*.json
 
-# Negocios reales: config y datasets solo en local, no en el repo publico.
-# Las plantillas de demo viven en src/packs/*/template/.
-/tenants/autocares-ss/
+# Config and datasets are exported/imported locally, never tracked.
+/tenants/
+/datos/

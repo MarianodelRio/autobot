@@ -47,7 +47,7 @@ NO_PREVIEW = {"is_disabled": True}  # WhatsApp shows no link preview; Telegram d
 BOLD = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])")
 PARAM = re.compile(r"\{(\d+)\}")
 
-# `None` is the platform's test bot, which has no tenant.yaml channel.
+# `None` is the platform's test bot, which has no tenant document channel.
 type Channel = TelegramChannel | None
 
 

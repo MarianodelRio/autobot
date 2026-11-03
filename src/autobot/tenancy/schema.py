@@ -1,4 +1,4 @@
-"""Common schema of `tenants/<slug>/tenant.yaml` and of each tenant's secrets.
+"""Common schema of versioned tenant documents and channel secrets.
 The `config` section is validated by the pack's own schema."""
 
 import re
@@ -73,7 +73,7 @@ class DemoInfo(Strict):
 
 
 class TenantDocument(Strict):
-    """The common part of tenant.yaml; `config` is checked later by the pack."""
+    """The common tenant document; `config` is checked later by the pack."""
 
     id: UUID
     slug: str = Field(pattern=SLUG, max_length=64)
@@ -91,7 +91,7 @@ class TenantDocument(Strict):
     @classmethod
     def uuid_v7(cls, value: UUID) -> UUID:
         if value.version != 7:
-            raise ValueError("id must be a UUIDv7 (manage.py new_tenant generates it)")
+            raise ValueError("id must be a UUIDv7")
         return value
 
     @field_validator("timezone")
