@@ -41,13 +41,13 @@ def main(
     )
     args = parser.parse_args(argv)
     tenant = get_registry().by_slug.get(args.slug)
-    if tenant is None or tenant.is_degraded or tenant.file.pack != "salon":
+    if tenant is None or tenant.is_degraded or tenant.document.pack != "salon":
         print("El tenant no existe o no es un salón válido.")
         return 2
     if (
-        tenant.file.channel is None
-        or tenant.file.channel.type != "whatsapp"
-        or tenant.file.status == "offboarded"
+        tenant.document.channel is None
+        or tenant.document.channel.type != "whatsapp"
+        or tenant.document.status == "offboarded"
     ):
         print("La migración heredada requiere un tenant de WhatsApp que no esté dado de baja.")
         return 2

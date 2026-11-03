@@ -38,10 +38,10 @@ def active_tenants(pack: str) -> list[LoadedTenant]:
 
 
 def channels_for(tenant: LoadedTenant) -> list[Channel]:
-    if tenant.is_degraded or tenant.file.status == "offboarded":
+    if tenant.is_degraded or tenant.document.status == "offboarded":
         return []
     if tenant.is_demo:
-        if tenant.file.status != "active":
+        if tenant.document.status != "active":
             return []
         return [channel for channel in DEMO_CHANNELS if door(channel) is not None]
     return [Channel.MAIN] if is_active(tenant) else []
@@ -52,10 +52,10 @@ def is_active(tenant: LoadedTenant) -> bool:
     tenants get no periodic work on their main channel (an onboarding tenant must not
     send reminders to real customers), nor does one whose channel lacks secrets or ids:
     its notices would fail and their stable keys would be spent for good."""
-    if tenant.file.status == "active" and not tenant.is_degraded and not tenant.main_enabled:
+    if tenant.document.status == "active" and not tenant.is_degraded and not tenant.main_enabled:
         log.warning("tenant %s gets no periodic work: its main channel is disabled", tenant.slug)
         return False
-    return tenant.file.status == "active" and not tenant.is_degraded
+    return tenant.document.status == "active" and not tenant.is_degraded
 
 
 def dispatch(pack: str, name: str, timestamp: int) -> int:

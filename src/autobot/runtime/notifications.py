@@ -64,7 +64,7 @@ def send_notification(
         bind(tenant=tenant.slug, channel="notification", event_id="")
         if row is None or row.status != Notification.Status.PENDING:
             return
-        owner = tenant.file.owner
+        owner = tenant.document.owner
         # owner.notify only gates per-event notices; the summary has its own toggle
         # (owner.summary_monthly), already checked when send_owner_summary created this
         # row.

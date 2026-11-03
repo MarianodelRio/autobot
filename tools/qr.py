@@ -9,7 +9,7 @@ import qrcode.image.svg  # type: ignore[import-untyped]
 import yaml
 from pydantic import ValidationError
 
-from autobot.tenancy.schema import SLUG, Channel, TenantFile
+from autobot.tenancy.schema import SLUG, Channel, TenantDocument
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -35,7 +35,7 @@ def tenant_link(slug: str, tenants_dir: Path = REPO_ROOT / "tenants") -> str:
     if len(slug) > 64 or re.fullmatch(SLUG, slug) is None:
         raise ValueError("Slug de negocio inválido.")
     try:
-        file = TenantFile.model_validate(
+        file = TenantDocument.model_validate(
             yaml.safe_load((tenants_dir / slug / "tenant.yaml").read_text(encoding="utf-8"))
         )
     except OSError, UnicodeError, yaml.YAMLError, ValidationError:

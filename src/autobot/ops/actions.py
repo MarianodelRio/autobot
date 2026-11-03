@@ -59,7 +59,7 @@ def can_resend(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, st
     tenant = get_registry().by_id.get(message.tenant_id)
     if tenant is None or tenant.ambiguous:
         return False, "El negocio no se puede resolver de forma inequívoca."
-    if tenant.file.status == "offboarded" or db_tenant.status == "offboarded":
+    if tenant.document.status == "offboarded" or db_tenant.status == "offboarded":
         return False, "El negocio está dado de baja."
     if message.channel == "main":
         if not tenant.main_enabled:

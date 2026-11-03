@@ -173,7 +173,9 @@ def route_demo_event(event_id: UUID) -> None:
 def _available() -> list[LoadedTenant]:
     """Demo tenants a person may pick: active, not degraded nor ambiguous."""
     return [
-        t for t in get_registry().demo_tenants() if t.file.status == "active" and not t.is_degraded
+        t
+        for t in get_registry().demo_tenants()
+        if t.document.status == "active" and not t.is_degraded
     ]
 
 
@@ -182,13 +184,13 @@ def business_list(tenants: list[LoadedTenant], page: int) -> Reply:
     if not tenants:
         return Text(NONE_AVAILABLE_TEXT)
     rows = []
-    for t in sorted(tenants, key=lambda t: t.file.name.lower()):
+    for t in sorted(tenants, key=lambda t: t.document.name.lower()):
         option = f"{SELECT}{t.slug}"
         if len(option.encode()) > MAX_ID_BYTES:  # a slug longer than 54 characters
             log.warning("demo tenant %s cannot be listed: its slug is too long", t.slug)
             continue
-        description = t.file.demo.description if t.file.demo is not None else ""
-        rows.append(row(option, t.file.name, description))
+        description = t.document.demo.description if t.document.demo is not None else ""
+        rows.append(row(option, t.document.name, description))
     pages = max(1, -(-len(rows) // 8))
     page = page if 0 <= page < pages else 0
     shown = paginate(rows, page, more_id=f"{PAGE}{page + 1}", back_id=f"{PAGE}0")
@@ -199,7 +201,7 @@ def _pick(event: DemoEvent, door_: Door, item: InboundItem, tenant: LoadedTenant
     """Save the choice, say which business it is and send it a synthetic `menu`, so its
     pack answers with its menu. The notice goes first, so it arrives before the menu; if
     the job is cut before the end, a retry may repeat it, never the menu."""
-    _reply(door_, item, [Text(PICKED_TEXT.format(name=tenant.file.name))])
+    _reply(door_, item, [Text(PICKED_TEXT.format(name=tenant.document.name))])
     DemoSession.objects.update_or_create(
         channel=door_.channel,
         external_id=item.external_id,

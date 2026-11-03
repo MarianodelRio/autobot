@@ -24,7 +24,7 @@ class Command(BaseCommand):
         now = timezone.now()
         skipped = False
         for t in registry.tenants:
-            f = t.file
+            f = t.document
             if t.ambiguous:  # its id may be another tenant's: never touch that row
                 self.stderr.write(f"skipped {f.slug}: {'; '.join(t.degraded)}")
                 skipped = True

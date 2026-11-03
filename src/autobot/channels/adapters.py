@@ -25,11 +25,11 @@ class Endpoint:
 
 def endpoint(tenant: LoadedTenant, channel: str) -> Endpoint:
     if channel == Channel.MAIN:
-        assert tenant.file.channel is not None  # a demo tenant has no main channel
+        assert tenant.document.channel is not None  # a demo tenant has no main channel
         adapter: ChannelAdapter[Any, Any] = (
-            WHATSAPP if tenant.file.channel.type == "whatsapp" else TELEGRAM
+            WHATSAPP if tenant.document.channel.type == "whatsapp" else TELEGRAM
         )
-        return Endpoint(adapter, tenant.file.channel, tenant.secrets)
+        return Endpoint(adapter, tenant.document.channel, tenant.secrets)
     # A demo door always talks through the platform's own credentials, whatever the
     # tenant's main channel is (a demo tenant has none): never a business's own bot.
     found = door(Channel(channel))

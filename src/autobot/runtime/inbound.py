@@ -35,10 +35,10 @@ def initial_status(tenant: LoadedTenant, item: ParsedItem) -> InboundEvent.Statu
     its id or, in WhatsApp, its phone: since BSUIDs the id is not the phone). Delivery
     statuses of our own messages are not subject to testers. A degraded tenant's events
     stay pending: process_event answers them with the generic text."""
-    if tenant.file.status == "paused":
+    if tenant.document.status == "paused":
         return Status.IGNORED
-    if tenant.file.status == "onboarding" and isinstance(item, InboundItem):
-        testers = tenant.file.testers.main
+    if tenant.document.status == "onboarding" and isinstance(item, InboundItem):
+        testers = tenant.document.testers.main
         phone = item.phone.removeprefix("+") if item.phone else None
         if item.external_id not in testers and phone not in testers:
             return Status.IGNORED

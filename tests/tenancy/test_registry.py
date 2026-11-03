@@ -78,7 +78,7 @@ def test_telegram_tenant(tmp_path: Path) -> None:
     registry = load(tmp_path, doc, secrets={"tg": TG_SECRETS})
     (t,) = registry.tenants
     assert t.main_enabled
-    assert t.file.testers.main == ["123456789"]
+    assert t.document.testers.main == ["123456789"]
     assert registry.by_public_id[("telegram", "tgpublic0001")] is t
 
 
@@ -164,8 +164,8 @@ def test_invalid_config_degrades_only_that_tenant(tmp_path: Path) -> None:
     a, b = registry.tenants
     assert a.is_degraded and a.degraded[0].startswith("config: greeting")
     assert not b.is_degraded
-    assert a.file.channel is not None
-    assert registry.by_public_id[("whatsapp", a.file.channel.public_id)] is a  # still routed
+    assert a.document.channel is not None
+    assert registry.by_public_id[("whatsapp", a.document.channel.public_id)] is a  # still routed
 
 
 def test_failing_load_data_degrades_only_that_tenant(tmp_path: Path) -> None:

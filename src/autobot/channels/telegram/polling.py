@@ -79,7 +79,7 @@ def source(slug: str | None) -> Source:
     found = get_registry().by_slug.get(slug)
     if found is None:
         raise ValueError(f"no tenant {slug!r}")
-    channel = found.file.channel
+    channel = found.document.channel
     if channel is None or not isinstance(channel, TelegramChannel):
         raise ValueError(f"tenant {slug} has no enabled Telegram main channel")
     # The same tenant the webhook would accept: Telegram channel enabled (ids and

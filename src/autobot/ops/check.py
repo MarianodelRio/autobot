@@ -51,7 +51,7 @@ def run() -> None:
         send_ops_alert("registry", None, "🔴 Hay configuraciones de tenants o secretos ilegibles.")
     demo_wa_billable = 0
     for tenant in registry.tenants:
-        if tenant.file.status == "offboarded":
+        if tenant.document.status == "offboarded":
             continue
         pending: list[tuple[str, str]] = []
         if tenant.is_degraded or (not tenant.is_demo and not tenant.main_enabled):
@@ -79,7 +79,7 @@ def run() -> None:
                 .values_list("channel", flat=True)
                 .distinct()
             )
-            channel = tenant.file.channel
+            channel = tenant.document.channel
             if channel is not None and channel.type == "whatsapp":
                 local_now = now.astimezone(tenant.info.timezone)
                 start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -170,7 +170,9 @@ def run() -> None:
         templates = {
             (template.name, template.language)
             for tenant in registry.demo_tenants()
-            if tenant.file.status == "active" and not tenant.is_degraded and tenant.pack is not None
+            if tenant.document.status == "active"
+            and not tenant.is_degraded
+            and tenant.pack is not None
             for template in tenant.pack.templates
         }
         issues = health.daily(

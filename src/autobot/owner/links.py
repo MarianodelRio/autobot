@@ -29,7 +29,9 @@ def tenants_of_chat(chat_id: int) -> list[LoadedTenant]:
     tenant_ids = OwnerLink.objects.filter(chat_id=chat_id).values_list("tenant_id", flat=True)
     tenants = (registry.by_id.get(tid) for tid in tenant_ids)
     return [
-        t for t in tenants if t is not None and t.file.status != "offboarded" and not t.ambiguous
+        t
+        for t in tenants
+        if t is not None and t.document.status != "offboarded" and not t.ambiguous
     ]
 
 
@@ -71,7 +73,7 @@ def start_link(code: str, chat_id: int) -> LinkResult:
     if link is None:
         return LinkResult("invalid")
     tenant = get_registry().by_id.get(link.tenant_id)
-    if tenant is None or tenant.file.status == "offboarded":
+    if tenant is None or tenant.document.status == "offboarded":
         return LinkResult("invalid")
     if not tenant.is_demo and _chat_taken_by_another_real_tenant(chat_id, tenant.id):
         return LinkResult("taken")
@@ -95,6 +97,6 @@ def _chat_taken_by_another_real_tenant(chat_id: int, tenant_id: UUID) -> bool:
     return any(
         (other := registry.by_id.get(other_id)) is not None
         and not other.is_demo
-        and other.file.status != "offboarded"
+        and other.document.status != "offboarded"
         for other_id in other_ids
     )

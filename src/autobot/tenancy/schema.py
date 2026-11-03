@@ -72,7 +72,7 @@ class DemoInfo(Strict):
     description: str = Field(min_length=1, max_length=72)
 
 
-class TenantFile(Strict):
+class TenantDocument(Strict):
     """The common part of tenant.yaml; `config` is checked later by the pack."""
 
     id: UUID
@@ -104,7 +104,7 @@ class TenantFile(Strict):
         return value
 
     @model_validator(mode="after")
-    def demo_or_channel(self) -> TenantFile:
+    def demo_or_channel(self) -> TenantDocument:
         if self.demo is not None:
             if self.channel is not None:
                 raise ValueError("a demo tenant must not have a channel")

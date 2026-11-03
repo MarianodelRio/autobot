@@ -46,7 +46,7 @@ def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
     if tenant is None:
         return HttpResponse(status=404)
     bind(tenant=tenant.slug, channel="main")
-    channel, secrets = tenant.file.channel, tenant.secrets
+    channel, secrets = tenant.document.channel, tenant.secrets
     assert isinstance(channel, WhatsAppChannel) and isinstance(secrets, WhatsAppSecrets)
     if request.method == "GET":  # Meta's subscription handshake
         challenge = WHATSAPP.verify_subscription(request.GET.dict(), secrets)
@@ -72,7 +72,7 @@ def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
     if tenant is None:
         return HttpResponse(status=404)
     bind(tenant=tenant.slug, channel="main")
-    channel, secrets = tenant.file.channel, tenant.secrets
+    channel, secrets = tenant.document.channel, tenant.secrets
     assert isinstance(channel, TelegramChannel) and isinstance(secrets, TelegramSecrets)
     return _receive(
         request,
@@ -130,6 +130,6 @@ def accept(
     """What an authentic body of a tenant's main channel becomes: nothing if the tenant
     is offboarded, otherwise its items saved and queued. The one entry shared by the
     webhooks and `telegram_poll`."""
-    if tenant.file.status == "offboarded":
+    if tenant.document.status == "offboarded":
         return
     store(tenant, parse(body))

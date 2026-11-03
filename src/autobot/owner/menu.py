@@ -64,7 +64,7 @@ def _usable(tenant: LoadedTenant) -> bool:
     tenant must be `active` and not degraded."""
     if tenant.is_demo:
         return True
-    return tenant.file.status == "active" and not tenant.is_degraded
+    return tenant.document.status == "active" and not tenant.is_degraded
 
 
 MENU: list[MenuOption] = [

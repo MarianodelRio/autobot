@@ -263,8 +263,8 @@ def _proactive_target(tenant: LoadedTenant, channel: str, action: SendProactive)
             return None
     if (
         channel == Channel.MAIN
-        and tenant.file.channel is not None
-        and tenant.file.channel.type == "whatsapp"
+        and tenant.document.channel is not None
+        and tenant.document.channel.type == "whatsapp"
     ):
         number = phone_key(
             target.phone_e164 or (target.external_id if target.external_id.isdecimal() else "")
@@ -284,8 +284,8 @@ def _contact_by_phone(tenant: LoadedTenant, channel: str, phone: str) -> Contact
     digits = re.sub(r"[\s+]", "", phone)
     if (
         channel != Channel.MAIN
-        or tenant.file.channel is None
-        or tenant.file.channel.type != "whatsapp"
+        or tenant.document.channel is None
+        or tenant.document.channel.type != "whatsapp"
     ):
         log.info("proactive to a phone not sent: only possible on a WhatsApp main channel")
         return None
@@ -319,7 +319,7 @@ def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> No
     actually checks whether a chat is connected, and only logs it if not. A demo
     tenant's owner receives it the same way as a real one. Delivery is
     `send_notification`, which reads `audience`."""
-    owner = tenant.file.owner
+    owner = tenant.document.owner
     if owner is None or action.kind not in owner.notify:
         log.info("NotifyOwner %s only logged: the owner does not receive it", action.kind)
         return

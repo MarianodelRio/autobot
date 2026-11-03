@@ -157,12 +157,12 @@ def tenant_health(
         if isinstance(tenant.secrets, TelegramSecrets):
             issues.extend(telegram_health(tenant.secrets.bot_token.get_secret_value()))
         elif isinstance(tenant.secrets, WhatsAppSecrets) and isinstance(
-            tenant.file.channel, WhatsAppChannel
+            tenant.document.channel, WhatsAppChannel
         ):
             templates = (
                 {(t.name, t.language) for t in tenant.pack.templates} if tenant.pack else set()
             )
-            issues.extend(whatsapp_health(tenant.file.channel, tenant.secrets, templates))
+            issues.extend(whatsapp_health(tenant.document.channel, tenant.secrets, templates))
     return issues
 
 

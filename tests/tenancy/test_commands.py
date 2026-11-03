@@ -94,7 +94,7 @@ def test_new_tenant_creates_a_valid_onboarding_tenant(tenants_dir: Path) -> None
     (t,) = registry.tenants
     assert registry.problems == {}
     assert t.id.version == 7
-    assert t.file.status == "onboarding" and t.file.name == "Nuevo"
+    assert t.document.status == "onboarding" and t.document.name == "Nuevo"
     assert len(doc["channel"]["public_id"]) == 16
     assert t.main_disabled[0] == "whatsapp channel ids are missing"
     assert doc["config"] == {"greeting": "¡Hola!", "colors": ["Rojo", "Verde", "Azul"]}
@@ -129,8 +129,8 @@ def test_new_tenant_creates_a_demo_business(tenants_dir: Path) -> None:
     registry = load_registry(tenants_dir, None, PACKS)
     (t,) = registry.tenants
     assert registry.problems == {}
-    assert t.is_demo and t.file.demo is not None
-    assert t.file.demo.description == "Pruébalo gratis"
+    assert t.is_demo and t.document.demo is not None
+    assert t.document.demo.description == "Pruébalo gratis"
     assert doc["status"] == "paused" and "channel" not in doc
 
 

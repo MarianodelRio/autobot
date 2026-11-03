@@ -28,7 +28,7 @@ import yaml
 from django.conf import settings
 from pydantic import BaseModel, ValidationError
 
-from autobot.tenancy.schema import SECRETS_SCHEMA, ChannelSecrets, TenantFile
+from autobot.tenancy.schema import SECRETS_SCHEMA, ChannelSecrets, TenantDocument
 from core.pack import Pack, TenantInfo
 
 log = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ READ_ERRORS = (OSError, UnicodeDecodeError, yaml.YAMLError)
 
 @dataclass(frozen=True)
 class LoadedTenant:
-    file: TenantFile
+    document: TenantDocument
     path: Path
     pack: Pack | None = None
     config: BaseModel | None = None
@@ -51,11 +51,11 @@ class LoadedTenant:
 
     @property
     def id(self) -> UUID:
-        return self.file.id
+        return self.document.id
 
     @property
     def slug(self) -> str:
-        return self.file.slug
+        return self.document.slug
 
     @property
     def is_degraded(self) -> bool:
@@ -67,11 +67,11 @@ class LoadedTenant:
 
     @property
     def is_demo(self) -> bool:
-        return self.file.demo is not None
+        return self.document.demo is not None
 
     @property
     def info(self) -> TenantInfo:
-        f = self.file
+        f = self.document
         return TenantInfo(id=f.id, slug=f.slug, name=f.name, timezone=ZoneInfo(f.timezone))
 
 
@@ -93,7 +93,7 @@ class Registry:
         return [
             t
             for t in self.tenants
-            if t.file.pack == pack and not t.is_degraded and t.file.status != "offboarded"
+            if t.document.pack == pack and not t.is_degraded and t.document.status != "offboarded"
         ]
 
     def demo_tenants(self) -> list[LoadedTenant]:
@@ -170,25 +170,25 @@ def _load_tenant(
         registry.errors[path.name] = [f"tenant.yaml cannot be read ({type(e).__name__})"]
         return None
     try:
-        file = TenantFile.model_validate(raw)
+        document = TenantDocument.model_validate(raw)
     except ValidationError as e:
         registry.errors[path.name] = _describe(e)
         return None
-    if file.slug != path.name:
-        registry.errors[path.name] = [f"slug {file.slug!r} does not match its directory"]
+    if document.slug != path.name:
+        registry.errors[path.name] = [f"slug {document.slug!r} does not match its directory"]
         return None
 
-    tenant = LoadedTenant(file=file, path=path)
+    tenant = LoadedTenant(document=document, path=path)
     tenant = _with_pack(tenant, packs)
-    return _with_secrets(tenant, secrets.get(file.slug))
+    return _with_secrets(tenant, secrets.get(document.slug))
 
 
 def _with_pack(tenant: LoadedTenant, packs: Mapping[str, Pack]) -> LoadedTenant:
-    pack = packs.get(tenant.file.pack)
+    pack = packs.get(tenant.document.pack)
     if pack is None:
-        return _degrade(tenant, f"unknown pack {tenant.file.pack!r}")
+        return _degrade(tenant, f"unknown pack {tenant.document.pack!r}")
     try:
-        config = pack.config_schema.model_validate(tenant.file.config)
+        config = pack.config_schema.model_validate(tenant.document.config)
     except ValidationError as e:
         return _degrade(tenant, *(f"config: {m}" for m in _describe(e)))
     data = None
@@ -201,7 +201,7 @@ def _with_pack(tenant: LoadedTenant, packs: Mapping[str, Pack]) -> LoadedTenant:
 
 
 def _with_secrets(tenant: LoadedTenant, raw: Any) -> LoadedTenant:
-    channel = tenant.file.channel
+    channel = tenant.document.channel
     if channel is None:
         return replace(tenant, secrets=None, main_disabled=["demo tenant: no main channel"])
     disabled = [] if channel.complete else [f"{channel.type} channel ids are missing"]
@@ -220,10 +220,10 @@ def _with_secrets(tenant: LoadedTenant, raw: Any) -> LoadedTenant:
 def _mark_duplicates(registry: Registry) -> None:
     def keys(t: LoadedTenant) -> Iterable[tuple[str, str]]:
         yield "id", str(t.id)
-        if t.file.channel is not None:
-            yield "public_id", t.file.channel.public_id
-            if t.file.channel.type == "whatsapp" and t.file.channel.phone_number_id:
-                yield "phone_number_id", t.file.channel.phone_number_id
+        if t.document.channel is not None:
+            yield "public_id", t.document.channel.public_id
+            if t.document.channel.type == "whatsapp" and t.document.channel.phone_number_id:
+                yield "phone_number_id", t.document.channel.phone_number_id
 
     owners: dict[tuple[str, str], list[int]] = {}
     for i, t in enumerate(registry.tenants):
@@ -242,10 +242,10 @@ def _index(registry: Registry) -> None:
         if t.ambiguous:
             continue  # never routed by a key that another tenant also claims
         registry.by_id[t.id] = t
-        if t.file.channel is not None:
-            registry.by_public_id[(t.file.channel.type, t.file.channel.public_id)] = t
-            if t.file.channel.type == "whatsapp" and t.file.channel.phone_number_id:
-                registry.by_phone_number_id[t.file.channel.phone_number_id] = t
+        if t.document.channel is not None:
+            registry.by_public_id[(t.document.channel.type, t.document.channel.public_id)] = t
+            if t.document.channel.type == "whatsapp" and t.document.channel.phone_number_id:
+                registry.by_phone_number_id[t.document.channel.phone_number_id] = t
 
 
 def _degrade(tenant: LoadedTenant, *reasons: str) -> LoadedTenant:

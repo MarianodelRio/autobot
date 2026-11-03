@@ -100,8 +100,8 @@ def build_context(
         else None,
         can_contact_by_phone=(
             channel == Channel.MAIN
-            and tenant.file.channel is not None
-            and tenant.file.channel.type == "whatsapp"
+            and tenant.document.channel is not None
+            and tenant.document.channel.type == "whatsapp"
         ),
         log=logging.LoggerAdapter(logging.getLogger(f"packs.{tenant.pack.name}"), extra),
     )

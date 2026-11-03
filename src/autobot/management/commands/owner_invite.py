@@ -25,7 +25,7 @@ class Command(BaseCommand):
         tenant = get_registry().by_slug.get(options["slug"])
         if tenant is None:
             raise CommandError("Negocio desconocido.")
-        if tenant.file.status == "offboarded":
+        if tenant.document.status == "offboarded":
             raise CommandError("El negocio está dado de baja.")
         bot = bot_secrets()
         if bot is None:
@@ -44,6 +44,6 @@ class Command(BaseCommand):
             tenant.info.timezone
         )
         self.stdout.write(
-            f"Enlace para {tenant.file.name} (caduca el {expires:%d/%m/%Y}): "
+            f"Enlace para {tenant.document.name} (caduca el {expires:%d/%m/%Y}): "
             f"https://t.me/{me['username']}?start={code}"
         )

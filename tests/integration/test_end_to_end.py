@@ -337,7 +337,7 @@ def test_a_degraded_tenant_does_not_affect_another(tenants: Any, meta: Meta) -> 
     bad = get_registry().by_slug["bad"]
     assert bad.is_degraded and not get_registry().by_slug["wa"].is_degraded
     assert post_wa(wa_text("hola")) == 200
-    bad_body = with_phone_number_id(wa_text("hola"), str(bad.file.channel.phone_number_id))  # type: ignore[union-attr]
+    bad_body = with_phone_number_id(wa_text("hola"), str(bad.document.channel.phone_number_id))  # type: ignore[union-attr]
     response = Client().post(
         "/webhooks/whatsapp/pubbad0000",
         data=bad_body,

@@ -25,7 +25,7 @@ from autobot.runtime.context import (
 )
 from autobot.runtime.models import Channel
 from autobot.tenancy.registry import LoadedTenant
-from autobot.tenancy.schema import TelegramChannel, TenantFile
+from autobot.tenancy.schema import TelegramChannel, TenantDocument
 from core.errors import TransientError
 from core.pack import ContactInfo
 from tests.tenancy.helpers import demo_tenant_yaml, tenant_yaml
@@ -44,13 +44,17 @@ CALENDAR_PACK = dataclasses.replace(toy.pack, needs_calendar=True, config_schema
 
 
 def loaded(pack: Any = toy.pack, config: BaseModel | None = None) -> LoadedTenant:
-    file = TenantFile.model_validate(tenant_yaml("some-business"))
-    return LoadedTenant(file=file, path=Path("."), pack=pack, config=config or pack.config_schema())
+    document = TenantDocument.model_validate(tenant_yaml("some-business"))
+    return LoadedTenant(
+        document=document, path=Path("."), pack=pack, config=config or pack.config_schema()
+    )
 
 
 def loaded_demo(pack: Any = toy.pack, config: BaseModel | None = None) -> LoadedTenant:
-    file = TenantFile.model_validate(demo_tenant_yaml("some-demo"))
-    return LoadedTenant(file=file, path=Path("."), pack=pack, config=config or pack.config_schema())
+    document = TenantDocument.model_validate(demo_tenant_yaml("some-demo"))
+    return LoadedTenant(
+        document=document, path=Path("."), pack=pack, config=config or pack.config_schema()
+    )
 
 
 class Calendars:
@@ -265,7 +269,7 @@ def test_phone_contact_capability_is_only_for_main_whatsapp() -> None:
     )
     assert main.can_contact_by_phone and not demo.can_contact_by_phone
     tenant = loaded(CALENDAR_PACK)
-    file = tenant.file.model_copy(
+    document = tenant.document.model_copy(
         update={
             "channel": TelegramChannel(
                 type="telegram", public_id="telegrampublic", bot_username="salon_bot"
@@ -273,7 +277,7 @@ def test_phone_contact_capability_is_only_for_main_whatsapp() -> None:
         }
     )
     telegram = build_context(
-        dataclasses.replace(tenant, file=file),
+        dataclasses.replace(tenant, document=document),
         Channel.MAIN,
         contact=None,
         state={},

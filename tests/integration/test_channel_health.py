@@ -89,7 +89,7 @@ def call(tenant: Any) -> list[Any]:
     """`whatsapp_health` as `tenant_health` calls it: the tenant's channel, secrets
     and its pack's templates."""
     templates = {(t.name, t.language) for t in tenant.pack.templates} if tenant.pack else set()
-    return health.whatsapp_health(tenant.file.channel, tenant.secrets, templates)
+    return health.whatsapp_health(tenant.document.channel, tenant.secrets, templates)
 
 
 def with_template() -> Any:

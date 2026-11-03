@@ -20,6 +20,6 @@ class Command(BaseCommand):
         if tenant is None:
             raise CommandError("Negocio desconocido.")
         if unlink(tenant.id):
-            self.stdout.write(f"Chat de {tenant.file.name} desconectado.")
+            self.stdout.write(f"Chat de {tenant.document.name} desconectado.")
         else:
-            self.stdout.write(f"{tenant.file.name} no tenía ningún chat conectado.")
+            self.stdout.write(f"{tenant.document.name} no tenía ningún chat conectado.")

@@ -101,8 +101,8 @@ def _due(tenant: LoadedTenant, now: datetime) -> bool:
     """Only an active, non-degraded tenant, with
     `owner.summary_monthly` and a connected chat, on its own day 1 past noon local
     time."""
-    owner = tenant.file.owner
-    if tenant.file.status != "active" or tenant.is_degraded:
+    owner = tenant.document.owner
+    if tenant.document.status != "active" or tenant.is_degraded:
         return False
     if owner is None or not owner.summary_monthly or links.owner_chat(tenant.id) is None:
         return False
@@ -291,7 +291,7 @@ def block_lines(b: SummaryBlock) -> list[str]:
 def show_cost(tenant: LoadedTenant) -> bool:
     """The cost line only means something for WhatsApp (or a demo tenant,
     whose messages come through the shared WhatsApp door)."""
-    channel = tenant.file.channel
+    channel = tenant.document.channel
     return tenant.is_demo or (channel is not None and channel.type == "whatsapp")
 
 
