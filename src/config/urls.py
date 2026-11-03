@@ -1,7 +1,7 @@
 """Root URLs.
 
 Public routes are the only ones Caddy forwards: the webhooks and /health. The panel's
-API (from T14) is mounted apart, reached only through the SSH tunnel.
+API is mounted apart (`PanelGateMiddleware`), reached only through the SSH tunnel.
 """
 
 from django.urls import URLPattern, URLResolver, path
@@ -10,6 +10,7 @@ from autobot.channels import views as webhooks
 from autobot.channels.demo.views import telegram_demo, whatsapp_demo
 from autobot.ops.views import health
 from autobot.owner.views import telegram_notify
+from autobot.panel.api import api
 
 public: list[URLPattern | URLResolver] = [
     path("webhooks/whatsapp/<str:public_id>", webhooks.whatsapp, name="webhook-whatsapp"),
@@ -20,4 +21,4 @@ public: list[URLPattern | URLResolver] = [
     path("health", health, name="health"),
 ]
 
-urlpatterns = public
+urlpatterns = public + [path("api/panel/", api.urls)]

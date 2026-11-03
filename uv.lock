@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.14.*"
 
 [[package]]
@@ -59,6 +59,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "dj-database-url" },
     { name = "django" },
+    { name = "django-ninja" },
     { name = "django-otp" },
     { name = "google-api-python-client" },
     { name = "gunicorn" },
@@ -67,6 +68,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "qrcode" },
     { name = "sentry-sdk" },
 ]
 
@@ -78,7 +80,6 @@ dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-django" },
-    { name = "qrcode" },
     { name = "ruff" },
     { name = "types-pyyaml" },
     { name = "watchfiles" },
@@ -90,6 +91,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=50,<51" },
     { name = "dj-database-url", specifier = ">=3" },
     { name = "django", specifier = ">=5.2,<5.3" },
+    { name = "django-ninja", specifier = ">=1.7,<2" },
     { name = "django-otp", specifier = ">=1.7,<2" },
     { name = "google-api-python-client", specifier = ">=2,<3" },
     { name = "gunicorn", specifier = ">=23,<27" },
@@ -98,6 +100,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6,<3.4" },
     { name = "pydantic", specifier = ">=2.14,<3" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
+    { name = "qrcode", specifier = ">=8.2,<9" },
     { name = "sentry-sdk", specifier = ">=2,<3" },
 ]
 
@@ -109,7 +112,6 @@ dev = [
     { name = "mypy", specifier = ">=1.18" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "pytest-django", specifier = ">=4.11" },
-    { name = "qrcode", specifier = ">=8.2,<9" },
     { name = "ruff", specifier = ">=0.17.2" },
     { name = "types-pyyaml", specifier = ">=6" },
     { name = "watchfiles", specifier = ">=1,<2" },
@@ -408,6 +410,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5c/0c/fed1d01477ecb8547750df6b4922129cbf4bab26433df77c81fa77da06df/django_migration_linter-6.0.0.tar.gz", hash = "sha256:b7fdd4fe55862795378d99b4d8d80d454408c22647909d0fa533b63f9545c63e", size = 35917, upload-time = "2026-01-04T13:08:26.454Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/65/22/1f99542f53f0f55ad766ed2fe4c788f1a6120dbdbb2d05446c5127dfb84e/django_migration_linter-6.0.0-py3-none-any.whl", hash = "sha256:8fbac51a77fbe86d814e2b996b80aa831d21499982085cda1cacc84b7b4971a5", size = 27660, upload-time = "2026-01-04T13:08:23.819Z" },
+]
+
+[[package]]
+name = "django-ninja"
+version = "1.7.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1c/8e/8c12dd873d76762e61fa7225bbab5d2b87dce358a8f7d764508b1363c17c/django_ninja-1.7.3.tar.gz", hash = "sha256:8a73ecccaa86639202427e81667b8fca6dfc250d2b6e5108369688029a4cb593", size = 2342134, upload-time = "2026-10-29T10:21:03.197Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/49/7d/7df99529f54178c67282d25983aad66bc0593ffbf5c1d420bb2840389c90/django_ninja-1.7.3-py3-none-any.whl", hash = "sha256:5e3c2dcead83a2512ea772dbc435ca51632cf46bf3be1523bac41e5bb394891c", size = 2376577, upload-time = "2026-10-29T10:21:01.199Z" },
 ]
 
 [[package]]

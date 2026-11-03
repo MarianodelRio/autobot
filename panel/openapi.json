@@ -1,0 +1,135 @@
+{
+  "components": {
+    "schemas": {
+      "LoginIn": {
+        "properties": {
+          "otp": {
+            "title": "Otp",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password",
+          "otp"
+        ],
+        "title": "LoginIn",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "CsrfOnly": {
+        "in": "cookie",
+        "name": "autobot_panel_session",
+        "type": "apiKey"
+      },
+      "PanelAuth": {
+        "in": "cookie",
+        "name": "autobot_panel_session",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "description": "",
+    "title": "Autobot panel",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/auth/csrf": {
+      "get": {
+        "operationId": "autobot_panel_auth_csrf",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Csrf",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "autobot_panel_auth_login",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "CsrfOnly": []
+          }
+        ],
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "autobot_panel_auth_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "autobot_panel_auth_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    }
+  },
+  "servers": []
+}

@@ -75,6 +75,7 @@ MIDDLEWARE = [
     "autobot.ops.logging.LogContextMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "autobot.tenancy.middleware.RegistryScopeMiddleware",
+    "autobot.panel.middleware.PanelGateMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -84,6 +85,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
+DATABASE_ROUTERS = ["autobot.db_router.AuthDatabaseRouter"]
 
 
 # Two aliases: `default` is fp_app (no BYPASSRLS, no DDL), used by web
@@ -105,6 +107,25 @@ if _owner_url:
     DATABASES["owner"] = _database(_owner_url)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+OTP_TOTP_ISSUER = "Autobot panel"
+
+# The panel's session (DESIGN §6.2): traffic stays on the SSH tunnel to 127.0.0.1
+# (ADR-008), so there is no TLS between the browser and `panel` to require Secure.
+SESSION_COOKIE_NAME = "autobot_panel_session"
+CSRF_COOKIE_NAME = "autobot_panel_csrftoken"
+SESSION_COOKIE_AGE = 12 * 3600
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Strict"
+CSRF_COOKIE_SAMESITE = "Strict"
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 
 # Job queue: Procrastinate on the `default` alias (fp_app); jobs are
 # declared in autobot/jobs.py.

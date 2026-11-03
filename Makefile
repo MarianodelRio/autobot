@@ -3,10 +3,14 @@ NGROK_DOMAIN ?= unpermanently-repairable-devon.ngrok-free.dev
 
 .PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
 .PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test
-.PHONY: db-roles
+.PHONY: db-roles api
 
 check-prod-config:
 	uv run python tools/check_prod_config.py
+
+# For now just the OpenAPI schema; T23a adds the generated TypeScript types.
+api:
+	uv run python manage.py export_openapi panel/openapi.json
 
 deploy:
 	gh workflow run deploy.yml -f sha="$(SHA)"
@@ -99,6 +103,8 @@ dev-bootstrap:
 	docker compose run --rm -T web python manage.py migrate --database owner --noinput
 	docker compose run --rm -T web python manage.py apply_grants
 	docker compose run --rm -T web python manage.py seed_demos
+	docker compose run --rm -T web python manage.py panel_user exists panel \
+		|| docker compose run --rm web python manage.py panel_user create panel
 	docker compose up -d --no-build web worker victorialogs
 
 dev-reset:

@@ -138,3 +138,9 @@ usa `make tenant-push HOST=<servidor> SLUG=<slug> SECRETS=<yaml>`. El tar de ent
 llevar un `secrets.yaml` temporal con solo ese slug; los exports ordinarios no lo incluyen.
 Al comprobar el resultado, retirar las copias locales de importación o guardarlas
 cifradas fuera del repositorio. La lista completa del panel se termina en T33.
+
+Tras el primer despliegue, crea el usuario del panel con `make prod-manage TTY=1
+CMD="panel_user create <usuario>"` y guarda el QR del TOTP al momento (solo se muestra
+una vez; `docs/runbooks/panel.md`). Comprueba `DJANGO_ALLOWED_HOSTS` en el `.env` del
+servidor: debe incluir `127.0.0.1` y `localhost`, porque el panel llega con ese host al
+entrar por el túnel SSH.

@@ -17,6 +17,8 @@ dependencies = [
     "dj-database-url>=3",
     "pyyaml>=6.0,<7",
     "sentry-sdk>=2,<3",
+    "django-ninja>=1.7,<2",
+    "qrcode>=8.2,<9",
 ]
 
 [dependency-groups]
@@ -30,7 +32,6 @@ dev = [
     "import-linter>=2.15,<3",
     "django-migration-linter>=6,<7",
     "types-pyyaml>=6",
-    "qrcode>=8.2,<9",
     "watchfiles>=1,<2",
 ]
 

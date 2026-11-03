@@ -19,6 +19,18 @@ CONFIG_TABLES: tuple[str, ...] = (
     "tenant_secret",
     "config_revision",
 )
+# Django's own auth/session/OTP tables (T14): routed to fp_owner by AuthDatabaseRouter.
+# fp_app has no business with them at all, unlike CONFIG_TABLES (no SELECT either).
+AUTH_TABLES: tuple[str, ...] = (
+    "auth_user",
+    "auth_group",
+    "auth_permission",
+    "auth_user_groups",
+    "auth_user_user_permissions",
+    "auth_group_permissions",
+    "django_session",
+    "otp_totp_totpdevice",
+)
 # Platform functions reapplied like the table grants: fp_app only gets EXECUTE, never
 # PUBLIC (SECURITY DEFINER functions must not be callable by anyone who connects).
 FUNCTIONS: tuple[tuple[str, str], ...] = (
@@ -56,6 +68,7 @@ def statements() -> list[str]:
         _revoke_if_exists("audit_event", "fp_app"),
         _revoke_if_exists("ops_alert", "fp_app", "DELETE"),
         *(_revoke_if_exists(table, "fp_app", "INSERT, UPDATE, DELETE") for table in CONFIG_TABLES),
+        *(_revoke_if_exists(table, "fp_app") for table in AUTH_TABLES),
         "GRANT SELECT ON ALL TABLES IN SCHEMA public TO fp_readonly",
         "ALTER DEFAULT PRIVILEGES FOR ROLE fp_owner IN SCHEMA public "
         "GRANT SELECT ON TABLES TO fp_readonly",

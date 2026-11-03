@@ -291,5 +291,8 @@ def test_only_webhooks_and_health_are_public() -> None:
         "webhooks/telegram-notify",
         "health",
     ]
-    assert urls.urlpatterns == urls.public
+    # The panel API is mounted apart from `public`: Caddy's allowlist never reaches it
+    # (PanelGateMiddleware gates it instead, by the X-Autobot-Edge header it adds).
+    extra = [p for p in urls.urlpatterns if p not in urls.public]
+    assert [str(p.pattern) for p in extra] == ["api/panel/"]
     assert Client().get("/admin/").status_code == 404

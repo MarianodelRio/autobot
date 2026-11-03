@@ -70,11 +70,14 @@ def main() -> None:
     (state / "config").mkdir()
     run("docker", "network", "create", NAME)
     try:
-        # Every upstream path returns 200: a 404 can only come from Caddy.
+        # Every upstream path returns 200: a 404 can only come from Caddy. Echoes
+        # X-Autobot-Edge back so the test can check Caddy actually set it.
         server = (
             "from http.server import BaseHTTPRequestHandler,HTTPServer; "
             "H=type('H',(BaseHTTPRequestHandler,),{'do_GET':lambda s:"
-            "(s.send_response(200),s.end_headers())}); "
+            "(s.send_response(200),"
+            "s.send_header('X-Echo-Edge', s.headers.get('X-Autobot-Edge','')),"
+            "s.end_headers())}); "
             "HTTPServer(('0.0.0.0',8000),H).serve_forever()"
         )
         run(
@@ -134,6 +137,7 @@ def main() -> None:
         ):
             with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=3) as response:
                 assert response.status == 200, path
+                assert response.getheader("X-Echo-Edge") == "public", path
         for path in (
             "/",
             "/admin/",

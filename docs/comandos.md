@@ -29,6 +29,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
 | `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
 | `make check-prod-config` | Ejecuta `tools/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
+| `make api` | Regenera `panel/openapi.json` a partir del esquema vigente de la API del panel |
 | `make deploy [SHA=]` | Lanza el workflow de despliegue en GitHub Actions |
 | `make backup-now` | Ejecuta `deploy/backup.sh` en el servidor por SSH |
 | `make restore-test` | `bash deploy/restore-test.sh`: simulacro de restauración |
@@ -65,3 +66,8 @@ comando. `NGROK_DOMAIN` usa el dominio reservado de desarrollo documentado en el
 | `seed_demos` | Crea los demos de las plantillas solo si no tienen versiones; conserva los cambios posteriores |
 | `seed_dev_activity [--days N] [--reset]` | Crea actividad falsa en local (mensajes, avisos, alertas, un trabajo fallido, muestras de sistema); sin `--days`, los transcurridos del mes en curso. Con `--reset`, borra antes lo que creó. Se niega fuera de `local` |
 | `tenant_status <slug> pause\|resume\|offboard` | Cambia el estado y crea una versión auditada; la baja exige escribir exactamente el slug |
+| `panel_user create <usuario>` | Crea el usuario único del panel: contraseña (dos veces, con los validadores de Django) y un TOTP confirmado; muestra la URI `otpauth://` y su QR en ASCII una sola vez |
+| `panel_user reset-totp <usuario>` | Sustituye el dispositivo TOTP; lo muestra una sola vez |
+| `panel_user set-password <usuario>` | Cambia la contraseña del usuario del panel |
+| `panel_user exists <usuario>` | Sale con código 0 si existe, 1 si no; lo usa `make dev-bootstrap` |
+| `export_openapi <ruta>` | Escribe el esquema OpenAPI de la API del panel; lo usa `make api` |

@@ -5,7 +5,9 @@
 
     @public path /webhooks/whatsapp/* /webhooks/telegram/* /webhooks/telegram-demo /webhooks/whatsapp-demo /webhooks/telegram-notify /health
     handle @public {
-        reverse_proxy web:8000
+        reverse_proxy web:8000 {
+            header_up X-Autobot-Edge public
+        }
     }
     handle {
         respond 404
