@@ -8,7 +8,13 @@ from typing import Any
 import pytest
 import yaml
 
-from autobot.tenancy.registry import Registry, load_registry
+from autobot.tenancy.registry import (
+    Registry,
+    TenantSource,
+    load_registry,
+    source_from_dir,
+    sources_from_directory,
+)
 from tests.tenancy.helpers import (
     PACKS,
     TG_SECRETS,
@@ -31,7 +37,7 @@ def load(
 ) -> Registry:
     tenants = write_tenants(tmp_path, *docs, raw=raw)
     secrets_file = write_secrets(tmp_path, secrets) if secrets is not None else None
-    return load_registry(tenants, secrets_file, packs)
+    return load_registry(sources_from_directory(tenants, secrets_file), packs)
 
 
 # ── A healthy tenant ──────────────────────────────────────────────────────
@@ -65,7 +71,8 @@ def test_load_data_receives_the_tenant_directory(tmp_path: Path) -> None:
 
     packs = {"toy": dataclasses.replace(toy.pack, load_data=load_data)}
     registry = load(tmp_path, tenant_yaml("bus-a"), packs=packs)
-    assert seen == [("bus-a", "bus-a")]
+    assert seen[0][0] == "bus-a"
+    assert seen[0][1].startswith("autobot-dataset-")
     assert registry.tenants[0].data == {"rows": 3}
 
 
@@ -216,11 +223,13 @@ def test_whatsapp_main_testers_accept_phones_and_bsuids(tmp_path: Path) -> None:
     assert load(tmp_path, doc).problems == {}
 
 
-def test_slug_must_match_its_directory(tmp_path: Path) -> None:
+def test_directory_name_does_not_define_tenant_identity(tmp_path: Path) -> None:
     doc = tenant_yaml("a")
     raw = {"other": yaml.safe_dump(doc)}
-    registry = load(tmp_path, raw=raw)
-    assert "does not match" in registry.errors["other"][0]
+    registry = load(tmp_path, raw=raw, secrets={"a": WA_SECRETS})
+    assert registry.problems == {}
+    assert registry.tenants[0].slug == "a"
+    assert registry.tenants[0].main_enabled
 
 
 def test_unreadable_yaml_is_reported(tmp_path: Path) -> None:
@@ -232,9 +241,9 @@ def test_unreadable_yaml_is_reported(tmp_path: Path) -> None:
 def test_invalid_secrets_file_is_reported(tmp_path: Path) -> None:
     tenants = write_tenants(tmp_path, tenant_yaml("a"))
     (tmp_path / "secrets.yaml").write_text("a: [unclosed")
-    registry = load_registry(tenants, tmp_path / "secrets.yaml", PACKS)
-    assert registry.secrets_error == "cannot be read (ParserError)"
-    assert registry.problems == {"secrets.yaml": ["cannot be read (ParserError)"]}
+    registry = load_registry(sources_from_directory(tenants, tmp_path / "secrets.yaml"), PACKS)
+    assert "secrets cannot be decrypted" in registry.tenants[0].main_disabled
+    assert registry.problems == {}
     assert not registry.tenants[0].main_enabled
 
 
@@ -315,7 +324,7 @@ def test_a_tenant_file_that_is_not_utf8_only_affects_itself(tmp_path: Path) -> N
     tenants = write_tenants(tmp_path, tenant_yaml("good"))
     (tenants / "latin1").mkdir()
     (tenants / "latin1" / "tenant.yaml").write_bytes("name: Peluquería".encode("latin-1"))
-    registry = load_registry(tenants, None, PACKS)
+    registry = load_registry(sources_from_directory(tenants, None), PACKS)
     assert registry.errors == {"latin1": ["tenant.yaml cannot be read (UnicodeDecodeError)"]}
     assert [t.slug for t in registry.tenants] == ["good"]
 
@@ -325,10 +334,10 @@ def test_an_unreadable_secrets_file_does_not_stop_the_tenants(tmp_path: Path) ->
     secrets = write_secrets(tmp_path, {"a": WA_SECRETS})
     secrets.chmod(0)
     try:
-        registry = load_registry(tenants, secrets, PACKS)
+        registry = load_registry(sources_from_directory(tenants, secrets), PACKS)
     finally:
         secrets.chmod(0o600)
-    assert registry.secrets_error == "cannot be read (PermissionError)"
+    assert "secrets cannot be decrypted" in registry.tenants[0].main_disabled
     assert [t.slug for t in registry.tenants] == ["a"]
     assert not registry.tenants[0].main_enabled
 
@@ -337,11 +346,13 @@ def test_a_directory_without_tenant_yaml_is_reported(tmp_path: Path) -> None:
     tenants = write_tenants(tmp_path, tenant_yaml("a"))
     (tenants / "typo").mkdir()
     (tenants / "typo" / "tenant.yml").write_text("id: x")
-    assert load_registry(tenants, None, PACKS).errors == {"typo": ["no tenant.yaml"]}
+    assert load_registry(sources_from_directory(tenants, None), PACKS).errors == {
+        "typo": ["no document.yaml or tenant.yaml"]
+    }
 
 
 def test_a_missing_tenants_directory_gives_an_empty_registry(tmp_path: Path) -> None:
-    registry = load_registry(tmp_path / "nowhere", None, PACKS)
+    registry = load_registry(sources_from_directory(tmp_path / "nowhere", None), PACKS)
     assert registry.tenants == [] and registry.problems == {}
 
 
@@ -369,6 +380,76 @@ def test_channel_ids_have_a_format(tmp_path: Path, channel: dict[str, str]) -> N
 def test_secrets_file_must_map_slugs(tmp_path: Path, text: str) -> None:
     tenants = write_tenants(tmp_path, tenant_yaml("a"))
     (tmp_path / "secrets.yaml").write_text(text)
-    registry = load_registry(tenants, tmp_path / "secrets.yaml", PACKS)
-    assert registry.secrets_error == "must map each tenant slug to its secrets"
+    registry = load_registry(sources_from_directory(tenants, tmp_path / "secrets.yaml"), PACKS)
+    assert "secrets cannot be decrypted" in registry.tenants[0].main_disabled
     assert [t.slug for t in registry.tenants] == ["a"]
+
+
+@pytest.mark.parametrize("filename", ["document.yaml", "tenant.yaml"])
+def test_directory_document_names(tmp_path: Path, filename: str) -> None:
+    directory = tmp_path / "a"
+    directory.mkdir()
+    (directory / filename).write_text(yaml.safe_dump(tenant_yaml("a")))
+    source = source_from_dir(directory, WA_SECRETS)
+    registry = load_registry([source], PACKS)
+    assert registry.problems == {}
+    assert registry.tenants[0].main_enabled
+
+
+def test_document_yaml_takes_precedence(tmp_path: Path) -> None:
+    directory = tmp_path / "a"
+    directory.mkdir()
+    (directory / "tenant.yaml").write_text("invalid: true")
+    (directory / "document.yaml").write_text(yaml.safe_dump(tenant_yaml("a")))
+    assert load_registry([source_from_dir(directory)], PACKS).problems == {}
+
+
+def test_dataset_is_materialized_then_removed(tmp_path: Path) -> None:
+    paths: list[Path] = []
+
+    def load_data(info: Any, config: Any, root: Path) -> object:
+        paths.append(root)
+        return (root / "datasets" / "timetable" / "nested" / "rows.csv").read_text()
+
+    packs = {"toy": dataclasses.replace(toy.pack, load_data=load_data)}
+    source = TenantSource(
+        "a",
+        tenant_yaml("a"),
+        datasets={"timetable": {"nested/rows.csv": "línea,1\n"}},
+        version=3,
+    )
+    registry = load_registry([source], packs)
+    assert registry.problems == {}
+    assert registry.tenants[0].data == "línea,1\n"
+    assert registry.tenants[0].version == 3
+    assert len(paths) == 1 and not paths[0].exists()
+
+
+@pytest.mark.parametrize(
+    "path", ["../escape", "/absolute", "nested/../../escape", "C:\\escape", ".", ""]
+)
+def test_invalid_dataset_path_degrades_only_its_tenant(path: str) -> None:
+    registry = load_registry(
+        [
+            TenantSource("bad", tenant_yaml("bad"), datasets={"timetable": {path: "text"}}),
+            TenantSource("good", tenant_yaml("good")),
+        ],
+        PACKS,
+    )
+    bad, good = registry.tenants
+    assert bad.degraded == ["dataset timetable: invalid path"]
+    assert not good.is_degraded
+
+
+def test_nontext_dataset_degrades_tenant() -> None:
+    source = TenantSource("a", tenant_yaml("a"), datasets={"timetable": {"rows.csv": b"bytes"}})  # type: ignore[dict-item]
+    assert load_registry([source], PACKS).tenants[0].degraded == ["dataset timetable: invalid path"]
+
+
+def test_unreadable_secrets_disable_main_without_degrading() -> None:
+    source = TenantSource("a", tenant_yaml("a"), secrets_error="unreadable")
+    registry = load_registry([source], PACKS)
+    (tenant,) = registry.tenants
+    assert not tenant.is_degraded and not tenant.main_enabled
+    assert "secrets cannot be decrypted" in tenant.main_disabled
+    assert registry.problems == {}

@@ -102,3 +102,14 @@ decisiones de arquitectura.
   otros (por ejemplo, por contrato), reconsiderar RLS o una base aparte para ese caso.
 - Si el volumen de versiones por tenant crece mucho, añadir una política de purga de
   versiones antiguas (hoy no existe: todas se conservan).
+
+### Formato de directorio implementado
+
+`source_from_dir` acepta `document.yaml` o el nombre antiguo `tenant.yaml`; el nombre
+de la carpeta no condiciona el slug del documento, de modo que una plantilla en
+`template/` o un export a un directorio temporal conserva la identidad del negocio.
+El registro recibe `TenantSource` y materializa sus datasets en un directorio temporal
+solo durante `Pack.load_data`, sin cambiar el contrato del pack. Las rutas absolutas,
+con `..` o con contenido que no sea texto degradan únicamente al negocio afectado.
+Los errores de lectura se asocian a la fuente; un fallo de secretos desactiva el canal
+principal sin degradar el negocio.

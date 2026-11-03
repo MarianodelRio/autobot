@@ -7,7 +7,6 @@ import threading
 import time
 import uuid
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -45,16 +44,12 @@ CALENDAR_PACK = dataclasses.replace(toy.pack, needs_calendar=True, config_schema
 
 def loaded(pack: Any = toy.pack, config: BaseModel | None = None) -> LoadedTenant:
     document = TenantDocument.model_validate(tenant_yaml("some-business"))
-    return LoadedTenant(
-        document=document, path=Path("."), pack=pack, config=config or pack.config_schema()
-    )
+    return LoadedTenant(document=document, pack=pack, config=config or pack.config_schema())
 
 
 def loaded_demo(pack: Any = toy.pack, config: BaseModel | None = None) -> LoadedTenant:
     document = TenantDocument.model_validate(demo_tenant_yaml("some-demo"))
-    return LoadedTenant(
-        document=document, path=Path("."), pack=pack, config=config or pack.config_schema()
-    )
+    return LoadedTenant(document=document, pack=pack, config=config or pack.config_schema())
 
 
 class Calendars:

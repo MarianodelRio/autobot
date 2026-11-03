@@ -47,7 +47,7 @@ def run() -> None:
     if failed:
         send_ops_alert("failed_jobs", None, "🟠 Hay trabajos fallidos en los últimos 10 minutos.")
     registry = get_registry()
-    if registry.errors or registry.secrets_error:
+    if registry.errors:
         send_ops_alert("registry", None, "🔴 Hay configuraciones de tenants o secretos ilegibles.")
     demo_wa_billable = 0
     for tenant in registry.tenants:

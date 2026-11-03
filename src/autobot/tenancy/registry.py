@@ -1,4 +1,4 @@
-"""Tenant registry: tenants/*/tenant.yaml + secrets → memory.
+"""Tenant registry: validated documents, datasets and secrets → memory.
 
 `load_registry` reads every tenant, validates the common part, the pack's config and the
 channel secrets, loads the datasets and builds the indexes. A broken tenant never affects
@@ -19,7 +19,8 @@ import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -40,7 +41,7 @@ READ_ERRORS = (OSError, UnicodeDecodeError, yaml.YAMLError)
 @dataclass(frozen=True)
 class LoadedTenant:
     document: TenantDocument
-    path: Path
+    version: int | None = None
     pack: Pack | None = None
     config: BaseModel | None = None
     data: object | None = None
@@ -79,7 +80,6 @@ class LoadedTenant:
 class Registry:
     tenants: list[LoadedTenant] = field(default_factory=list)
     errors: dict[str, list[str]] = field(default_factory=dict)  # directory → problems
-    secrets_error: str | None = None
     by_id: dict[UUID, LoadedTenant] = field(default_factory=dict)
     by_slug: dict[str, LoadedTenant] = field(default_factory=dict)
     by_public_id: dict[tuple[str, str], LoadedTenant] = field(default_factory=dict)
@@ -103,100 +103,175 @@ class Registry:
 
     @property
     def problems(self) -> dict[str, list[str]]:
-        """Everything that should fail CI: unreadable and degraded tenants, and a broken
-        secrets file."""
+        """Unreadable documents and degraded tenants that should fail validation."""
         found = {name: list(problems) for name, problems in self.errors.items()}
         for t in self.tenants:
             if t.degraded:
                 found.setdefault(t.slug, []).extend(t.degraded)
-        if self.secrets_error:
-            found["secrets.yaml"] = [self.secrets_error]
         return found
 
 
-def load_registry(
-    tenants_dir: Path, secrets_file: Path | None, packs: Mapping[str, Pack]
-) -> Registry:
+@dataclass(frozen=True)
+class TenantSource:
+    name: str
+    document: Any
+    datasets: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    secrets: Mapping[str, Any] | None = None
+    secrets_error: str | None = None
+    version: int | None = None
+    document_error: str | None = None
+
+
+def load_registry(sources: Iterable[TenantSource], packs: Mapping[str, Pack]) -> Registry:
     registry = Registry()
-    secrets = _read_secrets(secrets_file, registry)
-    if not tenants_dir.is_dir():
-        log.warning("No tenants directory at %s", tenants_dir)
-        return registry
-    for path in sorted(p for p in tenants_dir.iterdir() if p.is_dir()):
-        if not (path / "tenant.yaml").is_file():
-            registry.errors[path.name] = ["no tenant.yaml"]
+    for source in sources:
+        if source.document_error:
+            registry.errors[source.name] = [source.document_error]
             continue
-        tenant = _load_tenant(path, packs, secrets, registry)
+        tenant = _load_tenant(source, packs, registry)
         if tenant is not None:
             registry.tenants.append(tenant)
     _mark_duplicates(registry)
     _index(registry)
-
-    unknown = sorted(set(secrets) - set(registry.by_slug))
-    if unknown:
-        log.warning("secrets.yaml has entries for unknown tenants: %s", ", ".join(unknown))
-    if registry.secrets_error:
-        log.error("secrets.yaml cannot be used: %s", registry.secrets_error)
     for name, problems in registry.problems.items():
-        if name != "secrets.yaml":
-            log.error("Tenant %s cannot serve: %s", name, "; ".join(problems))
+        log.error("Tenant %s cannot serve: %s", name, "; ".join(problems))
     for t in registry.tenants:
         if t.main_disabled and not t.is_degraded and not t.is_demo:
             log.warning("Tenant %s main channel disabled: %s", t.slug, "; ".join(t.main_disabled))
     return registry
 
 
-def _read_secrets(secrets_file: Path | None, registry: Registry) -> dict[str, Any]:
-    if secrets_file is None or not secrets_file.is_file():
-        log.warning("No secrets file: every main channel is disabled")
-        return {}
+def source_from_dir(directory: Path, secrets: Mapping[str, Any] | None = None) -> TenantSource:
+    document = directory / "document.yaml"
+    if not document.is_file():
+        document = directory / "tenant.yaml"
+    if not document.is_file():
+        return TenantSource(directory.name, None, document_error="no document.yaml or tenant.yaml")
     try:
-        data = yaml.safe_load(secrets_file.read_text()) or {}
-    except READ_ERRORS as e:
-        registry.secrets_error = f"cannot be read ({type(e).__name__})"
-        return {}
-    if not isinstance(data, dict) or not all(isinstance(k, str) for k in data):
-        registry.secrets_error = "must map each tenant slug to its secrets"
-        return {}
-    return data
+        raw = yaml.safe_load(document.read_text(encoding="utf-8"))
+        datasets: dict[str, dict[str, str]] = {}
+        root = directory / "datasets"
+        if root.is_dir():
+            for dataset in sorted(root.iterdir()):
+                if not dataset.is_dir():
+                    continue
+                files = {}
+                for path in sorted(dataset.rglob("*")):
+                    if path.is_symlink():
+                        raise OSError("dataset symlinks are not allowed")
+                    if path.is_file():
+                        files[path.relative_to(dataset).as_posix()] = path.read_text(
+                            encoding="utf-8"
+                        )
+                datasets[dataset.name] = files
+        return TenantSource(directory.name, raw, datasets=datasets, secrets=secrets)
+    except READ_ERRORS as error:
+        return TenantSource(
+            directory.name,
+            None,
+            document_error=f"{document.name} cannot be read ({type(error).__name__})",
+        )
+
+
+def sources_from_directory(root: Path, secrets_file: Path | None) -> list[TenantSource]:
+    if not root.is_dir():
+        log.warning("No tenants directory at %s", root)
+        return []
+    secrets: dict[str, Any] = {}
+    secrets_error = None
+    if secrets_file is not None and secrets_file.is_file():
+        try:
+            raw = yaml.safe_load(secrets_file.read_text(encoding="utf-8")) or {}
+            if isinstance(raw, dict) and all(isinstance(key, str) for key in raw):
+                secrets = raw
+            else:
+                secrets_error = "must map each tenant slug to its secrets"
+        except READ_ERRORS as error:
+            secrets_error = f"cannot be read ({type(error).__name__})"
+    sources = []
+    known_slugs = set()
+    for path in sorted(root.iterdir()):
+        if not path.is_dir():
+            continue
+        source = source_from_dir(path)
+        slug = source.document.get("slug") if isinstance(source.document, dict) else None
+        if isinstance(slug, str):
+            known_slugs.add(slug)
+        sources.append(
+            replace(
+                source,
+                secrets=secrets.get(slug) if isinstance(slug, str) else None,
+                secrets_error=secrets_error,
+            )
+        )
+    unknown = sorted(set(secrets) - known_slugs)
+    if unknown:
+        log.warning("secrets.yaml has entries for unknown tenants: %s", ", ".join(unknown))
+    return sources
 
 
 def _load_tenant(
-    path: Path, packs: Mapping[str, Pack], secrets: Mapping[str, Any], registry: Registry
+    source: TenantSource, packs: Mapping[str, Pack], registry: Registry
 ) -> LoadedTenant | None:
     try:
-        raw = yaml.safe_load((path / "tenant.yaml").read_text())
-    except READ_ERRORS as e:
-        registry.errors[path.name] = [f"tenant.yaml cannot be read ({type(e).__name__})"]
+        document = TenantDocument.model_validate(source.document)
+    except ValidationError as error:
+        registry.errors[source.name] = _describe(error)
         return None
-    try:
-        document = TenantDocument.model_validate(raw)
-    except ValidationError as e:
-        registry.errors[path.name] = _describe(e)
-        return None
-    if document.slug != path.name:
-        registry.errors[path.name] = [f"slug {document.slug!r} does not match its directory"]
-        return None
-
-    tenant = LoadedTenant(document=document, path=path)
-    tenant = _with_pack(tenant, packs)
-    return _with_secrets(tenant, secrets.get(document.slug))
+    tenant = LoadedTenant(document=document, version=source.version)
+    tenant = _with_pack(tenant, packs, source.datasets)
+    tenant = _with_secrets(tenant, source.secrets)
+    if source.secrets_error and not tenant.is_demo:
+        tenant = replace(
+            tenant,
+            secrets=None,
+            main_disabled=[*tenant.main_disabled, "secrets cannot be decrypted"],
+        )
+    return tenant
 
 
-def _with_pack(tenant: LoadedTenant, packs: Mapping[str, Pack]) -> LoadedTenant:
+def _dataset_path(path: str) -> bool:
+    return (
+        isinstance(path, str)
+        and bool(path)
+        and "\\" not in path
+        and "\0" not in path
+        and not PurePosixPath(path).is_absolute()
+        and ".." not in PurePosixPath(path).parts
+        and PurePosixPath(path).parts != ()
+    )
+
+
+def _with_pack(
+    tenant: LoadedTenant, packs: Mapping[str, Pack], datasets: Mapping[str, Mapping[str, str]]
+) -> LoadedTenant:
     pack = packs.get(tenant.document.pack)
     if pack is None:
         return _degrade(tenant, f"unknown pack {tenant.document.pack!r}")
     try:
         config = pack.config_schema.model_validate(tenant.document.config)
-    except ValidationError as e:
-        return _degrade(tenant, *(f"config: {m}" for m in _describe(e)))
+    except ValidationError as error:
+        return _degrade(tenant, *(f"config: {m}" for m in _describe(error)))
+    for name, files in datasets.items():
+        if not _dataset_path(name) or len(PurePosixPath(name).parts) != 1:
+            return _degrade(tenant, "dataset: invalid name")
+        if any(
+            not _dataset_path(path) or not isinstance(text, str) for path, text in files.items()
+        ):
+            return _degrade(tenant, f"dataset {name}: invalid path")
     data = None
     if pack.load_data is not None:
         try:
-            data = pack.load_data(tenant.info, config, tenant.path)
-        except Exception as e:  # any failure loading a dataset degrades only this tenant
-            return _degrade(tenant, f"load_data failed: {type(e).__name__}: {e}")
+            with TemporaryDirectory(prefix="autobot-dataset-") as temporary:
+                root = Path(temporary)
+                for name, files in datasets.items():
+                    for path, text in files.items():
+                        target = root / "datasets" / name / path
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text(text, encoding="utf-8")
+                data = pack.load_data(tenant.info, config, root)
+        except Exception as error:
+            return _degrade(tenant, f"load_data failed: {type(error).__name__}: {error}")
     return replace(tenant, pack=pack, config=config, data=data)
 
 
@@ -263,4 +338,4 @@ def get_registry() -> Registry:
     settings.SECRETS_FILE with the packs of packs.registry."""
     from packs.registry import PACKS
 
-    return load_registry(settings.TENANTS_DIR, settings.SECRETS_FILE, PACKS)
+    return load_registry(sources_from_directory(settings.TENANTS_DIR, settings.SECRETS_FILE), PACKS)

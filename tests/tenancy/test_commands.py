@@ -10,7 +10,7 @@ from django.core.management import CommandError, call_command
 from pytest_django import Settings
 
 from autobot.tenancy.models import Tenant
-from autobot.tenancy.registry import get_registry, load_registry
+from autobot.tenancy.registry import get_registry, load_registry, sources_from_directory
 from tests.tenancy.helpers import PACKS, tenant_yaml, write_tenants
 
 
@@ -90,7 +90,7 @@ def test_sync_tenants_strict_reports_skipped_rows(tenants_dir: Path) -> None:
 def test_new_tenant_creates_a_valid_onboarding_tenant(tenants_dir: Path) -> None:
     run("new_tenant", "nuevo-negocio", "--pack", "toy", "--channel", "whatsapp", "--name", "Nuevo")
     doc = yaml.safe_load((tenants_dir / "nuevo-negocio" / "tenant.yaml").read_text())
-    registry = load_registry(tenants_dir, None, PACKS)
+    registry = load_registry(sources_from_directory(tenants_dir, None), PACKS)
     (t,) = registry.tenants
     assert registry.problems == {}
     assert t.id.version == 7
@@ -106,7 +106,7 @@ def test_new_tenant_ids_are_unique(tenants_dir: Path) -> None:
     docs = [yaml.safe_load((tenants_dir / s / "tenant.yaml").read_text()) for s in ("uno", "dos")]
     assert docs[0]["id"] != docs[1]["id"]
     assert docs[0]["channel"]["public_id"] != docs[1]["channel"]["public_id"]
-    assert load_registry(tenants_dir, None, PACKS).problems == {}
+    assert load_registry(sources_from_directory(tenants_dir, None), PACKS).problems == {}
 
 
 @pytest.mark.parametrize(
@@ -126,7 +126,7 @@ def test_new_tenant_rejects_bad_input(tenants_dir: Path, args: list[str], error:
 def test_new_tenant_creates_a_demo_business(tenants_dir: Path) -> None:
     run("new_tenant", "demo-negocio", "--pack", "toy", "--demo", "Pruébalo gratis")
     doc = yaml.safe_load((tenants_dir / "demo-negocio" / "tenant.yaml").read_text())
-    registry = load_registry(tenants_dir, None, PACKS)
+    registry = load_registry(sources_from_directory(tenants_dir, None), PACKS)
     (t,) = registry.tenants
     assert registry.problems == {}
     assert t.is_demo and t.document.demo is not None
