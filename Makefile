@@ -70,9 +70,7 @@ bus-revision:
 bus-publicar:
 	$(BUS_TOOL).bus_publicar $(TENANT)
 
-# After editing any tenants/<slug>/tenant.yaml: local web/worker cache the tenant
-# registry for the life of the process (unlike production, which restarts it on every
-# deploy), so a plain sync_tenants is not enough.
+# Legacy mirror sync until T08b; it does not publish the versioned runtime config.
 tenant-sync:
 	docker compose exec web python manage.py sync_tenants
 	docker compose restart web worker

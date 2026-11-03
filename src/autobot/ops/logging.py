@@ -40,7 +40,9 @@ def contextual[**P, R](function: Callable[P, R]) -> Callable[P, R]:
         for argument, field in (("tenant_id", "tenant"), ("event_id", "event_id")):
             if argument in bound:
                 values[field] = str(bound[argument])
-        with context(**values):
+        from autobot.tenancy.registry import registry_scope
+
+        with context(**values), registry_scope():
             try:
                 return function(*args, **kwargs)
             except Exception:
@@ -56,7 +58,9 @@ def contextual[**P, R](function: Callable[P, R]) -> Callable[P, R]:
 def async_contextual[**P, R](function: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
     @functools.wraps(function)
     async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
-        with context(job=function.__name__):
+        from autobot.tenancy.registry import registry_scope
+
+        with context(job=function.__name__), registry_scope():
             try:
                 return await function(*args, **kwargs)
             except Exception:
@@ -84,10 +88,11 @@ def redact(value: str) -> str:
         settings.SENTRY_DSN,
         settings.HEALTHCHECKS_PING_URL,
     ]
-    from autobot.tenancy.registry import get_registry
+    from autobot.tenancy.registry import loaded_registry
 
-    if get_registry.cache_info().currsize:
-        for tenant in get_registry().tenants:
+    registry = loaded_registry()
+    if registry is not None:
+        for tenant in registry.tenants:
             if tenant.secrets is not None:
                 for secret in tenant.secrets.__dict__.values():
                     if hasattr(secret, "get_secret_value"):

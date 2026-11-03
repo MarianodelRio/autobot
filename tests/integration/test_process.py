@@ -23,7 +23,7 @@ from autobot.runtime.models import (
     Notification,
     OutboundMessage,
 )
-from autobot.tenancy.registry import LoadedTenant, get_registry
+from autobot.tenancy.registry import LoadedTenant, get_registry, reset_registry
 from autobot.tenancy.tx import tenant_tx
 from core.actions import ContactRef, RecordMetric, SendProactive
 from core.conversation import OPT_IN_TEXT, OPT_OUT_TEXT, RECOVERY_TEXT, RESTART_TEXT
@@ -385,7 +385,7 @@ def test_no_proactive_to_a_contact_of_another_channel(
         return PackResult(replies=[Text("ok")], actions=[action])
 
     use_pack(monkeypatch, handle_message=notice)
-    get_registry.cache_clear()
+    reset_registry()
     receive(wa_text("hola"))
     assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
 

@@ -113,3 +113,20 @@ solo durante `Pack.load_data`, sin cambiar el contrato del pack. Las rutas absol
 con `..` o con contenido que no sea texto degradan únicamente al negocio afectado.
 Los errores de lectura se asocian a la fuente; un fallo de secretos desactiva el canal
 principal sin degradar el negocio.
+
+### Carga y fijado del registro implementados
+
+La fuente de BD lee revisión, documentos, datasets y secretos con cuatro consultas,
+sin una consulta por negocio. Fuera de una transacción existente usa una instantánea
+`REPEATABLE READ READ ONLY`; los secretos se descifran después de cerrar la lectura.
+La caché por proceso comprueba la revisión como máximo cada dos segundos bajo un
+candado; solo publica la nueva instantánea cuando termina de construirla. Un fallo
+de BD conserva la anterior, salvo en la primera carga, que propaga el error.
+
+`registry_scope` fija de forma perezosa el primer registro leído durante una petición
+o trabajo, incluidos ámbitos anidados. Así `/health` puede capturar también el fallo
+de primera carga y devolver 503. `loaded_registry` sirve a la redacción de logs sin
+consultas y conserva los secretos de la instantánea fijada durante cada trabajo.
+
+Los webhooks principales responden también 503 si falla la primera carga de config:
+el proveedor conserva el evento para reintentarlo, igual que si falla su persistencia.

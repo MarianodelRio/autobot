@@ -74,6 +74,7 @@ if importlib.util.find_spec("django_migration_linter"):
 MIDDLEWARE = [
     "autobot.ops.logging.LogContextMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "autobot.tenancy.middleware.RegistryScopeMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

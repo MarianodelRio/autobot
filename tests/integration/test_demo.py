@@ -18,7 +18,7 @@ from autobot.channels.demo import selector
 from autobot.channels.demo.doors import door
 from autobot.channels.ratelimit import WindowLimiter
 from autobot.runtime.models import Contact, DemoEvent, InboundEvent, Notification, OutboundMessage
-from autobot.tenancy.registry import get_registry
+from autobot.tenancy.registry import reset_registry
 from tests.integration.helpers import (
     TELEGRAM_DEMO_URL,
     Providers,
@@ -263,12 +263,10 @@ def test_a_business_that_stops_being_available(
     say(USER, "/start")
     press(USER, "fp_select:wa")
     # A deploy breaks its config: degraded.
-    import yaml
+    from tests.tenancy.helpers import seed_db
 
-    (tmp_path / "tenants" / "wa" / "tenant.yaml").write_text(
-        yaml.safe_dump({**doc, "config": {"colors": 1}})
-    )
-    get_registry.cache_clear()
+    seed_db({**doc, "config": {"colors": 1}})
+    reset_registry()
     say(USER, "hola")
     # Merged into one message by plan_sends; no business left to list.
     assert providers.texts(USER)[-1] == (

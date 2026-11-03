@@ -10,7 +10,11 @@ from django.core.management import CommandError, call_command
 from pytest_django import Settings
 
 from autobot.tenancy.models import Tenant
-from autobot.tenancy.registry import get_registry, load_registry, sources_from_directory
+from autobot.tenancy.registry import (
+    load_registry,
+    reset_registry,
+    sources_from_directory,
+)
 from tests.tenancy.helpers import PACKS, tenant_yaml, write_tenants
 
 
@@ -24,9 +28,9 @@ def tenants_dir(
     settings.TENANTS_DIR = directory
     settings.SECRETS_FILE = tmp_path / "secrets.yaml"
     monkeypatch.setattr("packs.registry.PACKS", PACKS)
-    get_registry.cache_clear()
+    reset_registry()
     yield directory
-    get_registry.cache_clear()
+    reset_registry()
 
 
 def run(command: str, *args: str) -> tuple[str, str]:
@@ -42,7 +46,7 @@ def test_sync_tenants_is_idempotent(tenants_dir: Path) -> None:
     assert "created a (active)" in out and "created b (onboarding)" in out
     first = {t.slug: (t.id, t.status, t.synced_at) for t in Tenant.objects.using("owner").all()}
 
-    get_registry.cache_clear()
+    reset_registry()
     out, _ = run("sync_tenants")
     assert "updated a" in out and "updated b" in out
     rows = Tenant.objects.using("owner").order_by("slug")
@@ -59,7 +63,7 @@ def test_sync_tenants_updates_changed_fields(tenants_dir: Path) -> None:
     (tenants_dir / "a" / "tenant.yaml").write_text(
         yaml.safe_dump({**doc, "name": "Nuevo", "status": "paused"})
     )
-    get_registry.cache_clear()
+    reset_registry()
     run("sync_tenants")
     row = Tenant.objects.using("owner").get(slug="a")
     assert (row.name, row.status) == ("Nuevo", "paused")
@@ -147,7 +151,7 @@ def test_a_repeated_id_never_overwrites_the_other_tenant(tenants_dir: Path) -> N
     run("sync_tenants")
     copy = tenant_yaml("copied", id=original["id"])  # copied directory, id not changed
     write_tenants(tenants_dir.parent, copy)
-    get_registry.cache_clear()
+    reset_registry()
     _, err = run("sync_tenants")
     assert "skipped copied: id repeated" in err and "skipped dm-barber: id repeated" in err
     row = Tenant.objects.using("owner").get()
@@ -159,7 +163,7 @@ def test_a_slug_taken_by_another_id_is_skipped(tenants_dir: Path) -> None:
     write_tenants(tenants_dir.parent, tenant_yaml("a"), tenant_yaml("b"))
     run("sync_tenants")
     (tenants_dir / "a" / "tenant.yaml").write_text(yaml.safe_dump(tenant_yaml("a")))  # new id
-    get_registry.cache_clear()
+    reset_registry()
     out, err = run("sync_tenants")
     assert "skipped a: its slug belongs to another tenant id" in err
     assert "updated b" in out

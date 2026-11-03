@@ -5,12 +5,13 @@ nor the deploy: it is skipped and reported."""
 
 from typing import Any
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from autobot.tenancy.models import Tenant
-from autobot.tenancy.registry import get_registry
+from autobot.tenancy.registry import load_registry, sources_from_directory
 
 
 class Command(BaseCommand):
@@ -20,7 +21,11 @@ class Command(BaseCommand):
         parser.add_argument("--strict", action="store_true", help="Fail if any tenant is skipped")
 
     def handle(self, *args: Any, **options: Any) -> None:
-        registry = get_registry()
+        from packs.registry import PACKS
+
+        registry = load_registry(
+            sources_from_directory(settings.TENANTS_DIR, settings.SECRETS_FILE), PACKS
+        )
         now = timezone.now()
         skipped = False
         for t in registry.tenants:

@@ -42,7 +42,11 @@ limiter = WindowLimiter()  # invalid signatures per IP
 def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
     if limiter.blocked(client_ip(request)):
         return HttpResponse(status=429)
-    tenant = main_channel_tenant("whatsapp", public_id)
+    try:
+        tenant = main_channel_tenant("whatsapp", public_id)
+    except DatabaseError:
+        log.error("Tenant registry unavailable")
+        return HttpResponse(status=503)
     if tenant is None:
         return HttpResponse(status=404)
     bind(tenant=tenant.slug, channel="main")
@@ -68,7 +72,11 @@ def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
 def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
     if limiter.blocked(client_ip(request)):
         return HttpResponse(status=429)
-    tenant = main_channel_tenant("telegram", public_id)
+    try:
+        tenant = main_channel_tenant("telegram", public_id)
+    except DatabaseError:
+        log.error("Tenant registry unavailable")
+        return HttpResponse(status=503)
     if tenant is None:
         return HttpResponse(status=404)
     bind(tenant=tenant.slug, channel="main")

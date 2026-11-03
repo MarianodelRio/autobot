@@ -11,13 +11,14 @@ from autobot.tenancy.registry import get_registry
 
 @require_GET
 def health(request: HttpRequest) -> JsonResponse:
-    registry = get_registry()
-    tenants = {
-        "loaded": len(registry.tenants),
-        "degraded": sum(t.is_degraded for t in registry.tenants),
-        "unreadable": len(registry.errors),
-    }
+    tenants = {"loaded": 0, "degraded": 0, "unreadable": 0}
     try:
+        registry = get_registry()
+        tenants = {
+            "loaded": len(registry.tenants),
+            "degraded": sum(t.is_degraded for t in registry.tenants),
+            "unreadable": len(registry.errors),
+        }
         with connections["default"].cursor() as cursor:
             cursor.execute("SELECT 1")
     except DatabaseError:

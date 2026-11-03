@@ -20,7 +20,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make bus-formatear TENANT=<slug>` | Realinea las columnas de las tablas de horarios sin tocar el YAML |
 | `make bus-revision TENANT=<slug> [ARGS="..."]` | Genera `revision/<slug>/horarios.{html,pdf}` con los cambios desde la última publicación |
 | `make bus-publicar TENANT=<slug>` | Tras el commit y el despliegue: marca como publicada la versión actual del dataset (tag `datos/<slug>/<fecha>`) |
-| `make tenant-sync` | `sync_tenants` y reinicio de `web`/`worker`, tras editar `tenants/<slug>/tenant.yaml` a mano |
+| `make tenant-sync` | Heredado durante la migración: sincroniza el espejo `tenant` y reinicia `web`/`worker`; no publica versiones de configuración para el runtime |
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
 | `make qr SLUG=<slug> [ARGS="..."]` | Genera el QR del enlace público del canal, en la máquina del desarrollador, sin secretos |
 | `make check-prod-config` | Ejecuta `tools/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |

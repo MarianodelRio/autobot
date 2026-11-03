@@ -43,6 +43,9 @@ def _flush_as_owner() -> Iterator[None]:
     def handle(self: flush.Command, *args: object, **options: object) -> None:
         options["database"] = "owner"
         original(self, *args, **options)
+        from autobot.tenancy.models import ConfigRevision
+
+        ConfigRevision.objects.using("owner").get_or_create(pk=1)
 
     flush.Command.handle = handle  # type: ignore[method-assign]
     yield

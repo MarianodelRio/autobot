@@ -75,7 +75,14 @@ alta), `make telegram-poll SLUG=<slug>` sigue disponible; un bot con webhook no
 admite polling a la vez (`docker compose exec web python manage.py
 telegram_set_webhook demo --delete` se lo quita, nunca a un bot que use el servidor).
 
-Tras editar cualquier `tenants/<slug>/tenant.yaml`, `make tenant-sync`: `web` y
-`worker` cachean el registro de negocios en memoria mientras viven (en producción no
-importa porque el deploy ya los reinicia), así que un `sync_tenants` suelto no basta
-en local.
+El registro de web y worker ya se carga desde las versiones de PostgreSQL. Consulta
+`config_revision` como máximo cada dos segundos y recarga cuando cambia; cada petición
+y trabajo conserva el mismo registro durante su ejecución. Un fallo al comprobar la
+revisión mantiene el último registro válido; `/health` responde 503 si no puede hacer
+la primera carga.
+
+La migración del panel está en curso: las plantillas ya se validan desde los packs y
+los tests siembran configuración cifrada en BD. Los comandos de publicación y sembrado
+de demos se incorporan en T08a; `tenant-sync` es un comando heredado que solo actualiza
+el espejo `tenant` y no publica versiones para el runtime. No hay despliegue previo ni
+tráfico real; el arranque local completo se automatiza en T08c.

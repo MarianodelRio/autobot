@@ -16,9 +16,12 @@ Messages never contain secret values.
 """
 
 import logging
-from collections.abc import Iterable, Mapping
+import threading
+import time
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
-from functools import cache
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -26,7 +29,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import yaml
-from django.conf import settings
+from django.db import DatabaseError, connections, transaction
 from pydantic import BaseModel, ValidationError
 
 from autobot.tenancy.schema import SECRETS_SCHEMA, ChannelSecrets, TenantDocument
@@ -116,7 +119,7 @@ class TenantSource:
     name: str
     document: Any
     datasets: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
-    secrets: Mapping[str, Any] | None = None
+    secrets: Mapping[str, Any] | None = field(default=None, repr=False)
     secrets_error: str | None = None
     version: int | None = None
     document_error: str | None = None
@@ -332,10 +335,145 @@ def _describe(error: ValidationError) -> list[str]:
     return [f"{'.'.join(str(p) for p in e['loc']) or '(root)'}: {e['msg']}" for e in error.errors()]
 
 
-@cache
-def get_registry() -> Registry:
-    """The process-wide registry, loaded on first use from settings.TENANTS_DIR and
-    settings.SECRETS_FILE with the packs of packs.registry."""
-    from packs.registry import PACKS
+def sources_from_database(alias: str = "default") -> tuple[int, list[TenantSource]]:
+    """Read the current config in a single snapshot, with a bounded query count."""
+    from autobot.tenancy.crypto import SecretsUnreadable, decrypt
+    from autobot.tenancy.models import (
+        ConfigRevision,
+        TenantDatasetVersion,
+        TenantDocumentVersion,
+        TenantSecret,
+    )
 
-    return load_registry(sources_from_directory(settings.TENANTS_DIR, settings.SECRETS_FILE), PACKS)
+    outer_transaction = connections[alias].in_atomic_block
+    with transaction.atomic(using=alias):
+        if not outer_transaction:
+            with connections[alias].cursor() as cursor:
+                cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        revision = ConfigRevision.objects.using(alias).get(pk=1).revision
+        documents = list(
+            TenantDocumentVersion.objects.using(alias)
+            .order_by("tenant_id", "-version")
+            .distinct("tenant_id")
+            .values("tenant_id", "version", "document")
+        )
+        datasets: dict[UUID, dict[str, dict[str, str]]] = {}
+        for row in (
+            TenantDatasetVersion.objects.using(alias)
+            .order_by("tenant_id", "name", "-version")
+            .distinct("tenant_id", "name")
+            .values("tenant_id", "name", "files")
+        ):
+            datasets.setdefault(row["tenant_id"], {})[row["name"]] = row["files"]
+        secrets = {
+            row["tenant_id"]: bytes(row["ciphertext"])
+            for row in TenantSecret.objects.using(alias).values("tenant_id", "ciphertext")
+        }
+    sources = []
+    for doc_row in documents:
+        document = doc_row["document"]
+        tenant_id = doc_row["tenant_id"]
+        raw_secrets = None
+        secrets_error = None
+        if tenant_id in secrets:
+            try:
+                raw_secrets = decrypt(secrets[tenant_id])
+            except SecretsUnreadable:
+                secrets_error = "secrets cannot be decrypted"
+        slug = document.get("slug") if isinstance(document, dict) else None
+        name = slug if isinstance(slug, str) else str(tenant_id)
+        sources.append(
+            TenantSource(
+                name=name,
+                document=document,
+                datasets=datasets.get(tenant_id, {}),
+                secrets=raw_secrets,
+                secrets_error=secrets_error,
+                version=doc_row["version"],
+            )
+        )
+    return revision, sources
+
+
+@dataclass
+class _RegistryScope:
+    registry: Registry | None = None
+
+
+_scope: ContextVar[_RegistryScope | None] = ContextVar("registry_scope", default=None)
+_registry: Registry | None = None
+_revision: int | None = None
+_checked_at = 0.0
+_registry_lock = threading.Lock()
+
+
+def reset_registry() -> None:
+    """Clear the process cache, for tests and explicit operator reloads."""
+    global _registry, _revision, _checked_at
+    with _registry_lock:
+        _registry, _revision, _checked_at = None, None, 0.0
+
+
+def loaded_registry() -> Registry | None:
+    """Return a loaded snapshot without I/O, including a pinned job's older snapshot."""
+    scope = _scope.get()
+    return scope.registry if scope is not None and scope.registry is not None else _registry
+
+
+@contextmanager
+def registry_scope() -> Iterator[None]:
+    """Pin the first registry read for this unit of work; nested scopes reuse it."""
+    if _scope.get() is not None:
+        yield
+        return
+    token = _scope.set(_RegistryScope())
+    try:
+        yield
+    finally:
+        _scope.reset(token)
+
+
+def _read_revision() -> int:
+    with connections["default"].cursor() as cursor:
+        cursor.execute("SELECT revision FROM config_revision WHERE id=1")
+        row = cursor.fetchone()
+    if row is None:
+        raise DatabaseError("Configuration revision is missing")
+    return int(row[0])
+
+
+def _cached_registry() -> Registry:
+    global _registry, _revision, _checked_at
+    now = time.monotonic()
+    if _registry is not None and now - _checked_at < 2:
+        return _registry
+    with _registry_lock:
+        now = time.monotonic()
+        if _registry is not None and now - _checked_at < 2:
+            return _registry
+        try:
+            if _registry is not None and _read_revision() == _revision:
+                _checked_at = now
+                return _registry
+            from packs.registry import PACKS
+
+            revision, sources = sources_from_database()
+            registry = load_registry(sources, PACKS)
+        except DatabaseError:
+            if _registry is None:
+                raise
+            _checked_at = now
+            log.warning("Configuration reload failed; keeping the loaded registry")
+            return _registry
+        _registry, _revision, _checked_at = registry, revision, now
+        return registry
+
+
+def get_registry() -> Registry:
+    scope = _scope.get()
+    if scope is not None and scope.registry is not None:
+        return scope.registry
+    registry = _cached_registry()
+    if scope is not None:
+        scope.registry = registry
+    return registry

@@ -3,25 +3,19 @@ loaded by the registry and queried through the real runtime (webhook → route �
 process_event → send), by its WhatsApp and by its Telegram main channel."""
 
 import json
-import shutil
 from collections.abc import Callable, Iterator
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
-import yaml
-from django.core.management import call_command
-from pytest_django import Settings
 
 from autobot.channels import adapters, views
 from autobot.channels.ratelimit import WindowLimiter
 from autobot.runtime import process
-from autobot.tenancy.registry import get_registry
+from autobot.tenancy.registry import get_registry, reset_registry
 from core.clock import SystemClock
 from packs.bus.datos import Datos
-from packs.bus.pack import DATASET_DIR
 from packs.bus.pack import pack as bus_pack
 from packs.bus.tests.compat import CONFIG, HORARIOS_REAL
 from packs.registry import PACKS as REGISTERED
@@ -37,7 +31,7 @@ from tests.integration.helpers import (
     wa_tenant,
     wa_text,
 )
-from tests.tenancy.helpers import PACKS, TG_SECRETS, WA_SECRETS, write_secrets
+from tests.tenancy.helpers import PACKS, TG_SECRETS, WA_SECRETS, seed_db
 
 pytestmark = [
     pytest.mark.django_db(transaction=True, databases=["default", "owner"]),
@@ -48,34 +42,29 @@ Setup = Callable[..., None]
 
 
 @pytest.fixture
-def bus_tenants(
-    tmp_path: Path, settings: Settings, monkeypatch: pytest.MonkeyPatch
-) -> Iterator[Setup]:
+def bus_tenants(monkeypatch: pytest.MonkeyPatch) -> Iterator[Setup]:
     """Like the `tenants` fixture, but each tenant also gets the frozen timetable."""
-    settings.TENANTS_DIR = tmp_path / "tenants"
-    settings.SECRETS_FILE = tmp_path / "secrets.yaml"
     monkeypatch.setattr("packs.registry.PACKS", PACKS | {"bus": bus_pack})
     monkeypatch.setattr(views, "limiter", WindowLimiter())
     monkeypatch.setattr(process, "contact_limiter", WindowLimiter(limit=20, window_s=60))
 
     def setup(*docs: dict[str, Any]) -> None:
-        for doc in docs:
-            folder = tmp_path / "tenants" / doc["slug"]
-            folder.mkdir(parents=True)
-            (folder / "tenant.yaml").write_text(yaml.safe_dump(doc))
-            shutil.copytree(HORARIOS_REAL, folder / DATASET_DIR)
-        write_secrets(
-            tmp_path,
-            {
+        files = {
+            path.relative_to(HORARIOS_REAL).as_posix(): path.read_text(encoding="utf-8")
+            for path in HORARIOS_REAL.rglob("*")
+            if path.is_file()
+        }
+        seed_db(
+            *docs,
+            secrets={
                 d["slug"]: WA_SECRETS if d["channel"]["type"] == "whatsapp" else TG_SECRETS
                 for d in docs
             },
+            datasets={d["slug"]: {"timetable": files} for d in docs},
         )
-        get_registry.cache_clear()
-        call_command("sync_tenants", stdout=None)
 
     yield setup
-    get_registry.cache_clear()
+    reset_registry()
 
 
 def autocares(**config: Any) -> dict[str, Any]:
