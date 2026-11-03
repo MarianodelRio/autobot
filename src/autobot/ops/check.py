@@ -2,7 +2,9 @@
 
 import logging
 import shutil
+from dataclasses import dataclass
 from datetime import timedelta
+from uuid import UUID
 
 import httpx
 from django.conf import settings
@@ -13,8 +15,9 @@ from django.utils import timezone
 
 from autobot.channels.demo.doors import door
 from autobot.ops import health, state
+from autobot.ops.models import OpsAlert
 from autobot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
-from autobot.runtime.notifications import send_ops_alert
+from autobot.runtime.notifications import resolve_alert, send_ops_alert
 from autobot.runtime.periodic import channels_for
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
@@ -24,7 +27,15 @@ DEMO_LABELS = {Channel.DEMO_TG: "Telegram", Channel.DEMO_WA: "WhatsApp"}
 log = logging.getLogger(__name__)
 
 
-def run() -> None:
+@dataclass(frozen=True)
+class Finding:
+    kind: str
+    tenant_id: UUID | None
+    text: str
+
+
+def collect() -> list[Finding]:
+    findings: list[Finding] = []
     now = timezone.now()
     # Query the platform tables as fp_app: no customer data and no owner bypass.
     with connection.cursor() as cursor:
@@ -41,14 +52,18 @@ def run() -> None:
         )
         oldest, failed = cursor.fetchone() or (False, False)
     if oldest:
-        send_ops_alert(
-            "inbound_delay", None, "🔴 Trabajo inbound listo desde hace más de 2 minutos."
+        findings.append(
+            Finding("inbound_delay", None, "🔴 Trabajo inbound listo desde hace más de 2 minutos.")
         )
     if failed:
-        send_ops_alert("failed_jobs", None, "🟠 Hay trabajos fallidos en los últimos 10 minutos.")
+        findings.append(
+            Finding("failed_jobs", None, "🟠 Hay trabajos fallidos en los últimos 10 minutos.")
+        )
     registry = get_registry()
     if registry.errors:
-        send_ops_alert("registry", None, "🔴 Hay configuraciones de tenants o secretos ilegibles.")
+        findings.append(
+            Finding("registry", None, "🔴 Hay configuraciones de tenants o secretos ilegibles.")
+        )
     demo_wa_billable = 0
     for tenant in registry.tenants:
         if tenant.document.status == "offboarded":
@@ -101,13 +116,15 @@ def run() -> None:
                 ).count()
         for auth_channel in auth_channels:
             demo = auth_channel in DEMO_CHANNELS
-            send_ops_alert(
-                f"auth:{auth_channel}" if demo else "auth",
-                None if demo else tenant.id,
-                f"🔴 Bot de demo ({DEMO_LABELS.get(Channel(auth_channel), auth_channel)}):"
-                " envío rechazado por autenticación."
-                if demo
-                else "🔴 Envío del canal principal rechazado por autenticación.",
+            findings.append(
+                Finding(
+                    f"auth:{auth_channel}" if demo else "auth",
+                    None if demo else tenant.id,
+                    f"🔴 Bot de demo ({DEMO_LABELS.get(Channel(auth_channel), auth_channel)}):"
+                    " envío rechazado por autenticación."
+                    if demo
+                    else "🔴 Envío del canal principal rechazado por autenticación.",
+                )
             )
         for bound_channel in channels_for(tenant):
             signal = state.read(tenant.id, bound_channel)
@@ -135,23 +152,28 @@ def run() -> None:
         for issue in issues:
             pending.append((f"health:{issue.code}", f"{issue.severity} {issue.message}"))
         for kind, text in pending:
-            send_ops_alert(kind, tenant.id, f"{tenant.slug}: {text}")
+            findings.append(Finding(kind, tenant.id, f"{tenant.slug}: {text}"))
     if demo_wa_billable > settings.DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD:
-        send_ops_alert(
-            "billing:demo_wa",
-            None,
-            "🟡 Mensajes facturables de la puerta WhatsApp de demo por encima del umbral mensual.",
+        findings.append(
+            Finding(
+                "billing:demo_wa",
+                None,
+                "🟡 Mensajes facturables de la puerta WhatsApp de demo por encima del"
+                " umbral mensual.",
+            )
         )
     for demo_channel, label in DEMO_LABELS.items():
         if cache.get(f"bot:{demo_channel}:auth"):
-            send_ops_alert(
-                f"auth:{demo_channel}",
-                None,
-                f"🔴 Bot de demo ({label}): envío rechazado por autenticación.",
+            findings.append(
+                Finding(
+                    f"auth:{demo_channel}",
+                    None,
+                    f"🔴 Bot de demo ({label}): envío rechazado por autenticación.",
+                )
             )
     if cache.get("bot:notify:auth"):
-        send_ops_alert(
-            "bot:notify:auth", None, "🔴 Bot de avisos: envío rechazado por autenticación."
+        findings.append(
+            Finding("bot:notify:auth", None, "🔴 Bot de avisos: envío rechazado por autenticación.")
         )
     for name, token in (
         ("demo_tg", settings.DEMO_TELEGRAM_TOKEN),
@@ -160,10 +182,12 @@ def run() -> None:
         if token:
             issues = health.daily(f"bot:{name}", lambda token=token: health.telegram_health(token))
             for issue in issues:
-                send_ops_alert(
-                    f"bot:{name}:{issue.code}",
-                    None,
-                    f"{issue.severity} Bot {name}: {issue.message}",
+                findings.append(
+                    Finding(
+                        f"bot:{name}:{issue.code}",
+                        None,
+                        f"{issue.severity} Bot {name}: {issue.message}",
+                    )
                 )
     door_wa = door(Channel.DEMO_WA)
     if door_wa is not None:
@@ -180,14 +204,32 @@ def run() -> None:
             lambda: health.whatsapp_health(door_wa.description, door_wa.secrets, templates),
         )
         for issue in issues:
-            send_ops_alert(
-                f"bot:demo_wa:{issue.code}",
-                None,
-                f"{issue.severity} Bot de demo (WhatsApp): {issue.message}",
+            findings.append(
+                Finding(
+                    f"bot:demo_wa:{issue.code}",
+                    None,
+                    f"{issue.severity} Bot de demo (WhatsApp): {issue.message}",
+                )
             )
     disk = shutil.disk_usage(settings.BASE_DIR)
     if disk.used / disk.total > 0.85:
-        send_ops_alert("disk", None, "🟠 Disco por encima del 85 %.")
+        findings.append(Finding("disk", None, "🟠 Disco por encima del 85 %."))
+    return findings
+
+
+def sync_alerts(findings: list[Finding]) -> None:
+    seen: set[tuple[str, UUID | None]] = set()
+    for finding in findings:
+        send_ops_alert(finding.kind, finding.tenant_id, finding.text)
+        seen.add((finding.kind, finding.tenant_id))
+    open_alerts = OpsAlert.objects.filter(resolved_at__isnull=True, auto_resolves=True)
+    for alert in open_alerts:
+        if (alert.kind, alert.tenant_id) not in seen:
+            resolve_alert(alert, by="auto")
+
+
+def run() -> None:
+    sync_alerts(collect())
     # No finally: a failed DB/global check must prevent a success heartbeat.
     if settings.HEALTHCHECKS_PING_URL:
         try:

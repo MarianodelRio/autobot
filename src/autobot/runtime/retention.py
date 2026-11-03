@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from django.conf import settings
+from django.db import connection
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 
@@ -101,3 +102,6 @@ def cleanup(*, now: datetime | None = None) -> None:
     ):
         while apply_batches(query):
             pass
+    # SECURITY DEFINER (db_grants.py): fp_app has no DELETE on ops_alert or audit_event.
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT purge_platform_history(%s)", [annual])

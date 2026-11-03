@@ -19,6 +19,11 @@ CONFIG_TABLES: tuple[str, ...] = (
     "tenant_secret",
     "config_revision",
 )
+# Platform functions reapplied like the table grants: fp_app only gets EXECUTE, never
+# PUBLIC (SECURITY DEFINER functions must not be callable by anyone who connects).
+FUNCTIONS: tuple[tuple[str, str], ...] = (
+    ("purge_platform_history", "purge_platform_history(timestamptz)"),
+)
 
 
 def _revoke_if_exists(table: str, role: str, privileges: str = "ALL") -> str:
@@ -33,15 +38,29 @@ def _revoke_if_exists(table: str, role: str, privileges: str = "ALL") -> str:
     )
 
 
+def _function_grants(name: str, signature: str) -> str:
+    # Same reasoning as _revoke_if_exists: a migration before the one that creates the
+    # function also reapplies these grants.
+    return (
+        "DO $$ BEGIN "
+        f"IF EXISTS (SELECT FROM pg_proc WHERE proname = '{name}') THEN "
+        f"EXECUTE 'REVOKE ALL ON FUNCTION {signature} FROM PUBLIC'; "
+        f"EXECUTE 'GRANT EXECUTE ON FUNCTION {signature} TO fp_app'; "
+        "END IF; END $$"
+    )
+
+
 def statements() -> list[str]:
     return [
         "REVOKE INSERT, UPDATE, DELETE ON tenant FROM fp_app",
         _revoke_if_exists("audit_event", "fp_app"),
+        _revoke_if_exists("ops_alert", "fp_app", "DELETE"),
         *(_revoke_if_exists(table, "fp_app", "INSERT, UPDATE, DELETE") for table in CONFIG_TABLES),
         "GRANT SELECT ON ALL TABLES IN SCHEMA public TO fp_readonly",
         "ALTER DEFAULT PRIVILEGES FOR ROLE fp_owner IN SCHEMA public "
         "GRANT SELECT ON TABLES TO fp_readonly",
         *(_revoke_if_exists(table, "fp_readonly") for table in SENSITIVE_TABLES),
+        *(_function_grants(name, signature) for name, signature in FUNCTIONS),
     ]
 
 

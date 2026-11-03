@@ -8,12 +8,14 @@ from uuid import UUID, uuid4
 from django.conf import settings
 from django.core.cache import cache
 from django.db import connection, transaction
+from django.db.models import F
 from django.utils import timezone
 from pydantic import SecretStr
 
 from autobot.channels.adapters import TELEGRAM
 from autobot.channels.base import Rejected, RetryLater, SendOutcome, Sent
 from autobot.ops.logging import bind, contextual
+from autobot.ops.models import OpsAlert
 from autobot.owner import links
 from autobot.runtime.models import Notification
 from autobot.runtime.outbound import SendRetry
@@ -26,6 +28,10 @@ from core.serialization import Outbound
 
 log = logging.getLogger(__name__)
 COOLDOWN_S = 30 * 60
+# Alerts that only a person resolves from the panel; every other kind self-resolves
+# once ops/check.py stops finding it (DESIGN §7.1).
+MANUAL_KINDS = frozenset({"deploy_aborted", "deploy_rollback"})
+_SEVERITY_BY_EMOJI = {"🔴": "critical", "🟠": "warning", "🟡": "notice", "🟢": "info"}
 
 
 def bot_secrets() -> TelegramSecrets | None:
@@ -93,23 +99,88 @@ def send_notification(
         log.warning("notification %s failed (%s)", row.id, type(outcome).__name__)
 
 
-def send_ops_alert(kind: str, tenant_id: UUID | None, text: str) -> bool:
-    """Reserve a 30-minute cooldown before sending; concurrent checks share the DB lock.
+def _severity(text: str) -> str:
+    for char in text:
+        if char in _SEVERITY_BY_EMOJI:
+            return _SEVERITY_BY_EMOJI[char]
+    return "warning"
 
+
+def _cooldown_key(kind: str, tenant_id: UUID | None) -> str:
+    digest = hashlib.sha256(f"{kind}:{tenant_id}".encode()).digest()
+    return f"ops:{digest.hex()}"
+
+
+def send_ops_alert(
+    kind: str, tenant_id: UUID | None, text: str, *, informational: bool = False
+) -> bool:
+    """Persist the alert, reserve a 30-minute cooldown, then send outside the transaction.
+
+    `informational` (e.g. "deployed fine") skips the cooldown and is saved already
+    resolved: it is a one-off notice, never an ongoing problem to track.
     A failed/ambiguous send also keeps the cooldown to prevent an alert storm.
     """
-    if not settings.OPS_TELEGRAM_CHAT_ID or bot_secrets() is None:
-        log.warning("ops alert %s only logged: recipient or bot unconfigured", kind)
-        return False
     digest = hashlib.sha256(f"{kind}:{tenant_id}".encode()).digest()
-    key = f"ops:{digest.hex()}"
+    key = _cooldown_key(kind, tenant_id)
+    now = timezone.now()
     # DatabaseCache.add alone can race when replacing an expired entry.
     with transaction.atomic():
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT pg_advisory_xact_lock(%s)", [int.from_bytes(digest[:8], signed=True)]
             )
-        if not cache.add(key, True, timeout=COOLDOWN_S):
+        if informational:
+            alert = OpsAlert.objects.create(
+                kind=kind,
+                tenant_id=tenant_id,
+                severity=_severity(text),
+                text=text,
+                first_seen_at=now,
+                last_seen_at=now,
+                auto_resolves=kind not in MANUAL_KINDS,
+                resolved_at=now,
+                resolved_by="info",
+            )
+            send = True
+        else:
+            existing = (
+                OpsAlert.objects.select_for_update()
+                .filter(kind=kind, tenant_id=tenant_id, resolved_at__isnull=True)
+                .first()
+            )
+            if existing is None:
+                alert = OpsAlert.objects.create(
+                    kind=kind,
+                    tenant_id=tenant_id,
+                    severity=_severity(text),
+                    text=text,
+                    first_seen_at=now,
+                    last_seen_at=now,
+                    auto_resolves=kind not in MANUAL_KINDS,
+                )
+            else:
+                OpsAlert.objects.filter(id=existing.id).update(
+                    occurrences=F("occurrences") + 1, last_seen_at=now, text=text
+                )
+                alert = existing
+            send = cache.add(key, True, timeout=COOLDOWN_S)
+        if not send:
+            OpsAlert.objects.filter(id=alert.id).update(last_delivery="cooldown")
             return False
-    outcome = deliver(Text(text), str(settings.OPS_TELEGRAM_CHAT_ID), uuid4())
-    return isinstance(outcome, Sent)
+    if not settings.OPS_TELEGRAM_CHAT_ID or bot_secrets() is None:
+        log.warning("ops alert %s only logged: recipient or bot unconfigured", kind)
+        delivery, sent = "unconfigured", False
+    else:
+        outcome = deliver(Text(text), str(settings.OPS_TELEGRAM_CHAT_ID), uuid4())
+        sent = isinstance(outcome, Sent)
+        delivery = "sent" if sent else "failed"
+    OpsAlert.objects.filter(id=alert.id).update(
+        last_delivery=delivery, sent_count=F("sent_count") + 1, last_sent_at=now
+    )
+    return sent
+
+
+def resolve_alert(alert: OpsAlert, *, by: str) -> None:
+    """Resolve and clear the cooldown, so a problem that returns is reported at once."""
+    OpsAlert.objects.filter(id=alert.id).update(resolved_at=timezone.now(), resolved_by=by)
+    cache.delete(_cooldown_key(alert.kind, alert.tenant_id))

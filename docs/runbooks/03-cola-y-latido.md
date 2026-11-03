@@ -16,3 +16,12 @@ métricas antes de cambiar concurrencia o número de workers.
 
 **Verificación:** llega un nuevo latido, el check vuelve a verde y los pendientes
 disminuyen sin duplicados.
+
+**Alertas persistidas:** cada cinco minutos `ops.check.collect()` evalúa la cola, los
+tenants y los bots sin enviar nada; `sync_alerts()` guarda cada hallazgo en `ops_alert`
+(con reintentos, severidad y enfriamiento de 30 min) y resuelve sola
+(`resolved_by="auto"`) cualquier alerta abierta que ya no aparezca entre los hallazgos,
+salvo `deploy_aborted` y `deploy_rollback`, que solo se resuelven a mano desde el panel.
+El historial resuelto se purga junto con `audit_event` a los 12 meses, con
+`purge_platform_history` (función `SECURITY DEFINER`, ya que `fp_app` no tiene `DELETE`
+sobre ninguna de las dos tablas).

@@ -14,6 +14,7 @@ from django.core.management.base import CommandError
 from pytest_django import Settings
 
 from autobot.jobs import app, retention_cleanup
+from autobot.ops.models import AuditEvent, OpsAlert
 from autobot.runtime import privacy, retention
 from autobot.runtime.models import (
     Contact,
@@ -112,6 +113,45 @@ def test_leap_year_uses_calendar_months() -> None:
     assert retention.year_before(datetime(2025, 3, 1, tzinfo=UTC)) == datetime(
         2024, 3, 1, tzinfo=UTC
     )
+
+
+def test_purge_platform_history_runs_as_fp_app(tenants: Any, settings: Settings) -> None:
+    loaded(tenants)
+    settings.RETENTION_CLEANUP_ENABLED = True
+    OpsAlert.objects.using("owner").create(
+        kind="old",
+        severity="warning",
+        text="t",
+        first_seen_at=NOW,
+        last_seen_at=NOW,
+        resolved_at=NOW - timedelta(days=400),
+        resolved_by="auto",
+    )
+    OpsAlert.objects.using("owner").create(
+        kind="recent",
+        severity="warning",
+        text="t",
+        first_seen_at=NOW,
+        last_seen_at=NOW,
+        resolved_at=NOW - timedelta(days=10),
+        resolved_by="auto",
+    )
+    OpsAlert.objects.using("owner").create(
+        kind="open", severity="warning", text="t", first_seen_at=NOW, last_seen_at=NOW
+    )
+    old_audit = AuditEvent.objects.using("owner").create(
+        at=NOW - timedelta(days=400), actor="sys", action="x", summary="s"
+    )
+    recent_audit = AuditEvent.objects.using("owner").create(
+        at=NOW - timedelta(days=10), actor="sys", action="x", summary="s"
+    )
+    retention.cleanup(now=NOW)
+    assert set(OpsAlert.objects.using("owner").values_list("kind", flat=True)) == {
+        "recent",
+        "open",
+    }
+    assert set(AuditEvent.objects.using("owner").values_list("id", flat=True)) == {recent_audit.id}
+    assert not AuditEvent.objects.using("owner").filter(id=old_audit.id).exists()
 
 
 def test_selector_and_expired_conversations(tenants: Any, settings: Settings) -> None:

@@ -48,7 +48,7 @@ PLATFORM_MODELS: set[type[models.Model]] = {
 PLATFORM_TABLES = {m._meta.db_table for m in PLATFORM_MODELS}
 # Operation tables with tenant_id but no RLS by design (ADR-009): the panel and the
 # operator commands read and write them across tenants.
-NO_RLS_TABLES = {"audit_event"}
+NO_RLS_TABLES = {"audit_event", "ops_alert"}
 RLS_ERROR = "row-level security"
 
 

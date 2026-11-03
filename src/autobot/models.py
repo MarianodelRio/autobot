@@ -1,6 +1,6 @@
 """Django loads the app's models from here; they live in their modules."""
 
-from autobot.ops.models import AuditEvent
+from autobot.ops.models import AuditEvent, OpsAlert
 from autobot.runtime.models import (
     Contact,
     Conversation,
@@ -25,6 +25,7 @@ __all__ = [
     "InboundEvent",
     "MetricEvent",
     "Notification",
+    "OpsAlert",
     "OutboundMessage",
     "OwnerEvent",
     "OwnerLink",

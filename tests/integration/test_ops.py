@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from autobot.jobs import app
 from autobot.ops import check, health, state
+from autobot.ops.models import OpsAlert
 from autobot.runtime.models import Contact, OutboundMessage
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
@@ -292,6 +293,41 @@ def test_platform_bot_auth_signal(tenants: Any, alerts: Any, bot: str) -> None:
     check.run()
     kind = f"auth:{bot}" if bot != "notify" else "bot:notify:auth"
     assert (kind, None) in [(a[0], a[1]) for a in alerts]
+
+
+def test_collect_never_calls_send_ops_alert(tenants: Any, settings: Any, monkeypatch: Any) -> None:
+    settings.HEALTHCHECKS_PING_URL = ""
+    settings.DEMO_TELEGRAM_TOKEN = ""
+    settings.NOTIFY_BOT_TOKEN = ""
+    tenants(wa_tenant())
+    monkeypatch.setattr(check, "door", lambda channel: None)
+    monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
+
+    def boom(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("collect() must not send alerts")
+
+    monkeypatch.setattr(check, "send_ops_alert", boom)
+    check.collect()
+
+
+def test_sync_alerts_auto_resolves_a_disappeared_finding(settings: Any) -> None:
+    settings.OPS_TELEGRAM_CHAT_ID = ""
+    settings.NOTIFY_BOT_TOKEN = ""
+    check.sync_alerts([check.Finding("stuck", None, "🔴 Algo falla")])
+    row = OpsAlert.objects.using("owner").get(kind="stuck", tenant_id=None)
+    assert row.resolved_at is None
+    check.sync_alerts([])
+    row.refresh_from_db(using="owner")
+    assert row.resolved_at is not None and row.resolved_by == "auto"
+
+
+def test_sync_alerts_never_auto_resolves_a_manual_kind(settings: Any) -> None:
+    settings.OPS_TELEGRAM_CHAT_ID = ""
+    settings.NOTIFY_BOT_TOKEN = ""
+    check.sync_alerts([check.Finding("deploy_aborted", None, "🔴 Despliegue abortado")])
+    check.sync_alerts([])
+    row = OpsAlert.objects.using("owner").get(kind="deploy_aborted", tenant_id=None)
+    assert row.resolved_at is None
 
 
 def test_calendar_denial_is_detected_even_after_healthy_daily_check(
