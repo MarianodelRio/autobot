@@ -30,3 +30,7 @@ state/
 *.pem
 *.key
 *credentials*.json
+
+# Negocios reales: config y datasets solo en local, no en el repo publico.
+# Los tenants de demo (demo-*) siguen versionados: los usan los tests/CI.
+/tenants/autocares-ss/
