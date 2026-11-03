@@ -32,6 +32,9 @@ def test_full_booking(salon: Conversation) -> None:
     assert salon.locks == ["cal:2026-03-24"]
     assert salon.contact.display_name == "Lucía García"
     assert salon.notifications[0].kind == "booking_created"
+    assert salon.notifications[0].text == (
+        "*✅ Nueva cita*\nLucía García — Corte de pelo · 24/03 10:00"
+    )
     assert salon.metrics == []
 
 

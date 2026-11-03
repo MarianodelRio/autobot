@@ -1,7 +1,7 @@
 # Pack `salon`
 
 Gestiona reservas de peluquería con Google Calendar. En el menú el cliente puede
-pedir, ver, mover o cancelar citas. Si `special_event.active` está activo aparece
+pedir, mover o cancelar citas. Si `special_event.active` está activo aparece
 la reserva del evento; si `info_text` contiene texto aparece Contacto. La reserva
 ofrece solo huecos libres, vuelve a comprobar el hueco antes de escribir y usa un
 id determinista para que reintentar el mismo mensaje no duplique la cita.

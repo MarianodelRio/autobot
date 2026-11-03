@@ -16,7 +16,6 @@ def back(text: str) -> Buttons:
 def menu(cfg: SalonConfig) -> List:
     rows = [
         row("menu_book", "📅 Pedir cita"),
-        row("menu_view", "📋 Ver mis citas"),
         row("menu_move", "📦 Mover cita"),
         row("menu_cancel", "❌ Cancelar cita"),
     ]

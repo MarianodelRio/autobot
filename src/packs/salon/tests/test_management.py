@@ -29,15 +29,16 @@ def move(salon: Conversation) -> None:
     salon.press("hour_11:00")
 
 
-def test_view_and_cancel(salon: Conversation) -> None:
+def test_cancel(salon: Conversation) -> None:
     gcal_id = book(salon)
-    salon.press("back_to_menu")
-    salon.press("menu_view").expect(text_contains="24/03/2026 10:00")
     salon.press("back_to_menu")
     salon.press("menu_cancel")
     salon.press("cancel_appt:0").expect(text_contains="cancelada")
     assert salon.calendar.get_event(gcal_id) is None
     assert salon.notifications[-1].kind == "booking_cancelled"
+    assert salon.notifications[-1].text == (
+        "*❌ Cita cancelada*\nLucía — Corte de pelo · 24/03 10:00"
+    )
     assert salon.metrics == []
 
 
@@ -49,6 +50,10 @@ def test_move_creates_then_cancels_and_replays(salon: Conversation) -> None:
     assert salon.calendar.created[-1].private["fp_key"].startswith("move:")
     assert salon.calendar.calls.index("insert_event") < salon.calendar.calls.index("cancel_event")
     assert salon.metrics == []
+    assert salon.notifications[-1].kind == "booking_moved"
+    assert salon.notifications[-1].text == (
+        "*🔄 Cita movida*\nLucía — Corte de pelo · 24/03 10:00 → 24/03 11:00"
+    )
     salon.replay().expect(text_contains="movida")
     assert len(salon.calendar.created) == 2
     assert salon.calendar.cancelled == [old]
@@ -61,6 +66,10 @@ def test_move_failed_cancellation_preserves_new_booking_and_notifies(salon: Conv
     assert salon.calendar.get_event(old) is not None
     assert len(salon.calendar.created) == 2
     assert salon.notifications[-1].kind == "move_cancel_failed"
+    assert salon.notifications[-1].text == (
+        "*⚠️ Revisar*\nLucía — nueva cita Corte de pelo · 24/03 11:00; "
+        "no se pudo cancelar la anterior (24/03 10:00)"
+    )
     salon.turns[-1].expect(text_contains="No hemos podido cancelar")
 
 
@@ -171,25 +180,6 @@ def test_empty_or_oversized_proactive_id_is_rejected_without_calendar_io(
     salon.press("reminder_confirm:", check=False).expect(text_contains="No se encontró")
     salon.press("reminder_cancel:" + "a" * 100, check=False).expect(text_contains="No se encontró")
     assert salon.calendar.calls == before
-
-
-def test_view_pages_include_every_appointment(salon: Conversation) -> None:
-    start = datetime.fromisoformat("2026-03-25T10:00:00+01:00")
-    for index in range(10):
-        at = start + timedelta(minutes=30 * index)
-        salon.calendar.add(
-            CalendarEvent(
-                str(index),
-                "Corte - Lucía",
-                "",
-                at,
-                at + timedelta(minutes=30),
-                private={"fp_contact": str(salon.contact.id)},
-            )
-        )
-    salon.send("hola")
-    salon.press("menu_view").expect(text_contains="13:30")
-    salon.press("view_page:1").expect(text_contains="14:00").expect(text_contains="14:30")
 
 
 def test_replayed_cancellation_keeps_confirmation_and_owner_notice(salon: Conversation) -> None:

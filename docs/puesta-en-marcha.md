@@ -92,8 +92,8 @@ Verificación del servidor:
   `confirmacion_cita` y `recordatorio_cita` aprobadas. Verificar: `tenant_health
   dm-barber` en verde.
 - Migrar las citas antiguas: `tools/migrate_salon_events.py dm-barber --dry-run`,
-  revisar el informe y ejecutar la migración real; comprobar después que «Ver mis
-  citas» de un cliente existente muestra sus citas. La migración solo añade
+  revisar el informe y ejecutar la migración real; comprobar después que «Cancelar
+  cita» de un cliente existente lista sus citas. La migración solo añade
   propiedades privadas a los eventos y no hace falta deshacerla.
 - Prueba con el dueño por su canal real, en `onboarding` con su id en `testers.main`
   (no hay bot de pruebas aparte: la demo de la plataforma nunca habla con un negocio

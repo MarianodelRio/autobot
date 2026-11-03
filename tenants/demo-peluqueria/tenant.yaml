@@ -44,7 +44,7 @@ config:
   min_notice_min: 30
   booking_window_days: 14
   max_active_bookings: 3
-  reminders_enabled: true
+  reminders_enabled: false
   reminder_window_hours: [0, 2]
   manual_confirmations_enabled: false
   manual_confirmations_since: null

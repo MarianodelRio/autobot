@@ -45,6 +45,11 @@ TEMPLATE_REMINDER = TemplateSpec(
 )
 
 
+def owner_notice(title: str, name: str, detail: str) -> str:
+    """Bold title plus client and detail, for the owner's Telegram notices."""
+    return f"*{title}*\n{name} — {detail}"
+
+
 def booking_text(prefix: str, service_name: str, price: Decimal | None, at: datetime) -> str:
     cost = f" — {price:g}€" if price is not None else ""
     return (

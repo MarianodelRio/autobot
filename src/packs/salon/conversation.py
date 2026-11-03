@@ -12,7 +12,7 @@ from core.replies import Reply, Text
 from core.ui import button, buttons_msg, row
 from packs.salon import booking
 from packs.salon import interactive as ui
-from packs.salon.messages import booking_text
+from packs.salon.messages import booking_text, owner_notice
 from packs.salon.ownership import belongs
 from packs.salon.parser import parse_name, parse_service_title
 from packs.salon.slots import split_periods
@@ -111,21 +111,12 @@ class Turn:
         if refresh:
             events = booking.contact_events(self.ctx)
             self.state = {
-                "step": "VIEW" if mode == "view" else f"{mode.upper()}_SELECT",
+                "step": f"{mode.upper()}_SELECT",
                 "appointments": [e.gcal_id for e in events],
                 "appointment_labels": [f"{e.start:%d/%m/%Y %H:%M}" for e in events],
             }
         if not self.state["appointments"]:
             return self.result(ui.back(self.cfg.texts.no_bookings), reset=True)
-        if mode == "view":
-            labels = self.state["appointment_labels"]
-            if page < 0 or page * 8 >= len(labels):
-                page = 0
-            text = "Tus próximas citas:\n" + "\n".join(labels[page * 8 : (page + 1) * 8])
-            buttons = [button("back_to_menu", "↩️ Volver al menú")]
-            if (page + 1) * 8 < len(labels):
-                buttons.insert(0, button(f"view_page:{page + 1}", "➡️ Ver más"))
-            return self.result(buttons_msg(text, buttons, footer=ui.FOOTER))
         rows = [
             row(f"{mode}_appt:{i}", label)
             for i, label in enumerate(self.state["appointment_labels"])
@@ -140,9 +131,18 @@ class Turn:
         key, authorization = f"cancel:{gcal_id}", {"target": gcal_id}
         previous = self.ctx.effects.get(key)
         event = booking.calendar(self.ctx).get_event(gcal_id)
+        notice = "Cita cancelada"
         if event is not None:
             if not self.owns(event):
                 return self.result(ui.back(self.cfg.texts.missing), reset=True)
+            service_key, _ = parse_service_title(
+                event.summary, {k: s.name for k, s in self.cfg.services.items()}
+            )
+            service_name = self.cfg.services[service_key].name if service_key else "cita"
+            client_name = parse_name(event.description) or "Cliente"
+            notice = owner_notice(
+                "❌ Cita cancelada", client_name, f"{service_name} · {event.start:%d/%m %H:%M}"
+            )
             # Record verified ownership before deletion, in a separate short transaction.
             self.ctx.effects.put(key, authorization)
             booking.calendar(self.ctx).cancel_event(gcal_id)
@@ -152,7 +152,7 @@ class Turn:
         result.actions.append(
             NotifyOwner(
                 "booking_cancelled",
-                "Cita cancelada",
+                notice,
                 self.ctx.idem.event("notify:booking_cancelled"),
             )
         )
@@ -206,6 +206,12 @@ class Turn:
                 cancel_failed = True
                 self.ctx.log.warning("Move created; source cancellation failed")
         svc = self.cfg.services[self.state["service"]]
+        when = f"{event.start:%d/%m %H:%M}"
+        if moving and source is not None:
+            detail = f"{svc.name} · {source.start:%d/%m %H:%M} → {when}"
+        else:
+            detail = f"{svc.name} · {when}"
+        title = "🔄 Cita movida" if moving else "✅ Nueva cita"
         result = self.result(
             ui.back(booking_text(prefix, svc.name, svc.price_eur, event.start)), reset=True
         )
@@ -213,16 +219,22 @@ class Turn:
             UpdateContact(display_name=name),
             NotifyOwner(
                 kind,
-                f"{svc.name}, {event.start:%d/%m %H:%M}",
+                owner_notice(title, name, detail),
                 self.ctx.idem.event(f"notify:{kind}"),
             ),
         ]
         if cancel_failed:
             result.replies.append(Text(self.cfg.texts.move_cancel_failed))
+            old_when = f"{source.start:%d/%m %H:%M}" if source is not None else "la cita anterior"
             result.actions.append(
                 NotifyOwner(
                     "move_cancel_failed",
-                    "Nueva cita creada; revisar cancelación de la anterior",
+                    owner_notice(
+                        "⚠️ Revisar",
+                        name,
+                        f"nueva cita {svc.name} · {when}; no se pudo cancelar la anterior "
+                        f"({old_when})",
+                    ),
                     self.ctx.idem.event("notify:move_cancel_failed"),
                 )
             )
@@ -249,7 +261,7 @@ class Turn:
             return self.create(name)
         if message.type == "text":
             return self.menu()
-        if step == "MENU" and value in ("menu_view", "menu_cancel", "menu_move"):
+        if step == "MENU" and value in ("menu_cancel", "menu_move"):
             return self.appointments(value.removeprefix("menu_"))
         if step == "MENU" and value == "menu_info" and self.cfg.info_text:
             result = self.result(ui.back("¿Necesitas algo más?"), reset=True)
@@ -275,8 +287,6 @@ class Turn:
                 "mode": "event" if value == "menu_book_event" else "book",
             }
             return self.result(ui.services(self.cfg))
-        if step == "VIEW" and value.startswith("view_page:"):
-            return self.appointments("view", int(value.rsplit(":", 1)[1]), refresh=False)
         if step in ("CANCEL_SELECT", "MOVE_SELECT"):
             mode = "cancel" if step == "CANCEL_SELECT" else "move"
             if value.startswith(f"{mode}_page:"):
@@ -353,7 +363,7 @@ def valid_state(turn: Turn) -> bool:
     step = state.get("step", "MENU")
     if step in ("MENU", "BOOK_SERVICE"):
         return True
-    if step in ("VIEW", "MOVE_SELECT", "CANCEL_SELECT"):
+    if step in ("MOVE_SELECT", "CANCEL_SELECT"):
         return (
             isinstance(state.get("appointments"), list)
             and isinstance(state.get("appointment_labels"), list)
