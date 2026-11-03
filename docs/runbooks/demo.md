@@ -47,8 +47,8 @@ telegram_set_webhook demo` registra `https://api.<dominio>/webhooks/telegram-dem
 Mismo mecanismo que el servidor (webhook), sobre un túnel de
 [ngrok](https://ngrok.com) hacia `web`, en vez de una URL de dominio propio:
 
-1. `ngrok http 8000` (con cuenta gratuita, la URL cambia cada vez que se reinicia el
-   túnel; con un dominio reservado de la cuenta, se mantiene).
+1. `make dev-bootstrap` prepara la BD y siembra los demos. `make ngrok` abre el
+   dominio reservado hacia el puerto 8000; `NGROK_DOMAIN=<otro>` permite cambiarlo.
 2. En `.env`: `PUBLIC_URL=<la URL https de ngrok>`, `DEMO_TELEGRAM_TOKEN` (bot de
    desarrollo propio, distinto del de producción), `DEMO_TELEGRAM_USERS` y
    `DEMO_TELEGRAM_WEBHOOK_SECRET` (aleatorio, p. ej. `openssl rand -hex 32`).

@@ -20,7 +20,7 @@ con tu clave en la VPS recién creada.
    repositorio en `/srv/autobot`, instala el timer de backup y deshabilita SSH de
    root y contraseña. La clave de CI lleva un comando forzado: solo acepta
    `deploy/deploy.sh <sha completo de main>`. La clave de operación permite
-   mantenimiento y el túnel Admin. La clave de lectura del repositorio permite
+   mantenimiento y el túnel del panel. La clave de lectura del repositorio permite
    `git fetch` del código que corresponde al SHA de despliegue.
 3. Abre **otra sesión** con la clave de operación: `ssh deploy@<host>`. Comprueba
    `docker compose version` y
@@ -34,10 +34,10 @@ con tu clave en la VPS recién creada.
 5. En `/srv/autobot/.env`, usa `.env.example` como guía y fija `DEPLOY_UID` con
    `id -u deploy`. Crea `google_sa.json`, `backup.env` y
    `restic-password` como propietario `deploy`, modo 0600. El usuario no root de
-   `web` y `worker` usa ese UID para leer los dos secretos montados. La cuenta de
+   `web` y `worker` usa ese UID para leer el fichero de cuenta de servicio montado. La cuenta de
    servicio y los tokens reales dependen de Google Cloud, del bot de avisos y de los secretos de GitHub. En
    `DJANGO_ALLOWED_HOSTS`, incluye `api.<dominio>`, `localhost` y `127.0.0.1`:
-   el Admin recibe el host local al entrar por el túnel SSH.
+   el panel recibe el host local al entrar por el túnel SSH.
 6. Desde la consola del proveedor como root, inicia el timer con
    `systemctl start autobot-backup.timer` solo después de
    configurar `backup.env`, `restic-password` y el destino remoto de los backups.

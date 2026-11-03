@@ -1,3 +1,6 @@
+HOST ?= autobot
+NGROK_DOMAIN ?= unpermanently-repairable-devon.ngrok-free.dev
+
 .PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
 .PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test
 .PHONY: db-roles
@@ -85,3 +88,26 @@ prod-manage:
 
 tenant-push:
 	bash tools/tenant_push.sh
+
+.PHONY: dev-bootstrap dev-reset tenant-import ngrok
+export DIR
+
+dev-bootstrap:
+	docker compose up -d --wait db
+	$(MAKE) db-roles
+	docker compose build web
+	docker compose run --rm -T web python manage.py migrate --database owner --noinput
+	docker compose run --rm -T web python manage.py apply_grants
+	docker compose run --rm -T web python manage.py seed_demos
+	docker compose up -d --no-build web worker
+
+dev-reset:
+	@read -r -p "Borrar la BD local y reiniciar (escribe RESET): " answer; test "$$answer" = RESET
+	docker compose down -v
+	$(MAKE) dev-bootstrap
+
+tenant-import:
+	bash tools/tenant_import.sh
+
+ngrok:
+	ngrok http --domain=$(NGROK_DOMAIN) 8000

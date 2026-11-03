@@ -1,7 +1,10 @@
-# Local development: same image as production, code mounted, no Caddy.
+# Local development: production base with dev tools, mounted code and worker reload.
 # Local-only passwords; production takes them from .env.
 x-app: &app
-  build: .
+  build:
+    context: .
+    args:
+      INSTALL_DEV: "true"
   image: autobot:local
   env_file:
     - path: .env
@@ -9,12 +12,12 @@ x-app: &app
   environment:
     DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
     DB_OWNER_URL: postgres://fp_owner:fp_owner@db:5432/autobot
+    GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
   volumes:
     - ./src:/app/src
     - ./manage.py:/app/manage.py
-    # Only mounted if present (see .env.example / docs/puesta-en-marcha.md §1);
-    # ignored by git.
-    - ./google_sa.json:/app/google_sa.json:ro
+    # Empty by default; a configured local credential stays outside the image.
+    - ${GOOGLE_SERVICE_ACCOUNT_FILE:-/dev/null}:/app/google_sa.json:ro
   depends_on:
     db:
       condition: service_healthy
@@ -32,11 +35,12 @@ services:
     environment:
       DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
       SERVICE_NAME: worker
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
       DB_OWNER_URL: ""  # the worker never uses fp_owner
     # Graceful stop: on SIGTERM it takes no new jobs and lets running
     # ones finish for up to 50 s, within the 60 s before Docker kills it; a cut job is
     # retried (every job is idempotent).
-    command: python manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50
+    command: watchfiles --filter python --sigint-timeout 55 --sigkill-timeout 3 "python manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50" /app/src
     stop_grace_period: 60s
     init: true
 

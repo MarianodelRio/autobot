@@ -10,7 +10,8 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev
+ARG INSTALL_DEV=false
+RUN if [ "$INSTALL_DEV" = true ]; then uv sync --locked; else uv sync --locked --no-dev; fi
 
 FROM python:3.14-slim AS runtime
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app

@@ -22,20 +22,27 @@ Cada negocio usa un **pack** con su lógica: `salon` (pedir, ver, mover y cancel
 Requisitos: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta).
 
 ```bash
-uv sync          # dependencias, incluidas las de desarrollo
-make check       # ruff, mypy, import-linter y pytest; los tests de BD necesitan `make up` (db en 127.0.0.1:5433)
+uv sync
+make dev-bootstrap     # db, roles, migraciones, permisos, demos, web y worker
+make check             # ruff, mypy, import-linter y tests contra la BD local
 ```
 
-Con Docker Compose (`db`, `web` y `worker`, con el código montado):
+`web` escucha en `http://127.0.0.1:8000`. `make up` reconstruye y levanta los servicios
+ya preparados; `make down` los para y `make shell` abre Django en `web`.
+`make dev-bootstrap` se puede repetir: conserva las versiones existentes y los cambios
+de los demos. `make dev-reset` exige escribir `RESET`, borra el volumen local y repite
+el bootstrap, incluida la creación de la base de pruebas.
 
-```bash
-cp .env.example .env   # opcional en local: sin .env se usan los valores de desarrollo
-make up                # construye la imagen y levanta los servicios; web en http://127.0.0.1:8000
-make shell             # shell de Django dentro de web
-make down
-```
+La imagen local instala las dependencias de desarrollo (`INSTALL_DEV=true`); la de
+producción mantiene `--no-dev`. El worker usa `watchfiles` y reinicia su proceso al
+cambiar Python en `src/`, respetando el cierre del worker antes de sustituirlo.
+En local, `.env` es opcional. Si se necesita Calendar, `GOOGLE_SERVICE_ACCOUNT_FILE`
+apunta al fichero local de la cuenta de servicio; vacío monta `/dev/null` y no crea
+ninguna credencial. Los secretos de los canales se importan cifrados a la BD.
 
-La primera vez que arranca, `db` crea los roles `fp_owner` y `fp_app` y la base de pruebas (`deploy/postgres/init-roles.sh`). Ese script solo se ejecuta con un volumen vacío; para empezar de cero: `docker compose down -v` (borra los datos locales). La base de pruebas se reutiliza entre ejecuciones y solo aplica migraciones nuevas: si editas una migración ya aplicada, reinicia el volumen igual.
+Para importar un negocio: `make tenant-import DIR=<directorio> SECRETS=<yaml-privado>`
+(`SECRETS` es opcional). `HOST` usa por defecto el alias SSH `autobot` de
+`~/.ssh/config`; se puede cambiar con `HOST=<servidor>`.
 
 `make status` muestra los servicios locales y `make logs SERVICE=worker` sigue sus logs
 (sin `SERVICE`, los de todos los servicios). `make tenant-health SLUG=<slug>` comprueba
@@ -61,7 +68,7 @@ de [ngrok](https://ngrok.com) hacia `web` (mismo mecanismo que producción: webh
 no polling). Ver el detalle en [docs/runbooks/demo.md](docs/runbooks/demo.md).
 
 ```bash
-ngrok http 8000                                              # anota la URL https
+make ngrok                                                  # dominio reservado
 # en .env: PUBLIC_URL=<esa URL>, DEMO_TELEGRAM_TOKEN, DEMO_TELEGRAM_USERS,
 # DEMO_TELEGRAM_WEBHOOK_SECRET (p. ej. `openssl rand -hex 32`)
 make up && docker compose restart web worker
@@ -86,8 +93,6 @@ La configuración y los secretos de negocio ya no se copian del repositorio ni s
 montan desde un YAML. `tenant_config import/export/validate`, `tenant_dataset`,
 `seed_demos` y `tenant_status` gestionan las versiones en PostgreSQL; ver
 [comandos](docs/comandos.md). La publicación no requiere commits ni reinicios.
-El arranque local completo se automatiza en T08c; mientras tanto, después de levantar
-`db`, ejecuta `uv run python manage.py migrate`, `apply_grants` y `seed_demos`.
 
 Para el QR, exporta primero `document.yaml` y ejecuta `make qr FILE=<ruta/document.yaml>`.
 Las acciones de producción se ejecutan con `make prod-manage HOST=<servidor> CMD="..."`;

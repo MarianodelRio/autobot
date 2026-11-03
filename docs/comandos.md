@@ -7,7 +7,11 @@ o cambia un comando amplía esta tabla en el mismo commit.
 
 | Comando | Qué hace |
 |---|---|
-| `make up` | Levanta los contenedores (`docker compose up -d --build`) |
+| `make up` | Tras el bootstrap, levanta los contenedores (`docker compose up -d --build`) |
+| `make dev-bootstrap` | Prepara db y roles, construye la imagen local con herramientas dev, migra, reaplica permisos, siembra demos y levanta web/worker; se puede repetir |
+| `make dev-reset` | Exige escribir `RESET`, elimina el volumen local y repite el bootstrap |
+| `make tenant-import DIR=<dir> [SECRETS=<yaml>]` | Importa un directorio contra la BD local desde el host; acepta rutas con espacios |
+| `make ngrok [NGROK_DOMAIN=<dominio>]` | Abre el túnel al puerto 8000 usando el dominio reservado configurado |
 | `make down` | Para los contenedores |
 | `make status` | `docker compose ps` |
 | `make db-roles` | Ejecuta `init-roles.sh` dentro del contenedor `db`: crea `fp_owner`, `fp_app` y `fp_readonly`, o actualiza sus contraseñas, sin recrear el contenedor |
@@ -26,8 +30,12 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make deploy [SHA=]` | Lanza el workflow de despliegue en GitHub Actions |
 | `make backup-now` | Ejecuta `deploy/backup.sh` en el servidor por SSH |
 | `make restore-test` | `bash deploy/restore-test.sh`: simulacro de restauración |
-| `make prod-manage HOST=<servidor> CMD="..." [TTY=1]` | Ejecuta el comando con la imagen desplegada mediante SSH; `TTY=1` para comandos interactivos, sin TTY para streams binarios |
-| `make tenant-push HOST=<servidor> SLUG=<slug> [SECRETS=<yaml>]` | Exporta la BD local y la importa por SSH. El YAML privado aporta solo la entrada del slug; el temporal se borra al salir |
+| `make prod-manage CMD="..." [TTY=1]` | Ejecuta el comando con la imagen desplegada mediante SSH; `TTY=1` para comandos interactivos, sin TTY para streams binarios |
+| `make tenant-push SLUG=<slug> [SECRETS=<yaml>]` | Exporta la BD local y la importa por SSH. El YAML privado aporta solo la entrada del slug; el temporal se borra al salir |
+
+`HOST ?= autobot` usa el alias de `~/.ssh/config`; se puede sobrescribir en cada
+comando. `NGROK_DOMAIN` usa el dominio reservado de desarrollo documentado en el
+`Makefile`.
 
 ## `manage.py`
 
