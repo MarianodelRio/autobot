@@ -1,13 +1,8 @@
-"""tests/tools/test_revision.py — el HTML de `make revision` contiene cada línea,
-temporada, leyenda y pendiente.
-
-Usa un repositorio git real y desechable en tmp_path (git es una herramienta
-de desarrollo local, no una API externa, así que no se simula), siguiendo el
-patrón de fixtures de tests/test_formato.py."""
+"""Bus review rendering and comparisons against local directory snapshots."""
 
 from __future__ import annotations
 
-import subprocess
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -19,24 +14,8 @@ from tools import bus_revision as revision
 
 FIXTURES = Path(__file__).parents[2] / "src" / "packs" / "bus" / "tests" / "fixtures"
 SLUG = "demo"
-DATASET = Path("tenants") / SLUG / "datasets" / "timetable"
-TAG = "datos/demo/2026-01-01"
-
-
-def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "user.name=Test",
-            *args,
-        ],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-    )
+DATASET = Path("datos") / SLUG / "timetable"
+BASE_LABEL = "copia publicada"
 
 
 LINEA_YAML = """\
@@ -78,73 +57,44 @@ def _build_repo(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (horarios_dir / "lineas" / "linea-prueba.yaml").write_text(LINEA_YAML, encoding="utf-8")
-
-    assert _git(repo_root, "init", "-q", "-b", "main").returncode == 0
-    assert _git(repo_root, "add", "tenants").returncode == 0
-    assert _git(repo_root, "commit", "-q", "-m", "primera version").returncode == 0
-    assert _git(repo_root, "tag", TAG).returncode == 0
+    shutil.copytree(horarios_dir, repo_root / "datos" / SLUG / ".publicado" / "timetable")
 
     (horarios_dir / "lineas" / "linea-prueba.yaml").write_text(
         LINEA_YAML_MODIFICADA, encoding="utf-8"
     )
-    assert _git(repo_root, "add", "tenants").returncode == 0
-    assert _git(repo_root, "commit", "-q", "-m", "cambio de hora").returncode == 0
 
     return repo_root
 
 
-def test_ultimo_tag_encuentra_el_tag(tmp_path: Path) -> None:
-    repo_root = _build_repo(tmp_path)
-    assert revision._ultimo_tag(repo_root, SLUG) == TAG
-
-
-def test_ultimo_tag_sin_tags(tmp_path: Path) -> None:
-    repo_root = tmp_path / "repo_sin_tags"
-    horarios_dir = repo_root / DATASET
-    (horarios_dir / "lineas").mkdir(parents=True)
-    (horarios_dir / "paradas.yaml").write_text(
-        (FIXTURES / "paradas_base.yaml").read_text(encoding="utf-8"), encoding="utf-8"
-    )
-    (horarios_dir / "observaciones.yaml").write_text(
-        (FIXTURES / "observaciones_base.yaml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    _git(repo_root, "init", "-q", "-b", "main")
-    _git(repo_root, "add", "tenants")
-    _git(repo_root, "commit", "-q", "-m", "sin tags")
-    assert revision._ultimo_tag(repo_root, SLUG) is None
-
-
 def test_resolver_anterior_primera_version(tmp_path: Path) -> None:
-    repo_root = tmp_path / "repo_sin_tags"
-    (repo_root / DATASET).mkdir(parents=True)
-    _git(repo_root, "init", "-q", "-b", "main")
-    (repo_root / DATASET / ".gitkeep").write_text("", encoding="utf-8")
-    _git(repo_root, "add", "tenants")
-    _git(repo_root, "commit", "-q", "-m", "vacio")
-    ref, modelo = revision.resolver_anterior(None, repo_root, SLUG)
-    assert ref is None
-    assert modelo is None
+    ref, model = revision.resolver_anterior(None, tmp_path, SLUG)
+    assert ref is None and model is None
 
 
-def test_resolver_anterior_con_tag(tmp_path: Path) -> None:
-    repo_root = _build_repo(tmp_path)
-    ref, modelo = revision.resolver_anterior(None, repo_root, SLUG)
-    assert ref == TAG
-    assert modelo is not None
-    assert "linea-prueba" in modelo.lineas
+def test_resolver_anterior_copia_publicada(tmp_path: Path) -> None:
+    root = _build_repo(tmp_path)
+    ref, model = revision.resolver_anterior(None, root, SLUG)
+    assert ref == BASE_LABEL
+    assert model is not None and "linea-prueba" in model.lineas
 
 
-def test_resolver_anterior_rechaza_una_ref_que_parece_una_opcion(tmp_path: Path) -> None:
-    repo_root = _build_repo(tmp_path)
-    with pytest.raises(RuntimeError, match="referencia inválida"):
-        revision.resolver_anterior("--output=/tmp/x", repo_root, SLUG)
+def test_explicit_base_is_used_by_cli(tmp_path: Path) -> None:
+    root = _build_repo(tmp_path)
+    base = root / "custom-base"
+    shutil.copytree(root / "datos" / SLUG / ".publicado" / "timetable", base)
+    assert revision.main([SLUG, "--base", str(base), "--solo-html"], repo_root=root) == 0
+    content = (root / "revision" / SLUG / "horarios.html").read_text()
+    assert "Versión: custom-base" in content
+    assert "08:10" in content and "08:15" in content
 
 
-def test_cargar_snapshot_ref_inexistente(tmp_path: Path) -> None:
-    repo_root = _build_repo(tmp_path)
-    with pytest.raises(RuntimeError, match="no-existe"):
-        revision._cargar_snapshot("no-existe", repo_root, tmp_path / "snap", SLUG)
+def test_invalid_or_missing_explicit_base_is_rejected(tmp_path: Path) -> None:
+    root = _build_repo(tmp_path)
+    with pytest.raises(RuntimeError, match="no existe"):
+        revision.resolver_anterior(Path("missing"), root, SLUG)
+    (root / "invalid").mkdir()
+    with pytest.raises(RuntimeError, match="no valida"):
+        revision.resolver_anterior(Path("invalid"), root, SLUG)
 
 
 def _generar_para_repo(repo_root: Path, solo_html: bool = True) -> int:
@@ -187,8 +137,6 @@ def test_cambios_con_texto_de_negocio_y_html_escapado(
         ),
         encoding="utf-8",
     )
-    assert _git(repo_root, "add", "tenants").returncode == 0
-    assert _git(repo_root, "commit", "-q", "-m", "texto").returncode == 0
 
     assert _generar_para_repo(repo_root) == 0
     contenido = (repo_root / "revision" / SLUG / "horarios.html").read_text(encoding="utf-8")
@@ -199,8 +147,8 @@ def test_cambios_con_texto_de_negocio_y_html_escapado(
     assert "pasa_por_rivero" not in contenido.split("Cambios desde la versión")[1][:600]
 
 
-def test_main_primera_version_sin_tags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    repo_root = tmp_path / "repo_sin_tags"
+def test_main_primera_version_sin_base(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root = tmp_path / "repo_sin_base"
     horarios_dir = repo_root / DATASET
     (horarios_dir / "lineas").mkdir(parents=True)
     (horarios_dir / "paradas.yaml").write_text(
@@ -215,9 +163,6 @@ def test_main_primera_version_sin_tags(tmp_path: Path, monkeypatch: pytest.Monke
         encoding="utf-8",
     )
     (horarios_dir / "lineas" / "linea-prueba.yaml").write_text(LINEA_YAML, encoding="utf-8")
-    _git(repo_root, "init", "-q", "-b", "main")
-    _git(repo_root, "add", "tenants")
-    _git(repo_root, "commit", "-q", "-m", "primera version")
 
     codigo = _generar_para_repo(repo_root)
     assert codigo == 0
@@ -236,10 +181,6 @@ def test_main_solo_html_no_genera_pdf(tmp_path: Path, monkeypatch: pytest.Monkey
 def test_main_genera_pdf_si_no_se_pide_solo_html(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    try:
-        import weasyprint  # type: ignore[import-untyped]  # noqa: F401
-    except ImportError, OSError:  # sin el paquete, o sin Pango/cairo
-        pytest.skip("WeasyPrint o Pango no disponibles")
     repo_root = _build_repo(tmp_path)
     codigo = _generar_para_repo(repo_root, solo_html=False)
     assert codigo == 0
@@ -283,7 +224,7 @@ def test_main_falla_si_horarios_no_valida(tmp_path: Path, monkeypatch: pytest.Mo
 
 # ── Tablas por sentido, anchas y por línea ───────────────────
 # Estos tests usan formato.validar() + revision.generar_html() directamente,
-# sin repositorio git: no hace falta comparar dos versiones para comprobar
+# sin una copia publicada: no hace falta comparar dos versiones para comprobar
 # cómo se pinta la versión actual.
 
 

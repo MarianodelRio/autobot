@@ -70,10 +70,15 @@ Edita `DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS` en el `.env` del servidor y re
 ## Renovación anual del calendario de `demo-autobuses`
 
 El dataset de `demo-autobuses` declara una `vigencia` (ver `docs/packs/bus.md`). Cada
-verano, antes de que caduque, amplía su rango junto con el nuevo curso escolar: edita
-`src/packs/bus/template/datasets/timetable/calendario.yaml` y ejecuta `make check`
-para validar la plantilla y sus escenarios, antes de hacer commit. Este dataset no se publica
-con `make bus-publicar` (no hay empresa real que revise el PDF).
+verano, antes de que caduque, bajar con `make bus-bajar TENANT=demo-autobuses`, editar
+`datos/demo-autobuses/timetable/calendario.yaml`, formatear, validar y revisar con los
+targets `bus-*`, y publicar con `COMMENT="Renovación anual de demo"`. Para actuar sobre
+el servidor, la persona añade `PROD=1` tanto al bajar como al publicar. Es un dataset
+ficticio y no tiene una empresa que deba aprobar el PDF.
+
+Actualizar también `src/packs/bus/template/datasets/timetable/calendario.yaml` para
+los demos que se creen en el futuro, ejecutar `make check` y hacer commit de ese cambio
+de plantilla. `seed_demos` conserva las versiones de los demos ya existentes.
 
 ## Diagnóstico
 

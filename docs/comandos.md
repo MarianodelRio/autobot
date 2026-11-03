@@ -20,10 +20,11 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make test` | `uv run pytest` |
 | `make check` | Puerta de calidad del backend: `ruff check`, `ruff format --check`, `mypy`, `import-linter`, `pytest` |
 | `make telegram-poll SLUG=<slug>` | *Long polling* del bot de Telegram de un tenant (o `notify`), para desarrollo local sin webhook |
-| `make bus-validar TENANT=<slug>` | Valida el dataset de horarios del tenant |
-| `make bus-formatear TENANT=<slug>` | Realinea las columnas de las tablas de horarios sin tocar el YAML |
-| `make bus-revision TENANT=<slug> [ARGS="..."]` | Genera `revision/<slug>/horarios.{html,pdf}` con los cambios desde la última publicación |
-| `make bus-publicar TENANT=<slug>` | Tras el commit y el despliegue: marca como publicada la versión actual del dataset (tag `datos/<slug>/<fecha>`) |
+| `make bus-bajar TENANT=<slug> [PROD=1]` | Exporta el dataset vigente a `datos/<slug>/timetable` y `.publicado/timetable`; sustituye ambas copias locales |
+| `make bus-validar TENANT=<slug>` | Valida `datos/<slug>/timetable` |
+| `make bus-formatear TENANT=<slug>` | Realinea las columnas de las tablas de horarios sobre `datos/<slug>/timetable`, sin cambiar los datos |
+| `make bus-revision TENANT=<slug> [ARGS="..."]` | Genera HTML/PDF comparando con `.publicado/timetable`; `ARGS="--base <dir>"` elige otra base |
+| `make bus-publicar TENANT=<slug> COMMENT="..." [PROD=1]` | Publica la copia local validada en BD y actualiza `.publicado` tras el éxito; sin `PROD`, usa la BD local |
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
 | `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
 | `make check-prod-config` | Ejecuta `tools/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |

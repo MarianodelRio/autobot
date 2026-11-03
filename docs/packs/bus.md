@@ -56,13 +56,17 @@ horarios:
       08:50  09:00  09:40
 ```
 
-Para publicar: edita el dataset, ejecuta `make bus-formatear TENANT=<slug>` y
-`make bus-validar TENANT=<slug>`, luego `make bus-revision TENANT=<slug>`.
-La revisión genera HTML/PDF con el diff respecto al último tag `datos/<slug>/*`.
-La empresa confirma el PDF antes del commit y despliegue. Después ejecuta
-`make bus-publicar TENANT=<slug>`; la herramienta crea el tag local, que la
-persona operadora publica. Los cambios futuros se publican en su fecha de
-vigencia. El runbook 10 contiene las comprobaciones de operación.
+Para publicar, primero `make bus-bajar TENANT=<slug>` descarga a
+`datos/<slug>/timetable/` y guarda la base en `.publicado/timetable`. Tras editar,
+ejecuta `make bus-formatear`, `make bus-validar` y `make bus-revision`, siempre con
+`TENANT=<slug>`. La revisión HTML/PDF compara con esa copia de la versión publicada;
+`ARGS="--base <dir>"` permite elegir otra base.
+
+La empresa confirma el PDF antes de `make bus-publicar TENANT=<slug>
+COMMENT="Motivo"`. Sin `PROD`, se usa la BD local; con `PROD=1`, bajar y publicar
+usan SSH al servidor. El import crea una versión de dataset y su auditoría; no hay
+tags de git ni despliegue. La copia `.publicado` se actualiza solo tras el éxito.
+El runbook 10 describe el flujo y las comprobaciones.
 
 ### Resumen mensual al dueño
 

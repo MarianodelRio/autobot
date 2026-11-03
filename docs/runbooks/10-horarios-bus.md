@@ -1,17 +1,31 @@
 # 10. Actualizar horarios de `bus`
 
 **Síntoma:** la empresa comunica cambios o el bot muestra un horario antiguo.
-**Diagnóstico:** identifica línea, temporada, fecha de entrada en vigor y fuente
-aprobada; consulta `docs/packs/bus.md` para el formato del dataset.
+**Diagnóstico:** identificar línea, temporada, fecha de entrada en vigor y fuente
+aprobada; consultar `docs/packs/bus.md` para el formato del dataset.
 
-**Pasos:** edita solo `tenants/<slug>/datasets/timetable/`; ejecuta
-`make bus-formatear TENANT=<slug>`, `make bus-validar TENANT=<slug>` y
-`make bus-revision TENANT=<slug>`. Entrega el PDF a la empresa y conserva su
-confirmación. Después de aprobar los cambios, haz commit y despliega el SHA.
-Finalmente ejecuta `make bus-publicar TENANT=<slug>` y publica el tag indicado.
-Si entra en vigor más adelante, prepara y revisa el commit, pero aplaza también
-el despliegue y el tag hasta ese día: el pack lee el dataset desplegado al instante.
+1. `make bus-bajar TENANT=<slug>` descarga el dataset vigente de la BD local a
+   `datos/<slug>/timetable/` y a `datos/<slug>/.publicado/timetable/`. Con `PROD=1`,
+   lo exporta del servidor por SSH mediante la imagen desplegada. Este paso sustituye
+   las dos copias locales: guardar cualquier edición pendiente antes de volver a bajar.
+2. Editar solo `datos/<slug>/timetable/`. No se versiona ni se copia a la imagen.
+3. `make bus-formatear TENANT=<slug>` y `make bus-validar TENANT=<slug>`.
+4. `make bus-revision TENANT=<slug>` genera `revision/<slug>/horarios.html` y `.pdf`,
+   con el diff respecto a `.publicado/timetable`. `ARGS="--solo-html"` omite el PDF;
+   `ARGS="--base /ruta/export-anterior"` elige otra copia de comparación.
+5. Entregar el PDF a la empresa y conservar su confirmación real. Hasta entonces los
+   cambios permanecen locales. No se simula esa aprobación.
+6. `make bus-publicar TENANT=<slug> COMMENT="Motivo aprobado"` importa la instantánea
+   validada en la BD local. Añadir `PROD=1` para publicar en el servidor. La operación
+   crea una versión auditada y actualiza `.publicado` solo si la importación termina
+   bien. Con el mismo hash no crea otra versión.
+7. Comprobar los horarios con las consultas de prueba del negocio. La recarga del
+   registro aplica el cambio en como máximo dos segundos, sin commit ni despliegue.
 
-**Verificación:** el validador no da errores, la empresa confirma el PDF, el bot de
-pruebas muestra el horario nuevo y el tag `datos/<slug>/fecha` apunta al commit
-desplegado. La prueba real con la empresa sigue pendiente.
+Si la entrada en vigor es futura, preparar y revisar las copias locales, pero esperar
+hasta esa fecha para publicar: el dataset se aplica al importarlo. Los cambios de
+código o de la plantilla inicial sí llevan commit, con sus tests, por separado.
+
+**Verificación:** validador sin errores, confirmación de la empresa, versión auditada
+en BD y conversación de prueba con el horario nuevo. La comprobación real con cada
+empresa sigue pendiente de sus credenciales y de la persona operadora.

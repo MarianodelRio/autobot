@@ -1,24 +1,10 @@
-"""tools/bus_revision.py — make bus-revision TENANT=<slug>.
-
-Genera `revision/<slug>/horarios.html`
-y `revision/<slug>/horarios.pdf` (no se versionan): la vista de revisión para
-negocio, con los cambios desde la última
-versión publicada, el último tag `datos/<slug>/AAAA-MM-DD`. Es el único módulo
-que habla con git (para encontrar esa versión) y con WeasyPrint (para el PDF);
-la comparación en sí vive en `packs/bus/diff.py`, que no toca ni disco ni git.
-
-Nunca se ejecuta sobre un dataset inválido, nunca omite el PDF en
-silencio si WeasyPrint/Pango no están disponibles, y nunca resuelve una
-pregunta pendiente (`Pnn`): solo la muestra junto al dato afectado.
-"""
+"""Render a bus timetable review against a local published snapshot, without git."""
 
 from __future__ import annotations
 
 import argparse
 import html
-import subprocess
 import sys
-import tempfile
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -42,83 +28,27 @@ from tools.bus_tenant import (
     REPO_ROOT,
     TenantDesconocido,
     dataset_dir,
-    dataset_path,
-    tag_prefix,
+    published_dir,
 )
 
 ZONA_HORARIA = "Europe/Madrid"
 
 
-def _ultimo_tag(repo_root: Path, slug: str) -> str | None:
-    """Devuelve el último tag `datos/<slug>/*` (orden de versión, más reciente
-    primero) o None si no hay ninguno. Lanza RuntimeError si `git` falla."""
-    resultado = subprocess.run(
-        ["git", "tag", "--list", f"{tag_prefix(slug)}*", "--sort=-version:refname"],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-    )
-    if resultado.returncode != 0:
-        raise RuntimeError(
-            f"git tag --list falló (código {resultado.returncode}): {resultado.stderr.strip()}"
-        )
-    lineas = [linea for linea in resultado.stdout.splitlines() if linea.strip()]
-    return lineas[0] if lineas else None
-
-
-def _cargar_snapshot(ref: str, repo_root: Path, tmp_dir: Path, slug: str) -> Path:
-    """Extrae el dataset del tenant tal como estaba en `ref` a `tmp_dir`
-    mediante `git archive`. Lanza RuntimeError con un mensaje claro si falla
-    (ref inexistente, o el dataset no existía en ese ref)."""
-    ruta = dataset_path(slug)
-    archive = subprocess.run(
-        ["git", "archive", ref, "--", ruta.as_posix()],
-        cwd=repo_root,
-        capture_output=True,
-    )
-    if archive.returncode != 0:
-        raise RuntimeError(
-            f"no se pudo extraer '{ruta.as_posix()}/' de la referencia '{ref}' "
-            f"({archive.stderr.decode(errors='replace').strip()})"
-        )
-    extraer = subprocess.run(
-        ["tar", "-x", "-C", str(tmp_dir)],
-        input=archive.stdout,
-        capture_output=True,
-    )
-    if extraer.returncode != 0:
-        raise RuntimeError(
-            f"no se pudo descomprimir el snapshot de '{ref}' "
-            f"({extraer.stderr.decode(errors='replace').strip()})"
-        )
-    snapshot_dir = tmp_dir / ruta
-    if not snapshot_dir.is_dir():
-        raise RuntimeError(f"la referencia '{ref}' no contiene '{ruta.as_posix()}/'")
-    return snapshot_dir
-
-
 def resolver_anterior(
-    ref: str | None, repo_root: Path, slug: str
+    base: Path | None, repo_root: Path, slug: str
 ) -> tuple[str | None, Modelo | None]:
-    """Resuelve la referencia anterior (autodetectada o dada por
-    `--desde`) y devuelve (ref, modelo). (None, None) significa "primera
-    versión". Lanza RuntimeError si la referencia no existe o no valida."""
-    if ref is None:
-        ref = _ultimo_tag(repo_root, slug)
-    if ref is None:
-        return None, None
-    if ref.startswith("-"):  # git la tomaría por una opción (`--output=…`)
-        raise RuntimeError(f"referencia inválida: '{ref}'")
-
-    with tempfile.TemporaryDirectory() as tmp:
-        snapshot_dir = _cargar_snapshot(ref, repo_root, Path(tmp), slug)
-        resultado_anterior = validar(snapshot_dir)
-        if resultado_anterior.errores:
-            mensajes = "\n".join(f"  - {e}" for e in resultado_anterior.errores)
-            raise RuntimeError(
-                f"la versión publicada '{ref}' no valida, no se puede calcular el diff:\n{mensajes}"
-            )
-        return ref, resultado_anterior.modelo
+    """Load an explicit base or the last downloaded/published local snapshot."""
+    directory = published_dir(slug, repo_root) if base is None else repo_root / base
+    if not directory.is_dir():
+        if base is None:
+            return None, None
+        raise RuntimeError(f"no existe el directorio base: {directory}")
+    result = validar(directory)
+    if result.errores:
+        messages = "\n".join(f"  - {error}" for error in result.errores)
+        raise RuntimeError(f"la versión base no valida, no se puede calcular el diff:\n{messages}")
+    label = "copia publicada" if base is None else directory.name
+    return label, result.modelo
 
 
 def _contar_viajes(modelo: Modelo) -> int:
@@ -671,11 +601,12 @@ def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
     parser = argparse.ArgumentParser(
         description="Genera la revisión de los horarios de un tenant para negocio"
     )
-    parser.add_argument("tenant", help="slug del tenant (tenants/<slug>/)")
+    parser.add_argument("tenant", help="slug del tenant (datos/<slug>/)")
     parser.add_argument(
-        "--desde",
+        "--base",
+        type=Path,
         default=None,
-        help="Referencia git a comparar (por defecto, el último tag datos/<slug>/*)",
+        help="Directorio base (por defecto datos/<slug>/.publicado/timetable)",
     )
     parser.add_argument("--solo-html", action="store_true", help="No genera el PDF, solo el HTML")
     args = parser.parse_args(argv)
@@ -694,7 +625,7 @@ def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
     assert actual_modelo is not None
 
     try:
-        ref, anterior_modelo = resolver_anterior(args.desde, repo_root, args.tenant)
+        ref, anterior_modelo = resolver_anterior(args.base, repo_root, args.tenant)
     except RuntimeError as exc:
         print(f"✗ {exc}")
         return 1

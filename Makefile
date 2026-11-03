@@ -54,9 +54,12 @@ shell:
 telegram-poll:
 	docker compose exec web python manage.py telegram_poll $(SLUG)
 
-# Bus timetable tools: make bus-<tool> TENANT=<slug>. They run on the
-# developer machine against tenants/<slug>/datasets/timetable/.
+# Bus tools operate on ignored exports under datos/<slug>/.
 BUS_TOOL = PYTHONPATH=src uv run python -m tools
+export TENANT COMMENT PROD
+
+bus-bajar:
+	$(BUS_TOOL).bus_data download
 
 bus-validar:
 	$(BUS_TOOL).bus_validar $(TENANT)
@@ -64,14 +67,11 @@ bus-validar:
 bus-formatear:
 	$(BUS_TOOL).bus_formatear $(TENANT)
 
-# Writes revision/<slug>/horarios.html and .pdf with the changes since the last
-# datos/<slug>/* tag. ARGS="--solo-html" skips the PDF; ARGS="--desde <ref>" picks the base.
 bus-revision:
 	$(BUS_TOOL).bus_revision $(TENANT) $(ARGS)
 
-# Tags HEAD as datos/<slug>/<today>, after commit and deploy. It does not push the tag.
 bus-publicar:
-	$(BUS_TOOL).bus_publicar $(TENANT)
+	$(BUS_TOOL).bus_data publish
 
 tenant-health:
 	docker compose exec web python manage.py tenant_health $(SLUG)
@@ -80,7 +80,7 @@ tenant-health:
 qr:
 	PYTHONPATH=src uv run python -m tools.qr "$(FILE)" $(ARGS)
 
-.PHONY: prod-manage tenant-push
+.PHONY: prod-manage tenant-push bus-bajar
 export HOST SLUG SECRETS
 
 prod-manage:
