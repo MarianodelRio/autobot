@@ -3,8 +3,8 @@
 **Qué es:** la plataforma, no ningún cliente, enseña Autobot con dos puertas (un bot
 de Telegram y un número de WhatsApp) y negocios de demostración normales en
 plantillas en `src/packs/<pack>/template/` (`demo-peluqueria`, `demo-autobuses`).
-En esta fase de transición, los tests validan estas plantillas directamente; el
-sembrado en PostgreSQL llega en T08a. La primera respuesta de
+Los tests validan estas plantillas directamente; `manage.py seed_demos` las siembra
+en PostgreSQL solo la primera vez y conserva los cambios posteriores de cada demo. La primera respuesta de
 cualquier puerta pide elegir negocio; desde ahí la conversación es la del pack real de
 ese negocio. Solo una lista cerrada de personas puede usar cada puerta (ver ADR-006).
 
@@ -14,7 +14,7 @@ ese negocio. Solo una lista cerrada de personas puede usar cada puerta (ver ADR-
 |---|---|
 | La puerta Telegram | `DEMO_TELEGRAM_TOKEN`, `DEMO_TELEGRAM_WEBHOOK_SECRET` en `.env` del servidor (vacíos = apagada) y reiniciar `web`/`worker` |
 | La puerta WhatsApp | `DEMO_WHATSAPP_PHONE_NUMBER_ID`, `_WABA_ID`, `_APP_SECRET`, `_ACCESS_TOKEN`, `_VERIFY_TOKEN` en `.env` del servidor (los cinco, o apagada) y reiniciar |
-| Un negocio de demo | `status: active` o `paused` en el documento del demo (la gestión en BD llega en T08a) |
+| Un negocio de demo | `tenant_status <slug> pause` o `resume`, sobre el demo ya sembrado en BD |
 | Quién entra en Telegram | `DEMO_TELEGRAM_USERS` (ids de Telegram separados por comas) y reiniciar |
 | Quién entra en WhatsApp | `DEMO_WHATSAPP_USERS` (teléfonos con prefijo de país o BSUID, separados por comas) y reiniciar |
 | Demo local | un túnel de ngrok hacia `web` (puerto 8000) y un webhook real, con un bot de Telegram (y, si procede, una app de WhatsApp) de desarrollo propio — ver más abajo |

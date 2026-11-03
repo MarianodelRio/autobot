@@ -175,7 +175,9 @@ LOGGING = {
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "stream": "ext://sys.stdout",
+            "stream": "ext://sys.stderr"
+            if os.environ.get("AUTOBOT_BINARY_STDOUT")
+            else "ext://sys.stdout",
             "formatter": "json",
             "filters": ["privacy"],
         }

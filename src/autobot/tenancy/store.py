@@ -484,3 +484,62 @@ def import_dataset(
     version = _write_dataset(candidate, name, files, actor=actor, comment=comment)
     _bump(revision)
     return version
+
+
+@transaction.atomic(using="owner")
+def import_source(source: TenantSource, *, actor: str, comment: str) -> int:
+    """Validate a directory's document and datasets together before publishing either."""
+    revision = _lock()
+    doc = _document(source.document)
+    sources = current_sources()
+    existing = [
+        s for s in sources if isinstance(s.document, dict) and s.document.get("slug") == doc["slug"]
+    ]
+    if not existing:
+        return create_tenant(
+            document=doc,
+            datasets=source.datasets or None,
+            secrets=source.secrets,
+            actor=actor,
+            comment=comment,
+            keep_status=True,
+        )
+    current = existing[0]
+    if any(_value(doc, path) != _value(current.document, path) for path in IDENTITY):
+        raise StoreError(
+            "forbidden_change",
+            "La importación no permite cambiar la identidad, el estado o el tipo de canal",
+        )
+    raw_secrets = None
+    if source.secrets is not None:
+        if doc.get("channel") is None:
+            raise StoreError("bad_request", "Un demo no admite secretos de canal")
+        raw_secrets = _secrets(doc["channel"]["type"], source.secrets)
+    candidate = replace(
+        current,
+        document=doc,
+        datasets={**current.datasets, **source.datasets},
+        secrets=current.secrets if raw_secrets is None else raw_secrets,
+        secrets_error=current.secrets_error if raw_secrets is None else None,
+    )
+    _validate(candidate, sources)
+    version = _write(
+        candidate,
+        revision,
+        actor=actor,
+        comment=comment,
+        action="tenant.publish",
+        summary="Configuración importada",
+    )
+    for name, files in source.datasets.items():
+        prior = (
+            TenantDatasetVersion.objects.using("owner")
+            .filter(tenant_id=doc["id"], name=name)
+            .order_by("-version")
+            .first()
+        )
+        if prior is None or prior.sha256 != _dataset_digest(files):
+            _write_dataset(candidate, name, files, actor=actor, comment=comment)
+    if raw_secrets is not None:
+        _write_secret(candidate, raw_secrets, actor)
+    return version

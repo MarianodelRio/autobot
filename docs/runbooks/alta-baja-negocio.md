@@ -2,36 +2,35 @@
 
 ## Alta
 
-1. `manage.py new_tenant <slug> --pack salon|bus --channel whatsapp|telegram` crea
-   `tenants/<slug>/tenant.yaml` con `id`, `public_id` aleatorio, `status: onboarding` y
-   la config por defecto del pack.
-2. Completar la config (`docs/packs/<pack>.md`). En `bus`, añadir el dataset y pasar
-   `make bus-validar`.
-3. **Canal `main`:**
-   - WhatsApp: seguir el checklist de abajo, declarar `channel` y añadir sus secretos a
-     `secrets.yaml` (`app_secret`, token permanente y `verify_token`).
-   - Telegram: crear el bot con @BotFather a nombre del negocio, declarar `channel` y
-     añadir `bot_token` y `webhook_secret` a `secrets.yaml`.
-4. **Google Calendar** (`salon`): el negocio comparte su calendario con la cuenta de
-   servicio («Hacer cambios en los eventos») y se pone su id en `calendar_id`. Si el
-   canal es WhatsApp, crear las plantillas del pack en el WhatsApp Manager.
-5. **Avisos al dueño** (opcional): `manage.py owner_invite <slug>` genera un enlace
-   `t.me/<bot>?start=<código>` de un solo uso (caduca a los 7 días); se envía al
-   dueño, que lo abre y pulsa *Iniciar* para quedar conectado, sin editar YAML ni
-   desplegar. Con el vínculo ya hecho, el resumen mensual (opcional) se activa con
-   `owner.summary_monthly: true` en su `tenant.yaml` (ver `docs/packs/<pack>.md`);
-   llega por el mismo bot el día 1 de cada mes, con los datos del mes anterior, y el
-   dueño puede consultar el mes en curso en cualquier momento escribiéndole al bot.
-   `manage.py owner_unlink <slug>` desconecta el chat (cambio de dueño o petición
-   RGPD).
-6. Commit y despliegue. Si el canal `main` es Telegram, `manage.py telegram_set_webhook <slug>`.
-7. `manage.py tenant_health <slug>` en verde.
-8. **Pruebas:** añadir a `testers.main` los ids (Telegram) o teléfonos/BSUID
-   (WhatsApp) de las personas del negocio que vayan a probar; con `status:
-   onboarding`, el canal `main` solo les contesta a ellas. No hay bot de pruebas
-   aparte: se prueba por el canal real del negocio.
-9. `status: active`, commit y despliegue. `make qr SLUG=<slug>` genera el QR del canal
-   para el local. Activar el canal real necesita aprobación humana explícita.
+1. Preparar un directorio con `document.yaml` y los datasets necesarios en
+   `datasets/<nombre>/`; el nombre antiguo `tenant.yaml` también se acepta al importar.
+   Usar un UUIDv7 propio, `public_id` aleatorio y `status: onboarding`. Completar la
+   config según `docs/packs/<pack>.md`; el asistente de alta se incorpora con el panel.
+2. Declarar el canal y sus ids. Los secretos se pasan en un YAML privado de formato
+   `slug: {campos...}`: WhatsApp usa `app_secret`, `access_token` y `verify_token`;
+   Telegram, `bot_token` y `webhook_secret` (32 caracteres o más). Nunca van en el documento.
+3. `manage.py tenant_config import <dir> --secrets <yaml> --comment "Alta"` publica
+   la configuración en la BD del entorno. Cifra los secretos y valida el conjunto antes
+   de guardar nada. Para `bus`, sin datasets se copian los iniciales de su plantilla.
+4. En `salon`, el negocio comparte su calendario con la cuenta de servicio y declara
+   su `calendar_id`. Las plantillas de WhatsApp deben estar creadas y aprobadas.
+5. `manage.py owner_invite <slug>` genera el enlace privado y de un solo uso para el
+   dueño. `owner.notify` y `owner.summary_monthly` se cambian en la configuración
+   versionada, exportando y volviendo a importar. `owner_unlink` desconecta el chat.
+6. La persona registra el webhook con `telegram_set_webhook <slug>` si procede y
+   ejecuta `tenant_health <slug>`. Con `onboarding`, solo se atiende a `testers.main`.
+7. Antes de activar: documento válido, ids y secretos completos, salud sin errores
+   críticos, plantillas aprobadas y al menos un mensaje real de un tester por `main`.
+   La activación se conectará al panel; la baja siempre se hace por terminal.
+
+Para editar, `tenant_config export <slug> <dir>` crea un directorio nuevo o vacío,
+sin secretos. Después de editar, `tenant_config import <dir> --comment "Motivo"`
+crea otra versión. Los seis campos de identidad y estado no se cambian por importación.
+Pausar o reactivar: `tenant_status <slug> pause|resume`. Los datasets también pueden
+publicarse con `tenant_dataset import <slug> <nombre> <dir> --comment "Motivo"`.
+
+Los cambios se aplican sin commit ni despliegue, en la siguiente comprobación de revisión
+(como máximo dos segundos). Las acciones sobre producción las ejecuta la persona.
 
 ### Checklist de un número de WhatsApp
 
@@ -96,8 +95,8 @@ puertas del bot de demo sin usar ningún negocio real (ver `docs/runbooks/demo.m
 3. Declarar `Pack.template` y `Pack.template_blank`: los campos de config que deben
    vaciarse al iniciar un negocio real. En `salon` son calendario, teléfono y nombre.
 4. Escribir el escenario de conversación sobre la plantilla y ejecutar `make check`.
-5. Hacer commit de la plantilla y sus tests. El sembrado inicial de demos en BD se
-   incorpora en T08a; después los cambios operativos se harán sobre el demo de la BD.
+5. Hacer commit de la plantilla y sus tests. `manage.py seed_demos` crea los demos que todavía no tienen versiones; después los
+   cambios operativos se hacen sobre el demo de la BD, sin sobrescribirlo con la plantilla.
    Un calendario de demo debe pertenecer a la persona operadora y estar compartido con
    la cuenta de servicio antes de probar reservas reales.
 
@@ -107,11 +106,15 @@ La persona operadora registra la fecha efectiva de baja y ejecuta el borrado en 
 máximo de 30 días; `synced_at` no es una fecha de baja. La entrada del tenant se
 conserva hasta comprobar el borrado (ver `retencion-rgpd.md`).
 
-1. `status: offboarded` y despliegue: los webhooks se contestan con 200 sin guardar nada.
-2. `manage.py export_tenant <slug>`, si se acordó con el negocio.
-3. `manage.py purge_tenant <slug>` borra contactos, conversaciones, eventos, mensajes y
-   avisos. Pide escribir el slug para confirmar.
-4. Quitar su entrada de `secrets.yaml` y, si su canal es Telegram, `deleteWebhook` de su bot.
-5. El negocio revoca el acceso del operador a su portfolio de Meta y deja de compartir
-   el calendario.
-6. Borrar `tenants/<slug>/`.
+1. `manage.py tenant_status <slug> offboard` pide escribir el slug y publica la baja.
+   Los webhooks tardíos se contestan con 200 sin guardar nada.
+2. Si el canal es Telegram, la persona retira el webhook mientras los secretos siguen
+   disponibles.
+3. `manage.py export_tenant <slug> --output <ruta-privada>`, si se acordó con el negocio.
+4. `manage.py purge_tenant <slug>` exige de nuevo el slug y comprueba que sigue dado de
+   baja. Borra contactos, conversaciones, eventos, mensajes, avisos, métricas, secretos y
+   versiones de datasets. Deja una sola versión del documento, con `testers.main: []`
+   y `owner: null`, y conserva el espejo para los webhooks tardíos. Se audita atómicamente.
+5. El negocio revoca el acceso del operador a Meta y deja de compartir el calendario.
+6. Retirar las copias locales de importación o guardarlas cifradas fuera del repositorio.
+   Las copias antiguas de la BD caducan con la retención de backups; ver RGPD.

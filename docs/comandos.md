@@ -44,7 +44,14 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `export_contact <slug> <external_id> [--channel main\|demo_tg\|demo_wa] --output <fichero>` | Exporta los datos de un contacto a un fichero privado (derechos RGPD) |
 | `export_tenant <slug> --output <fichero>` | Exporta todos los datos de un negocio a un fichero privado (derechos RGPD) |
 | `forget_contact <slug> <external_id> [--channel ...]` | Borra los datos de un contacto |
-| `purge_tenant <slug>` | Borra los datos de un negocio, con confirmación escribiendo el slug |
+| `purge_tenant <slug>` | Solo tras la baja: borra datos, secretos, métricas e historiales; conserva una versión depurada y exige escribir el slug |
 | `outbound_resolve <uuid> (--mark-sent\|--resend) --confirm` | Resuelve un envío ambiguo a mano; sin `--confirm` explica el riesgo y no hace nada |
 | `job_retry <id>` | Reintenta un trabajo fallido idempotente a mano; rechaza los de envío (`send_message`, `send_notification`) |
 | `tenant_secrets_reencrypt` | Recifra todos los secretos de canal con la primera clave de `SECRETS_ENCRYPTION_KEY`, atómicamente y con auditoría; ver [rotación](runbooks/09-rotar-secretos.md) |
+| `tenant_config export <slug> <dir\|->` | Exporta documento y datasets vigentes, sin secretos; el directorio debe estar vacío o ser nuevo. Con `-`, tar.gz por stdout y diagnósticos por stderr |
+| `tenant_config import <dir\|-> [--secrets <yaml>] [--comment "..."]` | Crea o publica desde un directorio o tar.gz por stdin. Valida documento, datasets y secretos juntos en una transacción. Admite `secrets.yaml` en la raíz del tar |
+| `tenant_config validate --all` | Valida todos los documentos vigentes; sale con error si alguno es ilegible, inválido, degradado o ambiguo |
+| `tenant_dataset export <slug> <name> <dir\|->` | Exporta el dataset vigente a un directorio vacío o tar.gz, sin secretos |
+| `tenant_dataset import <slug> <name> <dir\|-> --comment "..."` | Publica un dataset de texto UTF-8; con el mismo hash imprime «sin cambios» |
+| `seed_demos` | Crea los demos de las plantillas solo si no tienen versiones; conserva los cambios posteriores |
+| `tenant_status <slug> pause\|resume\|offboard` | Cambia el estado y crea una versión auditada; la baja exige escribir exactamente el slug |

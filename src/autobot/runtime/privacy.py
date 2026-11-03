@@ -1,5 +1,6 @@
 """Synchronous operator exports and erasure; never pass customer data to jobs."""
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -9,7 +10,9 @@ from uuid import UUID
 from django.core.management.base import CommandError
 from django.db import transaction
 from django.db.models import Q, QuerySet
+from django.utils import timezone
 
+from autobot.ops.audit import record
 from autobot.runtime.models import (
     DEMO_CHANNELS,
     Contact,
@@ -17,11 +20,18 @@ from autobot.runtime.models import (
     DemoEvent,
     DemoSession,
     InboundEvent,
+    MetricEvent,
     Notification,
     OutboundMessage,
     OwnerLink,
 )
-from autobot.tenancy.models import Tenant
+from autobot.tenancy.models import (
+    ConfigRevision,
+    Tenant,
+    TenantDatasetVersion,
+    TenantDocumentVersion,
+    TenantSecret,
+)
 
 MODELS = (
     Contact,
@@ -179,6 +189,51 @@ def forget(contact: Contact) -> None:
 
 def purge(tenant: Tenant) -> None:
     with transaction.atomic(using="owner"):
+        revision = ConfigRevision.objects.using("owner").select_for_update().get(pk=1)
+        current = Tenant.objects.using("owner").get(pk=tenant.pk)
+        if current.status != "offboarded":
+            raise CommandError("Solo se puede purgar un negocio dado de baja (offboarded).")
+        latest = (
+            TenantDocumentVersion.objects.using("owner")
+            .filter(tenant=tenant)
+            .order_by("-version")
+            .first()
+        )
+        if (
+            latest is None
+            or not isinstance(latest.document, dict)
+            or latest.document.get("status") != "offboarded"
+        ):
+            raise CommandError(
+                "El negocio necesita una versión de configuración que refleje la baja."
+            )
+        document = copy.deepcopy(latest.document)
+        document["testers"] = {"main": []}
+        document["owner"] = None
+        version = latest.version + 1
         demo_events(tenant.id).delete()
         for model in MODELS:
             model.objects.using("owner").filter(tenant_id=tenant.id).delete()
+        MetricEvent.objects.using("owner").filter(tenant_id=tenant.id).delete()
+        TenantSecret.objects.using("owner").filter(tenant_id=tenant.id).delete()
+        TenantDatasetVersion.objects.using("owner").filter(tenant_id=tenant.id).delete()
+        TenantDocumentVersion.objects.using("owner").filter(tenant_id=tenant.id).delete()
+        TenantDocumentVersion.objects.using("owner").create(
+            tenant_id=tenant.id,
+            version=version,
+            document=document,
+            author="command:purge_tenant",
+            comment="Datos personales purgados",
+        )
+        Tenant.objects.using("owner").filter(pk=tenant.pk).update(synced_at=timezone.now())
+        revision.revision += 1
+        revision.save(using="owner", update_fields=["revision", "updated_at"])
+        record(
+            actor="command:purge_tenant",
+            action="tenant.purge",
+            tenant_id=tenant.id,
+            target_type="tenant",
+            target_id=str(tenant.id),
+            summary="Datos del negocio purgados",
+            details={"version": version},
+        )

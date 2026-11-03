@@ -82,7 +82,8 @@ revisión mantiene el último registro válido; `/health` responde 503 si no pue
 la primera carga.
 
 La migración del panel está en curso: las plantillas ya se validan desde los packs y
-los tests siembran configuración cifrada en BD. Los comandos de publicación y sembrado
-de demos se incorporan en T08a; `tenant-sync` es un comando heredado que solo actualiza
+los tests siembran configuración cifrada en BD. `tenant_config import/export/validate`,
+`tenant_dataset`, `seed_demos` y `tenant_status` ya gestionan versiones en BD; ver
+[comandos](docs/comandos.md). `tenant-sync` es un comando heredado que solo actualiza
 el espejo `tenant` y no publica versiones para el runtime. No hay despliegue previo ni
 tráfico real; el arranque local completo se automatiza en T08c.

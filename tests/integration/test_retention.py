@@ -29,6 +29,7 @@ from autobot.runtime.models import (
 from autobot.tenancy.models import Tenant
 from tests.integration.helpers import demo_tenant, wa_tenant
 from tests.integration.test_models import contact, event, outbound, tenant
+from tests.tenancy.helpers import seed_db
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 NOW = datetime(2026, 10, 25, 12, tzinfo=UTC)
@@ -253,6 +254,8 @@ def test_forget_only_matching_contact_and_events() -> None:
 
 def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: Path) -> None:
     a, b = tenant("a"), tenant("b")
+    seed_db(wa_tenant("a", id=str(a.id), status="offboarded"))
+    a.refresh_from_db(using="owner")
     for t in [a, b]:
         c = contact(t)
         e = event(t)
@@ -341,6 +344,8 @@ def test_demo_event_originals_follow_tenant_linkage(operation: str) -> None:
     if operation == "forget":
         privacy.forget(c)
     else:
+        seed_db(wa_tenant("a", id=str(a.id), status="offboarded"))
+        a.refresh_from_db(using="owner")
         privacy.purge(a)
     assert set(DemoEvent.objects.values_list("provider_event_id", flat=True)) == {"3", "4"}
     assert InboundEvent.objects.using("owner").filter(tenant=b).exists()
