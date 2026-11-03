@@ -130,3 +130,22 @@ consultas y conserva los secretos de la instantánea fijada durante cada trabajo
 
 Los webhooks principales responden también 503 si falla la primera carga de config:
 el proveedor conserva el evento para reintentarlo, igual que si falla su persistencia.
+
+### Escrituras y activación implementadas
+
+`tenancy.store` serializa cada escritura con `SELECT FOR UPDATE` de la revisión y
+valida un registro candidato antes de crear versiones, actualizar el espejo, incrementar
+la revisión y auditar en la misma transacción `owner`. Las versiones anteriores no se
+modifican. Los conflictos de versión y los cambios de los seis campos protegidos se
+rechazan; volver atrás crea otra versión y mantiene esos campos vigentes. Los errores
+contienen rutas y tipos de validación, sin reproducir los valores recibidos.
+
+Las altas pueden adoptar un espejo sin versiones; `bus` copia el dataset de su plantilla
+si no se proporcionan otros. La importación con el mismo hash no crea versiones ni
+auditorías. Los secretos se sustituyen completos y solo sus nombres de campo se auditan.
+
+La lista de activación fuerza la salud fuera de la transacción de escritura, consulta
+la actividad con RLS y separa los bloqueos del aviso de dueño sin enlazar. Dentro de la
+transacción se vuelve a comprobar el estado. Los demos también pueden quedar
+`offboarded` mediante la baja por terminal, de acuerdo con la tabla de estados del diseño.
+`ops.status.tenant_status` centraliza los cinco niveles de salud para todas las vistas.

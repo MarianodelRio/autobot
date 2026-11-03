@@ -110,8 +110,8 @@ class TenantDocument(Strict):
                 raise ValueError("a demo tenant must not have a channel")
             if self.testers.main:
                 raise ValueError("a demo tenant must not have testers.main")
-            if self.status not in ("active", "paused"):
-                raise ValueError("a demo tenant's status must be active or paused")
+            if self.status not in ("active", "paused", "offboarded"):
+                raise ValueError("a demo tenant's status must be active, paused or offboarded")
             return self
         if self.channel is None:
             raise ValueError("channel is required for a non-demo tenant")
