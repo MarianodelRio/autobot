@@ -12,7 +12,7 @@ import pytest
 from django.db import connections
 from django.utils import timezone
 
-from autobot.runtime import summary
+from autobot.runtime import costs, summary
 from autobot.runtime.models import Contact, MetricEvent, Notification, OutboundMessage, OwnerLink
 from autobot.tenancy.models import Tenant
 from autobot.tenancy.registry import get_registry
@@ -124,10 +124,10 @@ def test_messaging_cost_sums_billable_messages_by_category(tenants: Any) -> None
     with tenant_tx(t.id):
         cost = summary._messaging_cost(START, END)
     expected = (
-        summary.PRICE_EUR["utility"]
-        + summary.PRICE_EUR["marketing"]
-        + summary.PRICE_EUR["authentication"]
-        + summary.PRICE_EUR["service"]
+        costs.PRICE_EUR["utility"]
+        + costs.PRICE_EUR["marketing"]
+        + costs.PRICE_EUR["authentication"]
+        + costs.PRICE_EUR["service"]
     )
     assert cost == expected.quantize(Decimal("0.01"))
 
@@ -142,7 +142,7 @@ def test_messaging_cost_unknown_category_uses_the_highest_price_and_warns(
     message(t, c, "weird1", when, pricing_category="marketing_lite", billable=True)
     with tenant_tx(t.id), caplog.at_level(logging.WARNING):
         cost = summary._messaging_cost(START, END)
-    assert cost == max(summary.PRICE_EUR.values()).quantize(Decimal("0.01"))
+    assert cost == max(costs.PRICE_EUR.values()).quantize(Decimal("0.01"))
     assert "marketing_lite" in caplog.text
 
 

@@ -9,11 +9,11 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count, Sum
+from django.db.models import Sum
 from procrastinate.exceptions import AlreadyEnqueued
 
 from autobot.jobs import (
@@ -25,6 +25,7 @@ from autobot.jobs import (
     defer_after_commit,
 )
 from autobot.owner import links
+from autobot.runtime import costs
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
 from autobot.runtime.models import Channel, MetricEvent, Notification, OutboundMessage
 from autobot.tenancy.registry import LoadedTenant, get_registry
@@ -40,17 +41,6 @@ log = logging.getLogger(__name__)
 OWNER_SUMMARY_KIND = "owner_summary"
 
 SUMMARY_LOCAL_HOUR = 12  # local time of the tenant (ADR-007)
-
-# Approximate Meta price per delivered message, Spain, EUR. Not the account's real
-# tariff (Meta's rate card is per recipient country and lives in each business's
-# WhatsApp Manager billing panel). Last checked 2026-10-29; see
-# docs/runbooks/alta-baja-negocio.md.
-PRICE_EUR: dict[str, Decimal] = {
-    "marketing": Decimal("0.0585"),
-    "utility": Decimal("0.0166"),
-    "authentication": Decimal("0.0166"),
-    "service": Decimal("0.0166"),
-}
 
 
 def previous_month(now: datetime, tz: ZoneInfo) -> tuple[datetime, datetime]:
@@ -234,28 +224,9 @@ def _generic_metrics(start: datetime, end: datetime) -> _Generic:
 
 
 def _messaging_cost(start: datetime, end: datetime) -> Decimal:
-    """Every message Meta actually billed (`billable=True`), by `sent_at`,
-    priced per `pricing_category` at `PRICE_EUR`. Meta already applies its own free
-    tiers and marks them `billable=False`, so none is computed here. A category not in
-    `PRICE_EUR` (e.g. a new one Meta adds) is priced at the highest known rate, so the
-    cost never falls short in silence, and is logged without any personal data."""
-    counts = dict(
-        OutboundMessage.objects.filter(billable=True, sent_at__gte=start, sent_at__lt=end)
-        .values("pricing_category")
-        .annotate(total=Count("id"))
-        .values_list("pricing_category", "total")
+    return costs.cost_of(
+        costs.billable_counts(OutboundMessage.objects.filter(sent_at__gte=start, sent_at__lt=end))
     )
-    highest = max(PRICE_EUR.values())
-    cost = Decimal(0)
-    for category, count in counts.items():
-        price = PRICE_EUR.get(category) if category is not None else None
-        if price is None:
-            log.warning(
-                "owner summary: unknown pricing category %r priced at the highest rate", category
-            )
-            price = highest
-        cost += price * count
-    return cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def render(blocks: Sequence[SummaryBlock], *, monthly: bool) -> str:

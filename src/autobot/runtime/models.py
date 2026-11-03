@@ -162,6 +162,7 @@ class OutboundMessage(TenantScoped):
         ]
         indexes = [
             models.Index(fields=["tenant", "created_at"], name="outbound_retention_idx"),
+            models.Index(fields=["tenant", "sent_at"], name="outbound_sent_idx"),
             models.Index(
                 fields=["tenant", "unknown_at"],
                 condition=models.Q(status="unknown"),
