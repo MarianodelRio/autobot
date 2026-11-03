@@ -32,5 +32,5 @@ state/
 *credentials*.json
 
 # Negocios reales: config y datasets solo en local, no en el repo publico.
-# Los tenants de demo (demo-*) siguen versionados: los usan los tests/CI.
+# Las plantillas de demo viven en src/packs/*/template/.
 /tenants/autocares-ss/

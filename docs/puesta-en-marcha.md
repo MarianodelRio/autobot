@@ -18,7 +18,7 @@ ids o aprobaciones.
   Calendar API habilitada y cuenta de servicio con clave JSON en `google_sa.json`
   (ignorado por git) y en el gestor de contraseñas.
 - **Calendario de la demo:** un calendario («Autobot demo»), compartido con la
-  cuenta de servicio, como `calendar_id` de `tenants/demo-peluqueria/`; después,
+  cuenta de servicio, como `calendar_id` de la plantilla `src/packs/salon/template/document.yaml`; después,
   `status: active`. Verificar: una reserva desde cualquiera de las dos puertas de la
   demo aparece una sola vez en ese calendario.
 - **Bot de avisos y chat de ops:** bot con @BotFather (`NOTIFY_BOT_TOKEN`) y un grupo

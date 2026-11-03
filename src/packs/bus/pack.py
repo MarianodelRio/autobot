@@ -8,7 +8,7 @@ from core.pack import Pack, TenantInfo
 from packs.bus import conversation, datos, summary
 from packs.bus.config import BusConfig
 
-DATASET_DIR = Path("datasets") / "timetable"  # inside tenants/<slug>/
+DATASET_DIR = Path("datasets") / "timetable"  # relative to the tenant dataset root
 
 
 def load_data(tenant: TenantInfo, config: BaseModel, path: Path) -> datos.Datos:
@@ -19,6 +19,7 @@ def load_data(tenant: TenantInfo, config: BaseModel, path: Path) -> datos.Datos:
 
 
 pack = Pack(
+    template=Path(__file__).parent / "template",
     name="bus",
     config_schema=BusConfig,
     state_version=1,

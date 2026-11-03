@@ -1,13 +1,12 @@
 """Escenario del pack `salon` sobre el negocio de demo de la plataforma
-(`tenants/demo-peluqueria/`, ADR-006). Lee el
-`tenant.yaml` real del repositorio y solo sustituye el marcador
+(`src/packs/salon/template/`, ADR-006). Lee el
+`document.yaml` real del repositorio y solo sustituye el marcador
 `PENDIENTE-calendario-de-demo` por un `calendar_id` de prueba, para probar el
 flujo completo de reserva con `FakeCalendar` sin depender de Google Calendar."""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import yaml
 
@@ -16,13 +15,13 @@ from packs.salon.config import SalonConfig
 from packs.salon.pack import pack
 from packs.salon.testing import FakeCalendar
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-TENANT_DIR = REPO_ROOT / "tenants" / "demo-peluqueria"
+assert pack.template is not None
+TENANT_DIR = pack.template
 MARTES = "2026-09-22T09:00:00+02:00"  # martes laborable, dentro de la ventana de reserva
 
 
 def _config() -> SalonConfig:
-    raw = yaml.safe_load((TENANT_DIR / "tenant.yaml").read_text())
+    raw = yaml.safe_load((TENANT_DIR / "document.yaml").read_text())
     config = raw["config"] | {"calendar_id": "test-calendar-demo-peluqueria"}
     return SalonConfig.model_validate(config)
 

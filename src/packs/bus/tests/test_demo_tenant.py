@@ -1,14 +1,13 @@
 """Escenario del pack `bus` sobre el negocio de demo de la plataforma
-(`tenants/demo-autobuses/`, ADR-006). A
+(`src/packs/bus/template/`, ADR-006). A
 diferencia de `test_escenarios.py` (que usa el dataset congelado de
-Autocares San Sebastián en `fixtures/`), este test lee el `tenant.yaml` y el
+Autocares San Sebastián en `fixtures/`), este test lee el `document.yaml` y el
 dataset reales del repositorio: cualquier cambio que invalide el negocio de
 demo lo detecta aquí."""
 
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 
 import yaml
 
@@ -18,14 +17,14 @@ from packs.bus import query
 from packs.bus.config import BusConfig
 from packs.bus.pack import DATASET_DIR, pack
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-TENANT_DIR = REPO_ROOT / "tenants" / "demo-autobuses"
+assert pack.template is not None
+TENANT_DIR = pack.template
 
 LUNES = "2026-09-21T00:00:00+02:00"  # lunes laborable, dentro de la vigencia
 
 
 def _config() -> BusConfig:
-    raw = yaml.safe_load((TENANT_DIR / "tenant.yaml").read_text())
+    raw = yaml.safe_load((TENANT_DIR / "document.yaml").read_text())
     return BusConfig.model_validate(raw["config"])
 
 

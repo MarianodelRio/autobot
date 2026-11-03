@@ -2,7 +2,9 @@
 
 **Qué es:** la plataforma, no ningún cliente, enseña Autobot con dos puertas (un bot
 de Telegram y un número de WhatsApp) y negocios de demostración normales en
-`tenants/demo-<pack>/` (`demo-peluqueria`, `demo-autobuses`). La primera respuesta de
+plantillas en `src/packs/<pack>/template/` (`demo-peluqueria`, `demo-autobuses`).
+En esta fase de transición, los tests validan estas plantillas directamente; el
+sembrado en PostgreSQL llega en T08a. La primera respuesta de
 cualquier puerta pide elegir negocio; desde ahí la conversación es la del pack real de
 ese negocio. Solo una lista cerrada de personas puede usar cada puerta (ver ADR-006).
 
@@ -12,7 +14,7 @@ ese negocio. Solo una lista cerrada de personas puede usar cada puerta (ver ADR-
 |---|---|
 | La puerta Telegram | `DEMO_TELEGRAM_TOKEN`, `DEMO_TELEGRAM_WEBHOOK_SECRET` en `.env` del servidor (vacíos = apagada) y reiniciar `web`/`worker` |
 | La puerta WhatsApp | `DEMO_WHATSAPP_PHONE_NUMBER_ID`, `_WABA_ID`, `_APP_SECRET`, `_ACCESS_TOKEN`, `_VERIFY_TOKEN` en `.env` del servidor (los cinco, o apagada) y reiniciar |
-| Un negocio de demo | `status: active` o `paused` en su `tenant.yaml` y desplegar |
+| Un negocio de demo | `status: active` o `paused` en el documento del demo (la gestión en BD llega en T08a) |
 | Quién entra en Telegram | `DEMO_TELEGRAM_USERS` (ids de Telegram separados por comas) y reiniciar |
 | Quién entra en WhatsApp | `DEMO_WHATSAPP_USERS` (teléfonos con prefijo de país o BSUID, separados por comas) y reiniciar |
 | Demo local | un túnel de ngrok hacia `web` (puerto 8000) y un webhook real, con un bot de Telegram (y, si procede, una app de WhatsApp) de desarrollo propio — ver más abajo |
@@ -69,8 +71,8 @@ Edita `DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS` en el `.env` del servidor y re
 
 El dataset de `demo-autobuses` declara una `vigencia` (ver `docs/packs/bus.md`). Cada
 verano, antes de que caduque, amplía su rango junto con el nuevo curso escolar: edita
-`tenants/demo-autobuses/datasets/timetable/calendario.yaml`, pasa `make bus-formatear`
-y `make bus-validar TENANT=demo-autobuses`, y haz commit. Este dataset no se publica
+`src/packs/bus/template/datasets/timetable/calendario.yaml` y ejecuta `make check`
+para validar la plantilla y sus escenarios, antes de hacer commit. Este dataset no se publica
 con `make bus-publicar` (no hay empresa real que revise el PDF).
 
 ## Diagnóstico

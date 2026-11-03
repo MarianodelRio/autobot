@@ -89,18 +89,17 @@ como una cifra fiable. Telegram no tiene coste por mensaje y no entra en este c�
 Cada pack nuevo trae su propio negocio de demostración, para enseñarlo por las dos
 puertas del bot de demo sin usar ningún negocio real (ver `docs/runbooks/demo.md`).
 
-1. `manage.py new_tenant demo-<pack> --pack <pack> --demo "<descripción>"` crea
-   `tenants/demo-<pack>/tenant.yaml` con `demo.description` y `status: paused` (sin
-   `channel` ni `testers`: un negocio de demo no tiene canal propio).
-2. Completar la config del pack como la de cualquier negocio, con datos inventados
-   razonables (sin credenciales ni ids reales ajenos a la persona operadora).
-3. Si el pack necesita calendario (`salon`): comparte un calendario de la persona
-   operadora con la cuenta de servicio y pon su id en `calendar_id`; las dos puertas lo
-   usan igual, no hay calendario de pruebas aparte.
-4. Escribir el escenario de conversación del pack sobre este negocio (obligatorio,
-   como el de cualquier cambio de flujo).
-5. `status: active`, commit. No requiere aprobación especial: un negocio de demo nunca
-   toca el canal real de un cliente.
+1. Crear `src/packs/<pack>/template/document.yaml` con un UUIDv7 fijo,
+   `demo.description` y `status: paused`, sin `channel` ni `testers`.
+2. Completar la config con datos ficticios y añadir los datasets necesarios en
+   `template/datasets/<nombre>/`.
+3. Declarar `Pack.template` y `Pack.template_blank`: los campos de config que deben
+   vaciarse al iniciar un negocio real. En `salon` son calendario, teléfono y nombre.
+4. Escribir el escenario de conversación sobre la plantilla y ejecutar `make check`.
+5. Hacer commit de la plantilla y sus tests. El sembrado inicial de demos en BD se
+   incorpora en T08a; después los cambios operativos se harán sobre el demo de la BD.
+   Un calendario de demo debe pertenecer a la persona operadora y estar compartido con
+   la cuenta de servicio antes de probar reservas reales.
 
 ## Baja
 

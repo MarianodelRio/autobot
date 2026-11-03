@@ -1,4 +1,4 @@
-# tenants/demo-peluqueria/tenant.yaml — negocio de demo del pack salon.
+# Pack salon template: initial demo document (ADR-009).
 # Creado con `manage.py new_tenant demo-peluqueria --pack salon --demo "..."`.
 # Usa un calendario de Google de demostración (docs/runbooks/demo.md). El chat del
 # dueño se conecta con `manage.py owner_invite demo-peluqueria`; los avisos que recibe

@@ -1,9 +1,9 @@
 """The demo bot's business selector.
 
 Two doors of the platform (Telegram, WhatsApp — the latter completed in a later step)
-let a closed list of people try any demo tenant (`tenants/demo-*/`), with its real pack
-logic. Picking a business is per door and person: the same person on Telegram and on
-WhatsApp are two independent sessions.
+let a closed list of people try any demo tenant (initialized from a pack template),
+with its real pack logic. Picking a business is per door and person: Telegram and
+WhatsApp are two independent sessions for the same person.
 
 1. `store_event` (webhook or `telegram_poll`) saves the item in `demo_event`, which has
    no RLS (the tenant is not known yet), and queues `route_demo_event` with the

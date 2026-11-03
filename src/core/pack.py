@@ -112,3 +112,7 @@ class Pack:
     health: Callable[[PackContext], list[HealthIssue]] | None = None
     templates: list[TemplateSpec] = field(default_factory=list)
     summary: SummaryHook | None = None
+    template: Path | None = None
+    """Directory containing the initial demo document and optional datasets."""
+    template_blank: tuple[str, ...] = ()
+    """Config fields cleared when the template initializes a new business."""

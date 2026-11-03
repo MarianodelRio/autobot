@@ -81,3 +81,7 @@ y despliega el SHA aprobado. Usa `tenant_health <slug>` para comprobar acceso
 Calendar y plantillas antes de activar el canal real. Los procedimientos de
 incidencia y de secretos están en `docs/runbooks/04-calendar.md` y
 `docs/runbooks/09-rotar-secretos.md`.
+
+La plantilla inicial del demo está en `src/packs/salon/template/document.yaml`.
+Al crear un negocio desde ella se vacían `calendar_id`, `contact_phone` y
+`business_name`, para que el negocio nuevo use sus propios datos y calendario.
