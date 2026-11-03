@@ -14,3 +14,8 @@ averiado después de identificarlo; si la BD está caída, no fuerces reenvíos.
 
 **Verificación:** `/health` vuelve a 200, el worker completa su latido, una consulta
 por el bot de demo termina y el backlog deja de crecer. Registra causa y duración.
+
+**Logs técnicos:** si `docker logs` no alcanza (rotan a los 100 MB), consulta
+VictoriaLogs en `http://127.0.0.1:9428` (túnel SSH, DESIGN §7.3). Su caída no afecta al
+bot: `web` y `worker` descartan los lotes que no pueden enviar y sigue respondiendo con
+normalidad.

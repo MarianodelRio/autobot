@@ -135,25 +135,26 @@ class PrivacyFilter(logging.Filter):
         return True
 
 
+def record_dict(record: logging.LogRecord) -> dict[str, Any]:
+    # Also scrub here, so direct formatter/handler use cannot bypass privacy protection.
+    PrivacyFilter().filter(record)
+    data = {
+        "ts": datetime.fromtimestamp(record.created, UTC).isoformat(),
+        "level": record.levelname,
+        "msg": record.getMessage(),
+        "service": settings.SERVICE_NAME,
+    }
+    data.update(
+        {field: getattr(record, field, "") for field in ("tenant", "channel", "event_id", "job")}
+    )
+    if record.exc_text:
+        data["exception"] = record.exc_text
+    return data
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        # Also scrub here, so direct formatter use cannot bypass privacy protection.
-        PrivacyFilter().filter(record)
-        data = {
-            "ts": datetime.fromtimestamp(record.created, UTC).isoformat(),
-            "level": record.levelname,
-            "msg": record.getMessage(),
-            "service": settings.SERVICE_NAME,
-        }
-        data.update(
-            {
-                field: getattr(record, field, "")
-                for field in ("tenant", "channel", "event_id", "job")
-            }
-        )
-        if record.exc_text:
-            data["exception"] = record.exc_text
-        return json.dumps(data, ensure_ascii=False)
+        return json.dumps(record_dict(record), ensure_ascii=False)
 
 
 def before_send(event: Any, hint: Any) -> Any:

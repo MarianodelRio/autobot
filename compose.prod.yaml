@@ -29,6 +29,7 @@ x-app-env: &app-env
   RELEASE_SHA: ${SHA:?Set the published image SHA}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   RETENTION_CLEANUP_ENABLED: ${RETENTION_CLEANUP_ENABLED:-false}
+  VICTORIALOGS_URL: http://victorialogs:9428
 
 x-app: &app
   image: ghcr.io/marianodelrio/autobot:${SHA:?Set the published image SHA}
@@ -120,5 +121,18 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0
+    command:
+      - "-storageDataPath=/vlogs"
+      - "-retentionPeriod=31d"
+      - "-memory.allowedPercent=5"
+      - "-httpListenAddr=:9428"
+    volumes:
+      - vlogs:/vlogs
+    restart: unless-stopped
+    logging: *logging
+
 volumes:
   pgdata:
+  vlogs:

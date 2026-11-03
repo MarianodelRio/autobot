@@ -66,5 +66,18 @@ services:
       timeout: 3s
       retries: 10
 
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0
+    command:
+      - "-storageDataPath=/vlogs"
+      - "-retentionPeriod=31d"
+      - "-memory.allowedPercent=5"
+      - "-httpListenAddr=:9428"
+    volumes:
+      - vlogs:/vlogs
+    ports:
+      - "127.0.0.1:9428:9428"
+
 volumes:
   pgdata:
+  vlogs:

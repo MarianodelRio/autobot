@@ -96,6 +96,9 @@ abort() {
 "${compose[@]}" up -d --wait db || abort
 "${compose[@]}" exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh || abort
 "${compose[@]}" pull web worker || abort
+# Logs are not critical: victorialogs never aborts or rolls back a deployment.
+"${compose[@]}" pull victorialogs || echo 'Could not pull victorialogs; logs will be unavailable' >&2
+"${compose[@]}" up -d victorialogs || echo 'Could not start victorialogs; logs will be unavailable' >&2
 "${compose[@]}" run --rm web python manage.py migrate --noinput || abort
 "${compose[@]}" run --rm web python manage.py apply_grants || abort
 "${compose[@]}" run --rm web python manage.py tenant_config validate --all || abort

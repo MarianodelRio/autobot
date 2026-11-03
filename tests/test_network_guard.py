@@ -35,6 +35,17 @@ def test_loopback_sockets_still_work() -> None:
         assert address[0] == "127.0.0.1"
 
 
+def test_victorialogs_handler_is_absent_without_the_variable() -> None:
+    from typing import Any
+
+    from django.conf import settings
+
+    logging_config: dict[str, Any] = settings.LOGGING
+    assert not settings.VICTORIALOGS_URL
+    assert "victorialogs" not in logging_config["handlers"]
+    assert "victorialogs" not in logging_config["root"]["handlers"]
+
+
 def test_http_mock_transport_still_works() -> None:
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}))
     with httpx.Client(transport=transport) as client:

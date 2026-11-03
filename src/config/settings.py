@@ -162,6 +162,8 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
+VICTORIALOGS_URL = os.environ.get("VICTORIALOGS_URL", "")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -175,9 +177,23 @@ LOGGING = {
             else "ext://sys.stdout",
             "formatter": "json",
             "filters": ["privacy"],
-        }
+        },
+        **(
+            {
+                "victorialogs": {
+                    "class": "autobot.ops.logship.VictoriaLogsHandler",
+                    "url": VICTORIALOGS_URL,
+                    "filters": ["privacy"],
+                }
+            }
+            if VICTORIALOGS_URL
+            else {}
+        ),
     },
-    "root": {"handlers": ["console"], "level": os.environ.get("LOG_LEVEL", "INFO")},
+    "root": {
+        "handlers": ["console", *(["victorialogs"] if VICTORIALOGS_URL else [])],
+        "level": os.environ.get("LOG_LEVEL", "INFO"),
+    },
     # httpx logs every request URL at INFO, and Telegram's carries the bot token.
     "loggers": {"httpx": {"level": "WARNING"}, "httpcore": {"level": "WARNING"}},
 }

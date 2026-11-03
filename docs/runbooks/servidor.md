@@ -74,3 +74,10 @@ despliegue y conserva su copia con los backups. `deploy/manage.sh` usa el SHA de
 `state/ops/deploys.jsonl` por cada intento (`deployed`, `already`, `aborted`,
 `rolled_back` o `rollback_failed`). `web` monta `state/ops` en solo lectura en
 `/run/ops`; `worker` no la necesita.
+
+**Logs técnicos (DESIGN §7.3):** el servicio `victorialogs` (imagen fijada, sin
+publicar puertos) recibe los logs de `web` y `worker` por `VICTORIALOGS_URL`; los
+guarda 31 días. `deploy/deploy.sh` lo actualiza en cada despliegue, pero su caída nunca
+aborta ni hace retroceder uno: el `VictoriaLogsHandler` descarta en silencio lo que no
+puede enviar. Para consultarlo desde fuera, usa el túnel SSH de operación hacia
+`127.0.0.1:9428` (ADR-008); no está expuesto públicamente.

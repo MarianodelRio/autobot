@@ -78,6 +78,15 @@ def test_unknown_environment_is_rejected() -> None:
     assert "ENVIRONMENT" in result.stderr
 
 
+def test_victorialogs_handler_only_when_configured() -> None:
+    code = (
+        "import sys; sys.path.insert(0, 'src'); import config.settings as s;"
+        "print('victorialogs' in s.LOGGING['root']['handlers'])"
+    )
+    assert run("-c", code).stdout.strip() == "False"
+    assert run("-c", code, VICTORIALOGS_URL="http://victorialogs:9428").stdout.strip() == "True"
+
+
 def test_owner_alias_only_when_configured() -> None:
     code = (
         "import sys; sys.path.insert(0, 'src'); import config.settings as s;"
