@@ -1,6 +1,82 @@
 {
   "components": {
     "schemas": {
+      "AlertBrief": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "tenant",
+          "severity",
+          "text",
+          "occurred_at",
+          "resolved"
+        ],
+        "title": "AlertBrief",
+        "type": "object"
+      },
+      "DayCount": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "inbound": {
+            "title": "Inbound",
+            "type": "integer"
+          },
+          "outbound": {
+            "title": "Outbound",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "inbound",
+          "outbound"
+        ],
+        "title": "DayCount",
+        "type": "object"
+      },
       "LoginIn": {
         "properties": {
           "otp": {
@@ -22,6 +98,427 @@
           "otp"
         ],
         "title": "LoginIn",
+        "type": "object"
+      },
+      "MetricTotal": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "pack": {
+            "title": "Pack",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pack",
+          "kind",
+          "label",
+          "total"
+        ],
+        "title": "MetricTotal",
+        "type": "object"
+      },
+      "MonthSummary": {
+        "properties": {
+          "billable": {
+            "title": "Billable",
+            "type": "integer"
+          },
+          "by_day": {
+            "items": {
+              "$ref": "#/components/schemas/DayCount"
+            },
+            "title": "By Day",
+            "type": "array"
+          },
+          "cost_eur": {
+            "title": "Cost Eur",
+            "type": "string"
+          },
+          "inbound": {
+            "title": "Inbound",
+            "type": "integer"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricTotal"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "outbound": {
+            "title": "Outbound",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "inbound",
+          "outbound",
+          "users",
+          "billable",
+          "cost_eur",
+          "by_day",
+          "metrics"
+        ],
+        "title": "MonthSummary",
+        "type": "object"
+      },
+      "Overview": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "incidents_open": {
+            "title": "Incidents Open",
+            "type": "integer"
+          },
+          "month": {
+            "$ref": "#/components/schemas/MonthSummary"
+          },
+          "recent_alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertBrief"
+            },
+            "title": "Recent Alerts",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StatusBlock"
+          },
+          "system": {
+            "$ref": "#/components/schemas/SystemBrief"
+          },
+          "tenant_rows": {
+            "items": {
+              "$ref": "#/components/schemas/TenantRow"
+            },
+            "title": "Tenant Rows",
+            "type": "array"
+          },
+          "tenants": {
+            "$ref": "#/components/schemas/TenantCounts"
+          }
+        },
+        "required": [
+          "generated_at",
+          "status",
+          "tenants",
+          "month",
+          "tenant_rows",
+          "incidents_open",
+          "system",
+          "recent_alerts"
+        ],
+        "title": "Overview",
+        "type": "object"
+      },
+      "ProblemBrief": {
+        "properties": {
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "tenant",
+          "link"
+        ],
+        "title": "ProblemBrief",
+        "type": "object"
+      },
+      "StatusBlock": {
+        "properties": {
+          "level": {
+            "enum": [
+              "ok",
+              "warning",
+              "critical"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemBrief"
+            },
+            "title": "Problems",
+            "type": "array"
+          }
+        },
+        "required": [
+          "level",
+          "problems"
+        ],
+        "title": "StatusBlock",
+        "type": "object"
+      },
+      "SystemBrief": {
+        "properties": {
+          "backup_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Ok"
+          },
+          "cpu_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Pct"
+          },
+          "deployed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployed At"
+          },
+          "disk_used_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disk Used Pct"
+          },
+          "last_backup_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Backup At"
+          },
+          "mem_used_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mem Used Pct"
+          },
+          "release": {
+            "title": "Release",
+            "type": "string"
+          },
+          "tls_days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tls Days Left"
+          }
+        },
+        "required": [
+          "cpu_pct",
+          "mem_used_pct",
+          "disk_used_pct",
+          "last_backup_at",
+          "backup_ok",
+          "tls_days_left",
+          "release",
+          "deployed_at"
+        ],
+        "title": "SystemBrief",
+        "type": "object"
+      },
+      "TenantCounts": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "integer"
+          },
+          "demos": {
+            "title": "Demos",
+            "type": "integer"
+          },
+          "onboarding": {
+            "title": "Onboarding",
+            "type": "integer"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active",
+          "onboarding",
+          "paused",
+          "demos",
+          "total"
+        ],
+        "title": "TenantCounts",
+        "type": "object"
+      },
+      "TenantRow": {
+        "properties": {
+          "channel": {
+            "enum": [
+              "whatsapp",
+              "telegram",
+              "demo"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "cost_eur_month": {
+            "title": "Cost Eur Month",
+            "type": "string"
+          },
+          "health": {
+            "title": "Health",
+            "type": "string"
+          },
+          "health_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Checked At"
+          },
+          "health_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Health Reasons",
+            "type": "array"
+          },
+          "inbound_month": {
+            "title": "Inbound Month",
+            "type": "integer"
+          },
+          "last_activity_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Activity At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outbound_month": {
+            "title": "Outbound Month",
+            "type": "integer"
+          },
+          "pack": {
+            "title": "Pack",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "pack",
+          "channel",
+          "status",
+          "health",
+          "health_reasons",
+          "health_checked_at",
+          "inbound_month",
+          "outbound_month",
+          "cost_eur_month",
+          "last_activity_at"
+        ],
+        "title": "TenantRow",
         "type": "object"
       }
     },
@@ -127,6 +624,33 @@
         "summary": "Me",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/overview": {
+      "get": {
+        "operationId": "autobot_panel_routers_overview_overview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Overview",
+        "tags": [
+          "overview"
         ]
       }
     }

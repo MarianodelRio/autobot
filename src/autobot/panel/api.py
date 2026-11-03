@@ -10,12 +10,14 @@ from ninja.errors import ValidationError as NinjaValidationError
 from autobot.panel.auth import PanelAuth
 from autobot.panel.auth import router as auth_router
 from autobot.panel.errors import CODE_STATUS, ApiError
+from autobot.panel.routers.overview import router as overview_router
 from autobot.tenancy.store import StoreError
 
 api = NinjaAPI(
     title="Autobot panel", version="1", urls_namespace="panel", auth=PanelAuth(), docs_url=None
 )
 api.add_router("/auth", auth_router)
+api.add_router("", overview_router)
 
 
 @api.exception_handler(ApiError)
