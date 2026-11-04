@@ -40,10 +40,13 @@ def script(tmp_path: Path) -> Path:
 
 
 def run(script: Path, **environment: str) -> subprocess.CompletedProcess[str]:
+    # CI's own job env already sets the DB_*_URL (and FP_*_PASSWORD) that make
+    # check needs; strip them so the script sees a clean slate like a real .env.
+    base = {k: v for k, v in os.environ.items() if k not in GENERATED_NAMES | set(EXTERNALS)}
     return subprocess.run(
         ["bash", str(script)],
         cwd=script.parent.parent,
-        env={**os.environ, **environment},
+        env={**base, **environment},
         capture_output=True,
         text=True,
         check=False,
