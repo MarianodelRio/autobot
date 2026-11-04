@@ -29,7 +29,10 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
 | `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
 | `make check-prod-config` | Ejecuta `tools/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
-| `make api` | Regenera `panel/openapi.json` a partir del esquema vigente de la API del panel |
+| `make api` | Regenera `panel/openapi.json` (esquema de la API del panel) y `panel/src/api/schema.d.ts` (tipos TypeScript) |
+| `make fix` | `ruff check --fix` y `ruff format` en el backend, `biome check --write` en `panel/`, y `make api` |
+| `make panel-dev` | `pnpm -C panel dev`: Vite en modo desarrollo, con proxy `/api` hacia el backend local |
+| `make panel-check` | Puerta de calidad del frontend: `biome check`, `tsc -b --noEmit`, `vitest run` y el build de producción |
 | `make deploy [SHA=]` | Lanza el workflow de despliegue en GitHub Actions |
 | `make backup-now` | Ejecuta `deploy/backup.sh` en el servidor por SSH |
 | `make restore-test` | `bash deploy/restore-test.sh`: simulacro de restauración |

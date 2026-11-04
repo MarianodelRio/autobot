@@ -106,3 +106,21 @@ Las acciones de producción se ejecutan con `make prod-manage HOST=<servidor> CM
 transfiere el documento y los datasets de la BD local por SSH; `SECRETS=<yaml-privado>`
 añade solo los secretos del slug seleccionado al tar temporal. Los exports ordinarios
 no incluyen secretos. Nunca se versionan `tenants/` ni `datos/`.
+
+## Panel
+
+Frontend en `panel/` (React, TypeScript, Vite, Biome, Vitest), en construcción según
+[docs/panel/DESIGN.md](docs/panel/DESIGN.md) y
+[docs/panel/IMPLEMENTATION.md](docs/panel/IMPLEMENTATION.md). Requiere Node 24 y pnpm
+(`corepack enable`, que lee la versión fijada en `panel/package.json`).
+
+```bash
+pnpm -C panel install
+make panel-dev           # Vite en modo desarrollo, proxy /api hacia el backend local
+make panel-check         # Biome, tsc --noEmit, Vitest y el build de producción
+```
+
+`make api` regenera `panel/openapi.json` (desde el backend) y `panel/src/api/schema.d.ts`
+(con `openapi-typescript`); `make fix` aplica `ruff`/`biome --write` y deja ambos al día.
+Hasta que exista el contenedor `panel` (T24), no hay interfaz web servida en local ni en
+producción.

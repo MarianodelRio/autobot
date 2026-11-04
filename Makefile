@@ -3,14 +3,29 @@ NGROK_DOMAIN ?= unpermanently-repairable-devon.ngrok-free.dev
 
 .PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
 .PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test
-.PHONY: db-roles api
+.PHONY: db-roles api fix panel-dev panel-check
 
 check-prod-config:
 	uv run python tools/check_prod_config.py
 
-# For now just the OpenAPI schema; T23a adds the generated TypeScript types.
 api:
 	uv run python manage.py export_openapi panel/openapi.json
+	pnpm -C panel gen:api
+
+fix:
+	uv run ruff check --fix .
+	uv run ruff format .
+	pnpm -C panel fix
+	$(MAKE) api
+
+panel-dev:
+	pnpm -C panel dev
+
+panel-check:
+	pnpm -C panel check
+	pnpm -C panel typecheck
+	pnpm -C panel test
+	pnpm -C panel build
 
 deploy:
 	gh workflow run deploy.yml -f sha="$(SHA)"

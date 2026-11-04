@@ -91,8 +91,29 @@ jobs:
           uv export --locked --all-groups --no-emit-project --format requirements.txt -o "$RUNNER_TEMP/requirements.txt"
           uvx pip-audit==2.10.1 --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt"
 
+  panel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: panel/pnpm-lock.yaml
+      - run: pnpm -C panel install --frozen-lockfile
+      - name: Generated API types are committed
+        run: |
+          pnpm -C panel gen:api
+          git diff --exit-code panel/src/api/schema.d.ts
+      - run: pnpm -C panel check
+      - run: pnpm -C panel typecheck
+      - run: pnpm -C panel test
+      - run: pnpm -C panel build
+
   image:
-    needs: check
+    needs: [check, panel]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
