@@ -182,5 +182,7 @@ def send_ops_alert(
 
 def resolve_alert(alert: OpsAlert, *, by: str) -> None:
     """Resolve and clear the cooldown, so a problem that returns is reported at once."""
-    OpsAlert.objects.filter(id=alert.id).update(resolved_at=timezone.now(), resolved_by=by)
+    OpsAlert.objects.using(alert._state.db or "default").filter(id=alert.id).update(
+        resolved_at=timezone.now(), resolved_by=by
+    )
     cache.delete(_cooldown_key(alert.kind, alert.tenant_id))
