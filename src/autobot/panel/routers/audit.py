@@ -9,13 +9,31 @@ from uuid import UUID
 from django.db.models import Q
 from django.http import HttpRequest
 from django.utils.dateparse import parse_datetime
-from ninja import Router
+from ninja import Router, Schema
 
 from autobot.ops.models import AuditEvent
 from autobot.panel.errors import ApiError
 from autobot.tenancy.models import Tenant
 
 router = Router(tags=["audit"])
+
+
+class AuditEventOut(Schema):
+    id: str
+    at: datetime
+    actor: str
+    action: str
+    tenant_id: UUID | None
+    tenant: str | None
+    target_type: str
+    target_id: str
+    summary: str
+    details: Any
+
+
+class AuditPage(Schema):
+    items: list[AuditEventOut]
+    next_cursor: str | None
 
 
 def position(cursor: str, *, numeric: bool = False) -> tuple[datetime, Any]:
@@ -49,7 +67,7 @@ def page(
     return items, next_cursor
 
 
-@router.get("/audit")
+@router.get("/audit", response=AuditPage)
 def audit(
     request: HttpRequest, tenant: str = "", action: str = "", cursor: str = "", limit: int = 50
 ) -> dict[str, Any]:
@@ -60,6 +78,7 @@ def audit(
     if action:
         qs = qs.filter(action=action)
     rows, next_cursor = page(qs, field="at", cursor=cursor, limit=limit)
+    slugs = {str(id): slug for id, slug in Tenant.objects.using("owner").values_list("id", "slug")}
     return {
         "items": [
             dict(
@@ -68,6 +87,7 @@ def audit(
                 actor=r.actor,
                 action=r.action,
                 tenant_id=r.tenant_id,
+                tenant=slugs.get(str(r.tenant_id)) if r.tenant_id else None,
                 target_type=r.target_type,
                 target_id=r.target_id,
                 summary=r.summary,

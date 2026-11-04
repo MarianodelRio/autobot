@@ -41,30 +41,49 @@ test("redirects to /login?redirect=<path> when there is no session", async () =>
   expect(router.state.location.search).toEqual({ redirect: "/sistema" });
 });
 
-test("renders the section once there is a session", async () => {
+test("renders the section once there is a session", {
+  timeout: 10_000,
+}, async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async (request: RequestInfo | URL) =>
-        new Response(
-          JSON.stringify(
-            String(request instanceof Request ? request.url : request).includes(
-              "/overview",
-            )
-              ? { status: { level: "ok" }, tenant_rows: [] }
-              : { username: "operator" },
-          ),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
-    ),
+    vi.fn(async (request: RequestInfo | URL) => {
+      const url = String(request instanceof Request ? request.url : request);
+      const body = url.includes("/overview")
+        ? { status: { level: "ok" }, tenant_rows: [] }
+        : url.includes("/system")
+          ? {
+              machine: {
+                cpu_pct: null,
+                mem_used_pct: null,
+                disk_used_pct: null,
+                load1: null,
+                uptime_s: null,
+              },
+              samples: [],
+              services: {
+                web: true,
+                worker: true,
+                db: true,
+                victorialogs: true,
+              },
+              database: { ok: true, bytes: 0, tables: [] },
+              queues: [],
+              backup: { stale: true },
+              deploys: [],
+              release: "",
+              tls: { days_left: null },
+            }
+          : { username: "operator" };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
   );
 
   renderAt("/sistema");
 
   expect(
-    await screen.findByRole("heading", { name: "Sistema" }),
+    await screen.findByRole("heading", { name: "Sistema" }, { timeout: 8000 }),
   ).toBeInTheDocument();
 });

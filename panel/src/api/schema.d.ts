@@ -797,6 +797,39 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** AuditEventOut */
+        AuditEventOut: {
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Details */
+            details: unknown;
+            /** Id */
+            id: string;
+            /** Summary */
+            summary: string;
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+            /** Tenant */
+            tenant: string | null;
+            /** Tenant Id */
+            tenant_id: string | null;
+        };
+        /** AuditPage */
+        AuditPage: {
+            /** Items */
+            items: components["schemas"]["AuditEventOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** ChecklistItemOut */
         ChecklistItemOut: {
             /** Blocking */
@@ -1752,7 +1785,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
+                };
             };
         };
     };
