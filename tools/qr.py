@@ -1,7 +1,6 @@
 """Generate a tenant's public channel QR locally, without loading channel secrets."""
 
 import argparse
-import re
 from pathlib import Path
 
 import qrcode  # type: ignore[import-untyped]
@@ -9,26 +8,12 @@ import qrcode.image.svg  # type: ignore[import-untyped]
 import yaml
 from pydantic import ValidationError
 
-from autobot.tenancy.schema import Channel, TenantDocument
+from autobot.tenancy.links import channel_link
+from autobot.tenancy.schema import TenantDocument
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-
-def channel_link(channel: Channel) -> str:
-    """Use the public phone, never Meta's phone_number_id, or the business bot name."""
-    if channel.type == "telegram":
-        if not channel.bot_username:
-            raise ValueError("Falta channel.bot_username para generar el QR de Telegram.")
-        return f"https://t.me/{channel.bot_username}"
-    phone = channel.display_phone or ""
-    if not re.fullmatch(r"\+?[0-9 ()\-.]+", phone):
-        raise ValueError("Configura channel.display_phone con el número internacional del negocio.")
-    digits = re.sub(r"[^0-9]", "", phone)
-    if not re.fullmatch(r"[1-9][0-9]{6,14}", digits):
-        raise ValueError(
-            "channel.display_phone debe incluir el prefijo internacional (7–15 cifras)."
-        )
-    return f"https://wa.me/{digits}"
+__all__ = ["channel_link", "generate", "main", "tenant_link_from_file"]
 
 
 def _document(path: Path) -> TenantDocument:

@@ -23,15 +23,30 @@ class Strict(BaseModel):
 
 
 class WhatsAppChannel(Strict):
-    type: Literal["whatsapp"]
-    public_id: str = Field(pattern=PUBLIC_ID)
+    type: Literal["whatsapp"] = Field(title="Tipo de canal")
+    public_id: str = Field(
+        pattern=PUBLIC_ID, title="Identificador público", description="Parte de la URL del webhook."
+    )
     # Meta ids may be missing while the number is being set up: the main channel stays
     # disabled until they are all there.
-    app_id: str | None = Field(default=None, pattern=META_ID)
-    waba_id: str | None = Field(default=None, pattern=META_ID)
-    phone_number_id: str | None = Field(default=None, pattern=META_ID)
-    display_phone: str | None = None
-    monthly_alert_threshold: int = Field(default=2000, gt=0)
+    app_id: str | None = Field(default=None, pattern=META_ID, title="Id de la app de Meta")
+    waba_id: str | None = Field(
+        default=None, pattern=META_ID, title="Id de la cuenta de WhatsApp Business"
+    )
+    phone_number_id: str | None = Field(
+        default=None, pattern=META_ID, title="Id del número de teléfono (Meta)"
+    )
+    display_phone: str | None = Field(
+        default=None,
+        title="Teléfono público",
+        description="Número internacional mostrado en el enlace y el QR (wa.me/<número>).",
+    )
+    monthly_alert_threshold: int = Field(
+        default=2000,
+        gt=0,
+        title="Umbral de aviso mensual",
+        description="Mensajes facturables al mes a partir del cual se avisa.",
+    )
 
     @property
     def complete(self) -> bool:
@@ -39,9 +54,16 @@ class WhatsAppChannel(Strict):
 
 
 class TelegramChannel(Strict):
-    type: Literal["telegram"]
-    public_id: str = Field(pattern=PUBLIC_ID)
-    bot_username: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_]{5,32}$")
+    type: Literal["telegram"] = Field(title="Tipo de canal")
+    public_id: str = Field(
+        pattern=PUBLIC_ID, title="Identificador público", description="Parte de la URL del webhook."
+    )
+    bot_username: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9_]{5,32}$",
+        title="Usuario del bot",
+        description="Sin la @; forma el enlace público (t.me/<usuario>).",
+    )
 
     @property
     def complete(self) -> bool:
@@ -52,7 +74,11 @@ Channel = Annotated[WhatsAppChannel | TelegramChannel, Field(discriminator="type
 
 
 class Testers(Strict):
-    main: list[str] = []  # in onboarding, the only ids answered on the main channel
+    main: list[str] = Field(
+        default=[],
+        title="Testers del canal principal",
+        description="Los únicos ids que pueden escribir por el canal principal durante el alta.",
+    )
 
     @field_validator("main", mode="before")
     @classmethod
@@ -62,30 +88,39 @@ class Testers(Strict):
 
 
 class Owner(Strict):
-    notify: list[str] = []
-    summary_monthly: bool = False
+    notify: list[str] = Field(
+        default=[],
+        title="Avisos al dueño",
+        description="Tipos de aviso que recibe por su chat enlazado (p. ej. una cita nueva).",
+    )
+    summary_monthly: bool = Field(default=False, title="Resumen mensual automático")
 
 
 class DemoInfo(Strict):
     # Shown under the business name in the demo selector; 72 is WhatsApp's row
     # description limit.
-    description: str = Field(min_length=1, max_length=72)
+    description: str = Field(
+        min_length=1,
+        max_length=72,
+        title="Descripción en el selector de demos",
+        description="Se muestra bajo el nombre del negocio al elegir la demo.",
+    )
 
 
 class TenantDocument(Strict):
     """The common tenant document; `config` is checked later by the pack."""
 
-    id: UUID
-    slug: str = Field(pattern=SLUG, max_length=64)
-    name: str = Field(min_length=1, max_length=200)
-    status: Status
-    timezone: str
-    pack: str
-    channel: Channel | None = None
-    testers: Testers = Testers()
-    owner: Owner | None = None
-    demo: DemoInfo | None = None
-    config: dict[str, Any] = {}
+    id: UUID = Field(title="Identificador")
+    slug: str = Field(pattern=SLUG, max_length=64, title="Slug")
+    name: str = Field(min_length=1, max_length=200, title="Nombre del negocio")
+    status: Status = Field(title="Estado")
+    timezone: str = Field(title="Zona horaria", description="Nombre IANA, p. ej. Europe/Madrid.")
+    pack: str = Field(title="Pack")
+    channel: Channel | None = Field(default=None, title="Canal")
+    testers: Testers = Field(default=Testers(), title="Testers")
+    owner: Owner | None = Field(default=None, title="Dueño")
+    demo: DemoInfo | None = Field(default=None, title="Demo")
+    config: dict[str, Any] = Field(default={}, title="Configuración del pack")
 
     @field_validator("id")
     @classmethod

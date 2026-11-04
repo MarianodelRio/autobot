@@ -62,22 +62,48 @@ class SpecialEvent(BaseModel):
 
 
 class SalonConfig(BaseModel):
-    business_name: str = Field(min_length=1)
-    contact_phone: str = Field(min_length=1)
-    calendar_id: str = Field(min_length=1)
-    services: dict[str, Service] = Field(min_length=1, max_length=9)
-    opening_hours: dict[Weekday, list[TimeRange]] = Field(min_length=1)
-    slot_step_min: int = Field(default=30, gt=0, strict=True)
-    min_notice_min: int = Field(default=0, ge=0, strict=True)
-    booking_window_days: int = Field(default=21, ge=1, strict=True)
-    max_active_bookings: int = Field(default=5, ge=1, strict=True)
-    reminders_enabled: bool = False
-    reminder_window_hours: tuple[int, int] = (23, 25)
-    manual_confirmations_enabled: bool = False
-    manual_confirmations_since: datetime | None = None
-    special_event: SpecialEvent = SpecialEvent()
-    info_text: str = Field(default="", max_length=4096)
-    texts: SalonTexts = SalonTexts()
+    business_name: str = Field(min_length=1, title="Nombre del negocio")
+    contact_phone: str = Field(
+        min_length=1, title="Teléfono de contacto", description="Para los mensajes del bot."
+    )
+    calendar_id: str = Field(
+        min_length=1,
+        title="Calendario de Google",
+        description="Id del calendario de Google Calendar usado para las reservas.",
+    )
+    services: dict[str, Service] = Field(
+        min_length=1,
+        max_length=9,
+        title="Servicios",
+        description="Hasta 9; la clave es el id interno.",
+    )
+    opening_hours: dict[Weekday, list[TimeRange]] = Field(min_length=1, title="Horario de apertura")
+    slot_step_min: int = Field(default=30, gt=0, strict=True, title="Paso de los huecos (min)")
+    min_notice_min: int = Field(default=0, ge=0, strict=True, title="Antelación mínima (min)")
+    booking_window_days: int = Field(
+        default=21, ge=1, strict=True, title="Ventana de reserva (días)"
+    )
+    max_active_bookings: int = Field(
+        default=5, ge=1, strict=True, title="Citas activas máximas por cliente"
+    )
+    reminders_enabled: bool = Field(default=False, title="Recordatorios activados")
+    reminder_window_hours: tuple[int, int] = Field(
+        default=(23, 25), title="Ventana de recordatorio (horas antes)"
+    )
+    manual_confirmations_enabled: bool = Field(default=False, title="Confirmación manual activada")
+    manual_confirmations_since: datetime | None = Field(
+        default=None,
+        title="Confirmación manual desde",
+        description="Fecha a partir de la cual las citas nuevas exigen confirmación manual.",
+    )
+    special_event: SpecialEvent = Field(default=SpecialEvent(), title="Evento especial")
+    info_text: str = Field(
+        default="",
+        max_length=4096,
+        title="Texto informativo",
+        description="Se muestra al pedir información general del negocio.",
+    )
+    texts: SalonTexts = Field(default=SalonTexts(), title="Textos del bot")
 
     @field_validator("business_name", "contact_phone", "calendar_id")
     @classmethod

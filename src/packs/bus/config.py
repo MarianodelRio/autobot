@@ -45,12 +45,26 @@ class OfficeHours(BaseModel):
 
 
 class BusConfig(BaseModel):
-    business_name: str = Field(min_length=1)
-    contact_phone: str = Field(min_length=1)
-    office_hours: list[OfficeHours] = []
-    links: dict[Literal["web", "compra_online", "bonos", "pdf_horarios"], HttpUrl] = {}
-    start_menu_towns: list[str] = Field(min_length=1, max_length=8)  # dataset town names
-    next_day_search_days: int = Field(default=45, ge=1)
+    business_name: str = Field(min_length=1, title="Nombre del negocio")
+    contact_phone: str = Field(
+        min_length=1, title="Teléfono de contacto", description="Para los mensajes del bot."
+    )
+    office_hours: list[OfficeHours] = Field(default=[], title="Horario de oficina")
+    links: dict[Literal["web", "compra_online", "bonos", "pdf_horarios"], HttpUrl] = Field(
+        default={}, title="Enlaces", description="Web, compra online, bonos y PDF de horarios."
+    )
+    start_menu_towns: list[str] = Field(
+        min_length=1,
+        max_length=8,
+        title="Localidades del menú inicial",
+        description="Hasta 8; deben existir en el dataset de horarios.",
+    )
+    next_day_search_days: int = Field(
+        default=45,
+        ge=1,
+        title="Días de búsqueda hacia delante",
+        description="Cuántos días se buscan al pedir «el próximo bus».",
+    )
 
     @model_validator(mode="after")
     def _day_in_one_block(self) -> BusConfig:

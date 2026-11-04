@@ -53,6 +53,78 @@
         "title": "AlertBrief",
         "type": "object"
       },
+      "ChecklistItemOut": {
+        "properties": {
+          "blocking": {
+            "title": "Blocking",
+            "type": "boolean"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "ok",
+          "blocking",
+          "detail"
+        ],
+        "title": "ChecklistItemOut",
+        "type": "object"
+      },
+      "DatasetVersionOut": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "sha256",
+          "author",
+          "comment",
+          "created_at"
+        ],
+        "title": "DatasetVersionOut",
+        "type": "object"
+      },
       "DayCount": {
         "properties": {
           "date": {
@@ -75,6 +147,29 @@
           "outbound"
         ],
         "title": "DayCount",
+        "type": "object"
+      },
+      "HealthIssueOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "title": "HealthIssueOut",
         "type": "object"
       },
       "LoginIn": {
@@ -126,6 +221,34 @@
           "total"
         ],
         "title": "MetricTotal",
+        "type": "object"
+      },
+      "MonthKpis": {
+        "properties": {
+          "cost_eur": {
+            "title": "Cost Eur",
+            "type": "string"
+          },
+          "inbound": {
+            "title": "Inbound",
+            "type": "integer"
+          },
+          "outbound": {
+            "title": "Outbound",
+            "type": "integer"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "inbound",
+          "outbound",
+          "users",
+          "cost_eur"
+        ],
+        "title": "MonthKpis",
         "type": "object"
       },
       "MonthSummary": {
@@ -183,6 +306,48 @@
         "title": "MonthSummary",
         "type": "object"
       },
+      "NotificationOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text",
+          "status",
+          "created_at",
+          "sent_at"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
       "Overview": {
         "properties": {
           "generated_at": {
@@ -234,6 +399,70 @@
         "title": "Overview",
         "type": "object"
       },
+      "PackOut": {
+        "properties": {
+          "has_datasets": {
+            "title": "Has Datasets",
+            "type": "boolean"
+          },
+          "has_template": {
+            "title": "Has Template",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "has_datasets",
+          "has_template"
+        ],
+        "title": "PackOut",
+        "type": "object"
+      },
+      "PackSchemaOut": {
+        "properties": {
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "ui_schema": {
+            "additionalProperties": true,
+            "title": "Ui Schema",
+            "type": "object"
+          }
+        },
+        "required": [
+          "document",
+          "ui_schema"
+        ],
+        "title": "PackSchemaOut",
+        "type": "object"
+      },
+      "PackTemplateOut": {
+        "properties": {
+          "config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "title": "PackTemplateOut",
+        "type": "object"
+      },
       "ProblemBrief": {
         "properties": {
           "link": {
@@ -271,6 +500,79 @@
         "title": "ProblemBrief",
         "type": "object"
       },
+      "SecretField": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "set": {
+            "title": "Set",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "set"
+        ],
+        "title": "SecretField",
+        "type": "object"
+      },
+      "SecretsStatus": {
+        "properties": {
+          "channel_type": {
+            "enum": [
+              "whatsapp",
+              "telegram"
+            ],
+            "title": "Channel Type",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/SecretField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "readable": {
+            "title": "Readable",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "required": [
+          "channel_type",
+          "readable",
+          "updated_at",
+          "updated_by",
+          "fields"
+        ],
+        "title": "SecretsStatus",
+        "type": "object"
+      },
       "StatusBlock": {
         "properties": {
           "level": {
@@ -295,6 +597,98 @@
           "problems"
         ],
         "title": "StatusBlock",
+        "type": "object"
+      },
+      "SummaryLineOut": {
+        "properties": {
+          "icon": {
+            "title": "Icon",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "eur"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "icon",
+          "label",
+          "value",
+          "unit",
+          "note"
+        ],
+        "title": "SummaryLineOut",
+        "type": "object"
+      },
+      "SummaryOut": {
+        "properties": {
+          "cost_eur": {
+            "title": "Cost Eur",
+            "type": "string"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          },
+          "pack_failed": {
+            "title": "Pack Failed",
+            "type": "boolean"
+          },
+          "pack_lines": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryLineOut"
+            },
+            "title": "Pack Lines",
+            "type": "array"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "users": {
+            "title": "Users",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "pack_lines",
+          "pack_failed",
+          "users",
+          "messages",
+          "cost_eur"
+        ],
+        "title": "SummaryOut",
         "type": "object"
       },
       "SystemBrief": {
@@ -429,6 +823,153 @@
         "title": "TenantCounts",
         "type": "object"
       },
+      "TenantDetail": {
+        "properties": {
+          "ambiguous": {
+            "title": "Ambiguous",
+            "type": "boolean"
+          },
+          "channel_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "whatsapp",
+                  "telegram"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Type"
+          },
+          "degraded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Degraded",
+            "type": "array"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "health": {
+            "title": "Health",
+            "type": "string"
+          },
+          "health_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Checked At"
+          },
+          "health_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Health Reasons",
+            "type": "array"
+          },
+          "main_disabled": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Main Disabled",
+            "type": "array"
+          },
+          "month": {
+            "$ref": "#/components/schemas/MonthKpis"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_linked": {
+            "title": "Owner Linked",
+            "type": "boolean"
+          },
+          "pack": {
+            "title": "Pack",
+            "type": "string"
+          },
+          "public_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Link"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "webhook_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Url"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "pack",
+          "status",
+          "timezone",
+          "document",
+          "version",
+          "degraded",
+          "ambiguous",
+          "main_disabled",
+          "health",
+          "health_reasons",
+          "health_checked_at",
+          "channel_type",
+          "webhook_url",
+          "public_link",
+          "owner_linked",
+          "month"
+        ],
+        "title": "TenantDetail",
+        "type": "object"
+      },
       "TenantRow": {
         "properties": {
           "channel": {
@@ -519,6 +1060,70 @@
           "last_activity_at"
         ],
         "title": "TenantRow",
+        "type": "object"
+      },
+      "VersionDetail": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "author",
+          "comment",
+          "created_at",
+          "document"
+        ],
+        "title": "VersionDetail",
+        "type": "object"
+      },
+      "VersionSummary": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "author",
+          "comment",
+          "created_at"
+        ],
+        "title": "VersionSummary",
         "type": "object"
       }
     },
@@ -651,6 +1256,504 @@
         "summary": "Overview",
         "tags": [
           "overview"
+        ]
+      }
+    },
+    "/packs": {
+      "get": {
+        "operationId": "autobot_panel_routers_packs_packs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PackOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Packs",
+        "tags": [
+          "packs"
+        ]
+      }
+    },
+    "/packs/{pack}/schema": {
+      "get": {
+        "operationId": "autobot_panel_routers_packs_pack_schema",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack",
+            "required": true,
+            "schema": {
+              "title": "Pack",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackSchemaOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Pack Schema",
+        "tags": [
+          "packs"
+        ]
+      }
+    },
+    "/packs/{pack}/template": {
+      "get": {
+        "operationId": "autobot_panel_routers_packs_pack_template",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack",
+            "required": true,
+            "schema": {
+              "title": "Pack",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackTemplateOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Pack Template",
+        "tags": [
+          "packs"
+        ]
+      }
+    },
+    "/tenants": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_list_tenants",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TenantRow"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "List Tenants",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantDetail"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Detail",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/activation-checklist": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_checklist",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChecklistItemOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Checklist",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/datasets": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_datasets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DatasetVersionOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Datasets",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/health-check": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_tenant_health_check",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HealthIssueOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Health Check",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/notifications": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_notifications",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Notifications",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/secrets": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_secrets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretsStatus"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Secrets",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/summary": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_summary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Summary",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/versions": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_versions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VersionSummary"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Versions",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/versions/{version}": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_version",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDetail"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Version",
+        "tags": [
+          "tenants"
         ]
       }
     }
