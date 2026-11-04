@@ -14,6 +14,13 @@ sección tenga la suya, muestra "Próximamente". Los comandos de `manage.py`
 Ambos comandos llaman a `autobot.ops.actions`, que comprueba la elegibilidad bajo
 bloqueo y audita el cambio (`audit_event`) en la misma transacción.
 
+## Resumen
+
+La pantalla inicial muestra el estado global, los indicadores y mensajes del mes,
+las métricas por pack, los clientes, el sistema y las últimas alertas. Se actualiza
+cada 30 segundos; el indicador de la barra superior usa el mismo estado. El buscador
+incluye clientes. Los enlaces a sus fichas estarán disponibles al implementar T26.
+
 ## Alta del operador
 
 Un solo rol: usuario de Django (`is_staff=True`) con un dispositivo TOTP confirmado.

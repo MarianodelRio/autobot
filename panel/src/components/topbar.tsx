@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Search } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useOverview } from "@/features/overview/use-overview";
 import { AUDIT_SECTION, NAV_SECTIONS } from "./nav-sections";
 
 export function Topbar({
@@ -8,6 +9,14 @@ export function Topbar({
 }: {
   onOpenCommandMenu: () => void;
 }) {
+  const { data, isError } = useOverview();
+  const level = isError ? "unknown" : (data?.status.level ?? "unknown");
+  const colors = {
+    ok: "bg-status-ok",
+    warning: "bg-status-warning",
+    critical: "bg-status-critical",
+    unknown: "bg-status-unknown",
+  };
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -33,9 +42,8 @@ export function Topbar({
           <span>Buscar</span>
           <kbd className="font-mono text-xs">⌘K</kbd>
         </button>
-        {/* Gray until T25 wires GET overview's status.level. */}
-        <Link to="/incidencias" aria-label="Estado global: desconocido">
-          <span className="size-2.5 rounded-full bg-status-unknown" />
+        <Link to="/incidencias" aria-label={`Estado global: ${level}`}>
+          <span className={`block size-2.5 rounded-full ${colors[level]}`} />
         </Link>
       </div>
     </header>

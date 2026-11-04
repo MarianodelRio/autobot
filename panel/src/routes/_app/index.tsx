@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ComingSoonPage } from "@/components/coming-soon";
+import { OverviewPage } from "@/features/overview/overview-page";
 
-export const Route = createFileRoute("/_app/")({
-  component: () => <ComingSoonPage title="Resumen" />,
-});
+export const Route = createFileRoute("/_app/")({ component: OverviewPage });

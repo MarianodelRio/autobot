@@ -45,11 +45,20 @@ test("renders the section once there is a session", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(
-      async () =>
-        new Response(JSON.stringify({ username: "operator" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
+      async (request: RequestInfo | URL) =>
+        new Response(
+          JSON.stringify(
+            String(request instanceof Request ? request.url : request).includes(
+              "/overview",
+            )
+              ? { status: { level: "ok" }, tenant_rows: [] }
+              : { username: "operator" },
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
     ),
   );
 

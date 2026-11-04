@@ -8,6 +8,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { useOverview } from "@/features/overview/use-overview";
 import { AUDIT_SECTION, NAV_SECTIONS } from "./nav-sections";
 
 export function CommandMenu({
@@ -18,6 +19,7 @@ export function CommandMenu({
   onOpenChange: (open: boolean) => void;
 }) {
   const navigate = useNavigate();
+  const { data } = useOverview();
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -53,6 +55,21 @@ export function CommandMenu({
             </CommandItem>
           ))}
         </CommandGroup>
+        {data && data.tenant_rows.length > 0 && (
+          <CommandGroup heading="Clientes">
+            {data.tenant_rows.map((tenant) => (
+              <CommandItem
+                key={tenant.slug}
+                value={`${tenant.name} ${tenant.slug}`}
+                onSelect={() =>
+                  go(`/clientes/${encodeURIComponent(tenant.slug)}`)
+                }
+              >
+                {tenant.name}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
       </CommandList>
     </CommandDialog>
   );
