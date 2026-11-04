@@ -201,6 +201,24 @@
         "title": "ChecklistItemOut",
         "type": "object"
       },
+      "ColumnOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "ColumnOut",
+        "type": "object"
+      },
       "Confirmation": {
         "properties": {
           "confirm_duplicate_risk": {
@@ -985,6 +1003,61 @@
           "link"
         ],
         "title": "ProblemBrief",
+        "type": "object"
+      },
+      "QueryIn": {
+        "properties": {
+          "sql": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Sql",
+            "type": "string"
+          },
+          "tenant": {
+            "default": "",
+            "title": "Tenant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "title": "QueryIn",
+        "type": "object"
+      },
+      "QueryOut": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "columns",
+          "rows",
+          "truncated",
+          "duration_ms"
+        ],
+        "title": "QueryOut",
         "type": "object"
       },
       "RollbackIn": {
@@ -2192,6 +2265,43 @@
         "summary": "Contact Detail",
         "tags": [
           "contacts"
+        ]
+      }
+    },
+    "/data/query": {
+      "post": {
+        "operationId": "autobot_panel_routers_data_run_query",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Run Query",
+        "tags": [
+          "data"
         ]
       }
     },

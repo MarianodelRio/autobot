@@ -34,6 +34,7 @@ jobs:
       ENVIRONMENT: local
       DB_APP_URL: postgres://fp_app:fp_app@localhost:5432/autobot
       DB_OWNER_URL: postgres://fp_owner:fp_owner@localhost:5432/autobot
+      DB_READONLY_URL: postgres://fp_readonly:fp_readonly@localhost:5432/autobot
     steps:
       - uses: actions/checkout@v7
       - name: Database roles

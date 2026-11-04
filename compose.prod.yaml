@@ -75,6 +75,7 @@ services:
     environment:
       <<: *app-env
       DB_OWNER_URL: ${DB_OWNER_URL:?Set DB_OWNER_URL}
+      DB_READONLY_URL: ${DB_READONLY_URL:?Set DB_READONLY_URL}
       SERVICE_NAME: web
       OPS_STATE_DIR: /run/ops
     # Overriding the anchor's volumes replaces the whole list (YAML does not merge
@@ -96,6 +97,7 @@ services:
     environment:
       <<: *app-env
       DB_OWNER_URL: ""
+      DB_READONLY_URL: ""
       SERVICE_NAME: worker
     command: python manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50
     stop_grace_period: 60s

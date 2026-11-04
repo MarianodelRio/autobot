@@ -36,6 +36,7 @@ def main() -> None:
         "DJANGO_ALLOWED_HOSTS": "localhost",
         "DB_APP_URL": "postgres://fp_app:local@db/autobot",
         "DB_OWNER_URL": "postgres://fp_owner:local@db/autobot",
+        "DB_READONLY_URL": "postgres://fp_readonly:local@db/autobot",
         "POSTGRES_PASSWORD": "local",
         "FP_OWNER_PASSWORD": "local",
         "FP_APP_PASSWORD": "local",
@@ -61,6 +62,7 @@ def main() -> None:
     assert services["web"]["user"] == "10001"
     assert services["caddy"]["user"] == "10001"
     assert not services["worker"]["environment"].get("DB_OWNER_URL")
+    assert not services["worker"]["environment"].get("DB_READONLY_URL")
     assert not services["worker"]["environment"].get("FP_OWNER_PASSWORD")
     assert not services["db"]["environment"].get("DJANGO_SECRET_KEY")
     assert not services["caddy"]["environment"].get("DB_APP_URL")

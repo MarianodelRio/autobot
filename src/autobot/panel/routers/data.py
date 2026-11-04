@@ -12,7 +12,8 @@ from pydantic import Field
 
 from autobot.ops.audit import record
 from autobot.ops.models import SavedQuery
-from autobot.panel.services import catalog
+from autobot.panel.services import catalog, query
+from autobot.tenancy.models import Tenant
 
 router = Router(tags=["data"])
 
@@ -30,6 +31,23 @@ class SavedQueryOut(Schema):
     updated_at: datetime
 
 
+class QueryIn(Schema):
+    sql: str = Field(min_length=1, max_length=20_000)
+    tenant: str = ""
+
+
+class ColumnOut(Schema):
+    name: str
+    type: str
+
+
+class QueryOut(Schema):
+    columns: list[ColumnOut]
+    rows: list[list[Any]]
+    truncated: bool
+    duration_ms: int
+
+
 @router.get("/data/tables", response=list[dict[str, Any]])
 def tables(request: HttpRequest) -> list[dict[str, Any]]:
     return catalog.table_list()
@@ -38,6 +56,15 @@ def tables(request: HttpRequest) -> list[dict[str, Any]]:
 @router.get("/data/tables/{name}", response=dict[str, Any])
 def table(request: HttpRequest, name: str) -> dict[str, Any]:
     return catalog.table_detail(name)
+
+
+@router.post("/data/query", response=QueryOut)
+def run_query(request: HttpRequest, payload: QueryIn) -> query.QueryResult:
+    tenant_id = None
+    if payload.tenant:
+        tenant = get_object_or_404(Tenant.objects.using("owner"), slug=payload.tenant)
+        tenant_id = tenant.id
+    return query.run(payload.sql, tenant_id=tenant_id, actor=request.user.username)
 
 
 @router.get("/data/saved-queries", response=list[SavedQueryOut])

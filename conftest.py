@@ -18,7 +18,9 @@ from pytest_django import DjangoDbBlocker
 
 @pytest.fixture(scope="session")
 def django_db_setup(django_db_blocker: DjangoDbBlocker) -> Iterator[None]:
-    for alias in ("default", "owner"):
+    for alias in ("default", "owner", "readonly"):
+        if alias not in settings.DATABASES:
+            continue
         name = settings.DATABASES[alias]["NAME"]
         test_name = f"test_{name}"
         connections[alias].close()

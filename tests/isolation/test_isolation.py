@@ -153,8 +153,9 @@ def parents_of(model: type[models.Model], t: Tenant) -> dict[str, models.Model]:
 
 
 def isolation_problems(table: str, column: str = "tenant_id") -> list[str]:
-    """What is missing for `table` to be isolated: RLS enabled and forced, and
-    tenant_isolation as its only policy, for every command, on reads and on writes."""
+    """What is missing for `table` to be isolated: RLS enabled and forced, exactly
+    tenant_isolation (every command, on reads and writes) and readonly_all (the panel's
+    SQL console "every client" mode, T22), and no other policy."""
     with connections["owner"].cursor() as cursor:
         cursor.execute(
             "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = %s",
@@ -162,22 +163,45 @@ def isolation_problems(table: str, column: str = "tenant_id") -> list[str]:
         )
         enabled, forced = cursor.fetchone() or (False, False)
         cursor.execute(
-            "SELECT policyname, cmd, permissive, qual, with_check FROM pg_policies"
+            "SELECT policyname, cmd, permissive, roles, qual, with_check FROM pg_policies"
             " WHERE tablename = %s",
             [table],
         )
-        policies = cursor.fetchall()
+        by_name = {row[0]: row for row in cursor.fetchall()}
     setting = "NULLIF(current_setting('app.tenant_id'::text, true), ''::text)"
-    expected = f"({column} = ({setting})::uuid)"
+    isolation_qual = f"({column} = ({setting})::uuid)"
+    readonly_qual = "(current_setting('app.readonly_all'::text, true) = 'on'::text)"
+    expected = {
+        "tenant_isolation": (
+            "tenant_isolation",
+            "ALL",
+            "PERMISSIVE",
+            ["public"],
+            isolation_qual,
+            isolation_qual,
+        ),
+        "readonly_all": (
+            "readonly_all",
+            "SELECT",
+            "PERMISSIVE",
+            ["fp_readonly"],
+            readonly_qual,
+            None,
+        ),
+    }
     problems = []
     if not enabled:
         problems.append("RLS not enabled")
     if not forced:
         problems.append("RLS not forced")
-    if not policies:
-        problems.append("no tenant_isolation policy")
-    elif policies != [("tenant_isolation", "ALL", "PERMISSIVE", expected, expected)]:
-        problems.append(f"unexpected policies {policies}")
+    extra = sorted(set(by_name) - set(expected))
+    if extra:
+        problems.append(f"unexpected policies {[by_name[name] for name in extra]}")
+    for name, row in expected.items():
+        if name not in by_name:
+            problems.append(f"no {name} policy")
+        elif by_name[name] != row:
+            problems.append(f"unexpected {name} policy {by_name[name]}")
     return problems
 
 
@@ -259,6 +283,7 @@ def test_a_table_without_policy_is_detected() -> None:
             "RLS not enabled",
             "RLS not forced",
             "no tenant_isolation policy",
+            "no readonly_all policy",
         ]
     finally:
         with connections["owner"].cursor() as cursor:

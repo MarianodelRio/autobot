@@ -14,7 +14,14 @@ def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:
     base = {
         k: v
         for k, v in os.environ.items()
-        if k not in ("ENVIRONMENT", "DJANGO_SECRET_KEY", "DB_OWNER_URL", "SECRETS_ENCRYPTION_KEY")
+        if k
+        not in (
+            "ENVIRONMENT",
+            "DJANGO_SECRET_KEY",
+            "DB_OWNER_URL",
+            "DB_READONLY_URL",
+            "SECRETS_ENCRYPTION_KEY",
+        )
     }
     return subprocess.run(
         [sys.executable, *args],
@@ -87,13 +94,14 @@ def test_victorialogs_handler_only_when_configured() -> None:
     assert run("-c", code, VICTORIALOGS_URL="http://victorialogs:9428").stdout.strip() == "True"
 
 
-def test_owner_alias_only_when_configured() -> None:
+def test_owner_and_readonly_alias_only_when_configured() -> None:
     code = (
         "import sys; sys.path.insert(0, 'src'); import config.settings as s;"
         "print(sorted(s.DATABASES))"
     )
-    assert run("-c", code).stdout.strip() == "['default', 'owner']"
-    assert run("-c", code, DB_OWNER_URL="").stdout.strip() == "['default']"
+    assert run("-c", code).stdout.strip() == "['default', 'owner', 'readonly']"
+    assert run("-c", code, DB_OWNER_URL="", DB_READONLY_URL="").stdout.strip() == "['default']"
+    assert run("-c", code, DB_READONLY_URL="").stdout.strip() == "['default', 'owner']"
 
 
 def test_prod_rejects_invalid_encryption_key_without_disclosing_it() -> None:

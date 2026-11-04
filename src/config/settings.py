@@ -88,23 +88,32 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASE_ROUTERS = ["autobot.db_router.AuthDatabaseRouter"]
 
 
-# Two aliases: `default` is fp_app (no BYPASSRLS, no DDL), used by web
-# and worker; `owner` is fp_owner (owns the tables, BYPASSRLS), used only by migrations,
-# operation commands and (from T14) the panel. The worker runs without DB_OWNER_URL, so
-# without the alias. Local defaults match compose.yaml, whose db is published on port 5433.
-def _database(url: str) -> dict[str, Any]:
-    return dict(dj_database_url.parse(url, conn_max_age=60, conn_health_checks=True))
+# Three aliases: `default` is fp_app (no BYPASSRLS, no DDL), used by web and worker;
+# `owner` is fp_owner (owns the tables, BYPASSRLS), used only by migrations, operation
+# commands and (from T14) the panel; `readonly` is fp_readonly (NOBYPASSRLS, SELECT only),
+# used only by the panel's SQL console (T22), with CONN_MAX_AGE=0 so nothing from a query
+# survives the connection. The worker runs without DB_OWNER_URL or DB_READONLY_URL, so
+# without those aliases. Local defaults match compose.yaml, whose db is published on
+# port 5433.
+def _database(url: str, conn_max_age: int = 60) -> dict[str, Any]:
+    return dict(dj_database_url.parse(url, conn_max_age=conn_max_age, conn_health_checks=True))
 
 
 DATABASES = {
     "default": _database(env("DB_APP_URL", "postgres://fp_app:fp_app@localhost:5433/autobot")),
 }
-# Unset → local default; set but empty (the worker) → no `owner` alias.
+# Unset → local default; set but empty (the worker) → no `owner`/`readonly` alias.
 _owner_url = os.environ.get(
     "DB_OWNER_URL", "postgres://fp_owner:fp_owner@localhost:5433/autobot" if IS_LOCAL else ""
 )
 if _owner_url:
     DATABASES["owner"] = _database(_owner_url)
+_readonly_url = os.environ.get(
+    "DB_READONLY_URL",
+    "postgres://fp_readonly:fp_readonly@localhost:5433/autobot" if IS_LOCAL else "",
+)
+if _readonly_url:
+    DATABASES["readonly"] = _database(_readonly_url, conn_max_age=0)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
