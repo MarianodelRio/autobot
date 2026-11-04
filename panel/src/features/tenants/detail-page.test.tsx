@@ -131,7 +131,7 @@ test.each([
   ["onboarding", "Activar"],
 ])("shows the action for %s", async (status, action) => {
   setup(status);
-  expect(await screen.findByRole("button", { name: action })).toBeDisabled();
+  expect(await screen.findByRole("button", { name: action })).toBeEnabled();
 });
 test("loads tabs, displays the public QR and pairs conversation messages", async () => {
   const fetcher = setup();

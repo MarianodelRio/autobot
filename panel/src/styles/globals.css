@@ -2,6 +2,8 @@
 @import "@fontsource/geist-sans";
 @import "@fontsource/geist-mono";
 
+@source "../../node_modules/@rjsf/shadcn";
+
 @custom-variant dark (&:is(.dark *));
 
 /* Single dark theme (DESIGN §9.3): `.dark` is always on `<html>`, so `:root`

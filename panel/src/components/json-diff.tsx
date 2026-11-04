@@ -2,8 +2,7 @@ import * as jsondiffpatch from "jsondiffpatch";
 
 const differ = jsondiffpatch.create();
 
-/** A minimal, dependency-light diff view: the raw delta, pretty-printed. A visual
- * (added/removed/moved) renderer can replace this once T27 needs one. */
+/** Pretty-print the JSON delta for configuration and history comparisons. */
 export function JsonDiff({
   before,
   after,

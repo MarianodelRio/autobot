@@ -25,6 +25,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/features/activity/components/timeline";
 import { formatEur, formatNumber } from "@/lib/format";
+import { ConfigEditor } from "./config/editor";
+import { History } from "./config/history";
+import { SecretsForm } from "./config/secrets-form";
+import { StatusAction } from "./config/status-action";
 import { errorMessage } from "./error-message";
 
 type Detail = components["schemas"]["TenantDetail"];
@@ -185,7 +189,10 @@ function Channel({ detail }: { detail: Detail }) {
               )}
               {secrets.data.updated_by && ` · ${secrets.data.updated_by}`}
             </p>
-            <Button disabled>Sustituir secretos</Button>
+            <SecretsForm
+              slug={detail.slug}
+              fields={secrets.data.fields.map((field) => field.name)}
+            />
           </div>
         ))}
     </div>
@@ -376,7 +383,16 @@ function Datasets({ slug }: { slug: string }) {
     <EmptyState message="No hay datasets." />
   );
 }
-export function TenantDetailPage({ slug }: { slug: string }) {
+export function TenantDetailPage({
+  slug,
+  dirty = false,
+  onDirtyChange = () => {},
+}: {
+  slug: string;
+  dirty?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  const [tab, setTab] = useState("resumen");
   const client = useQueryClient();
   const q = useQuery({
     queryKey: ["tenant", slug],
@@ -399,14 +415,6 @@ export function TenantDetailPage({ slug }: { slug: string }) {
       />
     );
   const d = q.data;
-  const action =
-    d.status === "active"
-      ? "Pausar"
-      : d.status === "paused"
-        ? "Reactivar"
-        : d.status === "onboarding"
-          ? "Activar"
-          : null;
   return (
     <div>
       <PageHeader
@@ -414,7 +422,7 @@ export function TenantDetailPage({ slug }: { slug: string }) {
         description={`${d.slug} · ${d.pack} · ${d.status} · salud: ${d.health}`}
         actions={
           <div className="flex gap-2">
-            {action && <Button disabled>{action}</Button>}
+            <StatusAction slug={slug} status={d.status} />
             <Button
               variant="outline"
               disabled={health.isPending}
@@ -435,10 +443,24 @@ export function TenantDetailPage({ slug }: { slug: string }) {
             : "Comprobación completada sin problemas."}
         </div>
       )}
-      <Tabs defaultValue="resumen">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          if (
+            dirty &&
+            value !== tab &&
+            !window.confirm("Hay cambios sin guardar. ¿Quieres salir?")
+          )
+            return;
+          onDirtyChange(false);
+          setTab(value);
+        }}
+      >
         <TabsList className="max-w-full overflow-x-auto">
           {[
             "Resumen",
+            "Configuración",
+            "Historial",
             "Canal",
             "Actividad",
             "Contactos",
@@ -452,6 +474,12 @@ export function TenantDetailPage({ slug }: { slug: string }) {
         </TabsList>
         <TabsContent value="resumen">
           <Summary detail={d} />
+        </TabsContent>
+        <TabsContent value="configuración">
+          <ConfigEditor detail={d} onDirtyChange={onDirtyChange} />
+        </TabsContent>
+        <TabsContent value="historial">
+          <History slug={slug} />
         </TabsContent>
         <TabsContent value="canal">
           <Channel detail={d} />

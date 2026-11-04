@@ -27,8 +27,10 @@ La lista se puede filtrar por pack y estado o buscar por nombre y slug. La ficha
 muestra la salud, los indicadores, el canal y su QR público, la actividad, los
 contactos y sus conversaciones, los avisos y los datasets. Cada consulta de una
 conversación queda auditada. El resumen del dueño se carga a petición, pues puede
-consultar Calendar. «Comprobar salud» fuerza la comprobación del canal. Las acciones
-de estado y sustitución de secretos se conectarán en T27; el alta llegará en T28.
+consultar Calendar. «Comprobar salud» fuerza la comprobación del canal. La configuración se edita con formulario o YAML, con diff y comentario obligatorio;
+el historial permite recuperar versiones. El panel pide confirmación para pausar o
+reactivar y exige comprobaciones y slug para activar. En Canal se sustituye el juego
+completo de secretos sin mostrar los valores guardados. El alta llegará en T28.
 
 ## Alta del operador
 
