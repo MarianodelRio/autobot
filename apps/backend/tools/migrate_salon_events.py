@@ -1,6 +1,6 @@
 """Operator-only legacy migration. Run --dry-run before applying; never run by a worker.
 
-PYTHONPATH=src uv run python -m tools.migrate_salon_events <slug> [--dry-run]
+PYTHONPATH=apps/backend uv run python -m tools.migrate_salon_events <slug> [--dry-run]
 """
 
 import argparse

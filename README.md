@@ -41,7 +41,7 @@ niega fuera de `local`.
 
 La imagen local instala las dependencias de desarrollo (`INSTALL_DEV=true`); la de
 producción mantiene `--no-dev`. El worker usa `watchfiles` y reinicia su proceso al
-cambiar Python en `src/`, respetando el cierre del worker antes de sustituirlo.
+cambiar Python en `apps/backend/`, respetando el cierre del worker antes de sustituirlo.
 En local, `.env` es opcional. Si se necesita Calendar, `GOOGLE_SERVICE_ACCOUNT_FILE`
 apunta al fichero local de la cuenta de servicio; vacío monta `/dev/null` y no crea
 ninguna credencial. Los secretos de los canales se importan cifrados a la BD.
@@ -60,7 +60,7 @@ Para generar el QR público del negocio sin contenedores, credenciales ni acceso
 uv run python manage.py tenant_config export <slug> datos/<slug>
 make qr FILE=datos/<slug>/document.yaml
 make qr FILE=datos/<slug>/document.yaml ARGS="--output /ruta/qr.svg"
-# Equivalente: PYTHONPATH=src uv run python -m tools.qr datos/<slug>/document.yaml
+# Equivalente: PYTHONPATH=apps/backend uv run python -m tools.qr datos/<slug>/document.yaml
 ```
 
 El canal debe declarar `display_phone` internacional (WhatsApp) o `bot_username`
@@ -109,18 +109,18 @@ no incluyen secretos. Nunca se versionan `tenants/` ni `datos/`.
 
 ## Panel
 
-Panel interno (`panel/`: React, TypeScript, Vite, Biome, Vitest) que sustituye al
+Panel interno (`apps/panel/`: React, TypeScript, Vite, Biome, Vitest) que sustituye al
 Django Admin (ADR-008), resumido para quien opera en
 [docs/runbooks/panel.md](docs/runbooks/panel.md). Requiere Node 24 y pnpm
-(`corepack enable`, que lee la versión fijada en `panel/package.json`).
+(`corepack enable`, que lee la versión fijada en `apps/panel/package.json`).
 
 ```bash
-pnpm -C panel install
+pnpm -C apps/panel install
 make panel-dev           # Vite en modo desarrollo, proxy /api hacia el backend local
 make panel-check         # Biome, tsc --noEmit, Vitest y el build de producción
 ```
 
-`make api` regenera `panel/openapi.json` (desde el backend) y `panel/src/api/schema.d.ts`
+`make api` regenera `apps/panel/openapi.json` (desde el backend) y `apps/panel/src/api/schema.d.ts`
 (con `openapi-typescript`); `make fix` aplica `ruff`/`biome --write` y deja ambos al día.
 En local, con `make up` y `make panel-dev`, `http://localhost:5173` pide usuario,
 contraseña y código TOTP (`manage.py panel_user create <usuario>`) y, tras entrar, ofrece

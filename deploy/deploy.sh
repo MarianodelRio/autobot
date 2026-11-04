@@ -71,7 +71,7 @@ alert_ops() {
     || echo 'Could not send ops alert; check deployment logs' >&2
 }
 
-# One line per attempt (DESIGN §7.4), read by the panel; `web` mounts state/ops read-only.
+# One line per attempt, read by the panel; `web` mounts state/ops read-only.
 record_deploy() {
   printf '{"at":"%s","sha":"%s","previous":"%s","result":"%s"}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$target" "$previous" "$1" >>state/ops/deploys.jsonl

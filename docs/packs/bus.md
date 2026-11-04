@@ -92,5 +92,5 @@ Requiere que el dueño ya esté vinculado al bot de avisos (`manage.py owner_inv
 cada mes, con los datos del mes anterior ya cerrado, y también se puede consultar en
 cualquier momento escribiéndole al bot ("Cómo va el mes").
 
-La plantilla inicial del demo está en `src/packs/bus/template/document.yaml`; su dataset está en `src/packs/bus/template/datasets/timetable/`.
+La plantilla inicial del demo está en `apps/backend/packs/bus/template/document.yaml`; su dataset está en `apps/backend/packs/bus/template/datasets/timetable/`.
 Todos sus datos son ficticios, por eso `template_blank=()`.

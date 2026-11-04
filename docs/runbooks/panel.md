@@ -1,7 +1,7 @@
 # Panel interno
 
 El Django Admin se eliminó (ADR-008); el panel que lo sustituye es una API propia
-(`/api/panel/`, django-ninja) y una SPA (React, `panel/`) servidas por el contenedor
+(`/api/panel/`, django-ninja) y una SPA (React, `apps/panel/`) servidas por el contenedor
 `panel` (su propia Caddy, sirve `/` y hace de proxy de `/api/*` hacia `web:8000`). Las
 secciones son Resumen, Clientes, Actividad, Incidencias, Logs, Datos, Sistema y
 Auditoría. Los comandos de `manage.py` (`docs/comandos.md`) también permiten resolver

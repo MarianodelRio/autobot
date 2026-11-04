@@ -7,7 +7,8 @@ command -v "$RESTIC_BIN" >/dev/null
 test_root=$(mktemp -d)
 source_dir=$test_root/source
 target_dir=$test_root/target
-mkdir -p "$source_dir/deploy/postgres" "$target_dir/deploy/postgres"
+mkdir -p "$source_dir/deploy/postgres" "$target_dir/deploy/postgres" \
+  "$source_dir/deploy/caddy" "$target_dir/deploy/caddy"
 sha=$(python3 -c 'import secrets; print(secrets.token_hex(20))')
 source_project="fp-restore-src-${sha:0:8}"
 target_project="fp-restore-dst-${sha:0:8}"
@@ -24,7 +25,8 @@ cleanup() {
 trap cleanup EXIT
 
 for dir in "$source_dir" "$target_dir"; do
-  cp compose.prod.yaml Caddyfile "$dir/"
+  cp compose.prod.yaml "$dir/"
+  cp deploy/caddy/Caddyfile "$dir/deploy/caddy/"
   cp deploy/postgres/init-roles.sh "$dir/deploy/postgres/"
   cp deploy/backup.sh deploy/restore.sh "$dir/deploy/"
 done

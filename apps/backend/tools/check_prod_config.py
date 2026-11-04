@@ -13,7 +13,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent.parent
 NAME = f"fp-config-{uuid.uuid4().hex[:12]}"
 BACKEND = f"{NAME}-backend"
 PROXY = f"{NAME}-caddy"
@@ -117,7 +117,7 @@ def main() -> None:
             "-e",
             "PUBLIC_HOST=:80",
             "-v",
-            f"{ROOT / 'Caddyfile'}:/etc/caddy/Caddyfile:ro",
+            f"{ROOT / 'deploy' / 'caddy' / 'Caddyfile'}:/etc/caddy/Caddyfile:ro",
             "-v",
             f"{state / 'data'}:/data",
             "-v",
@@ -129,7 +129,7 @@ def main() -> None:
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1)
                 break
-            except urllib.error.URLError, TimeoutError, ConnectionError:
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
                 time.sleep(0.3)
         else:
             raise RuntimeError("Caddy/upstream did not start")

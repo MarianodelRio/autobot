@@ -21,11 +21,12 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 ## Arquitectura
 
 - Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `worker`, `db`, `panel`, `victorialogs`).
+- Dos apps desplegables en `apps/`: `apps/backend/` (Django: `core/`, `integrations/`, `packs/`, `autobot/`, `config/`, `tools/`) y `apps/panel/` (frontend). Todo lo de despliegue (Dockerfiles, Caddyfile del borde público, scripts de operación, systemd) vive en `deploy/`; `compose.yaml`/`compose.prod.yaml` se quedan en la raíz porque se teclean a mano en los runbooks (ver ADR-010).
 - `core/` e `integrations/` no importan Django; `packs/*` solo importan `core` (nunca Django, `integrations` ni otro pack). Lo comprueba `import-linter`.
 - Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de demo solo en `channels/demo/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio.
 - Config y datasets de cada negocio en PostgreSQL, versionados (ADR-009); nada en git ni en la imagen. Importación/exportación con `tenant_config` y `tenant_dataset`; `tenants/` y `datos/` están ignorados. Secretos de canal cifrados en la base de datos; secretos de la plataforma en `.env` del servidor. Nunca en git.
-- Cada pack nuevo incluye su plantilla en `src/packs/<pack>/template/` (de ahí sale su negocio de demo) y su escenario de conversación.
-- Panel interno (`panel/`) en TypeScript, Biome y Vitest; sustituye al Django Admin. Su API (`/api/panel/`) solo es accesible por túnel SSH (ADR-008); el frontend nunca es la única barrera de validación ni de permisos.
+- Cada pack nuevo incluye su plantilla en `apps/backend/packs/<pack>/template/` (de ahí sale su negocio de demo) y su escenario de conversación.
+- Panel interno (`apps/panel/`) en TypeScript, Biome y Vitest; sustituye al Django Admin. Su API (`/api/panel/`) solo es accesible por túnel SSH (ADR-008); el frontend nunca es la única barrera de validación ni de permisos.
 
 ## Reglas obligatorias
 

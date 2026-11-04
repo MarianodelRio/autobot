@@ -12,7 +12,7 @@ from packs.bus.formato import validar as validar_horarios
 from packs.bus.tests.helpers import modelo_de
 from tools import bus_revision as revision
 
-FIXTURES = Path(__file__).parents[2] / "src" / "packs" / "bus" / "tests" / "fixtures"
+FIXTURES = Path(__file__).parents[2] / "apps" / "backend" / "packs" / "bus" / "tests" / "fixtures"
 SLUG = "demo"
 DATASET = Path("datos") / SLUG / "timetable"
 BASE_LABEL = "copia publicada"

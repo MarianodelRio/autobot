@@ -18,7 +18,8 @@ def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
     (tmp_path / ".env").write_text("x=1\n")
     (tmp_path / ".deployed-sha").write_text("a" * 40 + "\n")
     (tmp_path / "google_sa.json").write_text("{}\n")
-    (tmp_path / "Caddyfile").write_text("x\n")
+    (deploy / "caddy").mkdir()
+    (deploy / "caddy" / "Caddyfile").write_text("x\n")
     config = tmp_path / "backup.env"
     config.write_text(
         "RESTIC_REPOSITORY=local:/tmp/repo\n"

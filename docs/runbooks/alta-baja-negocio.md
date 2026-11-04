@@ -93,7 +93,7 @@ como una cifra fiable. Telegram no tiene coste por mensaje y no entra en este c�
 Cada pack nuevo trae su propio negocio de demostración, para enseñarlo por las dos
 puertas del bot de demo sin usar ningún negocio real (ver `docs/runbooks/demo.md`).
 
-1. Crear `src/packs/<pack>/template/document.yaml` con un UUIDv7 fijo,
+1. Crear `apps/backend/packs/<pack>/template/document.yaml` con un UUIDv7 fijo,
    `demo.description` y `status: paused`, sin `channel` ni `testers`.
 2. Completar la config con datos ficticios y añadir los datasets necesarios en
    `template/datasets/<nombre>/`.

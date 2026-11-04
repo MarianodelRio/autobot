@@ -26,8 +26,8 @@ mkdir -p backups state/ops
 dump_tmp=$(mktemp backups/.autobot.dump.XXXXXXXX)
 dump_bytes=0
 
-# Runs on every exit, success or failure: records the outcome for the panel (DESIGN
-# §7.4) and never leaves the plaintext dump on disk once restic has it.
+# Runs on every exit, success or failure: records the outcome for the panel and
+# never leaves the plaintext dump on disk once restic has it.
 write_status() {
   local code=$? ok=false status_tmp
   [[ $code -eq 0 ]] && ok=true
@@ -48,7 +48,7 @@ mv "$dump_tmp" backups/autobot.dump
 dump_bytes=$(stat -c '%s' backups/autobot.dump)
 
 "$restic_bin" backup --tag autobot backups/autobot.dump .env .deployed-sha \
-  google_sa.json Caddyfile
+  google_sa.json deploy/caddy/Caddyfile
 # Group by tag: the dump path stays constant and all snapshots use the same policy.
 "$restic_bin" forget --tag autobot --group-by tags --keep-daily 7 --keep-weekly 4 \
   --keep-monthly 6 --prune

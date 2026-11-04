@@ -54,7 +54,7 @@ jobs:
       # Dependabot bump of the image's uv updates CI too.
       - id: uv
         run: |
-          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\) AS uv$|\1|p' Dockerfile)
+          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\) AS uv$|\1|p' deploy/docker/backend.Dockerfile)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@v10.3.2
@@ -72,11 +72,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck
-          shellcheck deploy/*.sh deploy/postgres/*.sh tools/*.sh
+          shellcheck deploy/*.sh deploy/postgres/*.sh apps/backend/tools/*.sh
       - name: mypy
         run: uv run mypy
       - name: import-linter
-        run: PYTHONPATH=src uv run lint-imports
+        run: PYTHONPATH=apps/backend uv run lint-imports
       - name: pytest
         run: uv run pytest
       - name: Migrations
@@ -85,8 +85,8 @@ jobs:
           uv run python manage.py lintmigrations
       - name: OpenAPI schema is committed
         run: |
-          uv run python manage.py export_openapi panel/openapi.json
-          git diff --exit-code panel/openapi.json
+          uv run python manage.py export_openapi apps/panel/openapi.json
+          git diff --exit-code apps/panel/openapi.json
       - name: pip-audit
         run: |
           uv export --locked --all-groups --no-emit-project --format requirements.txt -o "$RUNNER_TEMP/requirements.txt"
@@ -99,23 +99,23 @@ jobs:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
-          package_json_file: panel/package.json
+          package_json_file: apps/panel/package.json
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: panel/pnpm-lock.yaml
-      - run: pnpm -C panel install --frozen-lockfile
+          cache-dependency-path: apps/panel/pnpm-lock.yaml
+      - run: pnpm -C apps/panel install --frozen-lockfile
       - name: Generated API types are committed
         run: |
-          pnpm -C panel gen:api
-          git diff --exit-code panel/src/api/schema.d.ts
-      - run: pnpm -C panel check
-      - run: pnpm -C panel typecheck
-      - run: pnpm -C panel test
-      - run: pnpm -C panel build
+          pnpm -C apps/panel gen:api
+          git diff --exit-code apps/panel/src/api/schema.d.ts
+      - run: pnpm -C apps/panel check
+      - run: pnpm -C apps/panel typecheck
+      - run: pnpm -C apps/panel test
+      - run: pnpm -C apps/panel build
       - name: Generated route tree is committed
-        run: git diff --exit-code panel/src/routeTree.gen.ts
+        run: git diff --exit-code apps/panel/src/routeTree.gen.ts
 
   image:
     needs: [check, panel]
@@ -136,13 +136,14 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: .
+          file: deploy/docker/backend.Dockerfile
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha,scope=app
           cache-to: type=gha,mode=max,scope=app
       - uses: docker/build-push-action@v7
         with:
-          context: panel
+          context: apps/panel
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ env.PANEL_IMAGE }}:${{ github.sha }}
           cache-from: type=gha,scope=panel

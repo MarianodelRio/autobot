@@ -18,7 +18,7 @@ ids o aprobaciones.
   Calendar API habilitada y cuenta de servicio con clave JSON en `google_sa.json`
   (ignorado por git) y en el gestor de contraseñas.
 - **Calendario de la demo:** un calendario («Autobot demo»), compartido con la
-  cuenta de servicio, como `calendar_id` de la plantilla `src/packs/salon/template/document.yaml`; después,
+  cuenta de servicio, como `calendar_id` de la plantilla `apps/backend/packs/salon/template/document.yaml`; después,
   `status: active`. Verificar: una reserva desde cualquiera de las dos puertas de la
   demo aparece una sola vez en ese calendario.
 - **Bot de avisos y chat de ops:** bot con @BotFather (`NOTIFY_BOT_TOKEN`) y un grupo
@@ -95,7 +95,7 @@ Verificación del servidor:
 - Secretos de la app de Meta existente en un YAML privado de importación y plantillas
   `confirmacion_cita` y `recordatorio_cita` aprobadas. Verificar: `tenant_health
   dm-barber` en verde.
-- Migrar las citas antiguas: `tools/migrate_salon_events.py dm-barber --dry-run`,
+- Migrar las citas antiguas: `apps/backend/tools/migrate_salon_events.py dm-barber --dry-run`,
   revisar el informe y ejecutar la migración real; comprobar después que «Cancelar
   cita» de un cliente existente lista sus citas. La migración solo añade
   propiedades privadas a los eventos y no hace falta deshacerla.

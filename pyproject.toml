@@ -43,7 +43,7 @@ package = false
 [tool.ruff]
 line-length = 100
 target-version = "py314"
-src = ["src", "tests", "tools"]
+src = ["apps/backend", "tests"]
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
@@ -54,22 +54,22 @@ known-first-party = ["core", "integrations", "packs", "autobot", "config", "tool
 
 [tool.mypy]
 python_version = "3.14"
-mypy_path = "src"
+mypy_path = "apps/backend"
 strict = true
 plugins = ["mypy_django_plugin.main"]
 explicit_package_bases = true
-files = ["src", "tests", "tools", "manage.py"]
+files = ["apps/backend", "tests", "manage.py"]
 
 [tool.django-stubs]
 django_settings_module = "config.settings"
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"
-pythonpath = ["src"]
-testpaths = ["tests", "src"]
+pythonpath = ["apps/backend"]
+testpaths = ["tests", "apps/backend"]
 addopts = "--strict-markers"
 
-# Module dependency rules. Run with `PYTHONPATH=src lint-imports`.
+# Module dependency rules. Run with `PYTHONPATH=apps/backend lint-imports`.
 [tool.importlinter]
 root_packages = ["core", "integrations", "packs", "autobot", "config"]
 include_external_packages = true

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares .env for a deploy (DESIGN §12), called at the start of deploy.sh:
+# Prepares .env for a deploy, called at the start of deploy.sh:
 #   - generates the internal secrets that are missing (passwords, keys, DB_*_URL);
 #   - never invents an external credential (Meta, Telegram, Sentry...); aborts and
 #     lists whatever external variable is missing instead;

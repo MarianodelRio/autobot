@@ -13,7 +13,7 @@ import dj_database_url
 from cryptography.fernet import Fernet
 from django.core.exceptions import ImproperlyConfigured
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT", "local")
 if ENVIRONMENT not in ("local", "prod"):

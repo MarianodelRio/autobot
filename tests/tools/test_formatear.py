@@ -9,7 +9,8 @@ from tools.bus_formatear import formatear_texto
 
 LINEAS_DIR = (
     Path(__file__).parents[2]
-    / "src"
+    / "apps"
+    / "backend"
     / "packs"
     / "bus"
     / "tests"

@@ -32,7 +32,7 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 "$restic_bin" restore latest --tag autobot --target "$stage"
 # Restic restores paths relative to the root of the snapshot. Refuse incomplete backups.
-for file in .env .deployed-sha google_sa.json Caddyfile backups/autobot.dump; do
+for file in .env .deployed-sha google_sa.json deploy/caddy/Caddyfile backups/autobot.dump; do
   if [[ ! -s $stage/$file ]]; then
     echo "Missing from snapshot: $file" >&2
     exit 1
@@ -63,7 +63,7 @@ if [[ -f .restore-incomplete ]]; then
   done
 fi
 printf '%s\n' "$SHA" >.restore-incomplete
-for file in .env google_sa.json Caddyfile; do
+for file in .env google_sa.json deploy/caddy/Caddyfile; do
   install -m 600 "$stage/$file" "$file"
 done
 docker compose --project-name "$project" -f "$compose_file" up -d --wait db

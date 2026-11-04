@@ -45,7 +45,7 @@ def test_manage_check_passes_without_database() -> None:
 
 
 def test_demo_telegram_users_must_be_ids() -> None:
-    code = "import sys; sys.path.insert(0, 'src'); import config.settings as s;"
+    code = "import sys; sys.path.insert(0, 'apps/backend'); import config.settings as s;"
     code += " print(sorted(s.DEMO_TELEGRAM_USERS))"
     ok = run("-c", code, DEMO_TELEGRAM_USERS="12, 34 56")
     assert ok.stdout.strip() == "[12, 34, 56]", ok.stderr
@@ -67,7 +67,7 @@ def test_prod_requires_secret_key() -> None:
 def test_prod_with_all_variables_passes_check() -> None:
     result = run(
         "-c",
-        "import sys; sys.path.insert(0, 'src');"
+        "import sys; sys.path.insert(0, 'apps/backend');"
         "import config.settings as s; assert not s.DEBUG; assert s.ALLOWED_HOSTS == ['api.x']",
         ENVIRONMENT="prod",
         DJANGO_SECRET_KEY="k",
@@ -87,7 +87,7 @@ def test_unknown_environment_is_rejected() -> None:
 
 def test_victorialogs_handler_only_when_configured() -> None:
     code = (
-        "import sys; sys.path.insert(0, 'src'); import config.settings as s;"
+        "import sys; sys.path.insert(0, 'apps/backend'); import config.settings as s;"
         "print('victorialogs' in s.LOGGING['root']['handlers'])"
     )
     assert run("-c", code).stdout.strip() == "False"
@@ -96,7 +96,7 @@ def test_victorialogs_handler_only_when_configured() -> None:
 
 def test_owner_and_readonly_alias_only_when_configured() -> None:
     code = (
-        "import sys; sys.path.insert(0, 'src'); import config.settings as s;"
+        "import sys; sys.path.insert(0, 'apps/backend'); import config.settings as s;"
         "print(sorted(s.DATABASES))"
     )
     assert run("-c", code).stdout.strip() == "['default', 'owner', 'readonly']"
@@ -108,7 +108,7 @@ def test_prod_rejects_invalid_encryption_key_without_disclosing_it() -> None:
     for key in ("invalid-private-key", "UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=,bad-key", ","):
         result = run(
             "-c",
-            "import sys; sys.path.insert(0, 'src'); import config.settings",
+            "import sys; sys.path.insert(0, 'apps/backend'); import config.settings",
             ENVIRONMENT="prod",
             DJANGO_SECRET_KEY="k",
             SECRETS_ENCRYPTION_KEY=key,

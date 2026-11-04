@@ -28,9 +28,9 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make bus-publicar TENANT=<slug> COMMENT="..." [PROD=1]` | Publica la copia local validada en BD y actualiza `.publicado` tras el éxito; sin `PROD`, usa la BD local |
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
 | `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
-| `make check-prod-config` | Ejecuta `tools/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
-| `make api` | Regenera `panel/openapi.json` (esquema de la API del panel) y `panel/src/api/schema.d.ts` (tipos TypeScript) |
-| `make fix` | `ruff check --fix` y `ruff format` en el backend, `biome check --write` en `panel/`, y `make api` |
+| `make check-prod-config` | Ejecuta `apps/backend/tools/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
+| `make api` | Regenera `apps/panel/openapi.json` (esquema de la API del panel) y `apps/panel/src/api/schema.d.ts` (tipos TypeScript) |
+| `make fix` | `ruff check --fix` y `ruff format` en el backend, `biome check --write` en `apps/panel/`, y `make api` |
 | `make panel-dev` | `pnpm -C panel dev`: Vite en modo desarrollo, con proxy `/api` hacia el backend local |
 | `make panel-check` | Puerta de calidad del frontend: `biome check`, `tsc -b --noEmit`, `vitest run` y el build de producción |
 | `make panel-tunnel [HOST=<servidor>]` | Túnel SSH al puerto del contenedor `panel` en producción (8080→18000 local); nunca a `web` directamente |

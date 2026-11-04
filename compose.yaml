@@ -3,6 +3,7 @@
 x-app: &app
   build:
     context: .
+    dockerfile: deploy/docker/backend.Dockerfile
     args:
       INSTALL_DEV: "true"
   image: autobot:local
@@ -15,7 +16,7 @@ x-app: &app
     DB_READONLY_URL: postgres://fp_readonly:fp_readonly@db:5432/autobot
     GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
   volumes:
-    - ./src:/app/src
+    - ./apps/backend:/app/src
     - ./manage.py:/app/manage.py
     # Empty by default; a configured local credential stays outside the image.
     - ${GOOGLE_SERVICE_ACCOUNT_FILE:-/dev/null}:/app/google_sa.json:ro
@@ -50,7 +51,7 @@ services:
   # image, to test its own Caddy and build (not pnpm panel-dev's Vite proxy).
   panel:
     build:
-      context: ./panel
+      context: ./apps/panel
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:

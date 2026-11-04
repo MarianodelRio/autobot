@@ -2,7 +2,7 @@
 
 **Qué es:** la plataforma, no ningún cliente, enseña Autobot con dos puertas (un bot
 de Telegram y un número de WhatsApp) y negocios de demostración normales en
-plantillas en `src/packs/<pack>/template/` (`demo-peluqueria`, `demo-autobuses`).
+plantillas en `apps/backend/packs/<pack>/template/` (`demo-peluqueria`, `demo-autobuses`).
 Los tests validan estas plantillas directamente; `manage.py seed_demos` las siembra
 en PostgreSQL solo la primera vez y conserva los cambios posteriores de cada demo. La primera respuesta de
 cualquier puerta pide elegir negocio; desde ahí la conversación es la del pack real de
@@ -76,7 +76,7 @@ targets `bus-*`, y publicar con `COMMENT="Renovación anual de demo"`. Para actu
 el servidor, la persona añade `PROD=1` tanto al bajar como al publicar. Es un dataset
 ficticio y no tiene una empresa que deba aprobar el PDF.
 
-Actualizar también `src/packs/bus/template/datasets/timetable/calendario.yaml` para
+Actualizar también `apps/backend/packs/bus/template/datasets/timetable/calendario.yaml` para
 los demos que se creen en el futuro, ejecutar `make check` y hacer commit de ese cambio
 de plantilla. `seed_demos` conserva las versiones de los demos ya existentes.
 

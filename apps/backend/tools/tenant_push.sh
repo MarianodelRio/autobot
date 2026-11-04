@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Export local config and stream it to the deployed CLI, optionally carrying secrets.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../../.."
 umask 077
 slug=${SLUG:-}
 target_host=${HOST:?Set HOST}
