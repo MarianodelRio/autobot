@@ -19,7 +19,16 @@ bloqueo y audita el cambio (`audit_event`) en la misma transacción.
 La pantalla inicial muestra el estado global, los indicadores y mensajes del mes,
 las métricas por pack, los clientes, el sistema y las últimas alertas. Se actualiza
 cada 30 segundos; el indicador de la barra superior usa el mismo estado. El buscador
-incluye clientes. Los enlaces a sus fichas estarán disponibles al implementar T26.
+incluye clientes y enlaces a sus fichas.
+
+## Clientes
+
+La lista se puede filtrar por pack y estado o buscar por nombre y slug. La ficha
+muestra la salud, los indicadores, el canal y su QR público, la actividad, los
+contactos y sus conversaciones, los avisos y los datasets. Cada consulta de una
+conversación queda auditada. El resumen del dueño se carga a petición, pues puede
+consultar Calendar. «Comprobar salud» fuerza la comprobación del canal. Las acciones
+de estado y sustitución de secretos se conectarán en T27; el alta llegará en T28.
 
 ## Alta del operador
 

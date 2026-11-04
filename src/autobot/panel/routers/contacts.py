@@ -1,6 +1,7 @@
 """Contact search and audited conversation detail."""
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from django.db.models import Q
@@ -16,7 +17,7 @@ from autobot.panel.services.activity import (
     describe_outbound,
     encode_cursor,
 )
-from autobot.runtime.models import Contact, OutboundMessage
+from autobot.runtime.models import Contact, Conversation, OutboundMessage
 from autobot.tenancy.models import Tenant
 
 router = Router(tags=["contacts"])
@@ -68,6 +69,7 @@ class Exchange(Schema):
 class ContactDetail(Schema):
     contact: ContactOut
     exchanges: list[Exchange]
+    state: dict[str, Any] | None
 
 
 @router.get("/tenants/{slug}/contacts", response=ContactPage)
@@ -122,6 +124,12 @@ def contact_detail(request: HttpRequest, id: UUID) -> ContactDetail:
     )
     return ContactDetail(
         contact=contact_out(contact),
+        state=(
+            Conversation.objects.using("owner")
+            .filter(tenant_id=contact.tenant_id, contact=contact)
+            .values_list("state", flat=True)
+            .first()
+        ),
         exchanges=[
             Exchange(
                 inbound_id=m.inbound_event_id,

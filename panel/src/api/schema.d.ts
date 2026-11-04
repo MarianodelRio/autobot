@@ -764,6 +764,10 @@ export interface components {
             contact: components["schemas"]["ContactOut"];
             /** Exchanges */
             exchanges: components["schemas"]["Exchange"][];
+            /** State */
+            state: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ContactOut */
         ContactOut: {
@@ -1007,6 +1011,18 @@ export interface components {
             sent_at: string | null;
             /** Status */
             status: string;
+            /** Text */
+            text: string;
+        };
+        /** OpenAlert */
+        OpenAlert: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Severity */
+            severity: string;
             /** Text */
             text: string;
         };
@@ -1296,6 +1312,8 @@ export interface components {
             month: components["schemas"]["MonthKpis"];
             /** Name */
             name: string;
+            /** Open Alerts */
+            open_alerts: components["schemas"]["OpenAlert"][];
             /** Owner Linked */
             owner_linked: boolean;
             /** Pack */

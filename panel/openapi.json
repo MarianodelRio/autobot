@@ -240,11 +240,24 @@
             },
             "title": "Exchanges",
             "type": "array"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
           }
         },
         "required": [
           "contact",
-          "exchanges"
+          "exchanges",
+          "state"
         ],
         "title": "ContactDetail",
         "type": "object"
@@ -851,6 +864,30 @@
           "sent_at"
         ],
         "title": "NotificationOut",
+        "type": "object"
+      },
+      "OpenAlert": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "severity"
+        ],
+        "title": "OpenAlert",
         "type": "object"
       },
       "Overview": {
@@ -1657,6 +1694,13 @@
             "title": "Name",
             "type": "string"
           },
+          "open_alerts": {
+            "items": {
+              "$ref": "#/components/schemas/OpenAlert"
+            },
+            "title": "Open Alerts",
+            "type": "array"
+          },
           "owner_linked": {
             "title": "Owner Linked",
             "type": "boolean"
@@ -1724,6 +1768,7 @@
           "main_disabled",
           "health",
           "health_reasons",
+          "open_alerts",
           "health_checked_at",
           "channel_type",
           "webhook_url",

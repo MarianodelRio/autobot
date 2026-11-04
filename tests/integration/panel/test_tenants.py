@@ -8,6 +8,7 @@ from uuid import uuid7
 import pytest
 
 from autobot.ops import health
+from autobot.ops.models import OpsAlert
 from autobot.runtime.models import Contact, InboundEvent, MetricEvent, Notification, OutboundMessage
 from autobot.tenancy.models import TenantSecret
 from autobot.tenancy.registry import get_registry
@@ -61,6 +62,25 @@ def test_tenant_detail_whatsapp_channel(authed_client: Any, tenants: Any, settin
     assert body["public_link"] == "https://wa.me/34600123456"
     assert body["owner_linked"] is False
     assert body["month"]["inbound"] == 0
+
+
+def test_tenant_detail_only_includes_its_open_alerts(authed_client: Any, tenants: Any) -> None:
+    tenants(wa_tenant("a"), wa_tenant("b"))
+    OpsAlert.objects.using("owner").create(
+        tenant_id=tenant_id("a"), kind="open", severity="warning", text="Aviso del cliente"
+    )
+    OpsAlert.objects.using("owner").create(
+        tenant_id=tenant_id("b"), kind="other", severity="critical", text="Otro cliente"
+    )
+    OpsAlert.objects.using("owner").create(
+        tenant_id=tenant_id("a"),
+        kind="closed",
+        severity="warning",
+        text="Resuelta",
+        resolved_at=NOW,
+    )
+    alerts = get(authed_client, "tenants/a").json()["open_alerts"]
+    assert [alert["text"] for alert in alerts] == ["Aviso del cliente"]
 
 
 def test_tenant_detail_telegram_with_bot_username(authed_client: Any, tenants: Any) -> None:

@@ -18,6 +18,7 @@ import { Route as AppIncidenciasRouteImport } from './routes/_app/incidencias'
 import { Route as AppLogsRouteImport } from './routes/_app/logs'
 import { Route as AppSistemaRouteImport } from './routes/_app/sistema'
 import { Route as AppClientesIndexRouteImport } from './routes/_app/clientes/index'
+import { Route as AppClientesSlugRouteImport } from './routes/_app/clientes/$slug'
 import { Route as AppDatosIndexRouteImport } from './routes/_app/datos/index'
 
 const AppRoute = AppRouteImport.update({
@@ -64,6 +65,11 @@ const AppClientesIndexRoute = AppClientesIndexRouteImport.update({
   path: '/clientes/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppClientesSlugRoute = AppClientesSlugRouteImport.update({
+  id: '/clientes/$slug',
+  path: '/clientes/$slug',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDatosIndexRoute = AppDatosIndexRouteImport.update({
   id: '/datos/',
   path: '/datos/',
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/incidencias': typeof AppIncidenciasRoute
   '/logs': typeof AppLogsRoute
   '/sistema': typeof AppSistemaRoute
+  '/clientes/$slug': typeof AppClientesSlugRoute
   '/clientes/': typeof AppClientesIndexRoute
   '/datos/': typeof AppDatosIndexRoute
 }
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/logs': typeof AppLogsRoute
   '/sistema': typeof AppSistemaRoute
   '/': typeof AppIndexRoute
+  '/clientes/$slug': typeof AppClientesSlugRoute
   '/clientes': typeof AppClientesIndexRoute
   '/datos': typeof AppDatosIndexRoute
 }
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/_app/logs': typeof AppLogsRoute
   '/_app/sistema': typeof AppSistemaRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/clientes/$slug': typeof AppClientesSlugRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
   '/_app/datos/': typeof AppDatosIndexRoute
 }
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/incidencias'
     | '/logs'
     | '/sistema'
+    | '/clientes/$slug'
     | '/clientes/'
     | '/datos/'
   fileRoutesByTo: FileRoutesByTo
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/sistema'
     | '/'
+    | '/clientes/$slug'
     | '/clientes'
     | '/datos'
   id:
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/_app/logs'
     | '/_app/sistema'
     | '/_app/'
+    | '/_app/clientes/$slug'
     | '/_app/clientes/'
     | '/_app/datos/'
   fileRoutesById: FileRoutesById
@@ -212,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppClientesIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/clientes/$slug': {
+      id: '/_app/clientes/$slug'
+      path: '/clientes/$slug'
+      fullPath: '/clientes/$slug'
+      preLoaderRoute: typeof AppClientesSlugRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/datos/': {
       id: '/_app/datos/'
       path: '/datos'
@@ -229,6 +248,7 @@ interface AppRouteChildren {
   AppLogsRoute: typeof AppLogsRoute
   AppSistemaRoute: typeof AppSistemaRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppClientesSlugRoute: typeof AppClientesSlugRoute
   AppClientesIndexRoute: typeof AppClientesIndexRoute
   AppDatosIndexRoute: typeof AppDatosIndexRoute
 }
@@ -240,6 +260,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppLogsRoute: AppLogsRoute,
   AppSistemaRoute: AppSistemaRoute,
   AppIndexRoute: AppIndexRoute,
+  AppClientesSlugRoute: AppClientesSlugRoute,
   AppClientesIndexRoute: AppClientesIndexRoute,
   AppDatosIndexRoute: AppDatosIndexRoute,
 }

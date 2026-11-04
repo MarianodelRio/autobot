@@ -12,7 +12,13 @@ from django.utils import timezone
 from autobot.ops.models import AuditEvent, OpsAlert
 from autobot.panel.routers.contacts import contact_detail, contacts
 from autobot.panel.services.activity import activity_page, describe_inbound, describe_outbound
-from autobot.runtime.models import Contact, InboundEvent, Notification, OutboundMessage
+from autobot.runtime.models import (
+    Contact,
+    Conversation,
+    InboundEvent,
+    Notification,
+    OutboundMessage,
+)
 from autobot.tenancy.models import Tenant
 
 
@@ -39,6 +45,9 @@ def test_activity_pagination_filters_and_contact_audit() -> None:
     )
     contact = Contact.objects.using("owner").create(
         tenant=tenant, channel="main", external_id="123", display_name="Ana"
+    )
+    Conversation.objects.using("owner").create(
+        tenant=tenant, contact=contact, state={"step": "booking"}
     )
     inbound = InboundEvent.objects.using("owner").create(
         tenant=tenant,
@@ -106,6 +115,7 @@ def test_activity_pagination_filters_and_contact_audit() -> None:
     assert contacts(request, "test", search="Ana").items[0].id == contact.id
     detail = contact_detail(request, contact.id)
     assert detail.exchanges[0].inbound == "Hola"
+    assert detail.state == {"step": "booking"}
     assert (
         AuditEvent.objects.using("owner")
         .filter(action="contact.view", target_id=str(contact.id))

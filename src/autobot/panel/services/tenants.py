@@ -19,6 +19,7 @@ from django.utils import timezone
 from ninja import Schema
 
 from autobot.ops import health
+from autobot.ops.models import OpsAlert
 from autobot.ops.status import tenant_status
 from autobot.owner import links as owner_links
 from autobot.panel.errors import ApiError
@@ -76,6 +77,12 @@ def _month_kpis(tenant: LoadedTenant, now: datetime) -> MonthKpis:
     )
 
 
+class OpenAlert(Schema):
+    id: UUID
+    text: str
+    severity: str
+
+
 class TenantDetail(Schema):
     slug: str
     name: str
@@ -89,6 +96,7 @@ class TenantDetail(Schema):
     main_disabled: list[str]
     health: str
     health_reasons: list[str]
+    open_alerts: list[OpenAlert]
     health_checked_at: datetime | None
     channel_type: Literal["whatsapp", "telegram"] | None
     webhook_url: str | None
@@ -123,6 +131,12 @@ def tenant_detail(slug: str, *, now: datetime | None = None) -> TenantDetail:
         main_disabled=tenant.main_disabled,
         health=status.level,
         health_reasons=status.reasons,
+        open_alerts=[
+            OpenAlert(id=alert.id, text=alert.text, severity=alert.severity)
+            for alert in OpsAlert.objects.using("owner")
+            .filter(tenant_id=tenant.id, resolved_at__isnull=True)
+            .order_by("-last_seen_at")
+        ],
         health_checked_at=_health_checked_at(tenant.id),
         channel_type=channel.type if channel is not None else None,
         webhook_url=webhook_url,
