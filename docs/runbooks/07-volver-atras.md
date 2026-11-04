@@ -8,11 +8,14 @@ imagen (pull, migración o la validación de configuración), mantiene la imagen
 repositorio al SHA anterior y avisa con `deploy_aborted`. Comprueba si el aviso a
 ops llegó.
 
-**Pasos:** si la reversión automática falló, un operador autorizado despliega el
-SHA anterior publicado mediante `make deploy SHA=<sha-completo>` y aprueba el job
-en el entorno `production`. No reviertas migraciones: deben ser compatibles hacia
-atrás. Si la causa fue una configuración de tenant, corrige YAML y crea un SHA nuevo.
-No cambies webhooks de canales reales sin autorización.
+**Pasos:** si la reversión automática falló, un operador autorizado ejecuta
+`make rollback`: lee del servidor el `previous` del último despliegue correcto
+(`state/ops/deploys.jsonl`), pide confirmación y lo vuelve a desplegar con
+`make deploy SHA=<previous>`. Para un SHA concreto en vez del anterior automático,
+`make deploy SHA=<sha-completo>` (comprueba antes que su CI está en verde) y aprueba
+el job en el entorno `production`. No reviertas migraciones: deben ser compatibles
+hacia atrás. Si la causa fue una configuración de tenant, corrige YAML y crea un SHA
+nuevo. No cambies webhooks de canales reales sin autorización.
 
 **Verificación:** `.deployed-sha` coincide con el SHA sano, `/health` devuelve 200,
 la cola continúa y una consulta por el bot de demo funciona.

@@ -17,6 +17,8 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
     deploy = tmp_path / "deploy"
     deploy.mkdir()
     shutil.copy(ROOT / "deploy/deploy.sh", deploy / "deploy.sh")
+    shutil.copy(ROOT / "deploy/ensure-env.sh", deploy / "ensure-env.sh")
+    (deploy / "ensure-env.sh").chmod(0o755)
     (tmp_path / "compose.prod.yaml").write_text("services: {}\n")
     if previous:
         (tmp_path / ".deployed-sha").write_text(OLD + "\n")
@@ -58,6 +60,9 @@ def invoke(
         **os.environ,
         "PATH": f"{binaries}:{os.environ['PATH']}",
         "TEST_LOG": str(script.parent.parent / "docker.log"),
+        "PUBLIC_HOST": "api.example.com",
+        "DJANGO_ALLOWED_HOSTS": "api.example.com,localhost,127.0.0.1",
+        "DEPLOY_UID": "10001",
     }
     return subprocess.run(
         ["bash", str(script), sha],
@@ -77,7 +82,8 @@ def test_success_records_image_after_health(tmp_path: Path) -> None:
     assert any("migrate" in line for line in lines)
     assert any("tenant_config validate --all" in line for line in lines)
     assert any("seed_demos" in line for line in lines)
-    assert lines[-1].startswith(NEW) and "up --no-deps -d caddy" in lines[-1]
+    assert any(line.startswith(NEW) and "up --no-deps -d caddy" in line for line in lines)
+    assert lines[-1].startswith(NEW) and "deploy_ok" in lines[-1]
     assert deploy_results(tmp_path) == ["deployed"]
 
 

@@ -11,6 +11,8 @@ if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Usage: deploy/deploy.sh <full-40-character-sha>' >&2
   exit 2
 fi
+# .env on disk is enough: docker compose reads it itself for ${VAR:?} substitution.
+deploy/ensure-env.sh
 target=$1
 previous=$(cat .deployed-sha 2>/dev/null || true)
 if [[ -n $previous && ! $previous =~ ^[0-9a-f]{40}$ ]]; then
@@ -59,10 +61,13 @@ restore_checkout() {
   fi
 }
 
-# One attempt only: ambiguous Telegram delivery must not be retried blindly.
+# One attempt only: ambiguous Telegram delivery must not be retried blindly. A third
+# argument of "informational" skips the cooldown and is saved already resolved.
 alert_ops() {
+  local informational=False
+  [[ ${3:-} == informational ]] && informational=True
   "${compose[@]}" run --rm web python manage.py shell -c \
-    "from autobot.runtime.notifications import send_ops_alert; send_ops_alert('$1', None, '$2')" \
+    "from autobot.runtime.notifications import send_ops_alert; send_ops_alert('$1', None, '$2', informational=$informational)" \
     || echo 'Could not send ops alert; check deployment logs' >&2
 }
 
@@ -157,4 +162,5 @@ wait_panel || rollback
 printf '%s\n' "$target" >.deployed-sha.tmp
 mv .deployed-sha.tmp .deployed-sha
 record_deploy deployed
+alert_ops deploy_ok "🟢 Desplegado ${target:0:7}" informational
 echo "Deployed $target"

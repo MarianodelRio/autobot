@@ -3,7 +3,7 @@ NGROK_DOMAIN ?= unpermanently-repairable-devon.ngrok-free.dev
 
 .PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
 .PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test
-.PHONY: db-roles api fix panel-dev panel-check panel-tunnel
+.PHONY: db-roles api fix panel-dev panel-check panel-tunnel rollback
 
 check-prod-config:
 	uv run python tools/check_prod_config.py
@@ -31,8 +31,28 @@ panel-check:
 panel-tunnel:
 	ssh -o ExitOnForwardFailure=yes -N -L 127.0.0.1:18000:127.0.0.1:8080 deploy@$(HOST)
 
+SHA ?= $(shell git rev-parse origin/main)
+
 deploy:
+	@conclusion=$$(gh run list --workflow ci.yml --commit $(SHA) --json conclusion -q '.[0].conclusion'); \
+	if [ "$$conclusion" != success ]; then \
+		echo "CI for $(SHA) is not green (got: '$$conclusion'); refusing to deploy" >&2; \
+		exit 1; \
+	fi
 	gh workflow run deploy.yml -f sha="$(SHA)"
+
+# Reads the last successful deployment's `previous` SHA from the server and redeploys
+# it, with confirmation. Needs the operation SSH key (`~/.ssh/config` alias $(HOST)).
+rollback:
+	@previous=$$(ssh deploy@$(HOST) 'tail -n 50 /srv/autobot/state/ops/deploys.jsonl' | \
+		python3 -c "import json, sys; entries = [json.loads(line) for line in sys.stdin if line.strip()]; deployed = [e for e in entries if e['result'] == 'deployed']; print(deployed[-1]['previous'] if deployed else '')"); \
+	if [ -z "$$previous" ]; then \
+		echo 'No previous successful deployment found to roll back to' >&2; \
+		exit 1; \
+	fi; \
+	read -r -p "Roll back to $$previous? [y/N] " confirm; \
+	[ "$$confirm" = y ] || exit 1; \
+	$(MAKE) deploy SHA=$$previous
 
 backup-now:
 	ssh deploy@$(HOST) /srv/autobot/deploy/backup.sh

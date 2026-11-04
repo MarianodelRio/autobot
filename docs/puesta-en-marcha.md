@@ -38,9 +38,12 @@ la demo.
 - **Backups:** bucket en un proveedor distinto del de la VPS (Backblaze B2 o
   Cloudflare R2) con clave limitada a ese bucket, y contraseña de restic; los tres en
   el gestor de contraseñas. Verificar: `restic snapshots` lista el primer backup.
-- **Secretos de despliegue:** en la VPS, `/srv/autobot/.env`,
-  `google_sa.json`, `backup.env` y la contraseña de restic como `deploy` con modo
-  0600, `DEPLOY_UID`, deploy key de GitHub de solo lectura y acceso de lectura a GHCR.
+- **Secretos de despliegue:** en la VPS, `/srv/autobot/.env` (con `PUBLIC_HOST` y
+  `DJANGO_ALLOWED_HOSTS`, que incluye `127.0.0.1` y `localhost`), `google_sa.json`,
+  `backup.env` y la contraseña de restic como `deploy` con modo 0600, `DEPLOY_UID`,
+  deploy key de GitHub de solo lectura y acceso de lectura a GHCR. Las contraseñas,
+  claves y `DB_*_URL` internas las genera `make deploy` la primera vez
+  (`deploy/ensure-env.sh`, DESIGN §12): no hace falta rellenarlas a mano ni inventarlas.
   En GitHub, entorno `production` con aprobación requerida y secretos `DEPLOY_HOST`,
   `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS`.
 - **Bot de demo de producción (puerta Telegram):** distinto del de desarrollo, con su
@@ -124,9 +127,11 @@ nginx, DuckDNS) y archivar los repositorios de los bots anteriores.
 Activar un canal real, cambiar un webhook y tocar datos de producción necesitan
 aprobación humana explícita.
 
-Antes del primer despliegue del panel, genera una clave Fernet propia para
-`SECRETS_ENCRYPTION_KEY` y conserva una copia cifrada con los backups. La clave local
-solo sirve en desarrollo; procedimiento en [rotar secretos](runbooks/09-rotar-secretos.md).
+`SECRETS_ENCRYPTION_KEY` la genera `make deploy` la primera vez si falta
+(`deploy/ensure-env.sh`); conserva una copia cifrada de `.env` con los backups —
+sin ella no se pueden descifrar los secretos de canal ya guardados. La clave local
+solo sirve en desarrollo; procedimiento de rotación en
+[rotar secretos](runbooks/09-rotar-secretos.md).
 
 ### Configuración del primer despliegue del panel
 

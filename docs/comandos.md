@@ -34,7 +34,8 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make panel-dev` | `pnpm -C panel dev`: Vite en modo desarrollo, con proxy `/api` hacia el backend local |
 | `make panel-check` | Puerta de calidad del frontend: `biome check`, `tsc -b --noEmit`, `vitest run` y el build de producción |
 | `make panel-tunnel [HOST=<servidor>]` | Túnel SSH al puerto del contenedor `panel` en producción (8080→18000 local); nunca a `web` directamente |
-| `make deploy [SHA=]` | Lanza el workflow de despliegue en GitHub Actions |
+| `make deploy [SHA=]` | Sin `SHA`, usa `origin/main`; comprueba con `gh` que su CI está en verde y lanza el workflow de despliegue |
+| `make rollback` | Lee del servidor el `previous` del último despliegue correcto y, con confirmación, ejecuta `make deploy SHA=<previous>` |
 | `make backup-now` | Ejecuta `deploy/backup.sh` en el servidor por SSH |
 | `make restore-test` | `bash deploy/restore-test.sh`: simulacro de restauración |
 | `make prod-manage CMD="..." [TTY=1]` | Ejecuta el comando con la imagen desplegada mediante SSH; `TTY=1` para comandos interactivos, sin TTY para streams binarios |
