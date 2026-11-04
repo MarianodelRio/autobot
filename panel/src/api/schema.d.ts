@@ -748,6 +748,55 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** AlertOut */
+        AlertOut: {
+            /** Auto Resolves */
+            auto_resolves: boolean;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Last Delivery */
+            last_delivery: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Last Sent At */
+            last_sent_at: string | null;
+            /** Occurrences */
+            occurrences: number;
+            /** Resolved At */
+            resolved_at: string | null;
+            /** Resolved By */
+            resolved_by: string | null;
+            /** Sent Count */
+            sent_count: number;
+            /** Severity */
+            severity: string;
+            /** Tenant */
+            tenant: string | null;
+            /** Tenant Id */
+            tenant_id: string | null;
+            /** Text */
+            text: string;
+        };
+        /** AlertsPage */
+        AlertsPage: {
+            /** Items */
+            items: components["schemas"]["AlertOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** ChecklistItemOut */
         ChecklistItemOut: {
             /** Blocking */
@@ -919,6 +968,53 @@ export interface components {
             /** Severity */
             severity: string;
         };
+        /** IncidentsOut */
+        IncidentsOut: {
+            /** Alerts */
+            alerts: components["schemas"]["AlertOut"][];
+            /** Jobs */
+            jobs: components["schemas"]["JobOut"][];
+            /** Outbound */
+            outbound: components["schemas"]["OutboundIncidentOut"][];
+        };
+        /** JobOut */
+        JobOut: {
+            /** At */
+            at: string | null;
+            /** Attempts */
+            attempts: number;
+            /** Can Retry */
+            can_retry: boolean;
+            /** Id */
+            id: number;
+            /** Ids */
+            ids: {
+                [key: string]: string | number;
+            };
+            last_event: components["schemas"]["LastEventOut"];
+            /** Queue */
+            queue: string;
+            /** Retry Reason */
+            retry_reason: string | null;
+            /** Status */
+            status: string;
+            /** Task Name */
+            task_name: string;
+        };
+        /** JobsPage */
+        JobsPage: {
+            /** Items */
+            items: components["schemas"]["JobOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** LastEventOut */
+        LastEventOut: {
+            /** At */
+            at: string | null;
+            /** Type */
+            type: string | null;
+        };
         /** LogFilters */
         LogFilters: {
             /** End */
@@ -970,6 +1066,11 @@ export interface components {
             }[];
             /** Truncated */
             truncated: boolean;
+        };
+        /** MessageOut */
+        MessageOut: {
+            /** Message */
+            message: string;
         };
         /** MetricTotal */
         MetricTotal: {
@@ -1042,6 +1143,40 @@ export interface components {
             severity: string;
             /** Text */
             text: string;
+        };
+        /** OutboundIncidentOut */
+        OutboundIncidentOut: {
+            /** Can Mark Sent */
+            can_mark_sent: boolean;
+            /** Can Resend */
+            can_resend: boolean;
+            /** Channel */
+            channel: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Mark Sent Reason */
+            mark_sent_reason: string | null;
+            /** Resend Reason */
+            resend_reason: string | null;
+            /** Status */
+            status: string;
+            /** Tenant */
+            tenant: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
         };
         /** Overview */
         Overview: {
@@ -1473,7 +1608,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AlertsPage"];
+                };
             };
         };
     };
@@ -1493,7 +1630,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
             };
         };
     };
@@ -1792,7 +1931,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["IncidentsOut"];
+                };
             };
         };
     };
@@ -1815,7 +1956,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["JobsPage"];
+                };
             };
         };
     };
@@ -1835,7 +1978,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
             };
         };
     };
@@ -1883,7 +2028,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
             };
         };
     };
@@ -1907,7 +2054,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
             };
         };
     };

@@ -24,13 +24,13 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/features/activity/components/timeline";
+import { errorMessage } from "@/lib/errors";
 import { formatEur, formatNumber } from "@/lib/format";
 import { ConfigEditor } from "./config/editor";
 import { History } from "./config/history";
 import { MissingChecklist } from "./config/missing-checklist";
 import { SecretsForm } from "./config/secrets-form";
 import { StatusAction } from "./config/status-action";
-import { errorMessage } from "./error-message";
 
 type Detail = components["schemas"]["TenantDetail"];
 const param = (slug: string) => ({ params: { path: { slug } } });

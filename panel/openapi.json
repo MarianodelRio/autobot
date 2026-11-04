@@ -168,6 +168,158 @@
         "title": "AlertBrief",
         "type": "object"
       },
+      "AlertOut": {
+        "properties": {
+          "auto_resolves": {
+            "title": "Auto Resolves",
+            "type": "boolean"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_delivery": {
+            "title": "Last Delivery",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "last_sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sent At"
+          },
+          "occurrences": {
+            "title": "Occurrences",
+            "type": "integer"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By"
+          },
+          "sent_count": {
+            "title": "Sent Count",
+            "type": "integer"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "tenant_id",
+          "tenant",
+          "severity",
+          "text",
+          "first_seen_at",
+          "last_seen_at",
+          "occurrences",
+          "sent_count",
+          "last_sent_at",
+          "last_delivery",
+          "auto_resolves",
+          "resolved_at",
+          "resolved_by"
+        ],
+        "title": "AlertOut",
+        "type": "object"
+      },
+      "AlertsPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AlertOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AlertsPage",
+        "type": "object"
+      },
       "ChecklistItemOut": {
         "properties": {
           "blocking": {
@@ -608,6 +760,181 @@
         "title": "HealthIssueOut",
         "type": "object"
       },
+      "IncidentsOut": {
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertOut"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobOut"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "outbound": {
+            "items": {
+              "$ref": "#/components/schemas/OutboundIncidentOut"
+            },
+            "title": "Outbound",
+            "type": "array"
+          }
+        },
+        "required": [
+          "alerts",
+          "outbound",
+          "jobs"
+        ],
+        "title": "IncidentsOut",
+        "type": "object"
+      },
+      "JobOut": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "can_retry": {
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ids": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Ids",
+            "type": "object"
+          },
+          "last_event": {
+            "$ref": "#/components/schemas/LastEventOut"
+          },
+          "queue": {
+            "title": "Queue",
+            "type": "string"
+          },
+          "retry_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_name": {
+            "title": "Task Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "task_name",
+          "queue",
+          "status",
+          "attempts",
+          "ids",
+          "last_event",
+          "can_retry",
+          "retry_reason"
+        ],
+        "title": "JobOut",
+        "type": "object"
+      },
+      "JobsPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "JobsPage",
+        "type": "object"
+      },
+      "LastEventOut": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "required": [
+          "type",
+          "at"
+        ],
+        "title": "LastEventOut",
+        "type": "object"
+      },
       "LogFilters": {
         "properties": {
           "end": {
@@ -711,6 +1038,19 @@
           "clipped"
         ],
         "title": "LogsOut",
+        "type": "object"
+      },
+      "MessageOut": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "MessageOut",
         "type": "object"
       },
       "MetricTotal": {
@@ -888,6 +1228,93 @@
           "severity"
         ],
         "title": "OpenAlert",
+        "type": "object"
+      },
+      "OutboundIncidentOut": {
+        "properties": {
+          "can_mark_sent": {
+            "title": "Can Mark Sent",
+            "type": "boolean"
+          },
+          "can_resend": {
+            "title": "Can Resend",
+            "type": "boolean"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "mark_sent_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mark Sent Reason"
+          },
+          "resend_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resend Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tenant": {
+            "title": "Tenant",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "tenant",
+          "channel",
+          "status",
+          "created_at",
+          "last_error",
+          "can_mark_sent",
+          "mark_sent_reason",
+          "can_resend",
+          "resend_reason"
+        ],
+        "title": "OutboundIncidentOut",
         "type": "object"
       },
       "Overview": {
@@ -2097,6 +2524,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertsPage"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -2128,6 +2562,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -2581,6 +3022,13 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentsOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -2642,6 +3090,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsPage"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -2672,6 +3127,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -2815,6 +3277,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },
@@ -2863,6 +3332,13 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
             "description": "OK"
           }
         },

@@ -14,8 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { errorMessage } from "@/lib/errors";
 import { formatEur, formatNumber } from "@/lib/format";
-import { errorMessage } from "./error-message";
 
 export function TenantListPage() {
   const [search, setSearch] = useState("");
