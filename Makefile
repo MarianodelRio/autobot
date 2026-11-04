@@ -3,7 +3,7 @@ NGROK_DOMAIN ?= unpermanently-repairable-devon.ngrok-free.dev
 
 .PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
 .PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test
-.PHONY: db-roles api fix panel-dev panel-check
+.PHONY: db-roles api fix panel-dev panel-check panel-tunnel
 
 check-prod-config:
 	uv run python tools/check_prod_config.py
@@ -26,6 +26,10 @@ panel-check:
 	pnpm -C panel typecheck
 	pnpm -C panel test
 	pnpm -C panel build
+
+# SSH tunnel to the panel container's own port (8080), never to `web` directly.
+panel-tunnel:
+	ssh -o ExitOnForwardFailure=yes -N -L 127.0.0.1:18000:127.0.0.1:8080 deploy@$(HOST)
 
 deploy:
 	gh workflow run deploy.yml -f sha="$(SHA)"

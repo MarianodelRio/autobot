@@ -30,7 +30,8 @@ con tu clave en la VPS recién creada.
    no añade usuarios, claves, reglas de firewall ni unidades duplicadas. Comprueba
    `sshd -T | grep -E 'permitrootlogin|passwordauthentication'` y
    `ufw status numbered`. Desde otra máquina, escanea los puertos públicos; solo deben
-   aparecer 22, 80 y 443. El puerto 8000 escucha únicamente en 127.0.0.1.
+   aparecer 22, 80 y 443. Los puertos 8000 (`web`) y 8080 (`panel`) escuchan
+   únicamente en 127.0.0.1.
 5. En `/srv/autobot/.env`, usa `.env.example` como guía y fija `DEPLOY_UID` con
    `id -u deploy`. Crea `google_sa.json`, `backup.env` y
    `restic-password` como propietario `deploy`, modo 0600. El usuario no root de
@@ -41,8 +42,9 @@ con tu clave en la VPS recién creada.
 6. Desde la consola del proveedor como root, inicia el timer con
    `systemctl start autobot-backup.timer` solo después de
    configurar `backup.env`, `restic-password` y el destino remoto de los backups.
-   Antes del primer despliegue, comprueba que el paquete GHCR es público o configura
-   autenticación de lectura para `deploy` en Docker. En GitHub, crea el entorno
+   Antes del primer despliegue, comprueba que los paquetes GHCR (`autobot` y
+   `autobot-panel`) son públicos o configura autenticación de lectura para `deploy`
+   en Docker. En GitHub, crea el entorno
    `production` con revisión requerida, si tu plan de GitHub lo permite, y añade
    `DEPLOY_HOST`, `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS`. Fija `known_hosts` desde
    una huella verificada fuera de la conexión inicial.
@@ -53,8 +55,10 @@ distintos del despliegue, `docker compose version` responde, el timer está acti
 configuración. El primer despliegue y el escaneo externo son pasos de la puesta en marcha (`docs/puesta-en-marcha.md`);
 este runbook no los da por hechos.
 
-El Django Admin se eliminó (ADR-008); todavía no hay interfaz web (`docs/runbooks/panel.md`).
-La operación tras el despliegue se hace por SSH con la clave de operación y
+El Django Admin se eliminó (ADR-008); el panel (`docs/runbooks/panel.md`) solo se
+alcanza por `make panel-tunnel` (túnel al puerto 8080 del contenedor `panel`), nunca
+por el Caddy público. La operación tras el despliegue se hace por SSH con la clave
+de operación y
 `docker compose -p autobot -f compose.prod.yaml exec web python manage.py <comando>`
 (`docs/comandos.md`), o con los comandos de resolución (`outbound_resolve`, `job_retry`).
 El puerto 8000 del servidor no se expone públicamente. Para un backup manual,

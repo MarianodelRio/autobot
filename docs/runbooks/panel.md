@@ -1,10 +1,11 @@
 # Panel interno
 
 El Django Admin se eliminó (ADR-008); el panel que lo sustituye es una API propia
-(`/api/panel/`, django-ninja) más una SPA que llega en tareas posteriores
-(`docs/panel/IMPLEMENTATION.md`, T23a en adelante). Hasta entonces, la API ya existe
-y permite consultar y operar mediante sus endpoints; los comandos de
-`manage.py` (`docs/comandos.md`) también permiten resolver incidencias:
+(`/api/panel/`, django-ninja) y una SPA (React, `panel/`) servidas por el contenedor
+`panel` (su propia Caddy, sirve `/` y hace de proxy de `/api/*` hacia `web:8000`). Las
+pantallas se completan tarea a tarea (`docs/panel/IMPLEMENTATION.md`); hasta que una
+sección tenga la suya, muestra "Próximamente". Los comandos de `manage.py`
+(`docs/comandos.md`) también permiten resolver incidencias sin pasar por la API:
 
 - **Envíos ambiguos o fallidos** (runbook 05): `outbound_resolve <id> (--mark-sent|--resend)
   --confirm`.
@@ -33,11 +34,13 @@ SSH.
 
 ## Sesión y acceso
 
-- La API vive en `/api/panel/`, solo alcanzable por el túnel SSH de operación
-  (`make panel-tunnel`, ADR-008): nunca por el Caddy público. `PanelGateMiddleware`
-  responde 404 a cualquier petición que llegue con la cabecera `X-Autobot-Edge`
-  (la añade el Caddy público) y 503 si el proceso no tiene el alias `owner`
-  (`DB_OWNER_URL` sin configurar).
+- La SPA y la API viven en el contenedor `panel` (puerto 8080, solo en
+  `127.0.0.1`), alcanzable únicamente por el túnel SSH de operación
+  (`make panel-tunnel`, ADR-008): nunca por el Caddy público, que no conoce ese
+  puerto. La Caddy del panel quita cualquier `X-Autobot-Edge` antes de reenviar a
+  `web:8000`; aun así, `PanelGateMiddleware` responde 404 si esa cabecera llegara por
+  algún otro camino, y 503 si el proceso no tiene el alias `owner` (`DB_OWNER_URL`
+  sin configurar).
 - Sesión de 12 horas, cookies `autobot_panel_session` y `autobot_panel_csrftoken`
   (nombres propios para no chocar con otra app en `127.0.0.1`). Toda escritura exige
   la cabecera `X-CSRFToken`.
@@ -68,5 +71,6 @@ En `/api/panel/data/saved-queries` se pueden listar, crear, modificar y borrar
 consultas guardadas; los cambios quedan auditados. La migración añade cuatro ejemplos.
 El ejemplo de costes usa tarifas aproximadas fijadas en su SQL: si cambian las tarifas
 debe revisarse la consulta guardada. El ejemplo de contactos más activos los ordena
-por la cantidad de mensajes salientes asociados. La ejecución de SQL se implementa en T22.
+por la cantidad de mensajes salientes asociados. La ejecución de SQL (consola de solo
+lectura, rol `fp_readonly`) está en `POST /api/panel/data/query`.
 El rol `fp_app` no tiene permisos sobre `saved_query`; `apply_grants` los reaplica.

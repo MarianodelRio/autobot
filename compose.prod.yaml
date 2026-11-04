@@ -103,6 +103,25 @@ services:
     stop_grace_period: 60s
     init: true
 
+  panel:
+    image: ghcr.io/marianodelrio/autobot-panel:${SHA:?Set the published image SHA}
+    user: ${DEPLOY_UID:?Set the numeric uid of the deploy user}
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
   db:
     image: postgres:18
     environment:

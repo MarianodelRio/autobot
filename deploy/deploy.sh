@@ -32,6 +32,15 @@ wait_health() {
   return 1
 }
 
+wait_panel() {
+  local deadline=$((SECONDS + 60))
+  while ((SECONDS < deadline)); do
+    curl --silent --show-error --fail --max-time 2 http://127.0.0.1:8080/healthz >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
+
 # The worker has no HTTP endpoint: a crash at start shows as a stopped container or a
 # restart under `restart: unless-stopped`, so it must stay up and unrestarted for ~10 s.
 wait_worker() {
@@ -70,8 +79,8 @@ if [[ $previous == "$target" ]]; then
     exit 0
   fi
   echo 'Recorded image is unhealthy; restarting services' >&2
-  "${compose[@]}" up --no-deps -d web worker
-  if wait_health; then
+  "${compose[@]}" up --no-deps -d web worker panel
+  if wait_health && wait_panel; then
     record_deploy already
     exit 0
   fi
@@ -95,7 +104,7 @@ abort() {
 # The first deployment needs PostgreSQL before a one-shot migration container.
 "${compose[@]}" up -d --wait db || abort
 "${compose[@]}" exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh || abort
-"${compose[@]}" pull web worker || abort
+"${compose[@]}" pull web worker panel || abort
 # Logs are not critical: victorialogs never aborts or rolls back a deployment.
 "${compose[@]}" pull victorialogs || echo 'Could not pull victorialogs; logs will be unavailable' >&2
 "${compose[@]}" up -d victorialogs || echo 'Could not start victorialogs; logs will be unavailable' >&2
@@ -111,7 +120,7 @@ rollback() {
     export SHA="$previous"
     restore_checkout
     local failed=0
-    if ! "${compose[@]}" up --no-deps -d web worker; then
+    if ! "${compose[@]}" up --no-deps -d web worker panel; then
       echo 'Could not restart previous image; operator action required' >&2
       failed=1
     fi
@@ -121,6 +130,10 @@ rollback() {
     fi
     if ! wait_worker; then
       echo 'Rollback worker check failed; operator action required' >&2
+      failed=1
+    fi
+    if ! wait_panel; then
+      echo 'Rollback panel check failed; operator action required' >&2
       failed=1
     fi
     if ! "${compose[@]}" up --no-deps -d caddy; then
@@ -136,9 +149,10 @@ rollback() {
   exit 1
 }
 
-"${compose[@]}" up --no-deps -d web worker || rollback
+"${compose[@]}" up --no-deps -d web worker panel || rollback
 wait_health || rollback
 wait_worker || rollback
+wait_panel || rollback
 "${compose[@]}" up --no-deps -d caddy || rollback
 printf '%s\n' "$target" >.deployed-sha.tmp
 mv .deployed-sha.tmp .deployed-sha

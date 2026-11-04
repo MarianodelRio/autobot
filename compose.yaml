@@ -46,6 +46,17 @@ services:
     stop_grace_period: 60s
     init: true
 
+  # Only with `docker compose --profile panel up --build`: the production panel
+  # image, to test its own Caddy and build (not pnpm panel-dev's Vite proxy).
+  panel:
+    build:
+      context: ./panel
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - web
+    profiles: [panel]
+
   db:
     image: postgres:18
     environment:
