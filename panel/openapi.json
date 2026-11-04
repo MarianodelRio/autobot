@@ -1524,6 +1524,45 @@
         "title": "QueryOut",
         "type": "object"
       },
+      "RelationOut": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "target_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Columns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "source",
+          "target",
+          "columns",
+          "target_columns"
+        ],
+        "title": "RelationOut",
+        "type": "object"
+      },
       "RollbackIn": {
         "properties": {
           "comment": {
@@ -2029,6 +2068,260 @@
           "tls"
         ],
         "title": "SystemOut",
+        "type": "object"
+      },
+      "TableColumnOut": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "hidden": {
+            "title": "Hidden",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "nullable": {
+            "title": "Nullable",
+            "type": "boolean"
+          },
+          "primary_key": {
+            "title": "Primary Key",
+            "type": "boolean"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "nullable",
+          "primary_key",
+          "description",
+          "hidden"
+        ],
+        "title": "TableColumnOut",
+        "type": "object"
+      },
+      "TableDetailOut": {
+        "properties": {
+          "approx": {
+            "title": "Approx",
+            "type": "boolean"
+          },
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/TableColumnOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "incoming": {
+            "items": {
+              "$ref": "#/components/schemas/RelationOut"
+            },
+            "title": "Incoming",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outgoing": {
+            "items": {
+              "$ref": "#/components/schemas/RelationOut"
+            },
+            "title": "Outgoing",
+            "type": "array"
+          },
+          "retention": {
+            "title": "Retention",
+            "type": "string"
+          },
+          "rls": {
+            "title": "Rls",
+            "type": "boolean"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "rows_by_tenant": {
+            "items": {
+              "$ref": "#/components/schemas/TenantCountOut"
+            },
+            "title": "Rows By Tenant",
+            "type": "array"
+          },
+          "written_by": {
+            "title": "Written By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "group",
+          "description",
+          "written_by",
+          "retention",
+          "rls",
+          "row_count",
+          "approx",
+          "bytes",
+          "columns",
+          "rows_by_tenant",
+          "incoming",
+          "outgoing",
+          "rows"
+        ],
+        "title": "TableDetailOut",
+        "type": "object"
+      },
+      "TableSummaryOut": {
+        "properties": {
+          "approx": {
+            "title": "Approx",
+            "type": "boolean"
+          },
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/TableColumnOut"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "incoming": {
+            "items": {
+              "$ref": "#/components/schemas/RelationOut"
+            },
+            "title": "Incoming",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outgoing": {
+            "items": {
+              "$ref": "#/components/schemas/RelationOut"
+            },
+            "title": "Outgoing",
+            "type": "array"
+          },
+          "retention": {
+            "title": "Retention",
+            "type": "string"
+          },
+          "rls": {
+            "title": "Rls",
+            "type": "boolean"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows_by_tenant": {
+            "items": {
+              "$ref": "#/components/schemas/TenantCountOut"
+            },
+            "title": "Rows By Tenant",
+            "type": "array"
+          },
+          "written_by": {
+            "title": "Written By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "group",
+          "description",
+          "written_by",
+          "retention",
+          "rls",
+          "row_count",
+          "approx",
+          "bytes",
+          "columns",
+          "rows_by_tenant",
+          "incoming",
+          "outgoing"
+        ],
+        "title": "TableSummaryOut",
+        "type": "object"
+      },
+      "TenantCountOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "tenant",
+          "count"
+        ],
+        "title": "TenantCountOut",
         "type": "object"
       },
       "TenantCounts": {
@@ -2955,8 +3248,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/TableSummaryOut"
                   },
                   "title": "Response",
                   "type": "array"
@@ -2996,9 +3288,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TableDetailOut"
                 }
               }
             },

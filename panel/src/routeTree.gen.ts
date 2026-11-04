@@ -21,6 +21,8 @@ import { Route as AppClientesIndexRouteImport } from './routes/_app/clientes/ind
 import { Route as AppClientesSlugRouteImport } from './routes/_app/clientes/$slug'
 import { Route as AppClientesNuevoRouteImport } from './routes/_app/clientes/nuevo'
 import { Route as AppDatosIndexRouteImport } from './routes/_app/datos/index'
+import { Route as AppDatosTableRouteImport } from './routes/_app/datos/$table'
+import { Route as AppDatosConsultaRouteImport } from './routes/_app/datos/consulta'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -81,6 +83,16 @@ const AppDatosIndexRoute = AppDatosIndexRouteImport.update({
   path: '/datos/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDatosTableRoute = AppDatosTableRouteImport.update({
+  id: '/datos/$table',
+  path: '/datos/$table',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDatosConsultaRoute = AppDatosConsultaRouteImport.update({
+  id: '/datos/consulta',
+  path: '/datos/consulta',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -92,6 +104,8 @@ export interface FileRoutesByFullPath {
   '/sistema': typeof AppSistemaRoute
   '/clientes/$slug': typeof AppClientesSlugRoute
   '/clientes/nuevo': typeof AppClientesNuevoRoute
+  '/datos/$table': typeof AppDatosTableRoute
+  '/datos/consulta': typeof AppDatosConsultaRoute
   '/clientes/': typeof AppClientesIndexRoute
   '/datos/': typeof AppDatosIndexRoute
 }
@@ -105,6 +119,8 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/clientes/$slug': typeof AppClientesSlugRoute
   '/clientes/nuevo': typeof AppClientesNuevoRoute
+  '/datos/$table': typeof AppDatosTableRoute
+  '/datos/consulta': typeof AppDatosConsultaRoute
   '/clientes': typeof AppClientesIndexRoute
   '/datos': typeof AppDatosIndexRoute
 }
@@ -120,6 +136,8 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/clientes/$slug': typeof AppClientesSlugRoute
   '/_app/clientes/nuevo': typeof AppClientesNuevoRoute
+  '/_app/datos/$table': typeof AppDatosTableRoute
+  '/_app/datos/consulta': typeof AppDatosConsultaRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
   '/_app/datos/': typeof AppDatosIndexRoute
 }
@@ -135,6 +153,8 @@ export interface FileRouteTypes {
     | '/sistema'
     | '/clientes/$slug'
     | '/clientes/nuevo'
+    | '/datos/$table'
+    | '/datos/consulta'
     | '/clientes/'
     | '/datos/'
   fileRoutesByTo: FileRoutesByTo
@@ -148,6 +168,8 @@ export interface FileRouteTypes {
     | '/'
     | '/clientes/$slug'
     | '/clientes/nuevo'
+    | '/datos/$table'
+    | '/datos/consulta'
     | '/clientes'
     | '/datos'
   id:
@@ -162,6 +184,8 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/clientes/$slug'
     | '/_app/clientes/nuevo'
+    | '/_app/datos/$table'
+    | '/_app/datos/consulta'
     | '/_app/clientes/'
     | '/_app/datos/'
   fileRoutesById: FileRoutesById
@@ -257,6 +281,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDatosIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/datos/$table': {
+      id: '/_app/datos/$table'
+      path: '/datos/$table'
+      fullPath: '/datos/$table'
+      preLoaderRoute: typeof AppDatosTableRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/datos/consulta': {
+      id: '/_app/datos/consulta'
+      path: '/datos/consulta'
+      fullPath: '/datos/consulta'
+      preLoaderRoute: typeof AppDatosConsultaRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -269,6 +307,8 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppClientesSlugRoute: typeof AppClientesSlugRoute
   AppClientesNuevoRoute: typeof AppClientesNuevoRoute
+  AppDatosTableRoute: typeof AppDatosTableRoute
+  AppDatosConsultaRoute: typeof AppDatosConsultaRoute
   AppClientesIndexRoute: typeof AppClientesIndexRoute
   AppDatosIndexRoute: typeof AppDatosIndexRoute
 }
@@ -282,6 +322,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppClientesSlugRoute: AppClientesSlugRoute,
   AppClientesNuevoRoute: AppClientesNuevoRoute,
+  AppDatosTableRoute: AppDatosTableRoute,
+  AppDatosConsultaRoute: AppDatosConsultaRoute,
   AppClientesIndexRoute: AppClientesIndexRoute,
   AppDatosIndexRoute: AppDatosIndexRoute,
 }

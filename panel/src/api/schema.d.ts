@@ -1253,6 +1253,19 @@ export interface components {
             /** Truncated */
             truncated: boolean;
         };
+        /** RelationOut */
+        RelationOut: {
+            /** Columns */
+            columns: string[];
+            /** Name */
+            name: string;
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Target Columns */
+            target_columns: string[];
+        };
         /** RollbackIn */
         RollbackIn: {
             /** Comment */
@@ -1432,6 +1445,90 @@ export interface components {
             tls: {
                 [key: string]: number | null;
             };
+        };
+        /** TableColumnOut */
+        TableColumnOut: {
+            /** Description */
+            description: string;
+            /** Hidden */
+            hidden: boolean;
+            /** Name */
+            name: string;
+            /** Nullable */
+            nullable: boolean;
+            /** Primary Key */
+            primary_key: boolean;
+            /** Type */
+            type: string;
+        };
+        /** TableDetailOut */
+        TableDetailOut: {
+            /** Approx */
+            approx: boolean;
+            /** Bytes */
+            bytes: number;
+            /** Columns */
+            columns: components["schemas"]["TableColumnOut"][];
+            /** Description */
+            description: string;
+            /** Group */
+            group: string;
+            /** Incoming */
+            incoming: components["schemas"]["RelationOut"][];
+            /** Name */
+            name: string;
+            /** Outgoing */
+            outgoing: components["schemas"]["RelationOut"][];
+            /** Retention */
+            retention: string;
+            /** Rls */
+            rls: boolean;
+            /** Row Count */
+            row_count: number;
+            /** Rows */
+            rows: unknown[][];
+            /** Rows By Tenant */
+            rows_by_tenant: components["schemas"]["TenantCountOut"][];
+            /** Written By */
+            written_by: string;
+        };
+        /** TableSummaryOut */
+        TableSummaryOut: {
+            /** Approx */
+            approx: boolean;
+            /** Bytes */
+            bytes: number;
+            /** Columns */
+            columns: components["schemas"]["TableColumnOut"][];
+            /** Description */
+            description: string;
+            /** Group */
+            group: string;
+            /** Incoming */
+            incoming: components["schemas"]["RelationOut"][];
+            /** Name */
+            name: string;
+            /** Outgoing */
+            outgoing: components["schemas"]["RelationOut"][];
+            /** Retention */
+            retention: string;
+            /** Rls */
+            rls: boolean;
+            /** Row Count */
+            row_count: number;
+            /** Rows By Tenant */
+            rows_by_tenant: components["schemas"]["TenantCountOut"][];
+            /** Written By */
+            written_by: string;
+        };
+        /** TenantCountOut */
+        TenantCountOut: {
+            /** Count */
+            count: number;
+            /** Tenant */
+            tenant: string | null;
+            /** Tenant Id */
+            tenant_id: string | null;
         };
         /** TenantCounts */
         TenantCounts: {
@@ -1886,9 +1983,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["TableSummaryOut"][];
                 };
             };
         };
@@ -1910,9 +2005,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TableDetailOut"];
                 };
             };
         };

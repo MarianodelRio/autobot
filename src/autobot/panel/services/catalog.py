@@ -6,6 +6,8 @@ from typing import Any
 from django.db import connections
 from django.http import Http404
 
+from autobot.tenancy.models import Tenant
+
 
 @dataclass(frozen=True)
 class TableDoc:
@@ -322,7 +324,13 @@ def _columns(table: str) -> list[dict[str, Any]]:
         ]
 
 
-def _stats(name: str, metadata: dict[str, Any], columns: list[dict[str, Any]]) -> dict[str, Any]:
+def _tenant_slugs() -> dict[str, str]:
+    return {str(id): slug for id, slug in Tenant.objects.using("owner").values_list("id", "slug")}
+
+
+def _stats(
+    name: str, metadata: dict[str, Any], columns: list[dict[str, Any]], slugs: dict[str, str]
+) -> dict[str, Any]:
     quote = _identifier
     estimated = metadata["estimate"]
     approx = estimated >= 100_000
@@ -339,7 +347,11 @@ def _stats(name: str, metadata: dict[str, Any], columns: list[dict[str, Any]]) -
                 "GROUP BY tenant_id ORDER BY tenant_id"
             )
             counts = [
-                dict(tenant_id=str(id) if id is not None else None, count=value)
+                dict(
+                    tenant_id=str(id) if id is not None else None,
+                    tenant=slugs.get(str(id)) if id is not None else None,
+                    count=value,
+                )
                 for id, value in cursor.fetchall()
             ]
     return dict(row_count=count, approx=approx, bytes=metadata["bytes"], rows_by_tenant=counts)
@@ -348,6 +360,7 @@ def _stats(name: str, metadata: dict[str, Any], columns: list[dict[str, Any]]) -
 def table_list() -> list[dict[str, Any]]:
     metadata = _catalog_metadata()
     relations = _relations()
+    slugs = _tenant_slugs()
     result = []
     for name, info in sorted(metadata.items()):
         doc = CATALOG.get(name, UNKNOWN)
@@ -360,7 +373,8 @@ def table_list() -> list[dict[str, Any]]:
                 written_by=doc.written_by,
                 retention=doc.retention,
                 rls=info["rls"],
-                **_stats(name, info, columns),
+                columns=columns,
+                **_stats(name, info, columns, slugs),
                 incoming=[r for r in relations if r["target"] == name],
                 outgoing=[r for r in relations if r["source"] == name],
             )
@@ -412,7 +426,7 @@ def table_detail(name: str) -> dict[str, Any]:
         rls=metadata[name]["rls"],
         columns=columns,
         rows=rows,
-        **_stats(name, metadata[name], columns),
+        **_stats(name, metadata[name], columns, _tenant_slugs()),
         incoming=[r for r in relations if r["target"] == name],
         outgoing=[r for r in relations if r["source"] == name],
     )

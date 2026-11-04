@@ -9,19 +9,35 @@ export default function CodeEditorInner({
   onChange,
   language,
   readOnly,
+  sqlSchema,
+  onRun,
 }: {
   value: string;
   onChange?: (value: string) => void;
   language: CodeEditorLanguage;
   readOnly?: boolean;
+  /** Table -> column names, for SQL autocompletion against the data catalogue. */
+  sqlSchema?: Record<string, string[]>;
+  /** Called on ⌘Enter / Ctrl+Enter, e.g. to run the query. */
+  onRun?: () => void;
 }) {
   return (
     <CodeMirror
       value={value}
       onChange={onChange}
-      extensions={[language === "sql" ? sql() : yaml()]}
+      extensions={[language === "sql" ? sql({ schema: sqlSchema }) : yaml()]}
       theme="dark"
       readOnly={readOnly}
+      onKeyDown={(event) => {
+        if (
+          onRun &&
+          (event.metaKey || event.ctrlKey) &&
+          event.key === "Enter"
+        ) {
+          event.preventDefault();
+          onRun();
+        }
+      }}
     />
   );
 }

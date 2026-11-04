@@ -166,7 +166,7 @@ def test_uncatalogued_name_with_quote(authed_client: Any, monkeypatch: pytest.Mo
             detail = catalog.table_detail('catalog_"quoted')
             assert [row[0] for row in detail["rows"]] == [3, 2, 1]
             assert detail["row_count"] == 3 and not detail["approx"]
-            estimated = catalog._stats('catalog_"quoted', {"estimate": 100000, "bytes": 1}, [])
+            estimated = catalog._stats('catalog_"quoted', {"estimate": 100000, "bytes": 1}, [], {})
             assert estimated["row_count"] == 100000 and estimated["approx"]
         finally:
             cursor.execute('DROP TABLE "catalog_""quoted"')

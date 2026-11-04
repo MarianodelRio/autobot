@@ -11,6 +11,8 @@ export function CodeEditor(props: {
   onChange?: (value: string) => void;
   language: CodeEditorLanguage;
   readOnly?: boolean;
+  sqlSchema?: Record<string, string[]>;
+  onRun?: () => void;
 }) {
   return (
     <Suspense fallback={<Skeleton className="h-40 w-full" />}>
