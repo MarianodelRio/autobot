@@ -48,3 +48,9 @@ SSH.
 - `fp_app` (el rol de `web` y `worker`) no tiene ningún acceso a las tablas de Django
   (`auth_user`, `django_session`, `otp_totp_totpdevice`...): están enrutadas a
   `fp_owner` por `AuthDatabaseRouter`. Un webhook nunca las consulta.
+
+## Escritura de negocios
+
+La API del panel permite crear negocios, publicar y recuperar versiones de configuración,
+pausar o reactivar negocios y sustituir los secretos completos del canal. Cada cambio
+queda auditado con el usuario del panel. La baja se realiza únicamente por comando.

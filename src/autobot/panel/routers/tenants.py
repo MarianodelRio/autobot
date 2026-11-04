@@ -1,14 +1,96 @@
 """Tenant reads: ficha, history, datasets, secrets status, activation, summary,
 notifications and on-demand health (DESIGN §6.4; T16a)."""
 
+from typing import Any, Literal, cast
+
 from django.http import HttpRequest
 from django.utils import timezone
-from ninja import Router
+from ninja import Router, Schema
 
 from autobot.panel.services import tenants as service
 from autobot.panel.services.overview import TenantRow, tenant_rows
+from autobot.tenancy import store
 
 router = Router(tags=["tenants"])
+
+
+class CreateTenantIn(Schema):
+    pack: str
+    slug: str
+    name: str
+    timezone: str
+    channel_type: Literal["whatsapp", "telegram"] | None = None
+    demo_description: str | None = None
+    config: dict[str, Any]
+    comment: str = ""
+
+
+class DocumentIn(Schema):
+    document: dict[str, Any]
+    base_version: int
+    comment: str
+
+
+class RollbackIn(Schema):
+    version: int
+    comment: str
+
+
+class StatusIn(Schema):
+    action: str
+    confirm_slug: str | None = None
+
+
+class SecretsIn(Schema):
+    secrets: dict[str, str]
+
+
+class VersionOut(Schema):
+    version: int
+
+
+@router.post("/tenants", response=VersionOut)
+def create_tenant(request: HttpRequest, payload: CreateTenantIn) -> VersionOut:
+    doc = store.new_document(**payload.model_dump(exclude={"comment"}))
+    return VersionOut(
+        version=store.create_tenant(
+            document=doc, actor=request.user.username, comment=payload.comment
+        )
+    )
+
+
+@router.put("/tenants/{slug}/document", response=VersionOut)
+def publish_document(request: HttpRequest, slug: str, payload: DocumentIn) -> VersionOut:
+    return VersionOut(
+        version=store.publish(slug, actor=request.user.username, **payload.model_dump())
+    )
+
+
+@router.post("/tenants/{slug}/rollback", response=VersionOut)
+def rollback_document(request: HttpRequest, slug: str, payload: RollbackIn) -> VersionOut:
+    return VersionOut(
+        version=store.rollback(slug, actor=request.user.username, **payload.model_dump())
+    )
+
+
+@router.post("/tenants/{slug}/status", response=VersionOut)
+def change_status(request: HttpRequest, slug: str, payload: StatusIn) -> VersionOut:
+    if payload.action not in ("activate", "pause", "resume"):
+        raise store.StoreError("bad_request", "Acción de estado no válida")
+    return VersionOut(
+        version=store.change_status(
+            slug,
+            action=cast(Literal["activate", "pause", "resume"], payload.action),
+            actor=request.user.username,
+            confirm_slug=payload.confirm_slug,
+        )
+    )
+
+
+@router.put("/tenants/{slug}/secrets", response={204: None})
+def set_secrets(request: HttpRequest, slug: str, payload: SecretsIn) -> tuple[int, None]:
+    store.set_secrets(slug, secrets=payload.secrets, actor=request.user.username)
+    return 204, None
 
 
 @router.get("/tenants", response=list[TenantRow])

@@ -86,6 +86,71 @@
         "title": "ChecklistItemOut",
         "type": "object"
       },
+      "CreateTenantIn": {
+        "properties": {
+          "channel_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "whatsapp",
+                  "telegram"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Type"
+          },
+          "comment": {
+            "default": "",
+            "title": "Comment",
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "demo_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demo Description"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pack": {
+            "title": "Pack",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pack",
+          "slug",
+          "name",
+          "timezone",
+          "config"
+        ],
+        "title": "CreateTenantIn",
+        "type": "object"
+      },
       "DatasetVersionOut": {
         "properties": {
           "author": {
@@ -147,6 +212,30 @@
           "outbound"
         ],
         "title": "DayCount",
+        "type": "object"
+      },
+      "DocumentIn": {
+        "properties": {
+          "base_version": {
+            "title": "Base Version",
+            "type": "integer"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          }
+        },
+        "required": [
+          "document",
+          "base_version",
+          "comment"
+        ],
+        "title": "DocumentIn",
         "type": "object"
       },
       "HealthIssueOut": {
@@ -500,6 +589,24 @@
         "title": "ProblemBrief",
         "type": "object"
       },
+      "RollbackIn": {
+        "properties": {
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "comment"
+        ],
+        "title": "RollbackIn",
+        "type": "object"
+      },
       "SecretField": {
         "properties": {
           "name": {
@@ -516,6 +623,22 @@
           "set"
         ],
         "title": "SecretField",
+        "type": "object"
+      },
+      "SecretsIn": {
+        "properties": {
+          "secrets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Secrets",
+            "type": "object"
+          }
+        },
+        "required": [
+          "secrets"
+        ],
+        "title": "SecretsIn",
         "type": "object"
       },
       "SecretsStatus": {
@@ -597,6 +720,30 @@
           "problems"
         ],
         "title": "StatusBlock",
+        "type": "object"
+      },
+      "StatusIn": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "confirm_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm Slug"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "StatusIn",
         "type": "object"
       },
       "SummaryLineOut": {
@@ -1097,6 +1244,19 @@
         "title": "VersionDetail",
         "type": "object"
       },
+      "VersionOut": {
+        "properties": {
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "VersionOut",
+        "type": "object"
+      },
       "VersionSummary": {
         "properties": {
           "author": {
@@ -1393,6 +1553,41 @@
         "tags": [
           "tenants"
         ]
+      },
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_create_tenant",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTenantIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Create Tenant",
+        "tags": [
+          "tenants"
+        ]
       }
     },
     "/tenants/{slug}": {
@@ -1514,6 +1709,53 @@
         ]
       }
     },
+    "/tenants/{slug}/document": {
+      "put": {
+        "operationId": "autobot_panel_routers_tenants_publish_document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Publish Document",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
     "/tenants/{slug}/health-check": {
       "post": {
         "operationId": "autobot_panel_routers_tenants_tenant_health_check",
@@ -1596,6 +1838,53 @@
         ]
       }
     },
+    "/tenants/{slug}/rollback": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_rollback_document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Rollback Document",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
     "/tenants/{slug}/secrets": {
       "get": {
         "operationId": "autobot_panel_routers_tenants_tenant_secrets",
@@ -1628,6 +1917,91 @@
           }
         ],
         "summary": "Tenant Secrets",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "put": {
+        "operationId": "autobot_panel_routers_tenants_set_secrets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Set Secrets",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/status": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_change_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Change Status",
         "tags": [
           "tenants"
         ]
