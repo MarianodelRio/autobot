@@ -13,6 +13,7 @@ from ninja import Router
 
 from autobot.ops.models import AuditEvent
 from autobot.panel.errors import ApiError
+from autobot.tenancy.models import Tenant
 
 router = Router(tags=["audit"])
 
@@ -52,8 +53,6 @@ def page(
 def audit(
     request: HttpRequest, tenant: str = "", action: str = "", cursor: str = "", limit: int = 50
 ) -> dict[str, Any]:
-    from autobot.tenancy.models import Tenant
-
     qs = AuditEvent.objects.using("owner").all()
     if tenant:
         ids = Tenant.objects.using("owner").filter(slug=tenant).values("id")

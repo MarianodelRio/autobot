@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 from ninja import Router, Schema
 
 from autobot.ops.audit import record
+from autobot.panel.errors import ApiError
 from autobot.panel.services.activity import (
     decode_cursor,
     describe_inbound,
@@ -89,8 +90,6 @@ def contacts(
     if cursor:
         at, rank, id = decode_cursor(cursor)
         if rank != 0:
-            from autobot.panel.errors import ApiError
-
             raise ApiError("bad_request", "Cursor no válido.", 400)
         qs = qs.filter(Q(created_at__lt=at) | Q(created_at=at, id__lt=id))
     rows = list(qs.order_by("-created_at", "-id")[: limit + 1])
