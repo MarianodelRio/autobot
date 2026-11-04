@@ -27,6 +27,7 @@ from ninja import Schema
 from autobot.ops import system
 from autobot.ops.models import OpsAlert
 from autobot.ops.status import tenant_status
+from autobot.panel.services.system import tls_days_left
 from autobot.runtime import costs
 from autobot.runtime.models import InboundEvent, MetricEvent, OutboundMessage
 from autobot.runtime.summary import month_to_date
@@ -447,7 +448,7 @@ def build_overview(now: datetime | None = None) -> Overview:
             disk_used_pct=system.disk(),
             last_backup_at=last_backup_at,
             backup_ok=backup_ok,
-            tls_days_left=None,
+            tls_days_left=tls_days_left(),
             release=settings.RELEASE_SHA,
             deployed_at=deployed_at,
         ),

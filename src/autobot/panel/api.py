@@ -17,6 +17,7 @@ from autobot.panel.routers.incidents import router as incidents_router
 from autobot.panel.routers.logs import router as logs_router
 from autobot.panel.routers.overview import router as overview_router
 from autobot.panel.routers.packs import router as packs_router
+from autobot.panel.routers.system import router as system_router
 from autobot.panel.routers.tenants import router as tenants_router
 from autobot.tenancy.store import StoreError
 
@@ -24,6 +25,7 @@ api = NinjaAPI(
     title="Autobot panel", version="1", urls_namespace="panel", auth=PanelAuth(), docs_url=None
 )
 api.add_router("/auth", auth_router)
+api.add_router("", system_router)
 api.add_router("", logs_router)
 api.add_router("", audit_router)
 api.add_router("", incidents_router)
