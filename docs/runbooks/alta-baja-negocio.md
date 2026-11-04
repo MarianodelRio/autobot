@@ -5,7 +5,8 @@
 1. Preparar un directorio con `document.yaml` y los datasets necesarios en
    `datasets/<nombre>/`; el nombre antiguo `tenant.yaml` también se acepta al importar.
    Usar un UUIDv7 propio, `public_id` aleatorio y `status: onboarding`. Completar la
-   config según `docs/packs/<pack>.md`; el asistente de alta se incorpora con el panel.
+   config según `docs/packs/<pack>.md`; en el panel, `Clientes → Nuevo cliente` hace
+   lo mismo con un asistente.
 2. Declarar el canal y sus ids. Los secretos se pasan en un YAML privado de formato
    `slug: {campos...}`: WhatsApp usa `app_secret`, `access_token` y `verify_token`;
    Telegram, `bot_token` y `webhook_secret` (32 caracteres o más). Nunca van en el documento.
@@ -21,12 +22,16 @@
    ejecuta `tenant_health <slug>`. Con `onboarding`, solo se atiende a `testers.main`.
 7. Antes de activar: documento válido, ids y secretos completos, salud sin errores
    críticos, plantillas aprobadas y al menos un mensaje real de un tester por `main`.
-   La activación se conectará al panel; la baja siempre se hace por terminal.
+   En el panel, la ficha del cliente muestra esas comprobaciones y «Activar» pide
+   escribir el slug; la baja siempre se hace por terminal.
 
 Para editar, `tenant_config export <slug> <dir>` crea un directorio nuevo o vacío,
 sin secretos. Después de editar, `tenant_config import <dir> --comment "Motivo"`
-crea otra versión. Los seis campos de identidad y estado no se cambian por importación.
-Pausar o reactivar: `tenant_status <slug> pause|resume`. Los datasets también pueden
+crea otra versión; en el panel, la ficha del cliente edita la config con formulario
+o YAML (diff y comentario obligatorio) y guarda cada versión en su historial. Los
+seis campos de identidad y estado no se cambian por importación.
+Pausar o reactivar: `tenant_status <slug> pause|resume`, o el mismo botón en la
+ficha del cliente. Los datasets también pueden
 publicarse con `tenant_dataset import <slug> <nombre> <dir> --comment "Motivo"`.
 
 Los cambios se aplican sin commit ni despliegue, en la siguiente comprobación de revisión

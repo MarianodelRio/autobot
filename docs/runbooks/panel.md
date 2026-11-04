@@ -3,9 +3,10 @@
 El Django Admin se eliminó (ADR-008); el panel que lo sustituye es una API propia
 (`/api/panel/`, django-ninja) y una SPA (React, `panel/`) servidas por el contenedor
 `panel` (su propia Caddy, sirve `/` y hace de proxy de `/api/*` hacia `web:8000`). Las
-pantallas se completan tarea a tarea (`docs/panel/IMPLEMENTATION.md`); hasta que una
-sección tenga la suya, muestra "Próximamente". Los comandos de `manage.py`
-(`docs/comandos.md`) también permiten resolver incidencias sin pasar por la API:
+secciones son Resumen, Clientes, Actividad, Incidencias, Logs, Datos, Sistema y
+Auditoría (`docs/panel/DESIGN.md`, `docs/panel/IMPLEMENTATION.md`). Los comandos de
+`manage.py` (`docs/comandos.md`) también permiten resolver incidencias sin pasar por
+la API:
 
 - **Envíos ambiguos o fallidos** (runbook 05): `outbound_resolve <id> (--mark-sent|--resend)
   --confirm`.
@@ -37,6 +38,62 @@ slug derivado y comprobado, zona horaria y canal), configuración precargada con
 plantilla del pack y revisión; crea el cliente en estado `onboarding` y abre su pestaña
 Canal con la lista de lo que falta para activarlo. El asistente guarda su progreso en
 `sessionStorage` del navegador, nunca en el servidor.
+
+## Actividad
+
+Lista cruzada de negocios (mensajes, respuestas, avisos, alertas y auditoría) con
+filtros de cliente, tipo y estado en la URL; cada elemento se despliega con su detalle.
+Mientras no se ha pedido ninguna página más, la primera se refresca cada 15 s.
+
+## Incidencias
+
+Reúne lo que requiere intervención: alertas abiertas («Resolver» solo si no se
+resuelven solas), envíos `unknown`/`failed` sin confirmar («Marcar enviado» y
+«Reenviar», con confirmación del riesgo de duplicado del runbook 5) y trabajos
+fallidos («Reintentar» solo si son idempotentes); debajo, el historial de alertas
+resueltas. El contador de la barra lateral cuenta alertas abiertas, envíos
+estancados y trabajos fallidos.
+
+## Logs
+
+Consulta los logs técnicos del mes en curso (VictoriaLogs) por rango rápido o fechas,
+servicio, nivel, cliente y texto. Cada fila se despliega con el JSON completo, la
+excepción si la hay, y «Copiar event_id». Avisa si el rango se recortó al mes en
+curso o si el servicio de logs no está disponible (503).
+
+## Datos
+
+**Catálogo:** todas las tablas de PostgreSQL, agrupadas y con su tamaño
+(`GET /api/panel/data/tables`, rol `fp_owner`); abrir una muestra su descripción,
+columnas, relaciones, filas por cliente y las últimas 20 filas, con «Consultar esta
+tabla». El detalle oculta contraseñas, sesiones, claves TOTP, secretos cifrados,
+huellas de invitación y valores de caché. Las tablas sin documentar aparecen en «Sin
+catalogar» pero no se pueden abrir desde el detalle.
+
+**Consulta:** editor SQL de solo lectura (`fp_readonly`, solo
+`SELECT`/`WITH`/`VALUES`, `POST /api/panel/data/query`) con autocompletado del
+catálogo, ⌘↵ para ejecutar, «Copiar» (TSV) y «Descargar CSV», selector de cliente o
+«Todos», y un panel de consultas guardadas (`/api/panel/data/saved-queries`: listar,
+crear, modificar y borrar, todo auditado); recuerda la última consulta en el
+navegador. La migración siembra cuatro consultas de ejemplo: la de costes usa tarifas
+aproximadas fijadas en su SQL (revisarla si cambian las tarifas de Meta) y la de
+contactos más activos los ordena por mensajes salientes. `fp_app` no tiene permisos
+sobre `saved_query`; `apply_grants` los reaplica.
+
+## Sistema
+
+CPU, RAM, disco y carga actuales, con la gráfica del mes; estado de los servicios
+(`web`, `worker`, `db`, VictoriaLogs), tamaño de la base de datos y sus tablas más
+grandes, y trabajos pendientes por cola. El backup se marca en rojo si `ok=false` o
+lleva más de 8 h; el TLS, en ámbar con menos de 20 días y en rojo con menos de 7.
+Abajo, la versión desplegada y el historial de despliegues, con el SHA enlazado al
+commit en GitHub.
+
+## Auditoría
+
+Todas las acciones del operador (`audit_event`), filtrables por cliente y acción, con
+el detalle completo en JSON. Se purga a los 12 meses junto con el historial de
+alertas resueltas (`purge_platform_history`).
 
 ## Alta del operador
 
@@ -81,20 +138,3 @@ SSH.
 La API del panel permite crear negocios, publicar y recuperar versiones de configuración,
 pausar o reactivar negocios y sustituir los secretos completos del canal. Cada cambio
 queda auditado con el usuario del panel. La baja se realiza únicamente por comando.
-
-
-## Catálogo y consultas guardadas
-
-La API ofrece `GET /api/panel/data/tables` y el detalle de cada tabla catalogada.
-El detalle muestra hasta 20 filas y oculta contraseñas, sesiones, claves TOTP,
-secretos cifrados, huellas de invitación y valores de caché. Las tablas desconocidas
-se identifican en el listado, pero no se pueden abrir desde el detalle. El acceso a
-estas lecturas usa el rol del panel (`fp_owner`).
-
-En `/api/panel/data/saved-queries` se pueden listar, crear, modificar y borrar
-consultas guardadas; los cambios quedan auditados. La migración añade cuatro ejemplos.
-El ejemplo de costes usa tarifas aproximadas fijadas en su SQL: si cambian las tarifas
-debe revisarse la consulta guardada. El ejemplo de contactos más activos los ordena
-por la cantidad de mensajes salientes asociados. La ejecución de SQL (consola de solo
-lectura, rol `fp_readonly`) está en `POST /api/panel/data/query`.
-El rol `fp_app` no tiene permisos sobre `saved_query`; `apply_grants` los reaplica.

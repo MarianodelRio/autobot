@@ -133,19 +133,28 @@ sin ella no se pueden descifrar los secretos de canal ya guardados. La clave loc
 solo sirve en desarrollo; procedimiento de rotación en
 [rotar secretos](runbooks/09-rotar-secretos.md).
 
-### Configuración del primer despliegue del panel
+## 4. Panel
 
-La persona importa la copia local de cada negocio con `tenant_config import <dir>
---secrets <yaml>`; el nombre antiguo `tenant.yaml` se admite solo como entrada. Las
-plantillas de demo se siembran con `seed_demos`. Los comandos de producción pasan por
-`make prod-manage HOST=<servidor> CMD="..."`; para transferir la configuración local se
-usa `make tenant-push HOST=<servidor> SLUG=<slug> SECRETS=<yaml>`. El tar de entrada puede
-llevar un `secrets.yaml` temporal con solo ese slug; los exports ordinarios no lo incluyen.
-Al comprobar el resultado, retirar las copias locales de importación o guardarlas
-cifradas fuera del repositorio. La lista completa del panel se termina en T33.
+No hay nada desplegado todavía, así que no hay migración de datos de producción; estos
+pasos se suman a los del servidor (§2) y usan `autocares-ss` (§3) como negocio de
+ejemplo:
 
-Tras el primer despliegue, crea el usuario del panel con `make prod-manage TTY=1
-CMD="panel_user create <usuario>"` y guarda el QR del TOTP al momento (solo se muestra
-una vez; `docs/runbooks/panel.md`). Comprueba `DJANGO_ALLOWED_HOSTS` en el `.env` del
-servidor: debe incluir `127.0.0.1` y `localhost`, porque el panel llega con ese host al
-entrar por el túnel SSH.
+- [ ] En el `.env` del servidor, rellenar las variables **externas** (tokens, ids de
+      Meta, `PUBLIC_HOST`, `DJANGO_ALLOWED_HOSTS` con `127.0.0.1,localhost`, Sentry y
+      healthchecks); `ensure-env` genera las internas la primera vez que se despliega.
+- [ ] `make deploy` (con la aprobación del entorno `production` en GitHub).
+- [ ] En local, `make tenant-import DIR=tenants/autocares-ss SECRETS=secrets.yaml` y
+      comprobar la ficha en el panel local (`make panel-dev`). Después,
+      `make tenant-push SLUG=autocares-ss SECRETS=secrets.yaml`. El nombre antiguo
+      `tenant.yaml` se admite solo como entrada al importar.
+- [ ] `make prod-manage TTY=1 CMD="panel_user create <usuario>"` y guardar el QR del
+      TOTP al momento: solo se muestra una vez (`docs/runbooks/panel.md`). Comprobar
+      que `DJANGO_ALLOWED_HOSTS` del servidor incluye `127.0.0.1` y `localhost`, porque
+      el panel llega con ese host al entrar por el túnel SSH.
+- [ ] `make panel-tunnel` y abrir `http://127.0.0.1:18000`: entrar con usuario,
+      contraseña y TOTP, y recorrer Resumen, Clientes, Actividad, Incidencias, Logs,
+      Datos, Sistema y Auditoría con datos reales.
+- [ ] Comprobar la CPU y la RAM del contenedor `panel` frente a `htop` en el host y
+      `docker stats` (DESIGN §13: unos 20 MB de RAM).
+- [ ] Una vez verificado, borrar las copias locales de `tenants/autocares-ss` y
+      `secrets.yaml`, o guardarlas cifradas fuera del repositorio.

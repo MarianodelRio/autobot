@@ -109,9 +109,10 @@ no incluyen secretos. Nunca se versionan `tenants/` ni `datos/`.
 
 ## Panel
 
-Frontend en `panel/` (React, TypeScript, Vite, Biome, Vitest), en construcción según
-[docs/panel/DESIGN.md](docs/panel/DESIGN.md) y
-[docs/panel/IMPLEMENTATION.md](docs/panel/IMPLEMENTATION.md). Requiere Node 24 y pnpm
+Panel interno (`panel/`: React, TypeScript, Vite, Biome, Vitest) que sustituye al
+Django Admin (ADR-008), descrito en [docs/panel/DESIGN.md](docs/panel/DESIGN.md) y
+[docs/panel/IMPLEMENTATION.md](docs/panel/IMPLEMENTATION.md) y resumido para quien
+opera en [docs/runbooks/panel.md](docs/runbooks/panel.md). Requiere Node 24 y pnpm
 (`corepack enable`, que lee la versión fijada en `panel/package.json`).
 
 ```bash
@@ -122,7 +123,8 @@ make panel-check         # Biome, tsc --noEmit, Vitest y el build de producción
 
 `make api` regenera `panel/openapi.json` (desde el backend) y `panel/src/api/schema.d.ts`
 (con `openapi-typescript`); `make fix` aplica `ruff`/`biome --write` y deja ambos al día.
-Hasta que exista el contenedor `panel` (T24), no hay interfaz web servida en producción;
-en local, con `make up` y `make panel-dev`, `http://localhost:5173` ya pide usuario,
+En local, con `make up` y `make panel-dev`, `http://localhost:5173` pide usuario,
 contraseña y código TOTP (`manage.py panel_user create <usuario>`) y, tras entrar, ofrece
-el menú de secciones (la mayoría «Próximamente» hasta sus tareas) y «Salir».
+Resumen, Clientes, Actividad, Incidencias, Logs, Datos, Sistema, Auditoría y «Salir».
+En producción, el contenedor `panel` (su propia Caddy, puerto 8080) solo es alcanzable
+por `make panel-tunnel` (túnel SSH, ADR-008), nunca por el Caddy público.
