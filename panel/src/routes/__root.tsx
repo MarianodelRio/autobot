@@ -1,7 +1,15 @@
-import { createRootRoute, Outlet } from "@tanstack/react-router";
+import type { QueryClient } from "@tanstack/react-query";
+import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
+import { Toaster } from "sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
-// Placeholder root route so the TanStack Router plugin has something to
-// generate against; T23b builds the real route tree (login, _app, …) on it.
-export const Route = createRootRoute({
-  component: Outlet,
-});
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
+  {
+    component: () => (
+      <TooltipProvider>
+        <Outlet />
+        <Toaster richColors theme="dark" />
+      </TooltipProvider>
+    ),
+  },
+);

@@ -12,9 +12,10 @@ dist
 dist-ssr
 *.local
 
-# TanStack Router plugin: regenerated from src/routes on every dev/build.
+# TanStack Router plugin's cache; src/routeTree.gen.ts itself is committed, like
+# src/api/schema.d.ts, so `tsc -b` has something to resolve on a fresh checkout
+# (otherwise the regenerating step, `vite build`/`vitest`, would need to run first).
 .tanstack
-src/routeTree.gen.ts
 
 # Editor directories and files
 .vscode/*

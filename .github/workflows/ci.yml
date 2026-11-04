@@ -113,6 +113,8 @@ jobs:
       - run: pnpm -C panel typecheck
       - run: pnpm -C panel test
       - run: pnpm -C panel build
+      - name: Generated route tree is committed
+        run: git diff --exit-code panel/src/routeTree.gen.ts
 
   image:
     needs: [check, panel]

@@ -122,5 +122,7 @@ make panel-check         # Biome, tsc --noEmit, Vitest y el build de producción
 
 `make api` regenera `panel/openapi.json` (desde el backend) y `panel/src/api/schema.d.ts`
 (con `openapi-typescript`); `make fix` aplica `ruff`/`biome --write` y deja ambos al día.
-Hasta que exista el contenedor `panel` (T24), no hay interfaz web servida en local ni en
-producción.
+Hasta que exista el contenedor `panel` (T24), no hay interfaz web servida en producción;
+en local, con `make up` y `make panel-dev`, `http://localhost:5173` ya pide usuario,
+contraseña y código TOTP (`manage.py panel_user create <usuario>`) y, tras entrar, ofrece
+el menú de secciones (la mayoría «Próximamente» hasta sus tareas) y «Salir».
