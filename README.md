@@ -110,9 +110,8 @@ no incluyen secretos. Nunca se versionan `tenants/` ni `datos/`.
 ## Panel
 
 Panel interno (`panel/`: React, TypeScript, Vite, Biome, Vitest) que sustituye al
-Django Admin (ADR-008), descrito en [docs/panel/DESIGN.md](docs/panel/DESIGN.md) y
-[docs/panel/IMPLEMENTATION.md](docs/panel/IMPLEMENTATION.md) y resumido para quien
-opera en [docs/runbooks/panel.md](docs/runbooks/panel.md). Requiere Node 24 y pnpm
+Django Admin (ADR-008), resumido para quien opera en
+[docs/runbooks/panel.md](docs/runbooks/panel.md). Requiere Node 24 y pnpm
 (`corepack enable`, que lee la versión fijada en `panel/package.json`).
 
 ```bash

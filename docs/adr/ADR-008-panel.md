@@ -6,9 +6,8 @@
 
 El Django Admin deja de bastar: hace falta ver de un vistazo si todo va bien, cuánto se
 usa la plataforma, y actuar sobre los negocios sin entrar por SSH ni por `manage.py` para
-cada cosa. El diseño completo está en
-[`docs/panel/DESIGN.md`](../panel/DESIGN.md); este ADR fija las decisiones de
-arquitectura que no son triviales de deshacer.
+cada cosa. Este ADR fija las decisiones de arquitectura que no son triviales de
+deshacer.
 
 ## Decisión
 

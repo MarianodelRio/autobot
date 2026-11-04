@@ -4,9 +4,8 @@ El Django Admin se eliminó (ADR-008); el panel que lo sustituye es una API prop
 (`/api/panel/`, django-ninja) y una SPA (React, `panel/`) servidas por el contenedor
 `panel` (su propia Caddy, sirve `/` y hace de proxy de `/api/*` hacia `web:8000`). Las
 secciones son Resumen, Clientes, Actividad, Incidencias, Logs, Datos, Sistema y
-Auditoría (`docs/panel/DESIGN.md`, `docs/panel/IMPLEMENTATION.md`). Los comandos de
-`manage.py` (`docs/comandos.md`) también permiten resolver incidencias sin pasar por
-la API:
+Auditoría. Los comandos de `manage.py` (`docs/comandos.md`) también permiten resolver
+incidencias sin pasar por la API:
 
 - **Envíos ambiguos o fallidos** (runbook 05): `outbound_resolve <id> (--mark-sent|--resend)
   --confirm`.
