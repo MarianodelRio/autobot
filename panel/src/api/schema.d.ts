@@ -431,6 +431,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant-slug-availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant Slug Availability */
+        get: operations["autobot_panel_routers_tenants_tenant_slug_availability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants": {
         parameters: {
             query?: never;
@@ -1163,6 +1180,11 @@ export interface components {
             updated_at: string | null;
             /** Updated By */
             updated_by: string | null;
+        };
+        /** SlugAvailability */
+        SlugAvailability: {
+            /** Available */
+            available: boolean;
         };
         /** StatusBlock */
         StatusBlock: {
@@ -1989,6 +2011,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_tenant_slug_availability: {
+        parameters: {
+            query: {
+                slug: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlugAvailability"];
                 };
             };
         };

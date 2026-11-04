@@ -48,6 +48,30 @@ def test_list_tenants(authed_client: Any, tenants: Any) -> None:
     assert [row["slug"] for row in response.json()] == ["a"]
 
 
+def test_slug_availability_includes_offboarded_and_unconfigured_tenants(
+    authed_client: Any, tenants: Any
+) -> None:
+    from django.utils import timezone
+
+    from autobot.tenancy.models import Tenant
+
+    doc = wa_tenant("a")
+    doc["status"] = "offboarded"
+    tenants(doc)
+    Tenant.objects.using("owner").create(
+        id=uuid7(),
+        slug="orphan",
+        name="Orphan",
+        pack="toy",
+        status="onboarding",
+        timezone="Europe/Madrid",
+        synced_at=timezone.now(),
+    )
+    assert get(authed_client, "tenant-slug-availability?slug=a").json() == {"available": False}
+    assert get(authed_client, "tenant-slug-availability?slug=orphan").json() == {"available": False}
+    assert get(authed_client, "tenant-slug-availability?slug=free").json() == {"available": True}
+
+
 def test_tenant_detail_whatsapp_channel(authed_client: Any, tenants: Any, settings: Any) -> None:
     settings.PUBLIC_URL = "https://example.test"
     doc = wa_tenant("a")

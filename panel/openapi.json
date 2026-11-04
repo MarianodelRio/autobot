@@ -1260,6 +1260,19 @@
         "title": "SecretsStatus",
         "type": "object"
       },
+      "SlugAvailability": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "SlugAvailability",
+        "type": "object"
+      },
       "StatusBlock": {
         "properties": {
           "level": {
@@ -3020,6 +3033,43 @@
         "summary": "System",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/tenant-slug-availability": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_slug_availability",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlugAvailability"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Slug Availability",
+        "tags": [
+          "tenants"
         ]
       }
     },

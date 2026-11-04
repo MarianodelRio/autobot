@@ -10,6 +10,7 @@ from ninja import Router, Schema
 from autobot.panel.services import tenants as service
 from autobot.panel.services.overview import TenantRow, tenant_rows
 from autobot.tenancy import store
+from autobot.tenancy.models import Tenant
 
 router = Router(tags=["tenants"])
 
@@ -47,6 +48,15 @@ class SecretsIn(Schema):
 
 class VersionOut(Schema):
     version: int
+
+
+class SlugAvailability(Schema):
+    available: bool
+
+
+@router.get("/tenant-slug-availability", response=SlugAvailability)
+def tenant_slug_availability(request: HttpRequest, slug: str) -> SlugAvailability:
+    return SlugAvailability(available=not Tenant.objects.using("owner").filter(slug=slug).exists())
 
 
 @router.post("/tenants", response=VersionOut)

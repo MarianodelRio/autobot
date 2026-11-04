@@ -27,6 +27,7 @@ import { Timeline } from "@/features/activity/components/timeline";
 import { formatEur, formatNumber } from "@/lib/format";
 import { ConfigEditor } from "./config/editor";
 import { History } from "./config/history";
+import { MissingChecklist } from "./config/missing-checklist";
 import { SecretsForm } from "./config/secrets-form";
 import { StatusAction } from "./config/status-action";
 import { errorMessage } from "./error-message";
@@ -133,6 +134,9 @@ function Channel({ detail }: { detail: Detail }) {
   });
   return (
     <div className="space-y-4">
+      {detail.status === "onboarding" && (
+        <MissingChecklist slug={detail.slug} />
+      )}
       <p>Canal: {detail.channel_type ?? "Demo"}</p>
       <p>Webhook: {detail.webhook_url ?? "—"}</p>
       {detail.public_link && (
@@ -387,12 +391,14 @@ export function TenantDetailPage({
   slug,
   dirty = false,
   onDirtyChange = () => {},
+  initialTab = "resumen",
 }: {
   slug: string;
   dirty?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
+  initialTab?: string;
 }) {
-  const [tab, setTab] = useState("resumen");
+  const [tab, setTab] = useState(initialTab);
   const client = useQueryClient();
   const q = useQuery({
     queryKey: ["tenant", slug],

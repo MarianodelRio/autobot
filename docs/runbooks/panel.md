@@ -30,7 +30,13 @@ conversación queda auditada. El resumen del dueño se carga a petición, pues p
 consultar Calendar. «Comprobar salud» fuerza la comprobación del canal. La configuración se edita con formulario o YAML, con diff y comentario obligatorio;
 el historial permite recuperar versiones. El panel pide confirmación para pausar o
 reactivar y exige comprobaciones y slug para activar. En Canal se sustituye el juego
-completo de secretos sin mostrar los valores guardados. El alta llegará en T28.
+completo de secretos sin mostrar los valores guardados.
+
+El alta de un negocio nuevo (`/clientes/nuevo`) pasa por pack, datos básicos (nombre,
+slug derivado y comprobado, zona horaria y canal), configuración precargada con la
+plantilla del pack y revisión; crea el cliente en estado `onboarding` y abre su pestaña
+Canal con la lista de lo que falta para activarlo. El asistente guarda su progreso en
+`sessionStorage` del navegador, nunca en el servidor.
 
 ## Alta del operador
 
