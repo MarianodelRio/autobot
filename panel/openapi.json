@@ -1,6 +1,121 @@
 {
   "components": {
     "schemas": {
+      "ActivityItem": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "icon": {
+            "title": "Icon",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "kind",
+          "tenant",
+          "channel",
+          "icon",
+          "title",
+          "detail",
+          "status",
+          "link"
+        ],
+        "title": "ActivityItem",
+        "type": "object"
+      },
+      "ActivityPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ActivityPage",
+        "type": "object"
+      },
       "AlertBrief": {
         "properties": {
           "id": {
@@ -84,6 +199,139 @@
           "detail"
         ],
         "title": "ChecklistItemOut",
+        "type": "object"
+      },
+      "Confirmation": {
+        "properties": {
+          "confirm_duplicate_risk": {
+            "default": false,
+            "title": "Confirm Duplicate Risk"
+          }
+        },
+        "title": "Confirmation",
+        "type": "object"
+      },
+      "ContactDetail": {
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/ContactOut"
+          },
+          "exchanges": {
+            "items": {
+              "$ref": "#/components/schemas/Exchange"
+            },
+            "title": "Exchanges",
+            "type": "array"
+          }
+        },
+        "required": [
+          "contact",
+          "exchanges"
+        ],
+        "title": "ContactDetail",
+        "type": "object"
+      },
+      "ContactOut": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_activity_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Activity At"
+          },
+          "opt_out": {
+            "title": "Opt Out",
+            "type": "boolean"
+          },
+          "phone_e164": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone E164"
+          },
+          "tenant": {
+            "title": "Tenant",
+            "type": "string"
+          },
+          "unreachable": {
+            "title": "Unreachable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "tenant",
+          "channel",
+          "external_id",
+          "phone_e164",
+          "display_name",
+          "opt_out",
+          "unreachable",
+          "last_activity_at",
+          "created_at"
+        ],
+        "title": "ContactOut",
+        "type": "object"
+      },
+      "ContactPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContactOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ContactPage",
         "type": "object"
       },
       "CreateTenantIn": {
@@ -238,6 +486,74 @@
         "title": "DocumentIn",
         "type": "object"
       },
+      "Exchange": {
+        "properties": {
+          "inbound": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inbound"
+          },
+          "inbound_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inbound At"
+          },
+          "inbound_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inbound Id"
+          },
+          "outbound": {
+            "title": "Outbound",
+            "type": "string"
+          },
+          "outbound_at": {
+            "format": "date-time",
+            "title": "Outbound At",
+            "type": "string"
+          },
+          "outbound_id": {
+            "format": "uuid",
+            "title": "Outbound Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "inbound_id",
+          "inbound_at",
+          "inbound",
+          "outbound_id",
+          "outbound_at",
+          "outbound",
+          "status"
+        ],
+        "title": "Exchange",
+        "type": "object"
+      },
       "HealthIssueOut": {
         "properties": {
           "code": {
@@ -261,6 +577,61 @@
         "title": "HealthIssueOut",
         "type": "object"
       },
+      "LogFilters": {
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "level": {
+            "default": "",
+            "title": "Level",
+            "type": "string"
+          },
+          "limit": {
+            "default": 200,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "q": {
+            "default": "",
+            "title": "Q",
+            "type": "string"
+          },
+          "service": {
+            "default": "",
+            "title": "Service",
+            "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "tenant": {
+            "default": "",
+            "title": "Tenant",
+            "type": "string"
+          }
+        },
+        "title": "LogFilters",
+        "type": "object"
+      },
       "LoginIn": {
         "properties": {
           "otp": {
@@ -282,6 +653,33 @@
           "otp"
         ],
         "title": "LoginIn",
+        "type": "object"
+      },
+      "LogsOut": {
+        "properties": {
+          "clipped": {
+            "title": "Clipped",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "truncated",
+          "clipped"
+        ],
+        "title": "LogsOut",
         "type": "object"
       },
       "MetricTotal": {
@@ -937,6 +1335,96 @@
         "title": "SystemBrief",
         "type": "object"
       },
+      "SystemOut": {
+        "properties": {
+          "backup": {
+            "additionalProperties": true,
+            "title": "Backup",
+            "type": "object"
+          },
+          "database": {
+            "additionalProperties": true,
+            "title": "Database",
+            "type": "object"
+          },
+          "deploys": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Deploys",
+            "type": "array"
+          },
+          "machine": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Machine",
+            "type": "object"
+          },
+          "queues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Queues",
+            "type": "array"
+          },
+          "release": {
+            "title": "Release",
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "services": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Services",
+            "type": "object"
+          },
+          "tls": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Tls",
+            "type": "object"
+          }
+        },
+        "required": [
+          "machine",
+          "samples",
+          "services",
+          "database",
+          "queues",
+          "backup",
+          "deploys",
+          "release",
+          "tls"
+        ],
+        "title": "SystemOut",
+        "type": "object"
+      },
       "TenantCounts": {
         "properties": {
           "active": {
@@ -1307,6 +1795,227 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/activity": {
+      "get": {
+        "operationId": "autobot_panel_routers_activity_activity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tenant",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Kinds",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityPage"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Activity",
+        "tags": [
+          "activity"
+        ]
+      }
+    },
+    "/alerts": {
+      "get": {
+        "operationId": "autobot_panel_routers_incidents_alerts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Alerts",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/alerts/{id}/resolve": {
+      "post": {
+        "operationId": "autobot_panel_routers_incidents_resolve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Resolve",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/audit": {
+      "get": {
+        "operationId": "autobot_panel_routers_audit_audit",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tenant",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Audit",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
     "/auth/csrf": {
       "get": {
         "operationId": "autobot_panel_auth_csrf",
@@ -1389,6 +2098,346 @@
         "summary": "Me",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/contacts/{id}": {
+      "get": {
+        "operationId": "autobot_panel_routers_contacts_contact_detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactDetail"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Contact Detail",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
+    "/incidents": {
+      "get": {
+        "operationId": "autobot_panel_routers_incidents_incidents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Incidents",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/jobs": {
+      "get": {
+        "operationId": "autobot_panel_routers_incidents_jobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "queue",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Queue",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Jobs",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/jobs/{id}/retry": {
+      "post": {
+        "operationId": "autobot_panel_routers_incidents_retry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Retry",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/logs": {
+      "get": {
+        "operationId": "autobot_panel_routers_logs_logs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tenant",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tenant",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Level",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "service",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Service",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogsOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Logs",
+        "tags": [
+          "logs"
+        ]
+      }
+    },
+    "/outbound/{id}/mark-sent": {
+      "post": {
+        "operationId": "autobot_panel_routers_incidents_mark_sent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Mark Sent",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/outbound/{id}/resend": {
+      "post": {
+        "operationId": "autobot_panel_routers_incidents_resend",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Confirmation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Resend",
+        "tags": [
+          "incidents"
         ]
       }
     },
@@ -1521,6 +2570,33 @@
         "summary": "Pack Template",
         "tags": [
           "packs"
+        ]
+      }
+    },
+    "/system": {
+      "get": {
+        "operationId": "autobot_panel_routers_system_system",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "System",
+        "tags": [
+          "system"
         ]
       }
     },
@@ -1665,6 +2741,73 @@
         "summary": "Tenant Checklist",
         "tags": [
           "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/contacts": {
+      "get": {
+        "operationId": "autobot_panel_routers_contacts_contacts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactPage"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Contacts",
+        "tags": [
+          "contacts"
         ]
       }
     },
