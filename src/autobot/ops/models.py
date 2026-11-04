@@ -69,3 +69,18 @@ class SystemSample(models.Model):
 
     def __str__(self) -> str:
         return f"system_sample {self.id} {self.taken_at}"
+
+
+class SavedQuery(models.Model):
+    """Operator-maintained SQL queries, accessible only to the panel owner."""
+
+    name = models.TextField()
+    sql = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "saved_query"
+
+    def __str__(self) -> str:
+        return self.name

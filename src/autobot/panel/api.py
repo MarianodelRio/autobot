@@ -13,6 +13,7 @@ from autobot.panel.errors import CODE_STATUS, ApiError
 from autobot.panel.routers.activity import router as activity_router
 from autobot.panel.routers.audit import router as audit_router
 from autobot.panel.routers.contacts import router as contacts_router
+from autobot.panel.routers.data import router as data_router
 from autobot.panel.routers.incidents import router as incidents_router
 from autobot.panel.routers.logs import router as logs_router
 from autobot.panel.routers.overview import router as overview_router
@@ -25,6 +26,7 @@ api = NinjaAPI(
     title="Autobot panel", version="1", urls_namespace="panel", auth=PanelAuth(), docs_url=None
 )
 api.add_router("/auth", auth_router)
+api.add_router("", data_router)
 api.add_router("", system_router)
 api.add_router("", logs_router)
 api.add_router("", audit_router)

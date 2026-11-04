@@ -3,8 +3,8 @@
 El Django Admin se eliminó (ADR-008); el panel que lo sustituye es una API propia
 (`/api/panel/`, django-ninja) más una SPA que llega en tareas posteriores
 (`docs/panel/IMPLEMENTATION.md`, T23a en adelante). Hasta entonces, la API ya existe
-pero solo tiene autenticación (DESIGN §6.2); la operación se sigue haciendo con los
-comandos de `manage.py` (`docs/comandos.md`):
+y permite consultar y operar mediante sus endpoints; los comandos de
+`manage.py` (`docs/comandos.md`) también permiten resolver incidencias:
 
 - **Envíos ambiguos o fallidos** (runbook 05): `outbound_resolve <id> (--mark-sent|--resend)
   --confirm`.
@@ -54,3 +54,19 @@ SSH.
 La API del panel permite crear negocios, publicar y recuperar versiones de configuración,
 pausar o reactivar negocios y sustituir los secretos completos del canal. Cada cambio
 queda auditado con el usuario del panel. La baja se realiza únicamente por comando.
+
+
+## Catálogo y consultas guardadas
+
+La API ofrece `GET /api/panel/data/tables` y el detalle de cada tabla catalogada.
+El detalle muestra hasta 20 filas y oculta contraseñas, sesiones, claves TOTP,
+secretos cifrados, huellas de invitación y valores de caché. Las tablas desconocidas
+se identifican en el listado, pero no se pueden abrir desde el detalle. El acceso a
+estas lecturas usa el rol del panel (`fp_owner`).
+
+En `/api/panel/data/saved-queries` se pueden listar, crear, modificar y borrar
+consultas guardadas; los cambios quedan auditados. La migración añade cuatro ejemplos.
+El ejemplo de costes usa tarifas aproximadas fijadas en su SQL: si cambian las tarifas
+debe revisarse la consulta guardada. El ejemplo de contactos más activos los ordena
+por la cantidad de mensajes salientes asociados. La ejecución de SQL se implementa en T22.
+El rol `fp_app` no tiene permisos sobre `saved_query`; `apply_grants` los reaplica.

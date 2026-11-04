@@ -66,6 +66,7 @@ def statements() -> list[str]:
     return [
         "REVOKE INSERT, UPDATE, DELETE ON tenant FROM fp_app",
         _revoke_if_exists("audit_event", "fp_app"),
+        _revoke_if_exists("saved_query", "fp_app"),
         _revoke_if_exists("ops_alert", "fp_app", "DELETE"),
         *(_revoke_if_exists(table, "fp_app", "INSERT, UPDATE, DELETE") for table in CONFIG_TABLES),
         *(_revoke_if_exists(table, "fp_app") for table in AUTH_TABLES),
