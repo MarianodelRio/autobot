@@ -71,7 +71,7 @@ despliegue y conserva su copia con los backups. `deploy/manage.sh` usa el SHA de
 `.deployed-sha` para los comandos de operación; desde local se invoca mediante
 `make prod-manage HOST=<servidor> CMD="..."` (`TTY=1` si pide una confirmación).
 
-**Sistema (DESIGN §7.4):** cada cinco minutos `ops.check.run()` guarda una muestra
+**Sistema:** cada cinco minutos `ops.check.run()` guarda una muestra
 (`system_sample`: CPU, memoria, carga, disco y tamaño de la base) y borra las de más de
 62 días. `deploy/backup.sh` escribe `state/ops/backup.json` de forma atómica
 (`{finished_at, ok, dump_bytes}`) y `deploy/deploy.sh` añade una línea a
@@ -79,7 +79,7 @@ despliegue y conserva su copia con los backups. `deploy/manage.sh` usa el SHA de
 `rolled_back` o `rollback_failed`). `web` monta `state/ops` en solo lectura en
 `/run/ops`; `worker` no la necesita.
 
-**Logs técnicos (DESIGN §7.3):** el servicio `victorialogs` (imagen fijada, sin
+**Logs técnicos:** el servicio `victorialogs` (imagen fijada, sin
 publicar puertos) recibe los logs de `web` y `worker` por `VICTORIALOGS_URL`; los
 guarda 31 días. `deploy/deploy.sh` lo actualiza en cada despliegue, pero su caída nunca
 aborta ni hace retroceder uno: el `VictoriaLogsHandler` descarta en silencio lo que no

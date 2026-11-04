@@ -43,7 +43,7 @@ la demo.
   `backup.env` y la contraseña de restic como `deploy` con modo 0600, `DEPLOY_UID`,
   deploy key de GitHub de solo lectura y acceso de lectura a GHCR. Las contraseñas,
   claves y `DB_*_URL` internas las genera `make deploy` la primera vez
-  (`deploy/ensure-env.sh`, DESIGN §12): no hace falta rellenarlas a mano ni inventarlas.
+  (`deploy/ensure-env.sh`): no hace falta rellenarlas a mano ni inventarlas.
   En GitHub, entorno `production` con aprobación requerida y secretos `DEPLOY_HOST`,
   `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS`.
 - **Bot de demo de producción (puerta Telegram):** distinto del de desarrollo, con su
@@ -155,6 +155,6 @@ ejemplo:
       contraseña y TOTP, y recorrer Resumen, Clientes, Actividad, Incidencias, Logs,
       Datos, Sistema y Auditoría con datos reales.
 - [ ] Comprobar la CPU y la RAM del contenedor `panel` frente a `htop` en el host y
-      `docker stats` (DESIGN §13: unos 20 MB de RAM).
+      `docker stats` (unos 20 MB de RAM).
 - [ ] Una vez verificado, borrar las copias locales de `tenants/autocares-ss` y
       `secrets.yaml`, o guardarlas cifradas fuera del repositorio.
