@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Multi-stage image: build the SPA with Node, serve it with a minimal non-root Caddy.
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
