@@ -15,6 +15,7 @@ x-app: &app
     DB_OWNER_URL: postgres://fp_owner:fp_owner@db:5432/autobot
     DB_READONLY_URL: postgres://fp_readonly:fp_readonly@db:5432/autobot
     GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
+    VICTORIALOGS_URL: http://victorialogs:9428
   volumes:
     - ./apps/backend:/app/src
     - ./manage.py:/app/manage.py
@@ -23,6 +24,8 @@ x-app: &app
   depends_on:
     db:
       condition: service_healthy
+    victorialogs:
+      condition: service_started
 
 services:
   web:
@@ -38,6 +41,7 @@ services:
       DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
       SERVICE_NAME: worker
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
+      VICTORIALOGS_URL: http://victorialogs:9428
       DB_OWNER_URL: ""  # the worker never uses fp_owner
       DB_READONLY_URL: ""  # nor fp_readonly: it never runs the SQL console
     # Graceful stop: on SIGTERM it takes no new jobs and lets running
