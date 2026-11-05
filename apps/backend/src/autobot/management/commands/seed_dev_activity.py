@@ -167,7 +167,7 @@ class Command(BaseCommand):
                 Notification.objects.filter(idem_key__startswith=CONTACT_MARKER).delete()
                 MetricEvent.objects.filter(idem_key__startswith=CONTACT_MARKER).delete()
                 Contact.objects.filter(external_id__startswith=CONTACT_MARKER).delete()
-        # fp_app has no DELETE on ops_alert (db_grants.py, ADR-009): bypass as fp_owner.
+        # fp_app has no DELETE on ops_alert (autobot/db/grants.py, ADR-009): bypass as fp_owner.
         OpsAlert.objects.using("owner").filter(kind__startswith=ALERT_MARKER).delete()
         with connections["default"].cursor() as cursor:
             cursor.execute("DELETE FROM procrastinate_jobs WHERE args->>%s = 'true'", [JOB_MARKER])

@@ -31,7 +31,7 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 ## Reglas obligatorias
 
 - Todo dato de cliente lleva `tenant_id` y RLS; el tenant se fija solo con `tenant_tx`. Nunca se salta RLS en código de aplicación (el rol `fp_owner`, con `BYPASSRLS`, solo lo usan migraciones, comandos de operación, `tenancy.store` y los servicios del panel, siempre con `.using("owner")` explícito).
-- Toda tabla nueva con RLS lleva las dos políticas: `tenant_isolation` y `readonly_all` (para la consola SQL del panel, rol `fp_readonly`). Toda tabla nueva sensible se añade a `SENSITIVE_TABLES` en `db_grants.py`. Los permisos de base de datos se declaran en `db_grants.py`, nunca solo en una migración; `apply_grants` los reaplica tras cada despliegue y restauración.
+- Toda tabla nueva con RLS lleva las dos políticas: `tenant_isolation` y `readonly_all` (para la consola SQL del panel, rol `fp_readonly`). Toda tabla nueva sensible se añade a `SENSITIVE_TABLES` en `autobot/db/grants.py`. Los permisos de base de datos se declaran en `autobot/db/grants.py`, nunca solo en una migración; `apply_grants` los reaplica tras cada despliegue y restauración.
 - `tenant_document_version`, `tenant_dataset_version`, `tenant_secret` y `audit_event` llevan `tenant_id` sin RLS por diseño (ADR-009): son configuración u operación de la plataforma, no datos de cliente.
 - Todo efecto externo es idempotente; no se reintenta a ciegas un envío ambiguo (`unknown`).
 - Ninguna transacción abierta durante llamadas a Meta, Google o Telegram.

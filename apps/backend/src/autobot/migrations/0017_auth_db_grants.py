@@ -1,11 +1,11 @@
-"""Reapplies db_grants.py (ADR-009): `fp_app` loses all access to Django's own
+"""Reapplies autobot/db/grants.py (ADR-009): `fp_app` loses all access to Django's own
 auth/session/OTP tables now that `AuthDatabaseRouter` routes them to `fp_owner`.
 
 Approved by the person on 2026-11-03 (see docs/adr/ADR-009-config-en-bd.md)."""
 
 from django.db import migrations
 
-from autobot import db_grants
+from autobot.db import grants as db_grants
 
 
 def apply_grants(apps: object, schema_editor: object) -> None:

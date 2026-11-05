@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from packs.bus.formato import validar
-from tools.bus_tenant import REPO_ROOT, TenantDesconocido, dataset_dir
+from tools.bus.tenant import REPO_ROOT, TenantDesconocido, dataset_dir
 
 
 def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:

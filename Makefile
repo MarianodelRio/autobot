@@ -67,7 +67,7 @@ dev-activity: ## Crea actividad falsa en local para ver el panel con datos
 	docker compose exec web python manage.py seed_dev_activity
 
 tenant-import: ## Importa un directorio contra la BD local (DIR=<dir> [SECRETS=<yaml>])
-	bash apps/backend/src/tools/tenant_import.sh
+	bash apps/backend/src/tools/tenant/tenant_import.sh
 
 ngrok: ## Abre el túnel al puerto 8000 ([NGROK_DOMAIN=<dominio>])
 	ngrok http --domain=$(NGROK_DOMAIN) 8000
@@ -125,15 +125,15 @@ tenant-health: ## Comprueba y persiste la salud del pack y del canal (SLUG=<slug
 
 # Public QR generated on the developer machine, without containers or secrets.
 qr: ## Genera el QR a partir de un documento exportado (FILE=<document.yaml>)
-	PYTHONPATH=apps/backend/src uv run --project apps/backend python -m tools.qr "$(FILE)" $(ARGS)
+	PYTHONPATH=apps/backend/src uv run --project apps/backend python -m tools.ops.qr "$(FILE)" $(ARGS)
 
 check-prod-config: ## Prueba el allowlist de Caddy contra un upstream local
-	uv run --project apps/backend python apps/backend/src/tools/check_prod_config.py
+	uv run --project apps/backend python apps/backend/src/tools/ops/check_prod_config.py
 
 export HOST SLUG SECRETS
 
 tenant-push: ## Exporta la BD local y la importa por SSH (SLUG=<slug> [SECRETS=<yaml>])
-	bash apps/backend/src/tools/tenant_push.sh
+	bash apps/backend/src/tools/tenant/tenant_push.sh
 
 ##@ Bus
 
@@ -144,19 +144,19 @@ export TENANT COMMENT PROD
 .PHONY: bus-bajar bus-validar bus-formatear bus-revision bus-publicar
 
 bus-bajar: ## Exporta el dataset vigente a var/datos/<slug>/timetable (TENANT=<slug> [PROD=1])
-	$(BUS_TOOL).bus_data download
+	$(BUS_TOOL).bus.data download
 
 bus-validar: ## Valida var/datos/<slug>/timetable (TENANT=<slug>)
-	$(BUS_TOOL).bus_validar $(TENANT)
+	$(BUS_TOOL).bus.validar $(TENANT)
 
 bus-formatear: ## Realinea las columnas de las tablas de horarios (TENANT=<slug>)
-	$(BUS_TOOL).bus_formatear $(TENANT)
+	$(BUS_TOOL).bus.formatear $(TENANT)
 
 bus-revision: ## Genera HTML/PDF comparando con .publicado (TENANT=<slug> [ARGS="..."])
-	$(BUS_TOOL).bus_revision $(TENANT) $(ARGS)
+	$(BUS_TOOL).bus.revision $(TENANT) $(ARGS)
 
 bus-publicar: ## Publica la copia local validada en BD (TENANT=<slug> COMMENT="..." [PROD=1])
-	$(BUS_TOOL).bus_data publish
+	$(BUS_TOOL).bus.data publish
 
 ##@ Producción
 

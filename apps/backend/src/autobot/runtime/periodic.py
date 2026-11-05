@@ -1,7 +1,7 @@
 """Periodic work of the packs.
 
 Each pack `Periodic` is a Procrastinate periodic task (`dispatch_periodic`, registered in
-`autobot/jobs.py`). When it fires it *dispatches*: for each active tenant of the pack it
+`autobot/runtime/jobs.py`). When it fires it *dispatches*: for each active tenant of the pack it
 queues `run_periodic(tenant_id, name, scheduled_at)` on the `periodic` queue, with a
 queueing lock per tenant and name, so two equal runs are never pending at once.
 Procrastinate defers each scheduled instant only once.
@@ -18,10 +18,10 @@ from django.utils import timezone
 from procrastinate.exceptions import AlreadyEnqueued
 
 from autobot.channels.demo.doors import door
-from autobot.jobs import PERIODIC, RUN_PERIODIC, app
 from autobot.ops.logging import bind, contextual
 from autobot.ops.state import record
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
+from autobot.runtime.jobs import PERIODIC, RUN_PERIODIC, app
 from autobot.runtime.models import DEMO_CHANNELS, Channel
 from autobot.runtime.outbound import defer_sends
 from autobot.runtime.process import apply_actions

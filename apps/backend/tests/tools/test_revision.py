@@ -10,7 +10,7 @@ import pytest
 
 from packs.bus.formato import validar as validar_horarios
 from tests.packs.bus.helpers import modelo_de
-from tools import bus_revision as revision
+from tools.bus import revision
 
 FIXTURES = Path(__file__).parent.parent / "packs" / "bus" / "fixtures"
 SLUG = "demo"

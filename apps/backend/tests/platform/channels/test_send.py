@@ -13,8 +13,8 @@ from django.utils import timezone
 from procrastinate.contrib.django.django_connector import DjangoConnector
 
 from autobot.channels import adapters
-from autobot.jobs import OUTBOUND, SendRetryStrategy, app
 from autobot.runtime import outbound, process
+from autobot.runtime.jobs import OUTBOUND, SendRetryStrategy, app
 from autobot.runtime.models import Contact, OutboundMessage
 from autobot.runtime.outbound import SendRetry, send_message
 from autobot.tenancy.registry import LoadedTenant, get_registry

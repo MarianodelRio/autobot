@@ -222,14 +222,14 @@ def purge(tenant: Tenant) -> None:
             tenant_id=tenant.id,
             version=version,
             document=document,
-            author="command:purge_tenant",
+            author="command:tenant_purge",
             comment="Datos personales purgados",
         )
         Tenant.objects.using("owner").filter(pk=tenant.pk).update(synced_at=timezone.now())
         revision.revision += 1
         revision.save(using="owner", update_fields=["revision", "updated_at"])
         record(
-            actor="command:purge_tenant",
+            actor="command:tenant_purge",
             action="tenant.purge",
             tenant_id=tenant.id,
             target_type="tenant",

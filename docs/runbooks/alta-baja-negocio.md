@@ -115,8 +115,8 @@ conserva hasta comprobar el borrado (ver `retencion-rgpd.md`).
    Los webhooks tardíos se contestan con 200 sin guardar nada.
 2. Si el canal es Telegram, la persona retira el webhook mientras los secretos siguen
    disponibles.
-3. `manage.py export_tenant <slug> --output <ruta-privada>`, si se acordó con el negocio.
-4. `manage.py purge_tenant <slug>` exige de nuevo el slug y comprueba que sigue dado de
+3. `manage.py tenant_data_export <slug> --output <ruta-privada>`, si se acordó con el negocio.
+4. `manage.py tenant_purge <slug>` exige de nuevo el slug y comprueba que sigue dado de
    baja. Borra contactos, conversaciones, eventos, mensajes, avisos, métricas, secretos y
    versiones de datasets. Deja una sola versión del documento, con `testers.main: []`
    y `owner: null`, y conserva el espejo para los webhooks tardíos. Se audita atómicamente.

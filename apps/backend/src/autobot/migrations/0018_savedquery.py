@@ -4,7 +4,7 @@ from typing import Any
 
 from django.db import migrations, models
 
-from autobot import db_grants
+from autobot.db import grants as db_grants
 
 
 def seed_queries(apps: Any, schema_editor: Any) -> None:

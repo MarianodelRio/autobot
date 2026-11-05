@@ -27,7 +27,7 @@ def test_all_real_tables_are_documented() -> None:
 
 
 def test_permissions_are_reapplied() -> None:
-    from autobot.db_grants import apply
+    from autobot.db.grants import apply
 
     apply(connections["owner"])
     with connections["owner"].cursor() as cursor:

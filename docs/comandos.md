@@ -30,7 +30,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make bus-publicar TENANT=<slug> COMMENT="..." [PROD=1]` | Publica la copia local validada en BD y actualiza `.publicado` tras el éxito; sin `PROD`, usa la BD local |
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
 | `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
-| `make check-prod-config` | Ejecuta `apps/backend/tools/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
+| `make check-prod-config` | Ejecuta `apps/backend/src/tools/ops/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
 | `make api` | Regenera `apps/panel/openapi.json` (esquema de la API del panel) y `apps/panel/src/api/schema.d.ts` (tipos TypeScript) |
 | `make fix` | `ruff check --fix` y `ruff format` en el backend, `biome check --write` en `apps/panel/`, y `make api` |
 | `make panel-dev` | `pnpm -C apps/panel dev`: Vite en modo desarrollo, con proxy `/api` hacia el backend local |
@@ -52,16 +52,16 @@ comando. `NGROK_DOMAIN` usa el dominio reservado de desarrollo documentado en el
 | Comando | Qué hace |
 |---|---|
 | `migrate` | El `migrate` de Django, pero corre por defecto sobre el alias `owner` (`fp_app` no puede hacer DDL) |
-| `apply_grants` | Reaplica los permisos deseados de PostgreSQL (`db_grants.py`); se ejecuta tras `migrate`, en cada despliegue y tras cada restauración |
+| `apply_grants` | Reaplica los permisos deseados de PostgreSQL (`autobot/db/grants.py`); se ejecuta tras `migrate`, en cada despliegue y tras cada restauración |
 | `tenant_health <slug>` | Comprueba la salud del pack y del canal de un negocio, forzando la comprobación |
 | `telegram_set_webhook <target> [--delete]` | Fija o borra el webhook de Telegram de un tenant, del bot de demo (`demo`) o del bot de avisos (`notify`) |
 | `telegram_poll [<slug>]` | *Long polling* de un bot de Telegram (desarrollo local) |
 | `owner_invite <slug>` | Genera un enlace de un solo uso para que el dueño del negocio enlace su Telegram |
 | `owner_unlink <slug>` | Desconecta el Telegram del dueño del negocio |
-| `export_contact <slug> <external_id> [--channel main\|demo_tg\|demo_wa] --output <fichero>` | Exporta los datos de un contacto a un fichero privado (derechos RGPD) |
-| `export_tenant <slug> --output <fichero>` | Exporta todos los datos de un negocio a un fichero privado (derechos RGPD) |
-| `forget_contact <slug> <external_id> [--channel ...]` | Borra los datos de un contacto |
-| `purge_tenant <slug>` | Solo tras la baja: borra datos, secretos, métricas e historiales; conserva una versión depurada y exige escribir el slug |
+| `contact_export <slug> <external_id> [--channel main\|demo_tg\|demo_wa] --output <fichero>` | Exporta los datos de un contacto a un fichero privado (derechos RGPD) |
+| `tenant_data_export <slug> --output <fichero>` | Exporta todos los datos de un negocio a un fichero privado (derechos RGPD) |
+| `contact_forget <slug> <external_id> [--channel ...]` | Borra los datos de un contacto |
+| `tenant_purge <slug>` | Solo tras la baja: borra datos, secretos, métricas e historiales; conserva una versión depurada y exige escribir el slug |
 | `outbound_resolve <uuid> (--mark-sent\|--resend) --confirm` | Resuelve un envío ambiguo a mano; sin `--confirm` explica el riesgo y no hace nada |
 | `job_retry <id>` | Reintenta un trabajo fallido idempotente a mano; rechaza los de envío (`send_message`, `send_notification`) |
 | `tenant_secrets_reencrypt` | Recifra todos los secretos de canal con la primera clave de `SECRETS_ENCRYPTION_KEY`, atómicamente y con auditoría; ver [rotación](runbooks/09-rotar-secretos.md) |

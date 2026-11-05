@@ -15,9 +15,9 @@ from django.utils import timezone
 from autobot.channels.adapters import TELEGRAM
 from autobot.channels.base import InboundItem, Sent
 from autobot.channels.ratelimit import WindowLimiter
-from autobot.jobs import HANDLE_OWNER_EVENT, INBOUND, app
 from autobot.ops.logging import bind, contextual
 from autobot.owner import links, menu, texts
+from autobot.runtime.jobs import HANDLE_OWNER_EVENT, INBOUND, app
 from autobot.runtime.locks import owner_chat_lock
 from autobot.runtime.models import OwnerEvent
 from autobot.runtime.notifications import bot_secrets, deliver

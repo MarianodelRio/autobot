@@ -13,7 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-from tools.bus_tenant import REPO_ROOT, TenantDesconocido, dataset_dir
+from tools.bus.tenant import REPO_ROOT, TenantDesconocido, dataset_dir
 
 _TABLA_INICIO_RE = re.compile(r"^(?P<indent>[ \t]*)tabla:\s*\|\s*$")
 

@@ -33,9 +33,9 @@ from django.utils import timezone
 from autobot.channels.base import InboundItem, Rejected, Sent, StatusItem
 from autobot.channels.demo.doors import Door, allowed, door
 from autobot.channels.ratelimit import WindowLimiter
-from autobot.jobs import INBOUND, ROUTE_DEMO_EVENT, app
 from autobot.ops.logging import bind, contextual
 from autobot.runtime.inbound import store
+from autobot.runtime.jobs import INBOUND, ROUTE_DEMO_EVENT, app
 from autobot.runtime.locks import demo_user_lock
 from autobot.runtime.models import Channel, DemoEvent, DemoSession, OutboundMessage
 from autobot.tenancy.registry import LoadedTenant, get_registry

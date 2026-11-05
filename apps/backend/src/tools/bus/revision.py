@@ -24,7 +24,7 @@ from packs.bus.loader import (
 )
 from packs.bus.messages import msg_no_vendible
 from packs.bus.modelo import Linea, Localidad, Parada, Paso, Tabla, Viaje
-from tools.bus_tenant import (
+from tools.bus.tenant import (
     REPO_ROOT,
     TenantDesconocido,
     dataset_dir,

@@ -12,8 +12,8 @@ import pytest
 from django.db import connections
 from django.utils import timezone
 
-from autobot.jobs import INBOUND, app
 from autobot.runtime import process
+from autobot.runtime.jobs import INBOUND, app
 from autobot.runtime.locks import contact_hash
 from autobot.runtime.models import (
     Contact,
@@ -558,7 +558,7 @@ def test_the_job_runs_in_the_worker(tenants: Any) -> None:
 def test_is_last_attempt() -> None:
     from types import SimpleNamespace
 
-    from autobot.jobs import is_last_attempt
+    from autobot.runtime.jobs import is_last_attempt
 
     def ctx(attempts: int) -> Any:
         return SimpleNamespace(job=SimpleNamespace(attempts=attempts))

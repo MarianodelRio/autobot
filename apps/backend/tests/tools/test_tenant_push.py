@@ -58,7 +58,7 @@ def test_push_stream_contains_only_selected_secret(tmp_path: Path, include_secre
     if include_secrets:
         env["SECRETS"] = str(secret_file)
     result = subprocess.run(
-        ["bash", "apps/backend/src/tools/tenant_push.sh"],
+        ["bash", "apps/backend/src/tools/tenant/tenant_push.sh"],
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -106,7 +106,7 @@ def test_invalid_slug_never_exports_or_contacts_ssh(tmp_path: Path) -> None:
     env = environment(tmp_path)
     env["SLUG"] = "../escape"
     result = subprocess.run(
-        ["bash", "apps/backend/src/tools/tenant_push.sh"],
+        ["bash", "apps/backend/src/tools/tenant/tenant_push.sh"],
         cwd=ROOT,
         env=env,
         capture_output=True,

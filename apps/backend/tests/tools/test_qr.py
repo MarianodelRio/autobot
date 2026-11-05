@@ -8,7 +8,7 @@ import yaml
 
 from autobot.tenancy.schema import TelegramChannel, WhatsAppChannel
 from tests.platform.tenancy.helpers import demo_tenant_yaml, tenant_yaml
-from tools.qr import channel_link, main, tenant_link_from_file
+from tools.ops.qr import channel_link, main, tenant_link_from_file
 
 
 @pytest.mark.parametrize("phone", ["+34 600 12 34 56", "34600123456", "+34 (600) 123-456"])

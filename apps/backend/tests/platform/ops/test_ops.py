@@ -15,9 +15,9 @@ from django.core.management.base import CommandError
 from django.db import OperationalError, connection, connections
 from django.utils import timezone
 
-from autobot.jobs import app
 from autobot.ops import check, health, state
 from autobot.ops.models import OpsAlert, SystemSample
+from autobot.runtime.jobs import app
 from autobot.runtime.models import Contact, OutboundMessage
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx

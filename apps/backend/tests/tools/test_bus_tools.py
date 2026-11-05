@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from tools import bus_formatear, bus_revision, bus_validar
+from tools.bus import formatear as bus_formatear
+from tools.bus import revision as bus_revision
+from tools.bus import validar as bus_validar
 
 REAL = Path(__file__).parent.parent / "packs" / "bus" / "fixtures" / "horarios_real"
 SLUG = "autocares-ss"

@@ -1,9 +1,9 @@
 """Procrastinate app and job registry.
 
 `procrastinate.contrib.django` builds the app on the `default` alias (fp_app) and imports
-this module (PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"), so every job is declared
-here. The work itself lives in `autobot.runtime`, imported inside each job
-because the runtime defers jobs through this module.
+this module (PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "runtime.jobs"), so every job is
+declared here. The rest of `autobot.runtime` is imported inside each job because it
+defers jobs through this module.
 
 Rules for every job (CLAUDE.md): arguments, locks and logs carry only ids, never phone
 numbers, user ids or personal data; every job is idempotent.

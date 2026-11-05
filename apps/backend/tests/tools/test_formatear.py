@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from packs.bus import formato
-from tools.bus_formatear import formatear_texto
+from tools.bus.formatear import formatear_texto
 
 LINEAS_DIR = (
     Path(__file__).parent.parent / "packs" / "bus" / "fixtures" / "horarios_real" / "lineas"

@@ -6,7 +6,7 @@ import pytest
 from django.core.management import call_command, get_commands, load_command_class
 from django.db import DatabaseError, connections, transaction
 
-from autobot import db_grants
+from autobot.db import grants as db_grants
 
 pytestmark = pytest.mark.django_db(databases=["default", "owner"])
 

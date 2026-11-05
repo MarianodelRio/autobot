@@ -19,10 +19,10 @@ encolan identificadores personales. Deben ejecutarse en un terminal privado por 
 operador autorizado. Sustituya los argumentos por el negocio y contacto correspondientes:
 
 ```sh
-uv run python manage.py export_contact SLUG EXTERNAL_ID --channel main --output /ruta/privada/contacto.json
-uv run python manage.py forget_contact SLUG EXTERNAL_ID --channel main
-uv run python manage.py export_tenant SLUG --output /ruta/privada/negocio.json
-uv run python manage.py purge_tenant SLUG
+uv run python manage.py contact_export SLUG EXTERNAL_ID --channel main --output /ruta/privada/contacto.json
+uv run python manage.py contact_forget SLUG EXTERNAL_ID --channel main
+uv run python manage.py tenant_data_export SLUG --output /ruta/privada/negocio.json
+uv run python manage.py tenant_purge SLUG
 ```
 
 `--channel` puede omitirse si el identificador corresponde a un único contacto; si
@@ -39,7 +39,7 @@ un evento de la puerta (`demo_tg`/`demo_wa`) del negocio (`provider_event_id` o
 `select:provider_event_id`), junto con la sesión (`DemoSession`) de esa puerta y
 persona. Los eventos del selector sin negocio atribuido son datos de plataforma y
 caducan a los siete días (treinta para las sesiones); no se borran por compartir
-remitente con eventos de otro negocio. `purge_tenant` aplica la misma regla de
+remitente con eventos de otro negocio. `tenant_purge` aplica la misma regla de
 asociación y exige escribir literalmente el slug, sin espacios adicionales. Solo admite negocios en `offboarded`. Conserva el espejo `tenant` y una última
 versión del documento sin testers ni dueño; elimina secretos cifrados, métricas,
 historiales y datasets. Conserva los calendarios y los datos de otros negocios.
@@ -47,7 +47,7 @@ Todo el borrado y su auditoría ocurren en la misma transacción.
 
 Para dar de baja un negocio, el operador registra la fecha real de baja y una
 fecha límite de borrado de como máximo 30 días en el registro operativo de la baja.
-Ejecuta `tenant_status <slug> offboard` confirmando el slug y realiza la exportación acordada y ejecuta `purge_tenant` dentro de
+Ejecuta `tenant_status <slug> offboard` confirmando el slug y realiza la exportación acordada y ejecuta `tenant_purge` dentro de
 ese plazo; comprueba la versión depurada y la ausencia de secretos y datasets antes
 de retirar las copias locales y los accesos externos. No se retira la entrada del registro antes del borrado: el worker
 recorre ese registro. `synced_at` se actualiza al publicar configuración y nunca demuestra

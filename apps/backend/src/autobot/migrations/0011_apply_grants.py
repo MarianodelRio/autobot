@@ -1,4 +1,4 @@
-"""Reapplies the desired PostgreSQL permissions (db_grants.py, ADR-009) whenever this
+"""Reapplies the desired PostgreSQL permissions (autobot/db/grants.py, ADR-009) whenever this
 migration runs: on a fresh database, and on every future migration that touches tables
 or permissions. Depends on auth's and sessions' own migrations so fp_readonly's
 SELECT grant and the SENSITIVE_TABLES revokes see those tables already created.
@@ -7,7 +7,7 @@ Approved by the person on 2026-11-03 (see docs/adr/ADR-009-config-en-bd.md)."""
 
 from django.db import migrations
 
-from autobot import db_grants
+from autobot.db import grants as db_grants
 
 
 def apply_grants(apps: object, schema_editor: object) -> None:

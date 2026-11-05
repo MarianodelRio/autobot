@@ -7,7 +7,7 @@ import pytest
 
 from autobot.runtime.models import Contact
 from packs.salon.models import CalendarEvent
-from tools.migrate_salon_events import main
+from tools.salon.migrate_salon_events import main
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 NOW = datetime.fromisoformat("2026-03-24T09:00:00+01:00")

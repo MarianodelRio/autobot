@@ -12,7 +12,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from packs.bus.formato import validar
-from tools.bus_tenant import REPO_ROOT, TenantDesconocido, dataset_dir, dataset_path, published_dir
+from tools.bus.tenant import REPO_ROOT, TenantDesconocido, dataset_dir, dataset_path, published_dir
 
 
 def _command(action: str, slug: str, production: bool, comment: str) -> list[str]:

@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from autobot.tenancy.links import channel_link
 from autobot.tenancy.schema import TenantDocument
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent
 
 __all__ = ["channel_link", "generate", "main", "tenant_link_from_file"]
 

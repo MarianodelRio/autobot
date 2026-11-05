@@ -13,9 +13,9 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from pytest_django import Settings
 
-from autobot.jobs import app, retention_cleanup
 from autobot.ops.models import AuditEvent, OpsAlert
 from autobot.runtime import privacy, retention
+from autobot.runtime.jobs import app, retention_cleanup
 from autobot.runtime.models import (
     Contact,
     Conversation,
@@ -251,14 +251,14 @@ def test_export_private_and_contact_ambiguity(
     contact(a, "111", "demo_tg")
     target = tmp_path / "export.json"
     with pytest.raises(CommandError, match="ambiguo"):
-        call_command("export_contact", "a", "111", output=str(target))
-    call_command("export_contact", "a", "111", channel="main", output=str(target))
+        call_command("contact_export", "a", "111", output=str(target))
+    call_command("contact_export", "a", "111", channel="main", output=str(target))
     data = json.loads(target.read_text())
     assert data["data"]["contact"][0]["id"] == str(c.id)
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     assert "111" not in capsys.readouterr().out
     with pytest.raises(CommandError, match="archivo privado"):
-        call_command("export_tenant", "a", output=str(target))
+        call_command("tenant_data_export", "a", output=str(target))
     assert json.loads(target.read_text()) == data
 
 
@@ -277,8 +277,8 @@ def test_forget_only_matching_contact_and_events() -> None:
     foreign = event(b, "foreign", "demo_tg")
     DemoSession.objects.create(channel="demo_tg", external_id="111", tenant=b, selected_at=NOW)
     with pytest.raises(CommandError, match="ambiguo"):
-        call_command("forget_contact", "a", "111")
-    call_command("forget_contact", "a", "111", channel="demo_tg")
+        call_command("contact_forget", "a", "111")
+    call_command("contact_forget", "a", "111", channel="demo_tg")
     assert set(Contact.objects.using("owner").values_list("pk", flat=True)) == {
         other_channel.pk,
         other_tenant.pk,
@@ -310,7 +310,7 @@ def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: 
         OwnerLink.objects.create(tenant=t, chat_id=1 if t == a else 2, linked_at=NOW)
     DemoEvent.objects.create(channel="demo_tg", provider_event_id="99", payload={}, received_at=NOW)
     target = tmp_path / "tenant.json"
-    call_command("export_tenant", "a", output=str(target), stdout=io.StringIO())
+    call_command("tenant_data_export", "a", output=str(target), stdout=io.StringIO())
     assert all(
         row["tenant_id"] == str(a.id)
         for rows in json.loads(target.read_text())["data"].values()
@@ -318,10 +318,10 @@ def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: 
     )
     for confirmation in ["b", "a "]:
         with patch("builtins.input", return_value=confirmation), pytest.raises(CommandError):
-            call_command("purge_tenant", "a")
+            call_command("tenant_purge", "a")
         assert Contact.objects.using("owner").count() == 2
     with patch("builtins.input", return_value="a"):
-        call_command("purge_tenant", "a")
+        call_command("tenant_purge", "a")
     for model in privacy.MODELS:
         assert not model.objects.using("owner").filter(tenant=a).exists()
         assert model.objects.using("owner").filter(tenant=b).count() == 1

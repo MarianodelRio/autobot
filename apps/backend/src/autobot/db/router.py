@@ -1,6 +1,6 @@
 """Routes Django's own auth/session/OTP models to `owner` (fp_owner, BYPASSRLS):
 these are platform tables with no tenant data, and `fp_app` loses direct access to
-them entirely (db_grants.py). Everything else keeps the default (`default`, fp_app)."""
+them entirely (autobot/db/grants.py). Everything else keeps the default (`default`, fp_app)."""
 
 from typing import Any
 

@@ -74,7 +74,7 @@ class TenantDatasetVersion(models.Model):
 
 class TenantSecret(models.Model):
     """A tenant's channel secrets, Fernet-encrypted (ADR-009). No RLS; `fp_app` has no
-    access and `fp_readonly` cannot read it (SENSITIVE_TABLES, db_grants.py)."""
+    access and `fp_readonly` cannot read it (SENSITIVE_TABLES, autobot/db/grants.py)."""
 
     tenant = models.OneToOneField(Tenant, on_delete=models.CASCADE, primary_key=True)
     channel_type = models.CharField(

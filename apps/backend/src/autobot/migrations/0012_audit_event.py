@@ -1,12 +1,12 @@
 """Adds `audit_event` (ADR-009): no RLS, since the panel and operator commands write and
-read it across tenants. `fp_app` never reads or writes it (db_grants.py)."""
+read it across tenants. `fp_app` never reads or writes it (autobot/db/grants.py)."""
 
 import uuid
 
 from django.db import migrations, models
 from django.utils import timezone
 
-from autobot import db_grants
+from autobot.db import grants as db_grants
 
 
 def apply_grants(apps: object, schema_editor: object) -> None:

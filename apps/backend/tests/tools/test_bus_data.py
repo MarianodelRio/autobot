@@ -15,7 +15,7 @@ from django.core.management import call_command
 
 from autobot.tenancy.models import TenantDatasetVersion
 from packs.registry import PACKS
-from tools import bus_data
+from tools.bus import data as bus_data
 
 SLUG = "demo-autobuses"
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])

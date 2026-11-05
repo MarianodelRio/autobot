@@ -164,7 +164,7 @@ def tenants(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
 @pytest.fixture
 def clean_jobs(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """The flush does not reach Procrastinate's tables (unmanaged models)."""
-    from autobot.jobs import app
+    from autobot.runtime.jobs import app
 
     # Worker tests may cross a five-minute boundary and automatically enqueue this
     # new platform periodic. Its service checks have their own mocked integration

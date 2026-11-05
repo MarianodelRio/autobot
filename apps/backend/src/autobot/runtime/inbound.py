@@ -11,8 +11,8 @@ from django.db import connections
 from django.utils import timezone
 
 from autobot.channels.base import InboundItem, ParsedItem
-from autobot.jobs import APPLY_STATUS, INBOUND, PROCESS_EVENT, app
 from autobot.ops.logging import bind
+from autobot.runtime.jobs import APPLY_STATUS, INBOUND, PROCESS_EVENT, app
 from autobot.runtime.locks import conversation_lock
 from autobot.runtime.models import Channel, InboundEvent
 from autobot.tenancy.registry import LoadedTenant

@@ -10,7 +10,7 @@ import uuid
 from django.db import migrations, models
 from django.utils import timezone
 
-from autobot import db_grants
+from autobot.db import grants as db_grants
 
 PURGE_FUNCTION = """
 CREATE FUNCTION purge_platform_history(cutoff timestamptz) RETURNS void

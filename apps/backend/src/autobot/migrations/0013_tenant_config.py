@@ -1,14 +1,14 @@
 """Versioned tenant config and secrets (ADR-009): `tenant_document_version`,
 `tenant_dataset_version`, `tenant_secret` and `config_revision`. No RLS by design: the
 panel and the operator commands read and write across tenants, and `fp_app` only keeps
-SELECT (db_grants.py).
+SELECT (autobot/db/grants.py).
 
 Approved by the person on 2026-11-03 (see docs/adr/ADR-009-config-en-bd.md)."""
 
 import django.db.models.deletion
 from django.db import migrations, models
 
-from autobot import db_grants
+from autobot.db import grants as db_grants
 
 
 def apply_grants(apps: object, schema_editor: object) -> None:

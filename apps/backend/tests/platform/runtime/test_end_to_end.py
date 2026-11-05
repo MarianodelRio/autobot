@@ -19,8 +19,8 @@ from django.test import Client
 from procrastinate.contrib.django.django_connector import DjangoConnector
 
 from autobot.channels import adapters, views
-from autobot.jobs import PERIODIC, QUEUES, app
 from autobot.runtime import process
+from autobot.runtime.jobs import PERIODIC, QUEUES, app
 from autobot.runtime.models import Contact, Conversation, OutboundMessage
 from autobot.tenancy.registry import get_registry
 from core.conversation import RECOVERY_TEXT

@@ -85,7 +85,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
-DATABASE_ROUTERS = ["autobot.db_router.AuthDatabaseRouter"]
+DATABASE_ROUTERS = ["autobot.db.router.AuthDatabaseRouter"]
 
 
 # Three aliases: `default` is fp_app (no BYPASSRLS, no DDL), used by web and worker;
@@ -137,8 +137,8 @@ SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 
 # Job queue: Procrastinate on the `default` alias (fp_app); jobs are
-# declared in autobot/jobs.py.
-PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "jobs"
+# declared in autobot/runtime/jobs.py.
+PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "runtime.jobs"
 
 # Channels. Graph API version of the WhatsApp Cloud API (reviewed every six
 # months).
@@ -240,7 +240,7 @@ OWNER_SUPPORT_EMAIL = os.environ.get("OWNER_SUPPORT_EMAIL", "")
 OPS_TELEGRAM_CHAT_ID = os.environ.get("OPS_TELEGRAM_CHAT_ID", "")
 CACHES = {
     "default": {
-        "BACKEND": "autobot.cache.CooldownCache",
+        "BACKEND": "autobot.runtime.cache.CooldownCache",
         "LOCATION": "platform_cache",
     }
 }

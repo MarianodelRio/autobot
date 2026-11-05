@@ -102,6 +102,6 @@ def cleanup(*, now: datetime | None = None) -> None:
     ):
         while apply_batches(query):
             pass
-    # SECURITY DEFINER (db_grants.py): fp_app has no DELETE on ops_alert or audit_event.
+    # SECURITY DEFINER (autobot/db/grants.py): fp_app has no DELETE on ops_alert or audit_event.
     with connection.cursor() as cursor:
         cursor.execute("SELECT purge_platform_history(%s)", [annual])

@@ -53,7 +53,7 @@ fija las decisiones de arquitectura.
   `tenant_secret`, todas las versiones de datasets y todas las versiones del documento
   salvo una última versión depurada (sin testers ni dueño). La fila espejo `tenant` se
   conserva para que los webhooks tardíos sigan respondiendo.
-- **Permisos de base de datos reproducibles.** Un único módulo (`db_grants.py`) declara el
+- **Permisos de base de datos reproducibles.** Un único módulo (`autobot/db/grants.py`) declara el
   estado deseado como sentencias SQL idempotentes (GRANT, REVOKE, `ALTER DEFAULT
   PRIVILEGES`), que se vuelve a aplicar (`apply_grants`) en cada migración que cree tablas
   o cambie permisos, en cada despliegue y después de cada restauración. Así un `REVOKE`

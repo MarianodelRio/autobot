@@ -10,8 +10,8 @@ from django.db import connections
 from procrastinate.contrib.django.django_connector import DjangoConnector
 from procrastinate.periodic import PeriodicRegistry
 
-from autobot.jobs import DISPATCH_PERIODIC, PERIODIC, app, cron_for, register_periodic
 from autobot.runtime import periodic
+from autobot.runtime.jobs import DISPATCH_PERIODIC, PERIODIC, app, cron_for, register_periodic
 from autobot.runtime.models import Notification
 from autobot.tenancy.registry import LoadedTenant, get_registry
 from tests.helpers.integration import jobs, wa_tenant

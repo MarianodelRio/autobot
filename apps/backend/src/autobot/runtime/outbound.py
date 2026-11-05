@@ -12,8 +12,8 @@ from django.utils import timezone
 
 from autobot.channels.adapters import endpoint
 from autobot.channels.base import Ambiguous, Rejected, RetryLater, SendOutcome, Sent
-from autobot.jobs import OUTBOUND, SEND_MESSAGE, defer_after_commit
 from autobot.ops.logging import bind, contextual
+from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE, defer_after_commit
 from autobot.runtime.locks import contact_hash
 from autobot.runtime.models import Contact, InboundEvent, OutboundMessage
 from autobot.tenancy.registry import get_registry
