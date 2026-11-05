@@ -13,8 +13,9 @@ deshacer.
 
 - **Dos contenedores nuevos:** `panel` (Caddy interno, sirve una SPA estática con Vite y
   hace de proxy de `/api/` hacia `web:8000`) y `victorialogs` (almacén de logs, 31 días,
-  solo red interna). `panel` escucha en `127.0.0.1:8080`; nada nuevo queda expuesto a
-  internet.
+  solo red interna, sin puerto publicado: se consulta desde la pantalla Logs del
+  panel, nunca directamente). `panel` escucha en `127.0.0.1:8080`; nada nuevo queda
+  expuesto a internet.
 - **Mismo origen.** La SPA llama a `/api/panel/...` en el mismo origen que la sirve: sin
   CORS, con las cookies de sesión de Django funcionando tal cual. El Caddy público nunca
   reenvía `/api/`, y `PanelGateMiddleware` responde 404 si la petición llega con la
@@ -32,8 +33,8 @@ deshacer.
   servicios del panel usan `.using("owner")` de forma explícita en las consultas que
   cruzan negocios. Cuando el panel llama a código de la plataforma (`build_summary`,
   `ops.health`, `tenant_tx`…), ese código corre igual que en el worker, con `default` y
-  RLS, así que nunca puede mezclar datos de dos negocios. Desaparece el
-  router por petición actual (`admin_db.py`).
+  RLS, así que nunca puede mezclar datos de dos negocios. Desapareció el
+  router por petición anterior (`admin_db.py`).
 - **Tercer rol de solo lectura, `fp_readonly`** (`LOGIN NOBYPASSRLS`, solo `SELECT`), para
   la consola SQL del panel. Siempre de solo lectura, con `READ ONLY`, `statement_timeout`
   y rollback forzado; admite únicamente una sentencia `SELECT`/`WITH … SELECT`/`VALUES`

@@ -8,12 +8,10 @@ La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de
 
 ## Decisión
 
-- **Una VPS en la UE** (Hetzner Cloud, 2 vCPU / 4 GB) con Ubuntu 24.04 y **Docker Compose**: `caddy`, `web`, `worker` y `db` (PostgreSQL 18). `web` y `worker` usan la misma imagen.
-- **Caddy** con HTTPS automático; solo expone los webhooks de WhatsApp y Telegram (incluidos los de las dos puertas del bot de demo) y `/health`. El Admin lo sirve `web`, pero solo es accesible por túnel SSH.
-- **Secretos**: `.env` (plataforma) y `secrets.yaml` (canal de cada negocio) en el servidor, montados de solo lectura; nunca en git ni en la imagen.
-
-Modificada por [ADR-008](ADR-008-panel.md) y [ADR-009](ADR-009-config-en-bd.md): se añaden dos contenedores (`panel` y `victorialogs`), también solo accesibles por túnel SSH; el Django Admin desaparece, sustituido por el panel; y `secrets.yaml` desaparece, porque los secretos de canal pasan a vivir cifrados en la propia base de datos.
-- **Backups**: `pg_dump` cada 6 h y los ficheros de secretos, cifrados con restic, a almacenamiento de **otro proveedor**; simulacro de restauración trimestral. RPO ≤ 6 h, RTO ≤ 2 h.
+- **Una VPS en la UE** (Hetzner Cloud, 2 vCPU / 4 GB) con Ubuntu 24.04 y **Docker Compose**: `caddy`, `web`, `worker`, `db` (PostgreSQL 18), `panel` y `victorialogs`. `web` y `worker` usan la misma imagen; `panel` y `victorialogs` solo son accesibles por túnel SSH.
+- **Caddy** con HTTPS automático; solo expone los webhooks de WhatsApp y Telegram (incluidos los de las dos puertas del bot de demo y el bot de avisos, `/webhooks/telegram-notify`) y `/health`.
+- **Secretos**: `.env` (plataforma) en el servidor, montado de solo lectura; los secretos de canal de cada negocio viven cifrados en PostgreSQL (`SECRETS_ENCRYPTION_KEY` en `.env`). Nunca en git ni en la imagen.
+- **Backups**: `pg_dump` cada 6 h, `.env`, `google_sa.json`, el `Caddyfile` y `.deployed-sha` (todos bajo `var/`), cifrados con restic, a almacenamiento de **otro proveedor**; simulacro de restauración trimestral. RPO ≤ 6 h, RTO ≤ 2 h.
 - **Despliegue**: imagen en GHCR desde GitHub Actions; despliegue manual por SSH con migraciones primero, comprobación de salud y vuelta atrás automática.
 - **Vigilancia que no depende de la VPS**: latido a healthchecks.io y uptime externo.
 

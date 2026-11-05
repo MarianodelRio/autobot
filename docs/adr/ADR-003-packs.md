@@ -8,11 +8,11 @@ Hay dos negocios reales con flujos muy distintos: reservas sobre Google Calendar
 
 ## Decisión
 
-- Cada tipo de negocio es un **pack** en `packs/<nombre>/`: esquema de config (pydantic), **su propia máquina de estados** (`handle_message(ctx, msg) -> PackResult`), sus textos, sus periódicas y sus tests.
+- Cada tipo de negocio es un **pack** en `packs/<nombre>/`: esquema de config (pydantic), **su propia máquina de estados** (`handle_message(ctx, msg) -> PackResult`), sus textos, sus periódicas, su plantilla de negocio de demo (`packs/<nombre>/template/`, [ADR-009](ADR-009-config-en-bd.md)) y sus tests (`apps/backend/tests/packs/<nombre>/`, [ADR-010](ADR-010-estructura-del-repo.md)).
 - El pack recibe un `PackContext` (tenant, config, datos cargados, contacto, estado, reloj, puertos externos como `calendar`, candados, claves idempotentes) y devuelve respuestas, nuevo estado y acciones. **Nunca toca la BD ni las APIs directamente.**
-- La plataforma resuelve lo común: caducidad del estado, versión del estado, comandos globales (`menu`, `baja`), mensajes no soportados, recuperación ante errores, plan de envío y límites comunes de mensajes.
+- La plataforma resuelve lo común: caducidad del estado, versión del estado, comandos globales (`menu`, `baja`, `alta`), mensajes no soportados, recuperación ante errores, plan de envío y límites comunes de mensajes.
 - Los packs no conocen el canal: construyen respuestas comunes (texto, botones, lista) dentro de los límites más estrictos de WhatsApp y Telegram, y cada adaptador de canal las traduce.
-- **Utilidades comunes, no framework**: `core/ui`, `core/text`, `core/dates`, `core/whatsapp_limits`. Solo entra en `core` lo que usan los dos packs.
+- **Utilidades comunes, no framework**: `core/ui`, `core/text`, `core/dates`, `core/limits`. Solo entra en `core` lo que usan los dos packs.
 - Registro explícito de packs (`packs/registry.py`), sin descubrimiento automático.
 
 ## Alternativas consideradas

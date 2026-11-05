@@ -1,70 +1,71 @@
-# ADR-010 — Estructura del repositorio: `apps/` y `deploy/`
+# ADR-010 — Estructura del repositorio: apps autocontenidas, compose por entorno y `var/`
 
-**Estado:** sustituida por [ADR-011](ADR-011-estructura-del-repo-v2.md)
+**Estado:** aceptada
 
 ## Contexto
 
-Tras añadir el panel, la raíz del repositorio mezclaba dos apps desplegables (`src/` del
-backend, `panel/` del frontend) con ficheros de despliegue sueltos (`Dockerfile`,
-`Caddyfile`, `compose.yaml`, `compose.prod.yaml`) y una carpeta `deploy/` que solo tenía
-parte de ese despliegue (scripts, `postgres/`, systemd). No había un criterio claro de
-qué vivía en la raíz y qué en `deploy/`. Este ADR fija la organización del repo, sin
-tocar los límites internos de `core/`/`integrations/`/`packs/` que ya vigila
-`import-linter`.
+El repositorio mezclaba dos apps desplegables (`apps/backend/`, `apps/panel/`) con
+ficheros de despliegue sueltos en la raíz (`Dockerfile`, `Caddyfile`, `compose.yaml`,
+`compose.prod.yaml`) y una carpeta `deploy/` que solo tenía parte de ese despliegue
+(scripts, `postgres/`, systemd). `apps/backend/` no tenía su propio `pyproject.toml` ni
+`Dockerfile` (vivían en la raíz y en `deploy/docker/`), por lo que no era autocontenido
+como `apps/panel/`; `tests/` estaba repartido entre la raíz, `core/` y cada pack, sin un
+criterio de carpetas por lo que prueban; y los ficheros de ejecución (`state/`,
+`backups/`, `qr/`, `revision/`, `datos/`, `tenants/`, `.deployed-sha`...) estaban
+sueltos en la raíz, cada uno con su propia entrada en `.gitignore`.
 
 ## Decisión
 
-- **Dos apps desplegables en `apps/`:** `apps/backend/` (todo lo que antes era `src/`:
-  `autobot/`, `config/`, `core/`, `integrations/`, `packs/`, `tools/`) y `apps/panel/`
-  (antes `panel/`, sin cambios internos). `manage.py` y `conftest.py` se quedan en la
-  raíz como lanzadores finos; `PYTHONPATH`/`mypy_path`/`pytest.ini_options` apuntan a
-  `apps/backend`.
-- **`deploy/` reúne todo lo de despliegue que no se teclea a mano:** el `Dockerfile` del
-  backend (`deploy/docker/backend.Dockerfile`) y el `Caddyfile` del borde público
-  (`deploy/caddy/Caddyfile`), además de lo que ya tenía (`postgres/`, los scripts de
-  `backup`/`restore`/`deploy`/`ensure-env`/`manage`/`bootstrap-server`/`ssh-deploy`, y los
-  units de systemd). Dentro de un contenedor, las rutas internas (`/app/src`,
-  `/etc/caddy/Caddyfile`) no cambian: solo cambia de dónde los copia el `Dockerfile` en
-  el host.
-- **`compose.yaml` y `compose.prod.yaml` se quedan en la raíz.** A diferencia del
-  `Dockerfile` y el `Caddyfile`, los runbooks los usan tecleados a mano por SSH
-  (`docker compose -p autobot -f compose.prod.yaml ...`) durante incidencias; moverlos
-  obligaría a escribir una ruta más justo cuando menos conviene. Es la única excepción a
-  "nada de despliegue suelto en la raíz".
-- **`tests/` no se mueve.** Sigue en la raíz, cubre la plataforma entera (incluida
-  `tests/integration/panel/`), y no se ha encontrado beneficio en anidarla bajo
-  `apps/backend/`.
+- **`apps/backend/` autocontenido, como `apps/panel/`:** `pyproject.toml`, `uv.lock`,
+  `.python-version`, `manage.py`, `Dockerfile` y `.dockerignore` viven dentro de
+  `apps/backend/`; el código de producción está en `apps/backend/src/` y los tests en
+  `apps/backend/tests/`. Motivo: la raíz queda mínima (solo lo que de verdad es de todo
+  el repo) y las dos apps desplegables se ven y se tratan igual.
+- **Compose en `deploy/compose/`, con un fichero base y overrides:**
+  `deploy/compose/compose.yaml` (lo común a local y producción: `db`, `victorialogs`, y
+  los fragmentos compartidos de `web`/`worker`), `compose.local.yaml` (build local,
+  montajes de código, passwords de desarrollo) y `compose.prod.yaml` (imágenes de GHCR,
+  Caddy, políticas de reinicio). El `.env` fija `COMPOSE_FILE` con la lista de ficheros
+  que corresponde a cada entorno y `COMPOSE_PROJECT_NAME=autobot`, así que
+  `docker compose up` sigue siendo corto de teclear. Las rutas relativas de estos tres
+  ficheros (los mounts, `../postgres`, `../caddy/Caddyfile`, `../../var/...`) se
+  resuelven contra `deploy/compose/`, el directorio del primero que se pasa con `-f` —
+  comprobado con Docker Compose 2.40, también para los overrides.
+- **Tests en `apps/backend/tests/`, fuera de la imagen:** repartidos por lo que prueban
+  (`core/`, `packs/<pack>/`, `platform/{channels,runtime,tenancy,owner,ops,panel}/`,
+  `contract/`, `isolation/`, `tools/`, `repo/`, `fixtures/`), no por si son unitarios o
+  de integración. `apps/backend/.dockerignore` excluye `tests/` explícitamente.
+- **`var/` para los ficheros de ejecución, igual en local y en el servidor:**
+  `var/state/`, `var/backups/`, `var/qr/`, `var/revision/`, `var/datos/<slug>/`,
+  `var/tenants/` (solo local, de paso hacia `tenant_config import`),
+  `var/google_sa.json`, `var/.deployed-sha` y el resto de ficheros de bloqueo/estado del
+  despliegue. Una sola entrada `/var/` en `.gitignore` sustituye a las ocho o nueve
+  sueltas que había antes.
 
 ## Alternativas consideradas
 
-- **Dejar `src/` y `panel/` como estaban, solo limpiar la raíz de infra suelta:** menor
-  riesgo (no toca `pyproject.toml`, `manage.py`, Dockerfiles, CI, Makefile), pero no
-  resuelve la falta de un agrupador visible de "esto es una app desplegable".
-- **Mover también `compose.yaml`/`compose.prod.yaml` a `deploy/`:** más coherente con
-  "todo el despliegue en un sitio", pero obliga a tocar más de diez runbooks que los
-  invocan tecleados a mano; el coste de operación supera el beneficio estético.
-- **Anidar `tests/` bajo `apps/backend/tests/`:** más "cada app es dueña de sus tests",
-  pero `tests/` ya cubre piezas de más de una app (p. ej. `tests/integration/panel/`
-  contra la API del backend) y no aporta claridad real.
+- **Compose base y overrides en la raíz (no en `deploy/compose/`):** evita el problema
+  de resolución de rutas relativas, pero deja la raíz con tres ficheros de despliegue
+  sueltos de nuevo, justo lo que esta ADR quiere evitar.
+- **Tests junto a cada pack y cada app, sin una carpeta `tests/` común:** cada pieza
+  dueña de sus propios tests, pero los tests de `platform/` cruzan varios módulos
+  (`channels`, `runtime`, `tenancy`...) sin un dueño único, y separarlos de los de
+  `packs/` habría obligado a duplicar fixtures compartidas (`tenants`, `salon_setup`) en
+  vez de tener un único `conftest.py` común.
 
 ## Consecuencias
 
-- Cualquier ruta que antes empezaba por `src/` o `panel/` cambia a `apps/backend/` o
-  `apps/panel/` (código, tests, `Makefile`, CI, docs). Verificado con `ruff`, `mypy`,
-  `import-linter`, la suite completa de `pytest`, `pnpm check/typecheck/build` del panel,
-  `manage.py check`/`makemigrations --check`/`lintmigrations`/`export_openapi`, y
-  reconstruyendo ambas imágenes Docker y `make check-prod-config` contra `compose.prod.yaml`
-  real.
-- No hay servidor de producción desplegado todavía (`docs/puesta-en-marcha.md`), así que
-  este cambio no afecta a ningún sistema real; la próxima vez que se prepare una VPS,
-  `deploy/bootstrap-server.sh` y los runbooks ya reflejan la estructura nueva.
-- `make restore-test` no se ha podido ejecutar en esta máquina (no tiene `restic`
-  instalado); los scripts de `backup`/`restore`/`restore-test` se revisaron a mano y
-  quedan con las rutas del `Caddyfile` actualizadas, pero conviene que la persona los
-  ejecute una vez tenga `restic` a mano.
+- Rutas del servidor: el checkout en `/srv/autobot` tiene `deploy/scripts/`,
+  `deploy/compose/`, `deploy/systemd/`, `deploy/env/` y `var/`. `deploy/scripts/bootstrap-server.sh`
+  crea `var/` (y `var/state/{ops,caddy-data,caddy-config}`) con el dueño correcto, e
+  instala los units desde `deploy/systemd/`. El comando forzado de la clave de CI es
+  `deploy/scripts/deploy.sh <sha>`.
+- No hay servidor de producción desplegado todavía, así que nada de esto afecta a un
+  sistema real; se verificó con `docker compose config` en modo local y en modo
+  producción (con variables de prueba), comparando los servicios resueltos, y con
+  `make up`, `make dev-bootstrap` y `make check-prod-config` en local.
 
 ## Cuándo revisarla
 
-- Si se añade una tercera app desplegable, confirmar que sigue encajando en `apps/`.
-- Si se bootstrapea un servidor real y algo de `deploy/` no cuadra con lo que espera
-  `bootstrap-server.sh`, corregir ahí antes que revertir esta estructura.
+- Si se monta un servidor y los runbooks necesitan rutas o comandos distintos de los
+  que aquí se fijan.

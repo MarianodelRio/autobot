@@ -16,21 +16,21 @@ fija las decisiones de arquitectura.
   negocio. `tenants/` desaparece del repositorio y de la imagen (sigue en `.gitignore`
   para la copia local de `autocares-ss`); la CI falla si algo queda versionado ahí.
 - **Versiones inmutables.** `tenant_document_version` guarda cada versión del
-  `TenantDocument` (el `TenantFile` de hoy, renombrado); `tenant_dataset_version` guarda
-  cada versión de los datasets (horarios de `bus`). La versión vigente es la de mayor
-  número; volver atrás crea una versión nueva con el contenido de una anterior, nunca
-  borra las intermedias. La única excepción es la purga.
-- **`config_revision`** (una sola fila) es un contador global que toda escritura
-  incrementa dentro de su transacción. Cada proceso recarga su registro en memoria cuando
-  detecta un cambio, consultando como mucho cada 2 s, y lo fija durante la vida de una
-  petición o un trabajo de cola (`registry_scope`) para que un cambio de config nunca
-  llegue a mitad de un trabajo.
-- **Estas cuatro tablas** (`tenant_document_version`, `tenant_dataset_version`,
-  `tenant_secret`, `config_revision`) **llevan `tenant_id` pero no RLS.** Son
-  configuración de la plataforma: cada proceso necesita leerlas enteras al arrancar o al
-  recargar, igual que hoy lee todos los YAML y `secrets.yaml` enteros. Figuran en la lista
-  de excepciones del test de aislamiento. `fp_app` solo tiene `SELECT`; solo `fp_owner`
-  escribe.
+  `TenantDocument`; `tenant_dataset_version` guarda cada versión de los datasets
+  (horarios de `bus`). La
+  versión vigente es la de mayor número; volver atrás crea una versión nueva con el
+  contenido de una anterior, nunca borra las intermedias. La única excepción es la purga.
+- **`config_revision`** (una sola fila, global, sin `tenant_id`) es un contador que toda
+  escritura incrementa dentro de su transacción. Cada proceso recarga su registro en
+  memoria cuando detecta un cambio, consultando como mucho cada 2 s, y lo fija durante la
+  vida de una petición o un trabajo de cola (`registry_scope`) para que un cambio de
+  config nunca llegue a mitad de un trabajo.
+- **Tres tablas** (`tenant_document_version`, `tenant_dataset_version`, `tenant_secret`)
+  **llevan `tenant_id` pero no RLS**, más `config_revision`, global y sin `tenant_id`.
+  Son configuración de la plataforma: cada proceso necesita leerlas enteras al arrancar o
+  al recargar, igual que hoy lee todos los YAML y `secrets.yaml` enteros. Figuran en la
+  lista de excepciones del test de aislamiento. `fp_app` solo tiene `SELECT`; solo
+  `fp_owner` escribe.
 - **Secretos de canal cifrados en la propia base**, con Fernet (`cryptography`,
   `MultiFernet`) a partir de `SECRETS_ENCRYPTION_KEY` (en el `.env` de `web` y `worker`;
   admite varias claves separadas por comas para rotarla). La API del panel nunca devuelve
@@ -48,8 +48,8 @@ fija las decisiones de arquitectura.
   (`seed_demos`) solo si el tenant no tiene ninguna versión; después, la verdad es la base
   y se editan en el panel. La plantilla es también el punto de partida del asistente de
   alta de un negocio nuevo.
-- **Baja y purga.** Dar de baja (`offboarded`) solo por comando (`tenant_status offboard`
-  <slug>`), nunca desde el panel. La purga, además de lo que borra hoy, elimina también
+- **Baja y purga.** Dar de baja (`offboarded`) solo por comando (`tenant_status <slug>
+  offboard`), nunca desde el panel. La purga, además de lo que borra hoy, elimina también
   `tenant_secret`, todas las versiones de datasets y todas las versiones del documento
   salvo una última versión depurada (sin testers ni dueño). La fila espejo `tenant` se
   conserva para que los webhooks tardíos sigan respondiendo.
@@ -86,9 +86,9 @@ fija las decisiones de arquitectura.
 
 - Todo cambio de config queda versionado, auditado y se aplica sin reiniciar ningún
   proceso, con un retraso de hasta 2 s por la recarga del registro.
-- Las cuatro tablas de config son una excepción explícita y vigilada a la regla de RLS; un
-  descuido ahí no tiene la misma red de seguridad que el resto de tablas con datos de
-  cliente.
+- Las tres tablas de config con `tenant_id`, más `config_revision`, son una excepción
+  explícita y vigilada a la regla de RLS; un descuido ahí no tiene la misma red de
+  seguridad que el resto de tablas con datos de cliente.
 - Restaurar un backup sin `.env` deja los secretos de canal cifrados pero ilegibles; hay
   que restaurar también el `.env` con `SECRETS_ENCRYPTION_KEY`.
 - Los permisos de base de datos quedan declarados en un solo sitio y se reaplican solos
@@ -102,49 +102,6 @@ fija las decisiones de arquitectura.
 - Si el volumen de versiones por tenant crece mucho, añadir una política de purga de
   versiones antiguas (hoy no existe: todas se conservan).
 
-### Formato de directorio implementado
-
-`source_from_dir` acepta `document.yaml` o el nombre antiguo `tenant.yaml`; el nombre
-de la carpeta no condiciona el slug del documento, de modo que una plantilla en
-`template/` o un export a un directorio temporal conserva la identidad del negocio.
-El registro recibe `TenantSource` y materializa sus datasets en un directorio temporal
-solo durante `Pack.load_data`, sin cambiar el contrato del pack. Las rutas absolutas,
-con `..` o con contenido que no sea texto degradan únicamente al negocio afectado.
-Los errores de lectura se asocian a la fuente; un fallo de secretos desactiva el canal
-principal sin degradar el negocio.
-
-### Carga y fijado del registro implementados
-
-La fuente de BD lee revisión, documentos, datasets y secretos con cuatro consultas,
-sin una consulta por negocio. Fuera de una transacción existente usa una instantánea
-`REPEATABLE READ READ ONLY`; los secretos se descifran después de cerrar la lectura.
-La caché por proceso comprueba la revisión como máximo cada dos segundos bajo un
-candado; solo publica la nueva instantánea cuando termina de construirla. Un fallo
-de BD conserva la anterior, salvo en la primera carga, que propaga el error.
-
-`registry_scope` fija de forma perezosa el primer registro leído durante una petición
-o trabajo, incluidos ámbitos anidados. Así `/health` puede capturar también el fallo
-de primera carga y devolver 503. `loaded_registry` sirve a la redacción de logs sin
-consultas y conserva los secretos de la instantánea fijada durante cada trabajo.
-
-Los webhooks principales responden también 503 si falla la primera carga de config:
-el proveedor conserva el evento para reintentarlo, igual que si falla su persistencia.
-
-### Escrituras y activación implementadas
-
-`tenancy.store` serializa cada escritura con `SELECT FOR UPDATE` de la revisión y
-valida un registro candidato antes de crear versiones, actualizar el espejo, incrementar
-la revisión y auditar en la misma transacción `owner`. Las versiones anteriores no se
-modifican. Los conflictos de versión y los cambios de los seis campos protegidos se
-rechazan; volver atrás crea otra versión y mantiene esos campos vigentes. Los errores
-contienen rutas y tipos de validación, sin reproducir los valores recibidos.
-
-Las altas pueden adoptar un espejo sin versiones; `bus` copia el dataset de su plantilla
-si no se proporcionan otros. La importación con el mismo hash no crea versiones ni
-auditorías. Los secretos se sustituyen completos y solo sus nombres de campo se auditan.
-
-La lista de activación fuerza la salud fuera de la transacción de escritura, consulta
-la actividad con RLS y separa los bloqueos del aviso de dueño sin enlazar. Dentro de la
-transacción se vuelve a comprobar el estado. Los demos también pueden quedar
-`offboarded` mediante la baja por terminal, de acuerdo con la tabla de estados del diseño.
-`ops.status.tenant_status` centraliza los cinco niveles de salud para todas las vistas.
+Notas de implementación (formato de directorio, carga y fijado del registro, escrituras
+y activación) en
+[`docs/arquitectura/config-y-registro.md`](../arquitectura/config-y-registro.md).

@@ -28,10 +28,11 @@ negocio real.
   lista de los negocios de demo disponibles. Elegir uno abre una sesión
   (`DemoSession`, por puerta y persona) y, desde ahí, la conversación es la del pack
   real de ese negocio, como si hablara por su canal propio.
-- **Los negocios de demo son negocios normales** en `tenants/`, marcados con
-  `demo: {description}` en vez de `channel`: sin canal propio, sin `testers`, con
-  `status` solo `active` o `paused`. Cada pack nuevo trae el suyo
-  (`tenants/demo-<pack>/`) y su escenario de conversación.
+- **Los negocios de demo son negocios normales**, marcados con `demo: {description}`
+  en vez de `channel`: sin canal propio, sin `testers`, con `status` solo `active` o
+  `paused`. Cada pack nuevo trae su plantilla (`packs/<pack>/template/`) y su escenario
+  de conversación; `seed_demos` siembra el negocio de demo en PostgreSQL a partir de la
+  plantilla.
 - El calendario de un negocio de demo es uno solo (`config.calendar_id`), usado por
   cualquiera de las dos puertas; no hay "calendario de pruebas" aparte.
 - Se retira el bot de pruebas por cliente: `test_calendar_id`, `testers.telegram`,
@@ -55,14 +56,13 @@ negocio real.
 ## Consecuencias
 
 - Un cliente real nunca aparece en el selector de demo ni acepta campos de prueba en
-  su `tenant.yaml`; la validación del esquema los rechaza.
+  su documento de negocio; la validación del esquema los rechaza.
 - Cada pack nuevo necesita su propio negocio de demo y su escenario de conversación
   antes de poder enseñarse (regla añadida a `CLAUDE.md`).
 - Encender o apagar una puerta es solo una variable de entorno; encender o apagar un
   negocio de demo es su `status`, igual que cualquier otro negocio.
-- La puerta de WhatsApp solo puede probarse en el servidor (un número de Meta tiene una
-  única URL de webhook); en local solo se prueba la puerta de Telegram, con un bot de
-  desarrollo propio.
+- Las dos puertas se pueden probar en local: la de Telegram con un bot de desarrollo
+  propio, y la de WhatsApp con un túnel ngrok y una app de WhatsApp de desarrollo.
 
 ## Cuándo revisarla
 
