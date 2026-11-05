@@ -4,12 +4,12 @@ El Django Admin se eliminó (ADR-008); el panel que lo sustituye es una API prop
 (`/api/panel/`, django-ninja) y una SPA (React, `apps/panel/`) servidas por el contenedor
 `panel` (su propia Caddy, sirve `/` y hace de proxy de `/api/*` hacia `web:8000`). Las
 secciones son Resumen, Clientes, Actividad, Incidencias, Logs, Datos, Sistema y
-Auditoría. Los comandos de `manage.py` (`docs/comandos.md`) también permiten resolver
+Auditoría. Los comandos de `manage.py` (`docs/referencia/comandos.md`) también permiten resolver
 incidencias sin pasar por la API:
 
-- **Envíos ambiguos o fallidos** (runbook 05): `outbound_resolve <id> (--mark-sent|--resend)
+- **Envíos ambiguos o fallidos** (ver [envíos sin confirmar](../incidencias/envios-unknown.md)): `outbound_resolve <id> (--mark-sent|--resend)
   --confirm`.
-- **Trabajos fallidos** (runbook 03): `job_retry <id>`.
+- **Trabajos fallidos** (ver [cola y latido](../incidencias/cola-y-latido.md)): `job_retry <id>`.
 
 Ambos comandos llaman a `autobot.ops.actions`, que comprueba la elegibilidad bajo
 bloqueo y audita el cambio (`audit_event`) en la misma transacción.
@@ -48,7 +48,7 @@ Mientras no se ha pedido ninguna página más, la primera se refresca cada 15 s.
 
 Reúne lo que requiere intervención: alertas abiertas («Resolver» solo si no se
 resuelven solas), envíos `unknown`/`failed` sin confirmar («Marcar enviado» y
-«Reenviar», con confirmación del riesgo de duplicado del runbook 5) y trabajos
+«Reenviar», con confirmación del riesgo de duplicado de [envíos sin confirmar](../incidencias/envios-unknown.md)) y trabajos
 fallidos («Reintentar» solo si son idempotentes); debajo, el historial de alertas
 resueltas. El contador de la barra lateral cuenta alertas abiertas, envíos
 estancados y trabajos fallidos.

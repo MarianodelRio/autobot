@@ -1,4 +1,4 @@
-# 5. Envíos `unknown` o `failed`
+# Envíos `unknown` o `failed`
 
 **Síntoma:** en el panel, Incidencias → Envíos sin confirmar muestra mensajes sin
 entrega confirmada. **Diagnóstico:** busca el mensaje por su identificador interno

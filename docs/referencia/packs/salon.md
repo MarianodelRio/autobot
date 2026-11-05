@@ -27,7 +27,7 @@ bot distingue citas propias por metadatos privados de Calendar; una cita creada
 a mano necesita `Telefono:` en la descripción para que el barrido pueda
 identificarla. Para probar cambios sin tocar el calendario real se usa
 `FakeCalendar` (ver `packs/salon/testing.py`) o el negocio de demo
-`demo-peluqueria` (`docs/runbooks/demo.md`).
+`demo-peluqueria` (`docs/procedimientos/demo.md`).
 
 Las plantillas de WhatsApp las crea el operador en el WhatsApp Manager de cada
 negocio y las aprueba Meta:
@@ -72,7 +72,7 @@ owner:
 ```
 
 Requiere que el dueño ya esté vinculado al bot de avisos (`manage.py owner_invite
-<slug>`, no un dato en YAML: ver `docs/runbooks/alta-baja-negocio.md`). Llega por el
+<slug>`, no un dato en YAML: ver `docs/procedimientos/alta-baja-negocio.md`). Llega por el
 mismo bot el día 1 de cada mes, con los datos del mes anterior ya cerrado, y también se
 puede consultar en cualquier momento escribiéndole al bot ("Cómo va el mes").
 
@@ -80,9 +80,9 @@ Para cambiar horario o servicios, edita YAML, ejecuta `make check`, prueba una
 reserva completa y una cancelación con `FakeCalendar` o con `demo-peluqueria`,
 y publica con `tenant_config import <dir> --comment "Motivo"`. Usa `tenant_health <slug>` para comprobar acceso
 Calendar y plantillas antes de activar el canal real. Los procedimientos de
-incidencia y de secretos están en `docs/runbooks/04-calendar.md` y
-`docs/runbooks/09-rotar-secretos.md`.
+incidencia y de secretos están en `docs/incidencias/calendar.md` y
+`docs/procedimientos/rotar-secretos.md`.
 
-La plantilla inicial del demo está en `apps/backend/packs/salon/template/document.yaml`.
+La plantilla inicial del demo está en `apps/backend/src/packs/salon/template/document.yaml`.
 Al crear un negocio desde ella se vacían `calendar_id`, `contact_phone` y
 `business_name`, para que el negocio nuevo use sus propios datos y calendario.

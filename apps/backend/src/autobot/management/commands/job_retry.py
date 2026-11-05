@@ -1,4 +1,4 @@
-"""Retry a failed, idempotent job by hand (docs/runbooks/03-cola-y-latido.md)."""
+"""Retry a failed, idempotent job by hand (docs/incidencias/cola-y-latido.md)."""
 
 from typing import Any
 

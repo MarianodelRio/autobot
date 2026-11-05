@@ -52,4 +52,4 @@ ese plazo; comprueba la versión depurada y la ausencia de secretos y datasets a
 de retirar las copias locales y los accesos externos. No se retira la entrada del registro antes del borrado: el worker
 recorre ese registro. `synced_at` se actualiza al publicar configuración y nunca demuestra
 la fecha de baja. La gestión de calendarios pertenece al negocio y la retención de
-backups corresponde a restic (`deploy/backup.sh`); estos comandos no modifican ninguno de ellos.
+backups corresponde a restic (`deploy/scripts/backup.sh`); estos comandos no modifican ninguno de ellos.

@@ -57,7 +57,7 @@ horarios:
 ```
 
 Para publicar, primero `make bus-bajar TENANT=<slug>` descarga a
-`datos/<slug>/timetable/` y guarda la base en `.publicado/timetable`. Tras editar,
+`var/datos/<slug>/timetable/` y guarda la base en `.publicado/timetable`. Tras editar,
 ejecuta `make bus-formatear`, `make bus-validar` y `make bus-revision`, siempre con
 `TENANT=<slug>`. La revisión HTML/PDF compara con esa copia de la versión publicada;
 `ARGS="--base <dir>"` permite elegir otra base.
@@ -66,7 +66,7 @@ La empresa confirma el PDF antes de `make bus-publicar TENANT=<slug>
 COMMENT="Motivo"`. Sin `PROD`, se usa la BD local; con `PROD=1`, bajar y publicar
 usan SSH al servidor. El import crea una versión de dataset y su auditoría; no hay
 tags de git ni despliegue. La copia `.publicado` se actualiza solo tras el éxito.
-El runbook 10 describe el flujo y las comprobaciones.
+[`docs/procedimientos/horarios-bus.md`](../../procedimientos/horarios-bus.md) describe el flujo y las comprobaciones.
 
 ### Resumen mensual al dueño
 
@@ -88,9 +88,9 @@ owner:
 ```
 
 Requiere que el dueño ya esté vinculado al bot de avisos (`manage.py owner_invite
-<slug>`: ver `docs/runbooks/alta-baja-negocio.md`). Llega por el mismo bot el día 1 de
+<slug>`: ver `docs/procedimientos/alta-baja-negocio.md`). Llega por el mismo bot el día 1 de
 cada mes, con los datos del mes anterior ya cerrado, y también se puede consultar en
 cualquier momento escribiéndole al bot ("Cómo va el mes").
 
-La plantilla inicial del demo está en `apps/backend/packs/bus/template/document.yaml`; su dataset está en `apps/backend/packs/bus/template/datasets/timetable/`.
+La plantilla inicial del demo está en `apps/backend/src/packs/bus/template/document.yaml`; su dataset está en `apps/backend/src/packs/bus/template/datasets/timetable/`.
 Todos sus datos son ficticios, por eso `template_blank=()`.

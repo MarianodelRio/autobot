@@ -1,6 +1,6 @@
 # Config y registro: notas de implementación
 
-Detalle de implementación de la decisión de [ADR-009](../adr/ADR-009-config-en-bd.md)
+Detalle de implementación de la decisión de [ADR-009](adr/ADR-009-config-en-bd.md)
 (config y datasets de los negocios en PostgreSQL, versionados). Este documento no fija
 decisiones de arquitectura por sí mismo; corrige o amplía según cambie el código.
 

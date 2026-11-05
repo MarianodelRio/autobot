@@ -1,4 +1,4 @@
-# 4. Google Calendar sin acceso o con errores
+# Google Calendar sin acceso o con errores
 
 **Síntoma:** el pack `salon` no muestra huecos, no crea citas o el barrido avisa de
 Calendar. **Diagnóstico:** `tenant_health <slug>` en `web` muestra

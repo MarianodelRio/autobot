@@ -2,7 +2,7 @@
 
 **Qué es:** la plataforma, no ningún cliente, enseña Autobot con dos puertas (un bot
 de Telegram y un número de WhatsApp) y negocios de demostración normales en
-plantillas en `apps/backend/packs/<pack>/template/` (`demo-peluqueria`, `demo-autobuses`).
+plantillas en `apps/backend/src/packs/<pack>/template/` (`demo-peluqueria`, `demo-autobuses`).
 Los tests validan estas plantillas directamente; `manage.py seed_demos` las siembra
 en PostgreSQL solo la primera vez y conserva los cambios posteriores de cada demo. La primera respuesta de
 cualquier puerta pide elegir negocio; desde ahí la conversación es la del pack real de
@@ -38,8 +38,8 @@ de demo de la plataforma, no de ningún cliente:
 
 ## Puerta Telegram en el servidor
 
-`docker compose -p autobot -f compose.prod.yaml exec web python manage.py
-telegram_set_webhook demo` registra `https://api.<dominio>/webhooks/telegram-demo` con
+Desde `/srv/autobot`, `docker compose exec web python manage.py telegram_set_webhook
+demo` registra `https://api.<dominio>/webhooks/telegram-demo` con
 `DEMO_TELEGRAM_WEBHOOK_SECRET`.
 
 ## Puerta Telegram en local (ngrok)
@@ -62,27 +62,44 @@ alta), `manage.py telegram_poll <slug>` (`make telegram-poll SLUG=<slug>`) sigue
 disponible; un bot con webhook no admite polling a la vez (`telegram_set_webhook
 demo --delete` se lo quita, nunca a un bot que use el servidor).
 
+## Puerta WhatsApp en local (ngrok)
+
+Mismo checklist que [el alta de la puerta WhatsApp](#alta-de-la-puerta-whatsapp), con
+una app de WhatsApp **de desarrollo** (nunca la de producción) y la URL de ngrok en
+vez del dominio propio:
+
+1. `make ngrok` abre el túnel hacia el puerto 8000 (dominio reservado;
+   `NGROK_DOMAIN=<otro>` para cambiarlo).
+2. En la app de WhatsApp de desarrollo, el webhook de la suscripción es
+   `<URL de ngrok>/webhooks/whatsapp-demo`, con `DEMO_WHATSAPP_VERIFY_TOKEN` como
+   `verify_token`.
+3. En `.env`: `PUBLIC_URL=<la URL https de ngrok>` y las cinco `DEMO_WHATSAPP_*`
+   (`_PHONE_NUMBER_ID`, `_WABA_ID`, `_APP_SECRET`, `_ACCESS_TOKEN`, `_VERIFY_TOKEN`) de
+   la app de desarrollo.
+4. `docker compose restart web worker`.
+5. Si la URL de ngrok cambia, repetir los pasos 2-3 con la URL nueva.
+
 ## Añadir o quitar personas
 
 Edita `DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS` en el `.env` del servidor y reinicia
-`web` y `worker`. No hace falta tocar `tenants/` ni desplegar código.
+`web` y `worker`.
 
 ## Renovación anual del calendario de `demo-autobuses`
 
-El dataset de `demo-autobuses` declara una `vigencia` (ver `docs/packs/bus.md`). Cada
+El dataset de `demo-autobuses` declara una `vigencia` (ver `docs/referencia/packs/bus.md`). Cada
 verano, antes de que caduque, bajar con `make bus-bajar TENANT=demo-autobuses`, editar
-`datos/demo-autobuses/timetable/calendario.yaml`, formatear, validar y revisar con los
+`var/datos/demo-autobuses/timetable/calendario.yaml`, formatear, validar y revisar con los
 targets `bus-*`, y publicar con `COMMENT="Renovación anual de demo"`. Para actuar sobre
 el servidor, la persona añade `PROD=1` tanto al bajar como al publicar. Es un dataset
 ficticio y no tiene una empresa que deba aprobar el PDF.
 
-Actualizar también `apps/backend/packs/bus/template/datasets/timetable/calendario.yaml` para
+Actualizar también `apps/backend/src/packs/bus/template/datasets/timetable/calendario.yaml` para
 los demos que se creen en el futuro, ejecutar `make check` y hacer commit de ese cambio
 de plantilla. `seed_demos` conserva las versiones de los demos ya existentes.
 
 ## Diagnóstico
 
-Ver también `docs/runbooks/02-negocio-o-canal.md` (una puerta o negocio de demo no
-responde), `docs/runbooks/04-calendar.md` (el calendario de `demo-peluqueria` sin
-acceso) y `docs/runbooks/09-rotar-secretos.md` (rotar un secreto de cualquiera de las
+Ver también `docs/incidencias/negocio-o-canal.md` (una puerta o negocio de demo no
+responde), `docs/incidencias/calendar.md` (el calendario de `demo-peluqueria` sin
+acceso) y `docs/procedimientos/rotar-secretos.md` (rotar un secreto de cualquiera de las
 dos puertas).

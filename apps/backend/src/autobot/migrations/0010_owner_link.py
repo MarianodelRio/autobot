@@ -8,7 +8,7 @@ ADR-006). `owner_link.chat_id` also moves the owner's chat out of `tenant docume
 into the database: a personal datum that no longer needs to live in git, and whose
 upkeep (connecting or disconnecting an owner) no longer needs a commit or a deploy.
 
-Approved by the person on 2026-10-29 (see docs/adr/ADR-007-bot-de-duenos.md)."""
+Approved by the person on 2026-10-29 (see docs/arquitectura/adr/ADR-007-bot-de-duenos.md)."""
 
 import uuid
 

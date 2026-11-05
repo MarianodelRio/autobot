@@ -1,4 +1,4 @@
-# 9. Rotar secretos de un canal
+# Rotar secretos de un canal
 
 **Síntoma:** token caducado, revocado o potencialmente expuesto. **Diagnóstico:**
 `tenant_health <slug>` indica autenticación; identifica si el secreto es de Meta,
@@ -35,7 +35,7 @@ todas pueden descifrar. La clave fija de desarrollo nunca se usa en producción.
    y guárdala en el gestor de contraseñas, sin enviarla a logs ni a git.
 2. En el `.env` del servidor, pon `SECRETS_ENCRYPTION_KEY=<nueva>,<anterior>`.
    La persona recrea `web` y `worker` para que reciban el nuevo entorno.
-3. La persona ejecuta `docker compose -p autobot -f compose.prod.yaml exec -T web python manage.py tenant_secrets_reencrypt`.
+3. La persona ejecuta `docker compose exec -T web python manage.py tenant_secrets_reencrypt`.
    Recifra todas las filas de `tenant_secret` con la primera clave, en una transacción
    `owner`; cada cambio deja una auditoría `tenant.secrets` con `reencrypted: true`.
    Si alguna fila es ilegible, revierte toda la operación. Revisa las claves y repite.

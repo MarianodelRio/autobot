@@ -3,7 +3,7 @@ migration runs: on a fresh database, and on every future migration that touches 
 or permissions. Depends on auth's and sessions' own migrations so fp_readonly's
 SELECT grant and the SENSITIVE_TABLES revokes see those tables already created.
 
-Approved by the person on 2026-11-03 (see docs/adr/ADR-009-config-en-bd.md)."""
+Approved by the person on 2026-11-03 (see docs/arquitectura/adr/ADR-009-config-en-bd.md)."""
 
 from django.db import migrations
 

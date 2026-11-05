@@ -5,7 +5,7 @@
 1. Preparar un directorio con `document.yaml` y los datasets necesarios en
    `datasets/<nombre>/`; el nombre antiguo `tenant.yaml` también se acepta al importar.
    Usar un UUIDv7 propio, `public_id` aleatorio y `status: onboarding`. Completar la
-   config según `docs/packs/<pack>.md`; en el panel, `Clientes → Nuevo cliente` hace
+   config según `docs/referencia/packs/<pack>.md`; en el panel, `Clientes → Nuevo cliente` hace
    lo mismo con un asistente.
 2. Declarar el canal y sus ids. Los secretos se pasan en un YAML privado de formato
    `slug: {campos...}`: WhatsApp usa `app_secret`, `access_token` y `verify_token`;
@@ -41,7 +41,7 @@ Los cambios se aplican sin commit ni despliegue, en la siguiente comprobación d
 
 La app de Meta, la WABA y el número están en el Business Portfolio del negocio, con el
 operador como administrador; una app y un número por negocio. Explicación no técnica
-de este modelo y de cómo migrarlo en el futuro: `docs/runbooks/alta-whatsapp-meta.md`.
+de este modelo y de cómo migrarlo en el futuro: `docs/procedimientos/alta-whatsapp-meta.md`.
 
 - SIM sin WhatsApp activo.
 - Gmail y Business Portfolio del negocio.
@@ -91,9 +91,9 @@ como una cifra fiable. Telegram no tiene coste por mensaje y no entra en este c�
 ## Negocio de demo de un pack nuevo
 
 Cada pack nuevo trae su propio negocio de demostración, para enseñarlo por las dos
-puertas del bot de demo sin usar ningún negocio real (ver `docs/runbooks/demo.md`).
+puertas del bot de demo sin usar ningún negocio real (ver `docs/procedimientos/demo.md`).
 
-1. Crear `apps/backend/packs/<pack>/template/document.yaml` con un UUIDv7 fijo,
+1. Crear `apps/backend/src/packs/<pack>/template/document.yaml` con un UUIDv7 fijo,
    `demo.description` y `status: paused`, sin `channel` ni `testers`.
 2. Completar la config con datos ficticios y añadir los datasets necesarios en
    `template/datasets/<nombre>/`.

@@ -3,7 +3,7 @@
 panel and the operator commands read and write across tenants, and `fp_app` only keeps
 SELECT (autobot/db/grants.py).
 
-Approved by the person on 2026-11-03 (see docs/adr/ADR-009-config-en-bd.md)."""
+Approved by the person on 2026-11-03 (see docs/arquitectura/adr/ADR-009-config-en-bd.md)."""
 
 import django.db.models.deletion
 from django.db import migrations, models

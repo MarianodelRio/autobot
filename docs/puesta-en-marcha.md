@@ -7,43 +7,42 @@ ids o aprobaciones.
 
 ## 1. Desarrollo local con servicios reales
 
-- **Bot de demo de desarrollo (puerta Telegram):** crear un bot con @BotFather (p. ej.
-  `autobot_dev_bot`), distinto del de producción, poner su token en
-  `DEMO_TELEGRAM_TOKEN` y tu id de Telegram (@userinfobot) en `DEMO_TELEGRAM_USERS`
-  del `.env` local; con un túnel de ngrok hacia `web` como `PUBLIC_URL` y
-  `DEMO_TELEGRAM_WEBHOOK_SECRET`, se registra el webhook igual que en producción
-  (`docs/runbooks/demo.md`). Verificar: `/start` muestra la lista de negocios de
+- [x] **Bot de demo de desarrollo, puertas Telegram y WhatsApp:** bot de @BotFather
+  distinto del de producción, con un túnel de ngrok hacia `web` como `PUBLIC_URL`, y
+  una app de WhatsApp de desarrollo con su webhook (`docs/procedimientos/demo.md`).
+  Validado: `/start` y el equivalente por WhatsApp muestran la lista de negocios de
   demo.
-- **Google Cloud de la plataforma:** proyecto propio (no de un negocio), Google
-  Calendar API habilitada y cuenta de servicio con clave JSON en `google_sa.json`
-  (ignorado por git) y en el gestor de contraseñas.
-- **Calendario de la demo:** un calendario («Autobot demo»), compartido con la
-  cuenta de servicio, como `calendar_id` de la plantilla `apps/backend/packs/salon/template/document.yaml`; después,
-  `status: active`. Verificar: una reserva desde cualquiera de las dos puertas de la
-  demo aparece una sola vez en ese calendario.
-- **Bot de avisos y chat de ops:** bot con @BotFather (`NOTIFY_BOT_TOKEN`) y un grupo
-  de ops con él (`OPS_TELEGRAM_CHAT_ID`). Verificar: una alerta forzada llega al chat.
-- **Sentry y healthchecks.io:** proyecto de Sentry (`SENTRY_DSN`) y dos checks:
+- [x] **Google Cloud de la plataforma y calendario de la demo:** proyecto propio (no
+  de un negocio), Google Calendar API habilitada, cuenta de servicio con clave JSON
+  en `var/google_sa.json`, y un calendario («Autobot demo») compartido con la cuenta de
+  servicio como `calendar_id` de la plantilla de `salon`. Validado: una reserva desde
+  cualquiera de las dos puertas de la demo aparece una sola vez en ese calendario.
+- [x] **Bot de avisos y chat de ops:** bot con @BotFather (`NOTIFY_BOT_TOKEN`) y un
+  grupo de ops con él (`OPS_TELEGRAM_CHAT_ID`). Validado: una alerta forzada llega al
+  chat.
+- [x] **Panel:** usuario con contraseña y TOTP, `make panel-tunnel` y recorrido de
+  las pantallas con datos locales.
+- [ ] **Sentry y healthchecks.io:** proyecto de Sentry (`SENTRY_DSN`) y dos checks:
   «worker» (periodo 5 min, gracia 10 min, `HEALTHCHECKS_PING_URL`) y «backup»
-  (periodo 6 h, gracia 1 h).
+  (periodo 6 h, gracia 1 h). Pendiente.
 
-Con esto se pueden validar a mano los packs `bus` y `salon` por la puerta Telegram de
+Con esto se pueden validar a mano los packs `bus` y `salon` por las dos puertas de
 la demo.
 
 ## 2. Servidor
 
 - **Dominio y VPS:** VPS en la UE (2 vCPU / 4 GB, Ubuntu 24.04) con tu clave SSH y el
   DNS `api.<dominio>` apuntando a ella.
-- **Preparación:** `deploy/bootstrap-server.sh` siguiendo `docs/runbooks/servidor.md`.
+- **Preparación:** `deploy/scripts/bootstrap-server.sh` siguiendo `docs/procedimientos/servidor.md`.
 - **Backups:** bucket en un proveedor distinto del de la VPS (Backblaze B2 o
   Cloudflare R2) con clave limitada a ese bucket, y contraseña de restic; los tres en
   el gestor de contraseñas. Verificar: `restic snapshots` lista el primer backup.
 - **Secretos de despliegue:** en la VPS, `/srv/autobot/.env` (con `PUBLIC_HOST` y
-  `DJANGO_ALLOWED_HOSTS`, que incluye `127.0.0.1` y `localhost`), `google_sa.json`,
-  `backup.env` y la contraseña de restic como `deploy` con modo 0600, `DEPLOY_UID`,
+  `DJANGO_ALLOWED_HOSTS`, que incluye `127.0.0.1` y `localhost`), `var/google_sa.json`,
+  `var/backup.env` y la contraseña de restic como `deploy` con modo 0600, `DEPLOY_UID`,
   deploy key de GitHub de solo lectura y acceso de lectura a GHCR. Las contraseñas,
   claves y `DB_*_URL` internas las genera `make deploy` la primera vez
-  (`deploy/ensure-env.sh`): no hace falta rellenarlas a mano ni inventarlas.
+  (`deploy/scripts/ensure-env.sh`): no hace falta rellenarlas a mano ni inventarlas.
   En GitHub, entorno `production` con aprobación requerida y secretos `DEPLOY_HOST`,
   `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS`.
 - **Bot de demo de producción (puerta Telegram):** distinto del de desarrollo, con su
@@ -53,7 +52,7 @@ la demo.
   Portfolio, app, token permanente, plantillas `confirmacion_cita` y
   `recordatorio_cita` aprobadas (las del pack `salon`) y webhook a
   `https://api.<dominio>/webhooks/whatsapp-demo` con `DEMO_WHATSAPP_VERIFY_TOKEN`
-  (checklist completo en `docs/runbooks/demo.md`). Variables `DEMO_WHATSAPP_*` en el
+  (checklist completo en `docs/procedimientos/demo.md`). Variables `DEMO_WHATSAPP_*` en el
   `.env` del servidor. El cambio de `Caddyfile` y la verificación de firma del webhook
   necesitan aprobación humana explícita antes de desplegarse.
 - **Bot de avisos como asistente del dueño** (ADR-007):
@@ -61,8 +60,8 @@ la demo.
   `OWNER_SUPPORT_EMAIL` en el `.env` del servidor; tras el despliegue,
   `manage.py telegram_set_webhook notify`. Por cada negocio con dueño,
   `manage.py owner_invite <slug>` y enviarle el enlace. Contrastar `PRICE_EUR`
-  (`autobot/runtime/summary.py`) con el rate card del WhatsApp Manager de un negocio
-  real y anotar la fecha en `docs/runbooks/alta-baja-negocio.md`. Pedir a cada
+  (`apps/backend/src/autobot/runtime/costs.py`) con el rate card del WhatsApp Manager de un negocio
+  real y anotar la fecha en `docs/procedimientos/alta-baja-negocio.md`. Pedir a cada
   peluquero que titule sus citas manuales como las del bot
   (`"<Servicio> - <Nombre>"`), para que el resumen las cuente.
 - **Primer despliegue** con `make deploy SHA=<sha>`, prueba de vuelta atrás con un SHA
@@ -102,9 +101,9 @@ Verificación del servidor:
 - Prueba con el dueño por su canal real, en `onboarding` con su id en `testers.main`
   (no hay bot de pruebas aparte: la demo de la plataforma nunca habla con un negocio
   real). En hora valle, cambiar el webhook de Meta a
-  `https://api.<dominio>/webhooks/whatsapp/<public_id>`, poner `status: active` y
-  desplegar. Parar el servicio de la VM de GCP y conservarla una semana; para volver
-  atrás basta con restaurar la URL antigua.
+  `https://api.<dominio>/webhooks/whatsapp/<public_id>`, y activarlo desde el panel
+  («Activar»), sin desplegar. Parar el servicio de la VM de GCP y conservarla una
+  semana; para volver atrás basta con restaurar la URL antigua.
 
 ### Autocares San Sebastián (`bus`, WhatsApp)
 
@@ -112,15 +111,15 @@ Verificación del servidor:
   verificación de empresa en su Business Portfolio.
 - La empresa revisa el bot en `onboarding` por su canal real y confirma el PDF de
   `make bus-revision`.
-- Alta de WhatsApp con el checklist de `docs/runbooks/alta-baja-negocio.md`, ids de
+- Alta de WhatsApp con el checklist de `docs/procedimientos/alta-baja-negocio.md`, ids de
   Meta en el documento de importación y secretos cifrados en la BD. Importar primero
   en local, transferir con `make tenant-push HOST=<servidor> SLUG=<slug> SECRETS=<yaml>`
-  y comprobar la activación cuando el panel esté disponible.
+  y activarlo desde el panel («Activar»).
 
 ### Comprobación final
 
 Antes de activar cada negocio, recorrer en producción todo lo que ofrece su pack
-(`docs/packs/`): en `salon`, también un recordatorio real y la confirmación de una
+(`docs/referencia/packs/`): en `salon`, también un recordatorio real y la confirmación de una
 cita manual. Tras una semana sin alertas 🔴 abiertas, borrar la VM de GCP (servicio,
 nginx, DuckDNS) y archivar los repositorios de los bots anteriores.
 
@@ -128,10 +127,10 @@ Activar un canal real, cambiar un webhook y tocar datos de producción necesitan
 aprobación humana explícita.
 
 `SECRETS_ENCRYPTION_KEY` la genera `make deploy` la primera vez si falta
-(`deploy/ensure-env.sh`); conserva una copia cifrada de `.env` con los backups —
+(`deploy/scripts/ensure-env.sh`); conserva una copia cifrada de `.env` con los backups —
 sin ella no se pueden descifrar los secretos de canal ya guardados. La clave local
 solo sirve en desarrollo; procedimiento de rotación en
-[rotar secretos](runbooks/09-rotar-secretos.md).
+[rotar secretos](procedimientos/rotar-secretos.md).
 
 ## 4. Panel
 
@@ -143,12 +142,12 @@ ejemplo:
       Meta, `PUBLIC_HOST`, `DJANGO_ALLOWED_HOSTS` con `127.0.0.1,localhost`, Sentry y
       healthchecks); `ensure-env` genera las internas la primera vez que se despliega.
 - [ ] `make deploy` (con la aprobación del entorno `production` en GitHub).
-- [ ] En local, `make tenant-import DIR=tenants/autocares-ss SECRETS=secrets.yaml` y
+- [ ] En local, `make tenant-import DIR=var/tenants/autocares-ss SECRETS=var/secrets.yaml` y
       comprobar la ficha en el panel local (`make panel-dev`). Después,
-      `make tenant-push SLUG=autocares-ss SECRETS=secrets.yaml`. El nombre antiguo
+      `make tenant-push SLUG=autocares-ss SECRETS=var/secrets.yaml`. El nombre antiguo
       `tenant.yaml` se admite solo como entrada al importar.
 - [ ] `make prod-manage TTY=1 CMD="panel_user create <usuario>"` y guardar el QR del
-      TOTP al momento: solo se muestra una vez (`docs/runbooks/panel.md`). Comprobar
+      TOTP al momento: solo se muestra una vez (`docs/procedimientos/panel.md`). Comprobar
       que `DJANGO_ALLOWED_HOSTS` del servidor incluye `127.0.0.1` y `localhost`, porque
       el panel llega con ese host al entrar por el túnel SSH.
 - [ ] `make panel-tunnel` y abrir `http://127.0.0.1:18000`: entrar con usuario,
@@ -156,5 +155,5 @@ ejemplo:
       Datos, Sistema y Auditoría con datos reales.
 - [ ] Comprobar la CPU y la RAM del contenedor `panel` frente a `htop` en el host y
       `docker stats` (unos 20 MB de RAM).
-- [ ] Una vez verificado, borrar las copias locales de `tenants/autocares-ss` y
-      `secrets.yaml`, o guardarlas cifradas fuera del repositorio.
+- [ ] Una vez verificado, borrar las copias locales de `var/tenants/autocares-ss` y
+      `var/secrets.yaml`, o guardarlas cifradas fuera del repositorio.

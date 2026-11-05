@@ -1,5 +1,5 @@
 """Resolve an ambiguous (`unknown`) outbound send by hand, as a last resort when the
-panel is not reachable (docs/runbooks/05-envios-unknown.md)."""
+panel is not reachable (docs/incidencias/envios-unknown.md)."""
 
 from typing import Any
 from uuid import UUID

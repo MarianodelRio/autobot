@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 # Approximate Meta price per delivered message, Spain, EUR. Not the account's real
 # tariff (Meta's rate card is per recipient country and lives in each business's
 # WhatsApp Manager billing panel). Last checked 2026-10-29; see
-# docs/runbooks/alta-baja-negocio.md.
+# docs/procedimientos/alta-baja-negocio.md.
 PRICE_EUR: dict[str, Decimal] = {
     "marketing": Decimal("0.0585"),
     "utility": Decimal("0.0166"),

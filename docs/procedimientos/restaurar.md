@@ -1,4 +1,4 @@
-# 6. Restauración y simulacro trimestral
+# Restauración y simulacro trimestral
 
 **Síntoma:** pérdida de datos/servidor o fecha de simulacro. **Diagnóstico:** comprueba
 en restic el último snapshot con tag `autobot`, su fecha y el ping del backup.
@@ -6,12 +6,12 @@ Revisa que dispones de la contraseña y las credenciales S3 fuera del repositori
 No restaures sobre una instalación con volumen de BD existente.
 
 **Pasos:** prepara una VPS temporal o un proyecto local aislado, instala Docker y
-restic, clona el SHA que contenga `deploy/restore.sh`, y crea `backup.env` y
-`restic-password` como `deploy` con modo 0600. Ejecuta
-`deploy/restore.sh --confirm-empty-target`. El script reaplica los roles de PostgreSQL
+restic, clona el SHA que contenga `deploy/scripts/restore.sh`, y crea `var/backup.env` y
+`var/restic-password` como `deploy` con modo 0600. Ejecuta
+`deploy/scripts/restore.sh --confirm-empty-target`. El script reaplica los roles de PostgreSQL
 (`init-roles.sh`) y los permisos (`manage.py apply_grants`) después de restaurar el
 volcado, porque `pg_restore --no-acl` los pierde. Si falla tras crear el volumen, conserva
-`.restore-incomplete` y vuelve a ejecutar el mismo comando tras arreglar la causa;
+`var/.restore-incomplete` y vuelve a ejecutar el mismo comando tras arreglar la causa;
 el script solo admite ese reintento controlado. Si el snapshot era inválido y aún no
 se creó volumen, corrige la fuente antes de repetir. No apuntes DNS hasta verificar.
 Para prueba puramente local ejecuta `make restore-test` con Docker y restic; crea

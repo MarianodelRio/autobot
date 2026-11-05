@@ -104,4 +104,4 @@ fija las decisiones de arquitectura.
 
 Notas de implementación (formato de directorio, carga y fijado del registro, escrituras
 y activación) en
-[`docs/arquitectura/config-y-registro.md`](../arquitectura/config-y-registro.md).
+[`docs/arquitectura/config-y-registro.md`](../config-y-registro.md).

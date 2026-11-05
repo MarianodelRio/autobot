@@ -1,16 +1,17 @@
-# 10. Actualizar horarios de `bus`
+# Actualizar horarios de `bus`
 
 **Síntoma:** la empresa comunica cambios o el bot muestra un horario antiguo.
 **Diagnóstico:** identificar línea, temporada, fecha de entrada en vigor y fuente
-aprobada; consultar `docs/packs/bus.md` para el formato del dataset.
+aprobada; consultar `docs/referencia/packs/bus.md` para el formato del dataset.
 
 1. `make bus-bajar TENANT=<slug>` descarga el dataset vigente de la BD local a
-   `datos/<slug>/timetable/` y a `datos/<slug>/.publicado/timetable/`. Con `PROD=1`,
-   lo exporta del servidor por SSH mediante la imagen desplegada. Este paso sustituye
-   las dos copias locales: guardar cualquier edición pendiente antes de volver a bajar.
-2. Editar solo `datos/<slug>/timetable/`. No se versiona ni se copia a la imagen.
+   `var/datos/<slug>/timetable/` y a `var/datos/<slug>/.publicado/timetable/`. Con
+   `PROD=1`, lo exporta del servidor por SSH mediante la imagen desplegada. Este paso
+   sustituye las dos copias locales: guardar cualquier edición pendiente antes de
+   volver a bajar.
+2. Editar solo `var/datos/<slug>/timetable/`. No se versiona ni se copia a la imagen.
 3. `make bus-formatear TENANT=<slug>` y `make bus-validar TENANT=<slug>`.
-4. `make bus-revision TENANT=<slug>` genera `revision/<slug>/horarios.html` y `.pdf`,
+4. `make bus-revision TENANT=<slug>` genera `var/revision/<slug>/horarios.html` y `.pdf`,
    con el diff respecto a `.publicado/timetable`. `ARGS="--solo-html"` omite el PDF;
    `ARGS="--base /ruta/export-anterior"` elige otra copia de comparación.
 5. Entregar el PDF a la empresa y conservar su confirmación real. Hasta entonces los

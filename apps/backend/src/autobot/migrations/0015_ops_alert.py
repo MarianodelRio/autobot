@@ -3,7 +3,7 @@ and `purge_platform_history(cutoff)`, a SECURITY DEFINER function that lets `fp_
 (no DELETE on `ops_alert` or `audit_event`) erase old platform history without
 `BYPASSRLS`.
 
-Approved by the person on 2026-11-03 (see docs/adr/ADR-009-config-en-bd.md)."""
+Approved by the person on 2026-11-03 (see docs/arquitectura/adr/ADR-009-config-en-bd.md)."""
 
 import uuid
 
