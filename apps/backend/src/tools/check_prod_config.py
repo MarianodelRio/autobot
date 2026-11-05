@@ -13,7 +13,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet
 
-ROOT = Path(__file__).resolve().parent.parent.parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 NAME = f"fp-config-{uuid.uuid4().hex[:12]}"
 BACKEND = f"{NAME}-backend"
 PROXY = f"{NAME}-caddy"

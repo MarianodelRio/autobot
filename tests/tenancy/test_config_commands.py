@@ -237,7 +237,7 @@ def test_cli_binary_export_stdout_is_clean(args: list[str], member: str) -> None
             f"@{db['HOST']}:{db['PORT']}/{quote(db['NAME'])}"
         )
     result = subprocess.run(
-        [sys.executable, "manage.py", *args],
+        [sys.executable, "apps/backend/manage.py", *args],
         env=env,
         capture_output=True,
         check=False,

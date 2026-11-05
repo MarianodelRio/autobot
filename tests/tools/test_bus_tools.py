@@ -7,7 +7,7 @@ import pytest
 
 from tools import bus_formatear, bus_revision, bus_validar
 
-REAL = Path(__file__).parents[2] / "apps/backend/packs/bus/tests/fixtures/horarios_real"
+REAL = Path(__file__).parents[2] / "apps/backend/src/packs/bus/tests/fixtures/horarios_real"
 SLUG = "autocares-ss"
 DATASET = Path("datos") / SLUG / "timetable"
 ROW = "      20:00  20:30  20:35D  21:00  21:10  21:15  21:45C"

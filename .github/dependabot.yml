@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: uv
-    directory: /
+    directory: /apps/backend
     schedule:
       interval: weekly
     groups:
@@ -18,7 +18,7 @@ updates:
     schedule:
       interval: weekly
   - package-ecosystem: docker
-    directory: /deploy/docker
+    directory: /apps/backend
     schedule:
       interval: weekly
   - package-ecosystem: docker

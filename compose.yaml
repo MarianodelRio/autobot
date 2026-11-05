@@ -2,8 +2,8 @@
 # Local-only passwords; production takes them from .env.
 x-app: &app
   build:
-    context: .
-    dockerfile: deploy/docker/backend.Dockerfile
+    context: apps/backend
+    dockerfile: Dockerfile
     args:
       INSTALL_DEV: "true"
   image: autobot:local
@@ -17,8 +17,8 @@ x-app: &app
     GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
     VICTORIALOGS_URL: http://victorialogs:9428
   volumes:
-    - ./apps/backend:/app/src
-    - ./manage.py:/app/manage.py
+    - ./apps/backend/src:/app/src
+    - ./apps/backend/manage.py:/app/manage.py
     # Empty by default; a configured local credential stays outside the image.
     - ${GOOGLE_SERVICE_ACCOUNT_FILE:-/dev/null}:/app/google_sa.json:ro
   depends_on:

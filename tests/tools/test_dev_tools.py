@@ -63,7 +63,7 @@ def test_make_tenant_import_supports_spaces_and_optional_secrets(
 
 def test_local_import_requires_directory() -> None:
     result = subprocess.run(
-        ["bash", "apps/backend/tools/tenant_import.sh"],
+        ["bash", "apps/backend/src/tools/tenant_import.sh"],
         cwd=ROOT,
         env={**os.environ, "DIR": ""},
         capture_output=True,

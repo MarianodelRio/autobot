@@ -3,6 +3,14 @@ NGROK_DOMAIN ?= unpermanently-repairable-devon.ngrok-free.dev
 
 .DEFAULT_GOAL := help
 
+# apps/backend is self-contained (its own pyproject.toml, uv.lock, .venv); backend
+# tooling that only touches apps/backend runs from inside it, while targets whose
+# relative paths (datos/, tenants/, var/) are anchored at the repo root run from here
+# with --project. Tests still live at the repo root until they move in a later phase,
+# so the test target needs --confcutdir to pick up the root conftest.py too.
+BACKEND = cd apps/backend &&
+PYTEST = uv run --project apps/backend pytest -c apps/backend/pyproject.toml --confcutdir=.
+
 ##@ Ayuda
 
 help: ## Enseña esta ayuda
@@ -61,7 +69,7 @@ dev-activity: ## Crea actividad falsa en local para ver el panel con datos
 	docker compose exec web python manage.py seed_dev_activity
 
 tenant-import: ## Importa un directorio contra la BD local (DIR=<dir> [SECRETS=<yaml>])
-	bash apps/backend/tools/tenant_import.sh
+	bash apps/backend/src/tools/tenant_import.sh
 
 ngrok: ## Abre el túnel al puerto 8000 ([NGROK_DOMAIN=<dominio>])
 	ngrok http --domain=$(NGROK_DOMAIN) 8000
@@ -71,23 +79,23 @@ ngrok: ## Abre el túnel al puerto 8000 ([NGROK_DOMAIN=<dominio>])
 .PHONY: test check fix api
 
 test: ## uv run pytest
-	uv run pytest
+	$(PYTEST)
 
 check: ## Puerta de calidad del backend: ruff, mypy, import-linter, pytest
-	uv run ruff check .
-	uv run ruff format --check .
-	uv run mypy
-	PYTHONPATH=apps/backend uv run lint-imports
-	uv run pytest
+	$(BACKEND) uv run ruff check .
+	$(BACKEND) uv run ruff format --check .
+	$(BACKEND) uv run mypy
+	$(BACKEND) PYTHONPATH=src uv run lint-imports
+	$(PYTEST)
 
 fix: ## Aplica ruff y biome, y regenera la API del panel
-	uv run ruff check --fix .
-	uv run ruff format .
+	$(BACKEND) uv run ruff check --fix .
+	$(BACKEND) uv run ruff format .
 	pnpm -C apps/panel fix
 	$(MAKE) api
 
 api: ## Regenera el esquema OpenAPI del panel y sus tipos TypeScript
-	uv run python manage.py export_openapi apps/panel/openapi.json
+	$(BACKEND) uv run python manage.py export_openapi ../panel/openapi.json
 	pnpm -C apps/panel gen:api
 
 ##@ Panel
@@ -116,20 +124,20 @@ tenant-health: ## Comprueba y persiste la salud del pack y del canal (SLUG=<slug
 
 # Public QR generated on the developer machine, without containers or secrets.
 qr: ## Genera el QR a partir de un documento exportado (FILE=<document.yaml>)
-	PYTHONPATH=apps/backend uv run python -m tools.qr "$(FILE)" $(ARGS)
+	PYTHONPATH=apps/backend/src uv run --project apps/backend python -m tools.qr "$(FILE)" $(ARGS)
 
 check-prod-config: ## Prueba el allowlist de Caddy contra un upstream local
-	uv run python apps/backend/tools/check_prod_config.py
+	uv run --project apps/backend python apps/backend/src/tools/check_prod_config.py
 
 export HOST SLUG SECRETS
 
 tenant-push: ## Exporta la BD local y la importa por SSH (SLUG=<slug> [SECRETS=<yaml>])
-	bash apps/backend/tools/tenant_push.sh
+	bash apps/backend/src/tools/tenant_push.sh
 
 ##@ Bus
 
 # Bus tools operate on ignored exports under datos/<slug>/.
-BUS_TOOL = PYTHONPATH=apps/backend uv run python -m tools
+BUS_TOOL = PYTHONPATH=apps/backend/src uv run --project apps/backend python -m tools
 export TENANT COMMENT PROD
 
 .PHONY: bus-bajar bus-validar bus-formatear bus-revision bus-publicar

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Export local config and stream it to the deployed CLI, optionally carrying secrets.
 set -euo pipefail
-cd "$(dirname "$0")/../../.."
+cd "$(dirname "$0")/../../../.."
 umask 077
 slug=${SLUG:-}
 target_host=${HOST:?Set HOST}
@@ -12,9 +12,9 @@ if [[ ! $slug =~ ^[a-z0-9]+(-[a-z0-9]+)*$ || ${#slug} -gt 64 ]]; then
 fi
 temporary=$(mktemp -d)
 trap 'rm -rf "$temporary"' EXIT
-uv run python manage.py tenant_config export "$slug" "$temporary"
+uv run --project apps/backend python apps/backend/manage.py tenant_config export "$slug" "$temporary"
 if [[ -n $secret_file ]]; then
-  uv run python - "$secret_file" "$slug" "$temporary/secrets.yaml" <<'PY'
+  uv run --project apps/backend python - "$secret_file" "$slug" "$temporary/secrets.yaml" <<'PY'
 import os
 import sys
 from pathlib import Path

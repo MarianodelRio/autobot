@@ -1,5 +1,5 @@
 """Escenario del pack `salon` sobre el negocio de demo de la plataforma
-(`apps/backend/packs/salon/template/`, ADR-006). Lee el
+(`apps/backend/src/packs/salon/template/`, ADR-006). Lee el
 `document.yaml` real del repositorio y solo sustituye el marcador
 `PENDIENTE-calendario-de-demo` por un `calendar_id` de prueba, para probar el
 flujo completo de reserva con `FakeCalendar` sin depender de Google Calendar."""

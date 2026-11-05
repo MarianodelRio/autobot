@@ -21,7 +21,9 @@ def test_every_make_target_is_documented() -> None:
 def test_every_manage_command_is_documented() -> None:
     commands = {
         path.stem
-        for path in (ROOT / "apps" / "backend" / "autobot" / "management" / "commands").glob("*.py")
+        for path in (
+            ROOT / "apps" / "backend" / "src" / "autobot" / "management" / "commands"
+        ).glob("*.py")
         if path.stem != "__init__"
     }
     assert commands, "no management commands found; the layout may have changed"

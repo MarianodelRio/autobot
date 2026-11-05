@@ -1,5 +1,5 @@
 """Escenario del pack `bus` sobre el negocio de demo de la plataforma
-(`apps/backend/packs/bus/template/`, ADR-006). A
+(`apps/backend/src/packs/bus/template/`, ADR-006). A
 diferencia de `test_escenarios.py` (que usa el dataset congelado de
 Autocares San Sebastián en `fixtures/`), este test lee el `document.yaml` y el
 dataset reales del repositorio: cualquier cambio que invalide el negocio de
