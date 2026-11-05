@@ -42,14 +42,14 @@ def generate(link: str, output: Path) -> None:
 def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
     parser = argparse.ArgumentParser(description="Genera el QR del canal público de un negocio.")
     parser.add_argument("file", type=Path, help="document.yaml exportado del negocio.")
-    parser.add_argument("--output", type=Path, help="Archivo SVG (por defecto qr/<slug>.svg).")
+    parser.add_argument("--output", type=Path, help="Archivo SVG (por defecto var/qr/<slug>.svg).")
     args = parser.parse_args(argv)
     try:
         document = _document(args.file)
         if document.channel is None:
             raise ValueError("Un negocio de demo no tiene canal propio.")
         link = channel_link(document.channel)
-        output = args.output or repo_root / "qr" / f"{document.slug}.svg"
+        output = args.output or repo_root / "var" / "qr" / f"{document.slug}.svg"
         generate(link, output)
     except ValueError as exc:
         parser.exit(2, f"{exc}\n")

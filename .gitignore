@@ -17,24 +17,11 @@ __pycache__/
 
 # Generados
 staticfiles/
-revision/
-qr/
-backups/
-.deployed-sha
-.deploy.lock
-.deployed-sha.tmp
-.backup.lock
-.restore-incomplete
-state/
 
-# Claves y credenciales
+# Claves y credenciales (por si acaso; los secretos de canal viven en PostgreSQL)
 *.pem
 *.key
 *credentials*.json
 
-# Config and datasets are exported/imported locally, never tracked.
-/tenants/
-/datos/
-
-# Runtime files (local and server), ahead of the deploy/ reorganization.
+# Runtime files (local and server): datasets, qr, revision, backups, deploy state...
 /var/

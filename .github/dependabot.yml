@@ -26,6 +26,6 @@ updates:
     schedule:
       interval: weekly
   - package-ecosystem: docker-compose
-    directory: /
+    directory: /deploy/compose
     schedule:
       interval: weekly

@@ -44,7 +44,17 @@ def main() -> None:
         "DEPLOY_UID": "10001",
     }
     config = subprocess.run(
-        ["docker", "compose", "-f", str(ROOT / "compose.prod.yaml"), "config", "--format", "json"],
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(ROOT / "deploy" / "compose" / "compose.yaml"),
+            "-f",
+            str(ROOT / "deploy" / "compose" / "compose.prod.yaml"),
+            "config",
+            "--format",
+            "json",
+        ],
         cwd=ROOT,
         env=env,
         capture_output=True,

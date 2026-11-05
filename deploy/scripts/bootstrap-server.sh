@@ -25,7 +25,7 @@ fi
 fingerprint=$(cat "$1" "$2" "$3" "$4" "$0" | sha256sum | cut -d' ' -f1)
 marker=/var/lib/autobot/bootstrap-complete
 operator_line="$operator_key"
-ci_line="restrict,command=\"/srv/autobot/deploy/ssh-deploy.sh\" $ci_key"
+ci_line="restrict,command=\"/srv/autobot/deploy/scripts/ssh-deploy.sh\" $ci_key"
 ufw_rules_safe() {
   ufw show added | awk '/^ufw / && $0 !~ /^ufw allow (22|80|443)\/tcp$/ {bad=1} END {exit bad?1:0}'
 }
@@ -47,11 +47,11 @@ if [[ -f $marker && $(cat "$marker") == "$fingerprint" ]] && \
    grep -q '^DEFAULT_INPUT_POLICY="DROP"$' /etc/default/ufw && \
    cmp -s /home/deploy/.ssh/authorized_keys \
      <(printf '%s\n%s\n' "$operator_line" "$ci_line") && \
-   cmp -s /srv/autobot/deploy/autobot-backup.timer /etc/systemd/system/autobot-backup.timer && \
-   cmp -s /srv/autobot/deploy/autobot-backup.service /etc/systemd/system/autobot-backup.service && \
-   [[ $(stat -c '%u:%g:%a' /srv/autobot/state/caddy-data) == "$(id -u deploy):$(id -g deploy):700" ]] && \
-   [[ $(stat -c '%u:%g:%a' /srv/autobot/state/caddy-config) == "$(id -u deploy):$(id -g deploy):700" ]] && \
-   [[ $(stat -c '%u:%g:%a' /srv/autobot/state/ops) == "$(id -u deploy):$(id -g deploy):700" ]] && \
+   cmp -s /srv/autobot/deploy/systemd/autobot-backup.timer /etc/systemd/system/autobot-backup.timer && \
+   cmp -s /srv/autobot/deploy/systemd/autobot-backup.service /etc/systemd/system/autobot-backup.service && \
+   [[ $(stat -c '%u:%g:%a' /srv/autobot/var/state/caddy-data) == "$(id -u deploy):$(id -g deploy):700" ]] && \
+   [[ $(stat -c '%u:%g:%a' /srv/autobot/var/state/caddy-config) == "$(id -u deploy):$(id -g deploy):700" ]] && \
+   [[ $(stat -c '%u:%g:%a' /srv/autobot/var/state/ops) == "$(id -u deploy):$(id -g deploy):700" ]] && \
    [[ $(sshd -T | awk '/^permitrootlogin / {print $2}') == no ]] && \
    [[ $(sshd -T | awk '/^passwordauthentication / {print $2}') == no ]]; then
   echo 'Bootstrap already configured'
@@ -105,9 +105,10 @@ if [[ ! -d /srv/autobot/.git ]]; then
 fi
 runuser -u deploy -- git -C /srv/autobot config core.sshCommand \
   'ssh -i /home/deploy/.ssh/github_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/deploy/.ssh/known_hosts -o StrictHostKeyChecking=yes'
-install -d -m 0700 -o deploy -g deploy /srv/autobot/state/caddy-data
-install -d -m 0700 -o deploy -g deploy /srv/autobot/state/caddy-config
-install -d -m 0700 -o deploy -g deploy /srv/autobot/state/ops
+install -d -m 0750 -o deploy -g deploy /srv/autobot/var
+install -d -m 0700 -o deploy -g deploy /srv/autobot/var/state/caddy-data
+install -d -m 0700 -o deploy -g deploy /srv/autobot/var/state/caddy-config
+install -d -m 0700 -o deploy -g deploy /srv/autobot/var/state/ops
 
 cat >/etc/ssh/sshd_config.d/00-00-autobot.conf <<'EOF'
 PermitRootLogin no
@@ -140,8 +141,8 @@ ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
 
-install -m 0644 /srv/autobot/deploy/autobot-backup.service /etc/systemd/system/
-install -m 0644 /srv/autobot/deploy/autobot-backup.timer /etc/systemd/system/
+install -m 0644 /srv/autobot/deploy/systemd/autobot-backup.service /etc/systemd/system/
+install -m 0644 /srv/autobot/deploy/systemd/autobot-backup.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable autobot-backup.timer
 install -d -m 0755 /var/lib/autobot

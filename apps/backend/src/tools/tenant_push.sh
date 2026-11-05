@@ -33,4 +33,4 @@ with os.fdopen(os.open(sys.argv[3], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 PY
 fi
 tar -C "$temporary" -cz . | ssh "deploy@$target_host" \
-  /srv/autobot/deploy/manage.sh tenant_config import - --comment push
+  /srv/autobot/deploy/scripts/manage.sh tenant_config import - --comment push

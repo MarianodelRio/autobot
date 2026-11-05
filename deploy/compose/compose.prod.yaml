@@ -29,7 +29,6 @@ x-app-env: &app-env
   RELEASE_SHA: ${SHA:?Set the published image SHA}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   RETENTION_CLEANUP_ENABLED: ${RETENTION_CLEANUP_ENABLED:-false}
-  VICTORIALOGS_URL: http://victorialogs:9428
 
 x-app: &app
   image: ghcr.io/marianodelrio/autobot:${SHA:?Set the published image SHA}
@@ -40,16 +39,13 @@ x-app: &app
   tmpfs:
     - /tmp
   volumes:
-    - ./google_sa.json:/run/secrets/google_sa.json:ro
+    - ../../var/google_sa.json:/run/secrets/google_sa.json:ro
   restart: unless-stopped
   logging: &logging
     driver: json-file
     options:
       max-size: 20m
       max-file: "5"
-  depends_on:
-    db:
-      condition: service_healthy
 
 services:
   caddy:
@@ -61,9 +57,9 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./state/caddy-data:/data
-      - ./state/caddy-config:/config
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../../var/state/caddy-data:/data
+      - ../../var/state/caddy-config:/config
     restart: unless-stopped
     logging: *logging
     depends_on:
@@ -81,8 +77,8 @@ services:
     # Overriding the anchor's volumes replaces the whole list (YAML does not merge
     # sequences): google_sa.json must be repeated here alongside the new mount.
     volumes:
-      - ./google_sa.json:/run/secrets/google_sa.json:ro
-      - ./state/ops:/run/ops:ro
+      - ../../var/google_sa.json:/run/secrets/google_sa.json:ro
+      - ../../var/state/ops:/run/ops:ro
     command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4 --no-control-socket
     ports:
       - "127.0.0.1:8000:8000"
@@ -123,37 +119,15 @@ services:
       retries: 6
 
   db:
-    image: postgres:18
     environment:
-      POSTGRES_DB: autobot
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       FP_OWNER_PASSWORD: ${FP_OWNER_PASSWORD:?Set FP_OWNER_PASSWORD}
       FP_APP_PASSWORD: ${FP_APP_PASSWORD:?Set FP_APP_PASSWORD}
       FP_READONLY_PASSWORD: ${FP_READONLY_PASSWORD:?Set FP_READONLY_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql
-      - ./deploy/postgres:/docker-entrypoint-initdb.d:ro
     command: ["postgres", "-c", "shared_buffers=512MB", "-c", "max_connections=100", "-c", "log_min_duration_statement=1000"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d autobot"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
     restart: unless-stopped
     logging: *logging
 
   victorialogs:
-    image: victoriametrics/victoria-logs:v1.53.0
-    command:
-      - "-storageDataPath=/vlogs"
-      - "-retentionPeriod=31d"
-      - "-memory.allowedPercent=5"
-      - "-httpListenAddr=:9428"
-    volumes:
-      - vlogs:/vlogs
     restart: unless-stopped
     logging: *logging
-
-volumes:
-  pgdata:
-  vlogs:

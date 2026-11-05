@@ -1,5 +1,5 @@
-"""`deploy/ensure-env.sh`: generates missing internal secrets, leaves existing ones
-alone, never prints a value, and aborts listing whatever external one is missing."""
+"""`deploy/scripts/ensure-env.sh`: generates missing internal secrets, leaves existing
+ones alone, never prints a value, and aborts listing whatever external one is missing."""
 
 import os
 import shutil
@@ -26,15 +26,17 @@ GENERATED_NAMES = {
     "DB_APP_URL",
     "DB_OWNER_URL",
     "DB_READONLY_URL",
+    "COMPOSE_FILE",
+    "COMPOSE_PROJECT_NAME",
 }
 
 
 @pytest.fixture
 def script(tmp_path: Path) -> Path:
-    deploy = tmp_path / "deploy"
-    deploy.mkdir()
-    path = deploy / "ensure-env.sh"
-    shutil.copy(ROOT / "deploy/ensure-env.sh", path)
+    scripts = tmp_path / "deploy" / "scripts"
+    scripts.mkdir(parents=True)
+    path = scripts / "ensure-env.sh"
+    shutil.copy(ROOT / "deploy/scripts/ensure-env.sh", path)
     path.chmod(0o755)
     return path
 
@@ -45,7 +47,7 @@ def run(script: Path, **environment: str) -> subprocess.CompletedProcess[str]:
     base = {k: v for k, v in os.environ.items() if k not in GENERATED_NAMES | set(EXTERNALS)}
     return subprocess.run(
         ["bash", str(script)],
-        cwd=script.parent.parent,
+        cwd=script.parents[2],
         env={**base, **environment},
         capture_output=True,
         text=True,
@@ -82,7 +84,7 @@ def test_never_prints_a_generated_value(script: Path) -> None:
 
 def test_succeeds_and_changes_nothing_once_everything_is_set(script: Path, tmp_path: Path) -> None:
     run(script, **EXTERNALS)
-    env_file = script.parent.parent / ".env"
+    env_file = script.parents[2] / ".env"
     before = env_file.read_text()
 
     result = run(script, **EXTERNALS)

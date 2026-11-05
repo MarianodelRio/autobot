@@ -21,7 +21,11 @@ def _command(action: str, slug: str, production: bool, comment: str) -> list[str
         arguments += ["--comment", comment]
     if production:
         host = os.environ.get("HOST", "autobot")
-        return ["ssh", f"deploy@{host}", shlex.join(["/srv/autobot/deploy/manage.sh", *arguments])]
+        return [
+            "ssh",
+            f"deploy@{host}",
+            shlex.join(["/srv/autobot/deploy/scripts/manage.sh", *arguments]),
+        ]
     return [sys.executable, str(REPO_ROOT / "apps" / "backend" / "manage.py"), *arguments]
 
 

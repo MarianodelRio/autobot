@@ -83,7 +83,7 @@ def test_push_stream_contains_only_selected_secret(tmp_path: Path, include_secre
         assert b"must-not-transfer" not in b"".join(contents)
     assert (tmp_path / "ssh.args").read_text().splitlines() == [
         "deploy@fake-host",
-        "/srv/autobot/deploy/manage.sh",
+        "/srv/autobot/deploy/scripts/manage.sh",
         "tenant_config",
         "import",
         "-",
@@ -120,16 +120,17 @@ def test_invalid_slug_never_exports_or_contacts_ssh(tmp_path: Path) -> None:
 def test_manage_wrapper_uses_deployed_sha_and_forwards_args(tmp_path: Path) -> None:
     import shutil
 
-    deployment = tmp_path / "deploy"
-    deployment.mkdir()
-    shutil.copy(ROOT / "deploy/manage.sh", deployment / "manage.sh")
+    scripts = tmp_path / "deploy" / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy(ROOT / "deploy/scripts/manage.sh", scripts / "manage.sh")
     sha = "a" * 40
-    (tmp_path / ".deployed-sha").write_text(sha)
+    (tmp_path / "var").mkdir()
+    (tmp_path / "var" / ".deployed-sha").write_text(sha)
     binary = tmp_path / "docker"
     binary.write_text('#!/usr/bin/env bash\nprintf \'%s\\n\' "$SHA" "$@"\n')
     binary.chmod(0o755)
     result = subprocess.run(
-        ["bash", str(deployment / "manage.sh"), "tenant_config", "export", "tg", "-"],
+        ["bash", str(scripts / "manage.sh"), "tenant_config", "export", "tg", "-"],
         env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}"},
         input=b"",
         capture_output=True,
@@ -142,7 +143,9 @@ def test_manage_wrapper_uses_deployed_sha_and_forwards_args(tmp_path: Path) -> N
         "--project-name",
         "autobot",
         "-f",
-        "compose.prod.yaml",
+        "deploy/compose/compose.yaml",
+        "-f",
+        "deploy/compose/compose.prod.yaml",
         "run",
         "--rm",
         "-T",

@@ -14,14 +14,18 @@ NEW = "b" * 40
 
 
 def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
-    deploy = tmp_path / "deploy"
-    deploy.mkdir()
-    shutil.copy(ROOT / "deploy/deploy.sh", deploy / "deploy.sh")
-    shutil.copy(ROOT / "deploy/ensure-env.sh", deploy / "ensure-env.sh")
-    (deploy / "ensure-env.sh").chmod(0o755)
-    (tmp_path / "compose.prod.yaml").write_text("services: {}\n")
+    scripts = tmp_path / "deploy" / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy(ROOT / "deploy/scripts/deploy.sh", scripts / "deploy.sh")
+    shutil.copy(ROOT / "deploy/scripts/ensure-env.sh", scripts / "ensure-env.sh")
+    (scripts / "ensure-env.sh").chmod(0o755)
+    compose = tmp_path / "deploy" / "compose"
+    compose.mkdir()
+    (compose / "compose.yaml").write_text("services: {}\n")
+    (compose / "compose.prod.yaml").write_text("services: {}\n")
+    (tmp_path / "var").mkdir()
     if previous:
-        (tmp_path / ".deployed-sha").write_text(OLD + "\n")
+        (tmp_path / "var" / ".deployed-sha").write_text(OLD + "\n")
     binaries = tmp_path / "bin"
     binaries.mkdir()
     docker = binaries / "docker"
@@ -45,11 +49,11 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
     sleep = binaries / "sleep"
     sleep.write_text("#!/usr/bin/env bash\nexit 0\n")
     sleep.chmod(0o755)
-    return deploy / "deploy.sh", binaries
+    return scripts / "deploy.sh", binaries
 
 
 def deploy_results(tmp_path: Path) -> list[str]:
-    path = tmp_path / "state" / "ops" / "deploys.jsonl"
+    path = tmp_path / "var" / "state" / "ops" / "deploys.jsonl"
     return [json.loads(line)["result"] for line in path.read_text().splitlines()]
 
 
@@ -59,7 +63,7 @@ def invoke(
     env = {
         **os.environ,
         "PATH": f"{binaries}:{os.environ['PATH']}",
-        "TEST_LOG": str(script.parent.parent / "docker.log"),
+        "TEST_LOG": str(script.parents[2] / "docker.log"),
         "PUBLIC_HOST": "api.example.com",
         "DJANGO_ALLOWED_HOSTS": "api.example.com,localhost,127.0.0.1",
         "DEPLOY_UID": "10001",
@@ -77,7 +81,7 @@ def test_success_records_image_after_health(tmp_path: Path) -> None:
     script, binaries = setup(tmp_path)
     result = invoke(script, binaries)
     assert result.returncode == 0, result.stderr
-    assert (tmp_path / ".deployed-sha").read_text().strip() == NEW
+    assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == NEW
     lines = (tmp_path / "docker.log").read_text().splitlines()
     assert any("migrate" in line for line in lines)
     assert any("tenant_config validate --all" in line for line in lines)
@@ -98,7 +102,7 @@ def test_health_failure_restores_previous_image_and_alerts(tmp_path: Path) -> No
     script, binaries = setup(tmp_path)
     result = invoke(script, binaries, BROKEN_SHA=NEW)
     assert result.returncode == 1
-    assert (tmp_path / ".deployed-sha").read_text().strip() == OLD
+    assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == OLD
     lines = (tmp_path / "docker.log").read_text().splitlines()
     assert any(line.startswith(OLD) and "up --no-deps -d web worker" in line for line in lines)
     assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
@@ -109,7 +113,7 @@ def test_worker_restarting_restores_previous_image_and_alerts(tmp_path: Path) ->
     script, binaries = setup(tmp_path)
     result = invoke(script, binaries, BROKEN_WORKER_SHA=NEW)
     assert result.returncode == 1
-    assert (tmp_path / ".deployed-sha").read_text().strip() == OLD
+    assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == OLD
     lines = (tmp_path / "docker.log").read_text().splitlines()
     assert any(line.startswith(OLD) and "up --no-deps -d web worker" in line for line in lines)
     assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
@@ -121,7 +125,7 @@ def test_migration_failure_never_switches_web(tmp_path: Path) -> None:
     script, binaries = setup(tmp_path)
     result = invoke(script, binaries, MIGRATE_FAIL="1")
     assert result.returncode == 1
-    assert (tmp_path / ".deployed-sha").read_text().strip() == OLD
+    assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == OLD
     log = (tmp_path / "docker.log").read_text()
     assert "up --no-deps -d web worker" not in log
     assert any(line.startswith(OLD) and "deploy_aborted" in line for line in log.splitlines())
@@ -136,7 +140,7 @@ def test_failure_before_switch_restores_previous_checkout(tmp_path: Path) -> Non
     git.chmod(0o755)
     result = invoke(script, binaries, PULL_FAIL="1")
     assert result.returncode == 1
-    assert (tmp_path / ".deployed-sha").read_text().strip() == OLD
+    assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == OLD
     log = (tmp_path / "docker.log").read_text()
     assert f"git checkout --quiet --detach {OLD}" in log
     assert "migrate" not in log

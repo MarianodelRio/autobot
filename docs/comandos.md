@@ -23,9 +23,9 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make test-fast` | `pytest -m "not db"`, sin base de datos levantada |
 | `make check` | Puerta de calidad del backend: `ruff check`, `ruff format --check`, `mypy`, `import-linter`, `pytest` |
 | `make telegram-poll SLUG=<slug>` | *Long polling* del bot de Telegram de un tenant (o `notify`), para desarrollo local sin webhook |
-| `make bus-bajar TENANT=<slug> [PROD=1]` | Exporta el dataset vigente a `datos/<slug>/timetable` y `.publicado/timetable`; sustituye ambas copias locales |
-| `make bus-validar TENANT=<slug>` | Valida `datos/<slug>/timetable` |
-| `make bus-formatear TENANT=<slug>` | Realinea las columnas de las tablas de horarios sobre `datos/<slug>/timetable`, sin cambiar los datos |
+| `make bus-bajar TENANT=<slug> [PROD=1]` | Exporta el dataset vigente a `var/datos/<slug>/timetable` y `.publicado/timetable`; sustituye ambas copias locales |
+| `make bus-validar TENANT=<slug>` | Valida `var/datos/<slug>/timetable` |
+| `make bus-formatear TENANT=<slug>` | Realinea las columnas de las tablas de horarios sobre `var/datos/<slug>/timetable`, sin cambiar los datos |
 | `make bus-revision TENANT=<slug> [ARGS="..."]` | Genera HTML/PDF comparando con `.publicado/timetable`; `ARGS="--base <dir>"` elige otra base |
 | `make bus-publicar TENANT=<slug> COMMENT="..." [PROD=1]` | Publica la copia local validada en BD y actualiza `.publicado` tras el éxito; sin `PROD`, usa la BD local |
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
@@ -38,8 +38,8 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make panel-tunnel [HOST=<servidor>]` | Túnel SSH al puerto del contenedor `panel` en producción (8080→18000 local); nunca a `web` directamente |
 | `make deploy [SHA=]` | Sin `SHA`, usa `origin/main`; comprueba con `gh` que su CI está en verde y lanza el workflow de despliegue |
 | `make rollback` | Lee del servidor el `previous` del último despliegue correcto y, con confirmación, ejecuta `make deploy SHA=<previous>` |
-| `make backup-now` | Ejecuta `deploy/backup.sh` en el servidor por SSH |
-| `make restore-test` | `bash deploy/restore-test.sh`: simulacro de restauración |
+| `make backup-now` | Ejecuta `deploy/scripts/backup.sh` en el servidor por SSH |
+| `make restore-test` | `bash deploy/scripts/restore-test.sh`: simulacro de restauración |
 | `make prod-manage CMD="..." [TTY=1]` | Ejecuta el comando con la imagen desplegada mediante SSH; `TTY=1` para comandos interactivos, sin TTY para streams binarios |
 | `make tenant-push SLUG=<slug> [SECRETS=<yaml>]` | Exporta la BD local y la importa por SSH. El YAML privado aporta solo la entrada del slug; el temporal se borra al salir |
 

@@ -53,7 +53,7 @@ def test_cli_generates_real_svg_without_services(tmp_path: Path, kind: str) -> N
     document.write_text(yaml.safe_dump(doc))
     # No secrets file, Django setup or DB is needed for local public QR generation.
     assert main([str(document)], repo_root=tmp_path) == 0
-    svg = ElementTree.parse(tmp_path / "qr" / "local.svg").getroot()
+    svg = ElementTree.parse(tmp_path / "var" / "qr" / "local.svg").getroot()
     assert svg.tag == "{http://www.w3.org/2000/svg}svg"
     assert svg.find("{http://www.w3.org/2000/svg}path") is not None
     assert svg.find("{http://www.w3.org/2000/svg}rect").attrib["fill"] == "white"  # type: ignore[union-attr]

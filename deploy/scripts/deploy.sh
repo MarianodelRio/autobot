@@ -2,25 +2,25 @@
 # Deploy a published, immutable image. Run on the VPS as the deploy user only.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
-exec 9>.deploy.lock
+cd "$(dirname "$0")/../.."
+mkdir -p var/state/ops
+exec 9>var/.deploy.lock
 flock -n 9 || { echo 'Another deployment is running' >&2; exit 1; }
-mkdir -p state/ops
 
 if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
-  echo 'Usage: deploy/deploy.sh <full-40-character-sha>' >&2
+  echo 'Usage: deploy/scripts/deploy.sh <full-40-character-sha>' >&2
   exit 2
 fi
 # .env on disk is enough: docker compose reads it itself for ${VAR:?} substitution.
-deploy/ensure-env.sh
+deploy/scripts/ensure-env.sh
 target=$1
-previous=$(cat .deployed-sha 2>/dev/null || true)
+previous=$(cat var/.deployed-sha 2>/dev/null || true)
 if [[ -n $previous && ! $previous =~ ^[0-9a-f]{40}$ ]]; then
-  echo 'Invalid .deployed-sha; refusing deploy' >&2
+  echo 'Invalid var/.deployed-sha; refusing deploy' >&2
   exit 1
 fi
 export SHA="$target"
-compose=(docker compose --project-name autobot -f compose.prod.yaml)
+compose=(docker compose --project-name autobot -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml)
 
 wait_health() {
   local deadline=$((SECONDS + 60)) response attempt
@@ -71,10 +71,10 @@ alert_ops() {
     || echo 'Could not send ops alert; check deployment logs' >&2
 }
 
-# One line per attempt, read by the panel; `web` mounts state/ops read-only.
+# One line per attempt, read by the panel; `web` mounts var/state/ops read-only.
 record_deploy() {
   printf '{"at":"%s","sha":"%s","previous":"%s","result":"%s"}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$target" "$previous" "$1" >>state/ops/deploys.jsonl
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$target" "$previous" "$1" >>var/state/ops/deploys.jsonl
 }
 
 if [[ $previous == "$target" ]]; then
@@ -159,8 +159,8 @@ wait_health || rollback
 wait_worker || rollback
 wait_panel || rollback
 "${compose[@]}" up --no-deps -d caddy || rollback
-printf '%s\n' "$target" >.deployed-sha.tmp
-mv .deployed-sha.tmp .deployed-sha
+printf '%s\n' "$target" >var/.deployed-sha.tmp
+mv var/.deployed-sha.tmp var/.deployed-sha
 record_deploy deployed
 alert_ops deploy_ok "🟢 Desplegado ${target:0:7}" informational
 echo "Deployed $target"

@@ -638,7 +638,7 @@ def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
     fecha = datetime.now(ZoneInfo(ZONA_HORARIA)).strftime("%d/%m/%Y %H:%M")
     html_doc = generar_html(actual_modelo, anterior_modelo, cambios, ref, fecha)
 
-    revision_dir = repo_root / "revision" / args.tenant
+    revision_dir = repo_root / "var" / "revision" / args.tenant
     revision_dir.mkdir(parents=True, exist_ok=True)
     html_path = revision_dir / "horarios.html"
     html_path.write_text(html_doc, encoding="utf-8")

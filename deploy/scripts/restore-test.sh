@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Disposable local backup/restore exercise; needs Docker and restic, no real services.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 : "${RESTIC_BIN:=restic}"
 command -v "$RESTIC_BIN" >/dev/null
 test_root=$(mktemp -d)
 source_dir=$test_root/source
 target_dir=$test_root/target
-mkdir -p "$source_dir/deploy/postgres" "$target_dir/deploy/postgres" \
-  "$source_dir/deploy/caddy" "$target_dir/deploy/caddy"
+for dir in "$source_dir" "$target_dir"; do
+  mkdir -p "$dir/deploy/compose" "$dir/deploy/postgres" "$dir/deploy/caddy" "$dir/deploy/scripts" \
+    "$dir/var"
+done
 sha=$(python3 -c 'import secrets; print(secrets.token_hex(20))')
 source_project="fp-restore-src-${sha:0:8}"
 target_project="fp-restore-dst-${sha:0:8}"
@@ -17,18 +19,20 @@ cleanup() {
   if [[ -n $ping_pid ]]; then
     kill "$ping_pid" >/dev/null 2>&1 || true
   fi
-  (cd "$source_dir" && docker compose --project-name "$source_project" -f compose.prod.yaml down -v) >/dev/null 2>&1 || true
-  (cd "$target_dir" && docker compose --project-name "$target_project" -f compose.prod.yaml down -v) >/dev/null 2>&1 || true
+  (cd "$source_dir" && docker compose --project-name "$source_project" \
+    -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml down -v) >/dev/null 2>&1 || true
+  (cd "$target_dir" && docker compose --project-name "$target_project" \
+    -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml down -v) >/dev/null 2>&1 || true
   docker image rm "ghcr.io/marianodelrio/autobot:$sha" >/dev/null 2>&1 || true
   rm -rf "$test_root"
 }
 trap cleanup EXIT
 
 for dir in "$source_dir" "$target_dir"; do
-  cp compose.prod.yaml "$dir/"
+  cp deploy/compose/compose.yaml deploy/compose/compose.prod.yaml "$dir/deploy/compose/"
   cp deploy/caddy/Caddyfile "$dir/deploy/caddy/"
   cp deploy/postgres/init-roles.sh "$dir/deploy/postgres/"
-  cp deploy/backup.sh deploy/restore.sh "$dir/deploy/"
+  cp deploy/scripts/backup.sh deploy/scripts/restore.sh "$dir/deploy/scripts/"
 done
 cat >"$source_dir/.env" <<EOF
 ENVIRONMENT=prod
@@ -45,11 +49,11 @@ FP_OWNER_PASSWORD=local
 FP_APP_PASSWORD=local
 FP_READONLY_PASSWORD=local
 EOF
-printf '{}\n' >"$source_dir/google_sa.json"
-printf '%s\n' "$sha" >"$source_dir/.deployed-sha"
+printf '{}\n' >"$source_dir/var/google_sa.json"
+printf '%s\n' "$sha" >"$source_dir/var/.deployed-sha"
 printf '%s\n' local-restore-password >"$test_root/restic-password"
 chmod 600 "$source_dir/.env" \
-  "$source_dir/google_sa.json" "$test_root/restic-password"
+  "$source_dir/var/google_sa.json" "$test_root/restic-password"
 cat >"$test_root/ping.py" <<'PY'
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -84,38 +88,39 @@ chmod 600 "$test_root/backup.env"
 export AUTOBOT_BACKUP_CONFIG="$test_root/backup.env"
 "$RESTIC_BIN" -r "$test_root/repository" --password-file "$test_root/restic-password" init >/dev/null
 
-docker build -q -t autobot:restore-test . >/dev/null
+docker build -q -t autobot:restore-test -f apps/backend/Dockerfile apps/backend >/dev/null
 docker tag autobot:restore-test "ghcr.io/marianodelrio/autobot:$sha"
+compose_args=(-f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml)
 (
   cd "$source_dir"
-  docker compose --project-name "$source_project" -f compose.prod.yaml up -d db >/dev/null
-  docker compose --project-name "$source_project" -f compose.prod.yaml run --rm web \
+  docker compose --project-name "$source_project" "${compose_args[@]}" up -d db >/dev/null
+  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
     python manage.py migrate --noinput >/dev/null
-  docker compose --project-name "$source_project" -f compose.prod.yaml run --rm web \
+  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
     python manage.py tenant_config validate --all >/dev/null
-  docker compose --project-name "$source_project" -f compose.prod.yaml run --rm web \
+  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
     python manage.py seed_demos >/dev/null
-  docker compose --project-name "$source_project" -f compose.prod.yaml exec -T db \
+  docker compose --project-name "$source_project" "${compose_args[@]}" exec -T db \
     psql -U postgres -d autobot -v ON_ERROR_STOP=1 -q -c \
     "INSERT INTO contact (id, tenant_id, channel, external_id, created_at) VALUES ('00000000-0000-7000-8000-000000000001', (SELECT id FROM tenant WHERE slug='demo-autobuses'), 'test', 'local-fixture', now())" >/dev/null
 )
 counts() {
   local project=$1 dir=$2
-  (cd "$dir" && docker compose --project-name "$project" -f compose.prod.yaml exec -T db \
+  (cd "$dir" && docker compose --project-name "$project" "${compose_args[@]}" exec -T db \
     psql -U postgres -d autobot -At -c \
     'SELECT t.slug, count(c.id) FROM tenant t LEFT JOIN contact c ON c.tenant_id=t.id GROUP BY t.slug ORDER BY t.slug')
 }
 before=$(counts "$source_project" "$source_dir")
-(cd "$source_dir" && AUTOBOT_PROJECT="$source_project" deploy/backup.sh)
+(cd "$source_dir" && AUTOBOT_PROJECT="$source_project" deploy/scripts/backup.sh)
 (cd "$target_dir" && AUTOBOT_PROJECT="$target_project" AUTOBOT_RESTORE_DB_ONLY=true \
-  deploy/restore.sh --confirm-empty-target)
+  deploy/scripts/restore.sh --confirm-empty-target)
 after=$(counts "$target_project" "$target_dir")
 if [[ $before != "$after" || $before != *'demo-autobuses|1'* ]]; then
   echo 'Per-tenant counts differ after restore' >&2
   exit 1
 fi
 # restore.sh reapplies roles and permissions (pg_restore --no-acl drops them).
-grants=$(cd "$target_dir" && docker compose --project-name "$target_project" -f compose.prod.yaml \
+grants=$(cd "$target_dir" && docker compose --project-name "$target_project" "${compose_args[@]}" \
   exec -T db psql -U postgres -d autobot -At -c \
   "SELECT has_table_privilege('fp_app', 'tenant', 'INSERT'), has_table_privilege('fp_readonly', 'auth_user', 'SELECT')")
 if [[ $grants != 'f|f' ]]; then

@@ -11,15 +11,20 @@ DUMP_CONTENT = "dump-bytes"
 
 
 def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
-    deploy = tmp_path / "deploy"
-    deploy.mkdir()
-    shutil.copy(ROOT / "deploy/backup.sh", deploy / "backup.sh")
-    (tmp_path / "compose.prod.yaml").write_text("services: {}\n")
+    scripts = tmp_path / "deploy" / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy(ROOT / "deploy/scripts/backup.sh", scripts / "backup.sh")
+    compose = tmp_path / "deploy" / "compose"
+    compose.mkdir()
+    (compose / "compose.yaml").write_text("services: {}\n")
+    (compose / "compose.prod.yaml").write_text("services: {}\n")
     (tmp_path / ".env").write_text("x=1\n")
-    (tmp_path / ".deployed-sha").write_text("a" * 40 + "\n")
-    (tmp_path / "google_sa.json").write_text("{}\n")
-    (deploy / "caddy").mkdir()
-    (deploy / "caddy" / "Caddyfile").write_text("x\n")
+    var = tmp_path / "var"
+    var.mkdir()
+    (var / ".deployed-sha").write_text("a" * 40 + "\n")
+    (var / "google_sa.json").write_text("{}\n")
+    (tmp_path / "deploy" / "caddy").mkdir()
+    (tmp_path / "deploy" / "caddy" / "Caddyfile").write_text("x\n")
     config = tmp_path / "backup.env"
     config.write_text(
         "RESTIC_REPOSITORY=local:/tmp/repo\n"
@@ -41,7 +46,7 @@ def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
     python3 = binaries / "python3"
     python3.write_text("#!/usr/bin/env bash\nexit 0\n")
     python3.chmod(0o755)
-    return deploy / "backup.sh", binaries, config
+    return scripts / "backup.sh", binaries, config
 
 
 def invoke(
@@ -50,7 +55,7 @@ def invoke(
     env = {
         **os.environ,
         "PATH": f"{binaries}:{os.environ['PATH']}",
-        "TEST_LOG": str(script.parent.parent / "restic.log"),
+        "TEST_LOG": str(script.parents[2] / "restic.log"),
         "AUTOBOT_BACKUP_CONFIG": str(config),
     }
     return subprocess.run(
@@ -63,7 +68,9 @@ def invoke(
 
 
 def backup_status(tmp_path: Path) -> dict[str, object]:
-    status: dict[str, object] = json.loads((tmp_path / "state/ops/backup.json").read_text())
+    status: dict[str, object] = json.loads(
+        (tmp_path / "var" / "state" / "ops" / "backup.json").read_text()
+    )
     return status
 
 
@@ -74,7 +81,7 @@ def test_success_writes_backup_status_and_removes_the_dump(tmp_path: Path) -> No
     status = backup_status(tmp_path)
     assert status["ok"] is True
     assert status["dump_bytes"] == len(DUMP_CONTENT)
-    assert not (tmp_path / "backups/autobot.dump").exists()
+    assert not (tmp_path / "var" / "backups" / "autobot.dump").exists()
     log = (tmp_path / "restic.log").read_text()
     assert "backup --tag autobot" in log
     assert "forget --tag autobot" in log
@@ -86,7 +93,7 @@ def test_restic_failure_is_recorded_as_not_ok(tmp_path: Path) -> None:
     assert result.returncode != 0
     status = backup_status(tmp_path)
     assert status["ok"] is False
-    assert not (tmp_path / "backups/autobot.dump").exists()
+    assert not (tmp_path / "var" / "backups" / "autobot.dump").exists()
 
 
 def test_missing_config_fails_before_writing_status(tmp_path: Path) -> None:
@@ -94,4 +101,4 @@ def test_missing_config_fails_before_writing_status(tmp_path: Path) -> None:
     config.unlink()
     result = invoke(script, binaries, config)
     assert result.returncode == 1
-    assert not (tmp_path / "state/ops/backup.json").exists()
+    assert not (tmp_path / "var" / "state" / "ops" / "backup.json").exists()

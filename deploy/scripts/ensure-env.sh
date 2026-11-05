@@ -5,7 +5,7 @@
 #     lists whatever external variable is missing instead;
 #   - never prints a value, only variable names.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 ENV_FILE=.env
 if [[ ! -f $ENV_FILE ]]; then
@@ -55,6 +55,18 @@ generate_db_url() {
 generate_db_url DB_APP_URL fp_app FP_APP_PASSWORD
 generate_db_url DB_OWNER_URL fp_owner FP_OWNER_PASSWORD
 generate_db_url DB_READONLY_URL fp_readonly FP_READONLY_PASSWORD
+
+# Not secrets: enforced, not just generated when missing, so a server .env never
+# drifts to a stale compose file list or project name.
+ensure_fixed() {
+  local name=$1 value=$2
+  [[ ${!name:-} == "$value" ]] && return 0
+  export "$name=$value"
+  generated_names+=("$name")
+  generated_lines+=("$name=$value")
+}
+ensure_fixed COMPOSE_FILE 'deploy/compose/compose.yaml:deploy/compose/compose.prod.yaml'
+ensure_fixed COMPOSE_PROJECT_NAME autobot
 
 if ((${#generated_lines[@]})); then
   {

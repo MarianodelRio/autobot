@@ -137,16 +137,16 @@ tenant-push: ## Exporta la BD local y la importa por SSH (SLUG=<slug> [SECRETS=<
 
 ##@ Bus
 
-# Bus tools operate on ignored exports under datos/<slug>/.
+# Bus tools operate on ignored exports under var/datos/<slug>/.
 BUS_TOOL = PYTHONPATH=apps/backend/src uv run --project apps/backend python -m tools
 export TENANT COMMENT PROD
 
 .PHONY: bus-bajar bus-validar bus-formatear bus-revision bus-publicar
 
-bus-bajar: ## Exporta el dataset vigente a datos/<slug>/timetable (TENANT=<slug> [PROD=1])
+bus-bajar: ## Exporta el dataset vigente a var/datos/<slug>/timetable (TENANT=<slug> [PROD=1])
 	$(BUS_TOOL).bus_data download
 
-bus-validar: ## Valida datos/<slug>/timetable (TENANT=<slug>)
+bus-validar: ## Valida var/datos/<slug>/timetable (TENANT=<slug>)
 	$(BUS_TOOL).bus_validar $(TENANT)
 
 bus-formatear: ## Realinea las columnas de las tablas de horarios (TENANT=<slug>)
@@ -175,7 +175,7 @@ deploy: ## Lanza el despliegue si el CI del SHA está en verde ([SHA=])
 # Reads the last successful deployment's `previous` SHA from the server and redeploys
 # it, with confirmation. Needs the operation SSH key (`~/.ssh/config` alias $(HOST)).
 rollback: ## Redespliega el `previous` del último despliegue correcto, con confirmación
-	@previous=$$(ssh deploy@$(HOST) 'tail -n 50 /srv/autobot/state/ops/deploys.jsonl' | \
+	@previous=$$(ssh deploy@$(HOST) 'tail -n 50 /srv/autobot/var/state/ops/deploys.jsonl' | \
 		python3 -c "import json, sys; entries = [json.loads(line) for line in sys.stdin if line.strip()]; deployed = [e for e in entries if e['result'] == 'deployed']; print(deployed[-1]['previous'] if deployed else '')"); \
 	if [ -z "$$previous" ]; then \
 		echo 'No previous successful deployment found to roll back to' >&2; \
@@ -185,11 +185,11 @@ rollback: ## Redespliega el `previous` del último despliegue correcto, con conf
 	[ "$$confirm" = y ] || exit 1; \
 	$(MAKE) deploy SHA=$$previous
 
-backup-now: ## Ejecuta deploy/backup.sh en el servidor por SSH
-	ssh deploy@$(HOST) /srv/autobot/deploy/backup.sh
+backup-now: ## Ejecuta deploy/scripts/backup.sh en el servidor por SSH
+	ssh deploy@$(HOST) /srv/autobot/deploy/scripts/backup.sh
 
-restore-test: ## Simulacro de restauración (bash deploy/restore-test.sh)
-	bash deploy/restore-test.sh
+restore-test: ## Simulacro de restauración (bash deploy/scripts/restore-test.sh)
+	bash deploy/scripts/restore-test.sh
 
 prod-manage: ## Ejecuta un comando de manage.py contra la imagen desplegada (CMD="..." [TTY=1])
-	@ssh $(if $(TTY),-t,) deploy@$(HOST) /srv/autobot/deploy/manage.sh $(CMD)
+	@ssh $(if $(TTY),-t,) deploy@$(HOST) /srv/autobot/deploy/scripts/manage.sh $(CMD)

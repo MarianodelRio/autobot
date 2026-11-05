@@ -37,8 +37,8 @@ def database(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 def test_local_download_publish_and_no_change(tmp_path: Path, database: None) -> None:
-    working = tmp_path / "datos" / SLUG / "timetable"
-    published = tmp_path / "datos" / SLUG / ".publicado/timetable"
+    working = tmp_path / "var" / "datos" / SLUG / "timetable"
+    published = tmp_path / "var" / "datos" / SLUG / ".publicado/timetable"
     for folder in (working, published):
         folder.mkdir(parents=True)
         (folder / "stale.txt").write_text("stale")
@@ -56,8 +56,8 @@ def test_local_download_publish_and_no_change(tmp_path: Path, database: None) ->
 
 def test_invalid_data_and_missing_comment_do_not_publish(tmp_path: Path, database: None) -> None:
     assert bus_data.main(["download", "--tenant", SLUG], repo_root=tmp_path) == 0
-    working = tmp_path / "datos" / SLUG / "timetable"
-    published = tmp_path / "datos" / SLUG / ".publicado/timetable"
+    working = tmp_path / "var" / "datos" / SLUG / "timetable"
+    published = tmp_path / "var" / "datos" / SLUG / ".publicado/timetable"
     baseline = (published / "paradas.yaml").read_text()
     assert bus_data.main(["publish", "--tenant", SLUG], repo_root=tmp_path) == 1
     (working / "paradas.yaml").write_text("invalid: [")
@@ -97,7 +97,7 @@ def test_remote_stream_and_comment_quoting(tmp_path: Path, monkeypatch: pytest.M
         == 0
     )
     assert shlex.split((tmp_path / "args").read_text()) == [
-        "/srv/autobot/deploy/manage.sh",
+        "/srv/autobot/deploy/scripts/manage.sh",
         "tenant_dataset",
         "import",
         SLUG,
@@ -116,7 +116,7 @@ def test_baseline_tracks_uploaded_snapshot_if_working_copy_changes(
     fake_ssh(tmp_path, monkeypatch)
     root = tmp_path / "workspace"
     assert bus_data.main(["download", "--tenant", SLUG, "--prod"], repo_root=root) == 0
-    working = root / "datos" / SLUG / "timetable"
+    working = root / "var" / "datos" / SLUG / "timetable"
     (working / "note.txt").write_text("uploaded")
     real_run = subprocess.run
 
@@ -132,5 +132,7 @@ def test_baseline_tracks_uploaded_snapshot_if_working_copy_changes(
         )
         == 0
     )
-    assert (root / "datos" / SLUG / ".publicado/timetable/note.txt").read_text() == "uploaded"
+    assert (
+        root / "var" / "datos" / SLUG / ".publicado/timetable/note.txt"
+    ).read_text() == "uploaded"
     assert (working / "note.txt").read_text() == "next edit"

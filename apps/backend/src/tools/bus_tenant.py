@@ -15,7 +15,7 @@ def dataset_path(slug: str) -> Path:
     """The working timetable folder relative to the repository root."""
     if len(slug) > 64 or not _SLUG_RE.fullmatch(slug):
         raise TenantDesconocido(f"slug de tenant inválido: '{slug}'")
-    return Path("datos") / slug / "timetable"
+    return Path("var") / "datos" / slug / "timetable"
 
 
 def dataset_dir(slug: str, repo_root: Path = REPO_ROOT) -> Path:
@@ -27,4 +27,4 @@ def dataset_dir(slug: str, repo_root: Path = REPO_ROOT) -> Path:
 
 def published_dir(slug: str, repo_root: Path = REPO_ROOT) -> Path:
     dataset_path(slug)
-    return repo_root / "datos" / slug / ".publicado" / "timetable"
+    return repo_root / "var" / "datos" / slug / ".publicado" / "timetable"

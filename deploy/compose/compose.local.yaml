@@ -2,28 +2,25 @@
 # Local-only passwords; production takes them from .env.
 x-app: &app
   build:
-    context: apps/backend
+    context: ../../apps/backend
     dockerfile: Dockerfile
     args:
       INSTALL_DEV: "true"
   image: autobot:local
   env_file:
-    - path: .env
+    - path: ../../.env
       required: false
   environment:
     DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
     DB_OWNER_URL: postgres://fp_owner:fp_owner@db:5432/autobot
     DB_READONLY_URL: postgres://fp_readonly:fp_readonly@db:5432/autobot
     GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
-    VICTORIALOGS_URL: http://victorialogs:9428
   volumes:
-    - ./apps/backend/src:/app/src
-    - ./apps/backend/manage.py:/app/manage.py
+    - ../../apps/backend/src:/app/src
+    - ../../apps/backend/manage.py:/app/manage.py
     # Empty by default; a configured local credential stays outside the image.
     - ${GOOGLE_SERVICE_ACCOUNT_FILE:-/dev/null}:/app/google_sa.json:ro
   depends_on:
-    db:
-      condition: service_healthy
     victorialogs:
       condition: service_started
 
@@ -41,7 +38,6 @@ services:
       DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
       SERVICE_NAME: worker
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
-      VICTORIALOGS_URL: http://victorialogs:9428
       DB_OWNER_URL: ""  # the worker never uses fp_owner
       DB_READONLY_URL: ""  # nor fp_readonly: it never runs the SQL console
     # Graceful stop: on SIGTERM it takes no new jobs and lets running
@@ -55,7 +51,7 @@ services:
   # image, to test its own Caddy and build (not pnpm panel-dev's Vite proxy).
   panel:
     build:
-      context: ./apps/panel
+      context: ../../apps/panel
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
@@ -63,39 +59,7 @@ services:
     profiles: [panel]
 
   db:
-    image: postgres:18
     environment:
-      POSTGRES_DB: autobot
-      POSTGRES_PASSWORD: postgres
-      FP_OWNER_PASSWORD: fp_owner
-      FP_APP_PASSWORD: fp_app
-      FP_READONLY_PASSWORD: fp_readonly
       POSTGRES_TEST_DB: test_autobot  # for the tests run from the host (make check)
-    volumes:
-      - pgdata:/var/lib/postgresql
-      # Runs once, on an empty volume: creates fp_owner and fp_app.
-      - ./deploy/postgres:/docker-entrypoint-initdb.d:ro
     ports:
       - "127.0.0.1:5433:5432"  # 5433 so it does not clash with a PostgreSQL on the host
-    healthcheck:
-      # Over TCP: during the first init the server only listens on the socket.
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d autobot"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  victorialogs:
-    image: victoriametrics/victoria-logs:v1.53.0
-    command:
-      - "-storageDataPath=/vlogs"
-      - "-retentionPeriod=31d"
-      - "-memory.allowedPercent=5"
-      - "-httpListenAddr=:9428"
-    volumes:
-      - vlogs:/vlogs
-    ports:
-      - "127.0.0.1:9428:9428"
-
-volumes:
-  pgdata:
-  vlogs:

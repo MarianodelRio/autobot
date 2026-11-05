@@ -14,7 +14,7 @@ from tools import bus_revision as revision
 
 FIXTURES = Path(__file__).parent.parent / "packs" / "bus" / "fixtures"
 SLUG = "demo"
-DATASET = Path("datos") / SLUG / "timetable"
+DATASET = Path("var") / "datos" / SLUG / "timetable"
 BASE_LABEL = "copia publicada"
 
 
@@ -57,7 +57,7 @@ def _build_repo(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (horarios_dir / "lineas" / "linea-prueba.yaml").write_text(LINEA_YAML, encoding="utf-8")
-    shutil.copytree(horarios_dir, repo_root / "datos" / SLUG / ".publicado" / "timetable")
+    shutil.copytree(horarios_dir, repo_root / "var" / "datos" / SLUG / ".publicado" / "timetable")
 
     (horarios_dir / "lineas" / "linea-prueba.yaml").write_text(
         LINEA_YAML_MODIFICADA, encoding="utf-8"
@@ -81,9 +81,9 @@ def test_resolver_anterior_copia_publicada(tmp_path: Path) -> None:
 def test_explicit_base_is_used_by_cli(tmp_path: Path) -> None:
     root = _build_repo(tmp_path)
     base = root / "custom-base"
-    shutil.copytree(root / "datos" / SLUG / ".publicado" / "timetable", base)
+    shutil.copytree(root / "var" / "datos" / SLUG / ".publicado" / "timetable", base)
     assert revision.main([SLUG, "--base", str(base), "--solo-html"], repo_root=root) == 0
-    content = (root / "revision" / SLUG / "horarios.html").read_text()
+    content = (root / "var" / "revision" / SLUG / "horarios.html").read_text()
     assert "Versión: custom-base" in content
     assert "08:10" in content and "08:15" in content
 
@@ -107,9 +107,9 @@ def test_main_genera_html_con_cambios(tmp_path: Path, monkeypatch: pytest.Monkey
     codigo = _generar_para_repo(repo_root)
     assert codigo == 0
 
-    html_path = repo_root / "revision" / SLUG / "horarios.html"
+    html_path = repo_root / "var" / "revision" / SLUG / "horarios.html"
     assert html_path.exists()
-    assert not (repo_root / "revision" / SLUG / "horarios.pdf").exists()
+    assert not (repo_root / "var" / "revision" / SLUG / "horarios.pdf").exists()
 
     contenido = html_path.read_text(encoding="utf-8")
     assert "Línea de prueba" in contenido
@@ -139,7 +139,9 @@ def test_cambios_con_texto_de_negocio_y_html_escapado(
     )
 
     assert _generar_para_repo(repo_root) == 0
-    contenido = (repo_root / "revision" / SLUG / "horarios.html").read_text(encoding="utf-8")
+    contenido = (repo_root / "var" / "revision" / SLUG / "horarios.html").read_text(
+        encoding="utf-8"
+    )
     assert (
         "El texto de la observación «Pasa por Rivero de Posadas.» pasa a "
         "«Pasa por &lt;Rivero&gt; &amp; Posadas.»." in contenido
@@ -166,7 +168,9 @@ def test_main_primera_version_sin_base(tmp_path: Path, monkeypatch: pytest.Monke
 
     codigo = _generar_para_repo(repo_root)
     assert codigo == 0
-    contenido = (repo_root / "revision" / SLUG / "horarios.html").read_text(encoding="utf-8")
+    contenido = (repo_root / "var" / "revision" / SLUG / "horarios.html").read_text(
+        encoding="utf-8"
+    )
     assert "Primera versión." in contenido
 
 
@@ -174,8 +178,8 @@ def test_main_solo_html_no_genera_pdf(tmp_path: Path, monkeypatch: pytest.Monkey
     repo_root = _build_repo(tmp_path)
     codigo = _generar_para_repo(repo_root, solo_html=True)
     assert codigo == 0
-    assert (repo_root / "revision" / SLUG / "horarios.html").exists()
-    assert not (repo_root / "revision" / SLUG / "horarios.pdf").exists()
+    assert (repo_root / "var" / "revision" / SLUG / "horarios.html").exists()
+    assert not (repo_root / "var" / "revision" / SLUG / "horarios.pdf").exists()
 
 
 def test_main_genera_pdf_si_no_se_pide_solo_html(
@@ -184,7 +188,7 @@ def test_main_genera_pdf_si_no_se_pide_solo_html(
     repo_root = _build_repo(tmp_path)
     codigo = _generar_para_repo(repo_root, solo_html=False)
     assert codigo == 0
-    assert (repo_root / "revision" / SLUG / "horarios.pdf").exists()
+    assert (repo_root / "var" / "revision" / SLUG / "horarios.pdf").exists()
 
 
 def test_main_falla_si_weasyprint_no_esta_disponible(
@@ -205,8 +209,8 @@ def test_main_falla_si_weasyprint_no_esta_disponible(
 
     codigo = revision.main([SLUG], repo_root=repo_root)
     assert codigo == 1
-    assert (repo_root / "revision" / SLUG / "horarios.html").exists()
-    assert not (repo_root / "revision" / SLUG / "horarios.pdf").exists()
+    assert (repo_root / "var" / "revision" / SLUG / "horarios.html").exists()
+    assert not (repo_root / "var" / "revision" / SLUG / "horarios.pdf").exists()
 
 
 def test_main_falla_si_horarios_no_valida(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,7 +223,7 @@ def test_main_falla_si_horarios_no_valida(tmp_path: Path, monkeypatch: pytest.Mo
 
     codigo = revision.main([SLUG, "--solo-html"], repo_root=repo_root)
     assert codigo == 1
-    assert not (repo_root / "revision" / SLUG / "horarios.html").exists()
+    assert not (repo_root / "var" / "revision" / SLUG / "horarios.html").exists()
 
 
 # ── Tablas por sentido, anchas y por línea ───────────────────

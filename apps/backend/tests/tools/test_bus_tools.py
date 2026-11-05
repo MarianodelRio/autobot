@@ -9,7 +9,7 @@ from tools import bus_formatear, bus_revision, bus_validar
 
 REAL = Path(__file__).parent.parent / "packs" / "bus" / "fixtures" / "horarios_real"
 SLUG = "autocares-ss"
-DATASET = Path("datos") / SLUG / "timetable"
+DATASET = Path("var") / "datos" / SLUG / "timetable"
 ROW = "      20:00  20:30  20:35D  21:00  21:10  21:15  21:45C"
 
 
@@ -71,17 +71,17 @@ def test_format_real_dataset_keeps_content(repo: Path) -> None:
 
 
 def test_revision_compares_published_directory(repo: Path) -> None:
-    shutil.copytree(repo / DATASET, repo / "datos" / SLUG / ".publicado/timetable")
+    shutil.copytree(repo / DATASET, repo / "var" / "datos" / SLUG / ".publicado/timetable")
     change_time(repo)
     assert bus_revision.main([SLUG, "--solo-html"], repo_root=repo) == 0
-    html = (repo / "revision" / SLUG / "horarios.html").read_text(encoding="utf-8")
+    html = (repo / "var" / "revision" / SLUG / "horarios.html").read_text(encoding="utf-8")
     assert "Versión: copia publicada" in html
     changes = html.split("Cambios desde la versión publicada")[1].split("<h2")[0]
     assert "20:00" in changes and "20:05" in changes
 
 
 def test_revision_generates_real_pdf(repo: Path) -> None:
-    shutil.copytree(repo / DATASET, repo / "datos" / SLUG / ".publicado/timetable")
+    shutil.copytree(repo / DATASET, repo / "var" / "datos" / SLUG / ".publicado/timetable")
     change_time(repo)
     assert bus_revision.main([SLUG], repo_root=repo) == 0
-    assert (repo / "revision" / SLUG / "horarios.pdf").read_bytes().startswith(b"%PDF")
+    assert (repo / "var" / "revision" / SLUG / "horarios.pdf").read_bytes().startswith(b"%PDF")

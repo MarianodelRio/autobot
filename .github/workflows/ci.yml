@@ -75,7 +75,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck
-          shellcheck deploy/*.sh deploy/postgres/*.sh apps/backend/src/tools/*.sh
+          shellcheck deploy/scripts/*.sh deploy/postgres/*.sh apps/backend/src/tools/*.sh
       - name: mypy
         working-directory: apps/backend
         run: uv run mypy

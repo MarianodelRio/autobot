@@ -1,6 +1,6 @@
 # ADR-010 — Estructura del repositorio: `apps/` y `deploy/`
 
-**Estado:** aceptada
+**Estado:** sustituida por [ADR-011](ADR-011-estructura-del-repo-v2.md)
 
 ## Contexto
 

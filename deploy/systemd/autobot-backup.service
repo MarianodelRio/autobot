@@ -7,4 +7,4 @@ After=docker.service
 Type=oneshot
 User=deploy
 WorkingDirectory=/srv/autobot
-ExecStart=/srv/autobot/deploy/backup.sh
+ExecStart=/srv/autobot/deploy/scripts/backup.sh

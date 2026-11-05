@@ -57,4 +57,4 @@ jobs:
           HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
-            deploy@"$HOST" "deploy/deploy.sh $SHA"
+            deploy@"$HOST" "deploy/scripts/deploy.sh $SHA"

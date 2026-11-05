@@ -2,21 +2,23 @@
 # Restore a snapshot into this checkout on a fresh VPS or isolated local test.
 # Requires a clean database volume; never overwrites an existing deployment.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 umask 077
+mkdir -p var
 if [[ $# -ne 1 || $1 != --confirm-empty-target ]]; then
-  echo 'Usage: deploy/restore.sh --confirm-empty-target' >&2
+  echo 'Usage: deploy/scripts/restore.sh --confirm-empty-target' >&2
   exit 2
 fi
 project=${AUTOBOT_PROJECT:-autobot}
-compose_file=${AUTOBOT_COMPOSE_FILE:-compose.prod.yaml}
-if [[ -f .deployed-sha ]] || {
-  docker volume inspect "${project}_pgdata" >/dev/null 2>&1 && [[ ! -f .restore-incomplete ]];
+compose_base=${AUTOBOT_COMPOSE_BASE:-deploy/compose/compose.yaml}
+compose_override=${AUTOBOT_COMPOSE_OVERRIDE:-deploy/compose/compose.prod.yaml}
+if [[ -f var/.deployed-sha ]] || {
+  docker volume inspect "${project}_pgdata" >/dev/null 2>&1 && [[ ! -f var/.restore-incomplete ]];
 }; then
   echo 'Existing deployment/database volume; restore only on an empty target' >&2
   exit 1
 fi
-backup_config=${AUTOBOT_BACKUP_CONFIG:-/srv/autobot/backup.env}
+backup_config=${AUTOBOT_BACKUP_CONFIG:-/srv/autobot/var/backup.env}
 if [[ ! -f $backup_config ]]; then
   echo 'Backup configuration is missing' >&2
   exit 1
@@ -32,20 +34,20 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 "$restic_bin" restore latest --tag autobot --target "$stage"
 # Restic restores paths relative to the root of the snapshot. Refuse incomplete backups.
-for file in .env .deployed-sha google_sa.json deploy/caddy/Caddyfile backups/autobot.dump; do
+for file in .env var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile var/backups/autobot.dump; do
   if [[ ! -s $stage/$file ]]; then
     echo "Missing from snapshot: $file" >&2
     exit 1
   fi
 done
 export SHA
-SHA=$(cat "$stage/.deployed-sha")
+SHA=$(cat "$stage/var/.deployed-sha")
 if [[ ! $SHA =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Snapshot has no valid deployed SHA' >&2
   exit 1
 fi
-if [[ -f .restore-incomplete ]]; then
-  if [[ $(cat .restore-incomplete) != "$SHA" ]]; then
+if [[ -f var/.restore-incomplete ]]; then
+  if [[ $(cat var/.restore-incomplete) != "$SHA" ]]; then
     echo 'Partial restore is for another SHA; refusing to mix snapshots' >&2
     exit 1
   fi
@@ -62,22 +64,23 @@ if [[ -f .restore-incomplete ]]; then
     done <<<"$containers"
   done
 fi
-printf '%s\n' "$SHA" >.restore-incomplete
-for file in .env google_sa.json deploy/caddy/Caddyfile; do
-  install -m 600 "$stage/$file" "$file"
-done
-docker compose --project-name "$project" -f "$compose_file" up -d --wait db
-docker compose --project-name "$project" -f "$compose_file" exec -T db \
+printf '%s\n' "$SHA" >var/.restore-incomplete
+mkdir -p var/backups
+install -m 600 "$stage/.env" .env
+install -m 600 "$stage/var/google_sa.json" var/google_sa.json
+install -m 600 "$stage/deploy/caddy/Caddyfile" deploy/caddy/Caddyfile
+docker compose --project-name "$project" -f "$compose_base" -f "$compose_override" up -d --wait db
+docker compose --project-name "$project" -f "$compose_base" -f "$compose_override" exec -T db \
   sh -c 'PGPASSWORD="$FP_OWNER_PASSWORD" exec pg_restore -h 127.0.0.1 -U fp_owner -d autobot --clean --if-exists --no-owner --no-acl' \
-  <"$stage/backups/autobot.dump"
+  <"$stage/var/backups/autobot.dump"
 # pg_restore --no-acl drops the GRANT/REVOKE state; reapply roles and permissions.
-docker compose --project-name "$project" -f "$compose_file" exec -T db \
+docker compose --project-name "$project" -f "$compose_base" -f "$compose_override" exec -T db \
   bash /docker-entrypoint-initdb.d/init-roles.sh
-docker compose --project-name "$project" -f "$compose_file" run --rm web \
+docker compose --project-name "$project" -f "$compose_base" -f "$compose_override" run --rm web \
   python manage.py apply_grants
 if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
-  docker compose --project-name "$project" -f "$compose_file" up -d web worker caddy
+  docker compose --project-name "$project" -f "$compose_base" -f "$compose_override" up -d web worker caddy
 fi
-printf '%s\n' "$SHA" >.deployed-sha
-rm -f .restore-incomplete
+printf '%s\n' "$SHA" >var/.deployed-sha
+rm -f var/.restore-incomplete
 echo 'Restore completed; verify /health and per-tenant counts before DNS switch'
