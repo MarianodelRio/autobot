@@ -1,141 +1,47 @@
 HOST ?= autobot
 NGROK_DOMAIN ?= unpermanently-repairable-devon.ngrok-free.dev
 
-.PHONY: up down test check shell telegram-poll bus-validar bus-formatear bus-revision bus-publicar
-.PHONY: status logs tenant-health qr check-prod-config deploy backup-now restore-test
-.PHONY: db-roles api fix panel-dev panel-check panel-tunnel rollback
+.DEFAULT_GOAL := help
 
-check-prod-config:
-	uv run python apps/backend/tools/check_prod_config.py
+##@ Ayuda
 
-api:
-	uv run python manage.py export_openapi apps/panel/openapi.json
-	pnpm -C apps/panel gen:api
+help: ## Enseña esta ayuda
+	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
-fix:
-	uv run ruff check --fix .
-	uv run ruff format .
-	pnpm -C apps/panel fix
-	$(MAKE) api
+##@ Desarrollo
 
-panel-dev:
-	pnpm -C apps/panel dev
+.PHONY: up down status db-roles logs shell telegram-poll dev-bootstrap dev-reset dev-activity tenant-import ngrok
 
-panel-check:
-	pnpm -C apps/panel check
-	pnpm -C apps/panel typecheck
-	pnpm -C apps/panel test
-	pnpm -C apps/panel build
-
-# SSH tunnel to the panel container's own port (8080), never to `web` directly.
-panel-tunnel:
-	ssh -o ExitOnForwardFailure=yes -N -L 127.0.0.1:18000:127.0.0.1:8080 deploy@$(HOST)
-
-SHA ?= $(shell git rev-parse origin/main)
-
-deploy:
-	@conclusion=$$(gh run list --workflow ci.yml --commit $(SHA) --json conclusion -q '.[0].conclusion'); \
-	if [ "$$conclusion" != success ]; then \
-		echo "CI for $(SHA) is not green (got: '$$conclusion'); refusing to deploy" >&2; \
-		exit 1; \
-	fi
-	gh workflow run deploy.yml -f sha="$(SHA)"
-
-# Reads the last successful deployment's `previous` SHA from the server and redeploys
-# it, with confirmation. Needs the operation SSH key (`~/.ssh/config` alias $(HOST)).
-rollback:
-	@previous=$$(ssh deploy@$(HOST) 'tail -n 50 /srv/autobot/state/ops/deploys.jsonl' | \
-		python3 -c "import json, sys; entries = [json.loads(line) for line in sys.stdin if line.strip()]; deployed = [e for e in entries if e['result'] == 'deployed']; print(deployed[-1]['previous'] if deployed else '')"); \
-	if [ -z "$$previous" ]; then \
-		echo 'No previous successful deployment found to roll back to' >&2; \
-		exit 1; \
-	fi; \
-	read -r -p "Roll back to $$previous? [y/N] " confirm; \
-	[ "$$confirm" = y ] || exit 1; \
-	$(MAKE) deploy SHA=$$previous
-
-backup-now:
-	ssh deploy@$(HOST) /srv/autobot/deploy/backup.sh
-
-restore-test:
-	bash deploy/restore-test.sh
-
-up:
+up: ## Tras el bootstrap, levanta los contenedores
 	docker compose up -d --build
 
-down:
+down: ## Para los contenedores
 	docker compose down
 
-status:
+status: ## docker compose ps
 	docker compose ps
 
 # Creates fp_owner, fp_app and fp_readonly (or updates their passwords) without
 # recreating the db container; needed after adding a role or rotating a password.
-db-roles:
+db-roles: ## Reaplica roles y contraseñas de PostgreSQL sin recrear el contenedor
 	docker compose exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh
 
-logs:
+logs: ## Sigue los logs de un servicio (SERVICE=<servicio>)
 	docker compose logs --tail=100 --follow $(SERVICE)
 
-test:
-	uv run pytest
-
-check:
-	uv run ruff check .
-	uv run ruff format --check .
-	uv run mypy
-	PYTHONPATH=apps/backend uv run lint-imports
-	uv run pytest
-
-shell:
+shell: ## Abre una shell de Django dentro de `web`
 	docker compose exec web python manage.py shell
 
 # Long polling of a tenant's own bot (SLUG=<slug>), e.g. to record Telegram
 # fixtures. Needs the worker running (`make up`) and no webhook set on that bot.
 # Local development of the demo bot's Telegram door uses a webhook through ngrok
 # instead (see docs/runbooks/demo.md), the same mechanism as production.
-telegram-poll:
+telegram-poll: ## Long polling del bot de Telegram de un tenant (SLUG=<slug>)
 	docker compose exec web python manage.py telegram_poll $(SLUG)
 
-# Bus tools operate on ignored exports under datos/<slug>/.
-BUS_TOOL = PYTHONPATH=apps/backend uv run python -m tools
-export TENANT COMMENT PROD
-
-bus-bajar:
-	$(BUS_TOOL).bus_data download
-
-bus-validar:
-	$(BUS_TOOL).bus_validar $(TENANT)
-
-bus-formatear:
-	$(BUS_TOOL).bus_formatear $(TENANT)
-
-bus-revision:
-	$(BUS_TOOL).bus_revision $(TENANT) $(ARGS)
-
-bus-publicar:
-	$(BUS_TOOL).bus_data publish
-
-tenant-health:
-	docker compose exec web python manage.py tenant_health $(SLUG)
-
-# Public QR generated on the developer machine, without containers or secrets.
-qr:
-	PYTHONPATH=apps/backend uv run python -m tools.qr "$(FILE)" $(ARGS)
-
-.PHONY: prod-manage tenant-push bus-bajar
-export HOST SLUG SECRETS
-
-prod-manage:
-	@ssh $(if $(TTY),-t,) deploy@$(HOST) /srv/autobot/deploy/manage.sh $(CMD)
-
-tenant-push:
-	bash apps/backend/tools/tenant_push.sh
-
-.PHONY: dev-bootstrap dev-reset dev-activity tenant-import ngrok
 export DIR
 
-dev-bootstrap:
+dev-bootstrap: ## Prepara BD, roles, migra, siembra demos y levanta web/worker
 	docker compose up -d --wait db
 	$(MAKE) db-roles
 	docker compose build web
@@ -146,16 +52,135 @@ dev-bootstrap:
 		|| docker compose run --rm web python manage.py panel_user create panel
 	docker compose up -d --no-build web worker victorialogs
 
-dev-reset:
+dev-reset: ## Exige escribir RESET, borra el volumen local y repite el bootstrap
 	@read -r -p "Borrar la BD local y reiniciar (escribe RESET): " answer; test "$$answer" = RESET
 	docker compose down -v
 	$(MAKE) dev-bootstrap
 
-dev-activity:
+dev-activity: ## Crea actividad falsa en local para ver el panel con datos
 	docker compose exec web python manage.py seed_dev_activity
 
-tenant-import:
+tenant-import: ## Importa un directorio contra la BD local (DIR=<dir> [SECRETS=<yaml>])
 	bash apps/backend/tools/tenant_import.sh
 
-ngrok:
+ngrok: ## Abre el túnel al puerto 8000 ([NGROK_DOMAIN=<dominio>])
 	ngrok http --domain=$(NGROK_DOMAIN) 8000
+
+##@ Calidad
+
+.PHONY: test check fix api
+
+test: ## uv run pytest
+	uv run pytest
+
+check: ## Puerta de calidad del backend: ruff, mypy, import-linter, pytest
+	uv run ruff check .
+	uv run ruff format --check .
+	uv run mypy
+	PYTHONPATH=apps/backend uv run lint-imports
+	uv run pytest
+
+fix: ## Aplica ruff y biome, y regenera la API del panel
+	uv run ruff check --fix .
+	uv run ruff format .
+	pnpm -C apps/panel fix
+	$(MAKE) api
+
+api: ## Regenera el esquema OpenAPI del panel y sus tipos TypeScript
+	uv run python manage.py export_openapi apps/panel/openapi.json
+	pnpm -C apps/panel gen:api
+
+##@ Panel
+
+.PHONY: panel-dev panel-check panel-tunnel
+
+panel-dev: ## Vite en modo desarrollo, con proxy /api hacia el backend local
+	pnpm -C apps/panel dev
+
+panel-check: ## Puerta de calidad del frontend: biome, tsc, vitest y el build
+	pnpm -C apps/panel check
+	pnpm -C apps/panel typecheck
+	pnpm -C apps/panel test
+	pnpm -C apps/panel build
+
+# SSH tunnel to the panel container's own port (8080), never to `web` directly.
+panel-tunnel: ## Túnel SSH al puerto del contenedor panel en producción ([HOST=<servidor>])
+	ssh -o ExitOnForwardFailure=yes -N -L 127.0.0.1:18000:127.0.0.1:8080 deploy@$(HOST)
+
+##@ Negocios
+
+.PHONY: tenant-health qr check-prod-config tenant-push
+
+tenant-health: ## Comprueba y persiste la salud del pack y del canal (SLUG=<slug>)
+	docker compose exec web python manage.py tenant_health $(SLUG)
+
+# Public QR generated on the developer machine, without containers or secrets.
+qr: ## Genera el QR a partir de un documento exportado (FILE=<document.yaml>)
+	PYTHONPATH=apps/backend uv run python -m tools.qr "$(FILE)" $(ARGS)
+
+check-prod-config: ## Prueba el allowlist de Caddy contra un upstream local
+	uv run python apps/backend/tools/check_prod_config.py
+
+export HOST SLUG SECRETS
+
+tenant-push: ## Exporta la BD local y la importa por SSH (SLUG=<slug> [SECRETS=<yaml>])
+	bash apps/backend/tools/tenant_push.sh
+
+##@ Bus
+
+# Bus tools operate on ignored exports under datos/<slug>/.
+BUS_TOOL = PYTHONPATH=apps/backend uv run python -m tools
+export TENANT COMMENT PROD
+
+.PHONY: bus-bajar bus-validar bus-formatear bus-revision bus-publicar
+
+bus-bajar: ## Exporta el dataset vigente a datos/<slug>/timetable (TENANT=<slug> [PROD=1])
+	$(BUS_TOOL).bus_data download
+
+bus-validar: ## Valida datos/<slug>/timetable (TENANT=<slug>)
+	$(BUS_TOOL).bus_validar $(TENANT)
+
+bus-formatear: ## Realinea las columnas de las tablas de horarios (TENANT=<slug>)
+	$(BUS_TOOL).bus_formatear $(TENANT)
+
+bus-revision: ## Genera HTML/PDF comparando con .publicado (TENANT=<slug> [ARGS="..."])
+	$(BUS_TOOL).bus_revision $(TENANT) $(ARGS)
+
+bus-publicar: ## Publica la copia local validada en BD (TENANT=<slug> COMMENT="..." [PROD=1])
+	$(BUS_TOOL).bus_data publish
+
+##@ Producción
+
+SHA ?= $(shell git rev-parse origin/main)
+
+.PHONY: deploy rollback backup-now restore-test prod-manage
+
+deploy: ## Lanza el despliegue si el CI del SHA está en verde ([SHA=])
+	@conclusion=$$(gh run list --workflow ci.yml --commit $(SHA) --json conclusion -q '.[0].conclusion'); \
+	if [ "$$conclusion" != success ]; then \
+		echo "CI for $(SHA) is not green (got: '$$conclusion'); refusing to deploy" >&2; \
+		exit 1; \
+	fi
+	gh workflow run deploy.yml -f sha="$(SHA)"
+
+# Reads the last successful deployment's `previous` SHA from the server and redeploys
+# it, with confirmation. Needs the operation SSH key (`~/.ssh/config` alias $(HOST)).
+rollback: ## Redespliega el `previous` del último despliegue correcto, con confirmación
+	@previous=$$(ssh deploy@$(HOST) 'tail -n 50 /srv/autobot/state/ops/deploys.jsonl' | \
+		python3 -c "import json, sys; entries = [json.loads(line) for line in sys.stdin if line.strip()]; deployed = [e for e in entries if e['result'] == 'deployed']; print(deployed[-1]['previous'] if deployed else '')"); \
+	if [ -z "$$previous" ]; then \
+		echo 'No previous successful deployment found to roll back to' >&2; \
+		exit 1; \
+	fi; \
+	read -r -p "Roll back to $$previous? [y/N] " confirm; \
+	[ "$$confirm" = y ] || exit 1; \
+	$(MAKE) deploy SHA=$$previous
+
+backup-now: ## Ejecuta deploy/backup.sh en el servidor por SSH
+	ssh deploy@$(HOST) /srv/autobot/deploy/backup.sh
+
+restore-test: ## Simulacro de restauración (bash deploy/restore-test.sh)
+	bash deploy/restore-test.sh
+
+prod-manage: ## Ejecuta un comando de manage.py contra la imagen desplegada (CMD="..." [TTY=1])
+	@ssh $(if $(TTY),-t,) deploy@$(HOST) /srv/autobot/deploy/manage.sh $(CMD)

@@ -1,4 +1,4 @@
-"""Operator actions on ambiguous sends and failed jobs (DESIGN §6.4, §9.7). Used by the
+"""Operator actions on ambiguous sends and failed jobs. Used by the
 panel and by the `outbound_resolve`/`job_retry` commands; previously inline in admin.py."""
 
 from collections.abc import Callable

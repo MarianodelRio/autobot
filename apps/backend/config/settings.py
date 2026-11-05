@@ -90,8 +90,8 @@ DATABASE_ROUTERS = ["autobot.db_router.AuthDatabaseRouter"]
 
 # Three aliases: `default` is fp_app (no BYPASSRLS, no DDL), used by web and worker;
 # `owner` is fp_owner (owns the tables, BYPASSRLS), used only by migrations, operation
-# commands and (from T14) the panel; `readonly` is fp_readonly (NOBYPASSRLS, SELECT only),
-# used only by the panel's SQL console (T22), with CONN_MAX_AGE=0 so nothing from a query
+# commands and the panel; `readonly` is fp_readonly (NOBYPASSRLS, SELECT only),
+# used only by the panel's SQL console, with CONN_MAX_AGE=0 so nothing from a query
 # survives the connection. The worker runs without DB_OWNER_URL or DB_READONLY_URL, so
 # without those aliases. Local defaults match compose.yaml, whose db is published on
 # port 5433.
@@ -125,7 +125,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 OTP_TOTP_ISSUER = "Autobot panel"
 
-# The panel's session (DESIGN §6.2): traffic stays on the SSH tunnel to 127.0.0.1
+# The panel's session: traffic stays on the SSH tunnel to 127.0.0.1
 # (ADR-008), so there is no TLS between the browser and `panel` to require Secure.
 SESSION_COOKIE_NAME = "autobot_panel_session"
 CSRF_COOKIE_NAME = "autobot_panel_csrftoken"

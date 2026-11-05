@@ -15,7 +15,7 @@ export interface NavSection {
   icon: typeof LayoutDashboard;
 }
 
-// DESIGN §9.3: Resumen · Clientes · Actividad · Incidencias (n) · Logs · Datos ·
+// Order: Resumen · Clientes · Actividad · Incidencias (n) · Logs · Datos ·
 // Sistema · ─ · Auditoría · usuario · Salir. The divider before Auditoría is drawn
 // by the sidebar, not encoded here.
 export const NAV_SECTIONS: NavSection[] = [

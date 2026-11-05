@@ -1,4 +1,4 @@
-# Generated for T22 (DESIGN §8.2): a `readonly_all` policy next to every `tenant_isolation`
+# Adds a `readonly_all` policy next to every `tenant_isolation`
 # one, so the SQL console's "every client" mode has no RLS filtering to fight.
 
 from typing import Any

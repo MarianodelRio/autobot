@@ -1,4 +1,4 @@
-"""`GET overview` / `build_overview()`: the Resumen screen's one call (DESIGN §9.4)."""
+"""`GET overview` / `build_overview()`: the Resumen screen's one call."""
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal

@@ -16,7 +16,7 @@ const RELATIVE_STEPS: [limit: number, divisor: number, unit: string][] = [
 ];
 const LAST_STEP: [divisor: number, unit: string] = [86400, "d"];
 
-/** Compact relative time ("hace 12 s", "hace 3 min"), as in the Resumen mockup (DESIGN §9.4). */
+/** Compact relative time ("hace 12 s", "hace 3 min"), used across the Resumen screen. */
 export function formatRelative(
   date: string | Date,
   now: Date = new Date(),

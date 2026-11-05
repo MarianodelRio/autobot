@@ -1,4 +1,4 @@
-"""Fake but realistic panel activity for local development (DESIGN §12). Every row is
+"""Fake but realistic panel activity for local development. Every row is
 written directly, never through a channel adapter: no external service is ever called.
 Everything this command creates is marked (`dev-`/`dev:` prefixes, or a procrastinate
 job argument) so `--reset` removes exactly that and nothing else."""

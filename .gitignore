@@ -11,6 +11,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.import_linter_cache/
 .coverage
 *.sqlite3
 
@@ -34,3 +35,6 @@ state/
 # Config and datasets are exported/imported locally, never tracked.
 /tenants/
 /datos/
+
+# Runtime files (local and server), ahead of the deploy/ reorganization.
+/var/

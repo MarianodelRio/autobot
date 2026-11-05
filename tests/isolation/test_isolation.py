@@ -155,7 +155,7 @@ def parents_of(model: type[models.Model], t: Tenant) -> dict[str, models.Model]:
 def isolation_problems(table: str, column: str = "tenant_id") -> list[str]:
     """What is missing for `table` to be isolated: RLS enabled and forced, exactly
     tenant_isolation (every command, on reads and writes) and readonly_all (the panel's
-    SQL console "every client" mode, T22), and no other policy."""
+    SQL console "every client" mode), and no other policy."""
     with connections["owner"].cursor() as cursor:
         cursor.execute(
             "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = %s",

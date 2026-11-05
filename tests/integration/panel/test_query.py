@@ -1,4 +1,4 @@
-"""Read-only SQL console (DESIGN §8.2): the `readonly_all` policy itself, and the
+"""Read-only SQL console: the `readonly_all` policy itself, and the
 guards and behaviour of `panel.services.query.run`."""
 
 from typing import Any

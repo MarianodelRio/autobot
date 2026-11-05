@@ -1,4 +1,4 @@
-"""`GET packs`, `.../schema` and `.../template` (DESIGN §6.4, §9.5)."""
+"""`GET packs`, `.../schema` and `.../template`."""
 
 from django.http import HttpRequest
 from ninja import Router

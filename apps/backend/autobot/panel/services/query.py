@@ -1,4 +1,4 @@
-"""Read-only SQL console (DESIGN §8.2): a single SELECT through fp_readonly, always
+"""Read-only SQL console: a single SELECT through fp_readonly, always
 rolled back. CONN_MAX_AGE=0 on the `readonly` alias closes the connection after every
 request, so nothing from a query (a GUC, a lingering transaction) can survive it."""
 

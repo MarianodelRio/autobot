@@ -1,5 +1,5 @@
 """Panel login: session + confirmed TOTP, CSRF-checked writes, and the public edge
-and `owner`-less gates (DESIGN §3.2, §6.2). Every request names its host explicitly:
+and `owner`-less gates. Every request names its host explicitly:
 the panel is only ever reached at 127.0.0.1, through the SSH tunnel (ADR-008)."""
 
 import hashlib

@@ -8,7 +8,7 @@ import { queryClient } from "@/lib/query-client";
 import { router } from "@/router";
 import "./styles/globals.css";
 
-// Sets the CSRF cookie the login form will need (DESIGN §6.2); nothing in the UI
+// Sets the CSRF cookie the login form will need; nothing in the UI
 // depends on the result, so no need to await it before rendering.
 fetchCsrf().catch(() => {});
 

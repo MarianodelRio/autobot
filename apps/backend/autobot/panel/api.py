@@ -1,7 +1,6 @@
-"""The panel's NinjaAPI (DESIGN §6.1, §6.3): mounts routers and shapes every error as
+"""The panel's NinjaAPI: mounts routers and shapes every error as
 `{"code", "message", "details"}`, except auth/CSRF failures, which keep django-ninja's
-own `{"detail": ...}` shape (DESIGN doesn't ask otherwise, and the frontend only needs
-the status code there)."""
+own `{"detail": ...}` shape (the frontend only needs the status code there)."""
 
 from django.http import Http404, HttpRequest, HttpResponse
 from ninja import NinjaAPI

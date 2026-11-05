@@ -1,4 +1,4 @@
-"""Persisted operation alerts (DESIGN §7.1): `ops_alert`, no RLS by design (ADR-009),
+"""Persisted operation alerts: `ops_alert`, no RLS by design (ADR-009),
 and `purge_platform_history(cutoff)`, a SECURITY DEFINER function that lets `fp_app`
 (no DELETE on `ops_alert` or `audit_event`) erase old platform history without
 `BYPASSRLS`.

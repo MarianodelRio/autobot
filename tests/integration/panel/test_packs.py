@@ -1,4 +1,4 @@
-"""`GET packs`, `.../schema` and `.../template` through the HTTP API (DESIGN §6.4)."""
+"""`GET packs`, `.../schema` and `.../template` through the HTTP API."""
 
 from typing import Any
 

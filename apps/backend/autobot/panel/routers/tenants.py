@@ -1,5 +1,5 @@
 """Tenant reads: ficha, history, datasets, secrets status, activation, summary,
-notifications and on-demand health (DESIGN §6.4; T16a)."""
+notifications and on-demand health."""
 
 from typing import Any, Literal, cast
 

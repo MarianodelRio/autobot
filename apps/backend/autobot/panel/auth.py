@@ -1,4 +1,4 @@
-"""Panel authentication: session + confirmed TOTP, CSRF-checked writes (DESIGN §6.2).
+"""Panel authentication: session + confirmed TOTP, CSRF-checked writes.
 django-ninja's `APIKeyCookie` already rejects unsafe methods without a valid
 `X-CSRFToken`; neither class below repeats that check."""
 

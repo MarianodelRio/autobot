@@ -1,5 +1,5 @@
 """`document_schema`/`ui_schema` combine `TenantDocument` with each real pack's own
-config schema (DESIGN §9.5); no DB needed, so this runs against `packs.registry.PACKS`
+config schema; no DB needed, so this runs against `packs.registry.PACKS`
 directly, not the `toy` pack the other panel tests monkeypatch in."""
 
 from typing import Any

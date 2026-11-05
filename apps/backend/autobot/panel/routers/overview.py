@@ -1,4 +1,4 @@
-"""`GET overview` (DESIGN §6.4, §9.4): the Resumen screen's one call."""
+"""`GET overview`: the Resumen screen's one call."""
 
 from django.http import HttpRequest
 from ninja import Router

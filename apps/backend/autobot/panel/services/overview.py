@@ -1,11 +1,11 @@
-"""`GET overview`: the whole Resumen screen in one call (DESIGN §9.4).
+"""`GET overview`: the whole Resumen screen in one call.
 
-Every query here crosses tenants, so it runs `.using("owner")` explicitly (DESIGN
-§3.3) — this is panel service code, not a tenant's own request. Figures grouped by
-tenant are grouped by `tenant_id` in SQL, never fetched one tenant at a time; the one
-exception is the handful of queries repeated per distinct tenant timezone (DESIGN
-§6.3: "mes en curso" uses each tenant's own zone for its own figures), bounded by how
-many timezones are actually in use, not by how many tenants there are.
+Every query here crosses tenants, so it runs `.using("owner")` explicitly — this is
+panel service code, not a tenant's own request. Figures grouped by tenant are grouped
+by `tenant_id` in SQL, never fetched one tenant at a time; the one exception is the
+handful of queries repeated per distinct tenant timezone ("mes en curso" uses each
+tenant's own zone for its own figures), bounded by how many timezones are actually in
+use, not by how many tenants there are.
 """
 
 from collections import defaultdict

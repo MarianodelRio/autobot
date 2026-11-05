@@ -1,4 +1,4 @@
-"""Audit log of every write the panel and the operator commands make (DESIGN §6.5)."""
+"""Audit log of every write the panel and the operator commands make."""
 
 from typing import Any
 from uuid import UUID

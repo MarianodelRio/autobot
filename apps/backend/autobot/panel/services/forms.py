@@ -1,4 +1,4 @@
-"""Packs and the generated form of a tenant document (DESIGN §6.4, §9.5)."""
+"""Packs and the generated form of a tenant document."""
 
 import copy
 from dataclasses import dataclass
@@ -78,7 +78,7 @@ def _prefix_refs(node: Any, prefix: str) -> Any:
 def document_schema(pack_name: str) -> dict[str, Any]:
     """`TenantDocument.model_json_schema()`, with `config` replaced by the pack's own
     schema; both sets of `$defs` are merged under distinct prefixes so they never
-    collide (DESIGN §9.5)."""
+    collide."""
     pack = _pack(pack_name)
     document = TenantDocument.model_json_schema()
     config = pack.config_schema.model_json_schema()

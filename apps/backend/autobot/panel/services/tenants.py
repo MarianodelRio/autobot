@@ -1,5 +1,5 @@
 """A tenant's own data: ficha, history, datasets, secrets status, activation,
-summary, notifications and on-demand health (DESIGN §6.4, §9.4; ADR-009).
+summary, notifications and on-demand health (ADR-009).
 
 Every read here is scoped to one tenant; `tenant_tx` is used where the query reuses
 platform code that already opens one (`activation.checklist`, `runtime.summary.

@@ -1,4 +1,4 @@
-"""`tenants/*` read-only routes (DESIGN §6.4; T16a). Uses the `tenants` fixture
+"""`tenants/*` read-only routes. Uses the `tenants` fixture
 (`tests/integration/conftest.py`), which registers the `toy` pack."""
 
 from datetime import UTC, datetime

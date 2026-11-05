@@ -202,7 +202,7 @@ async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
         log.warning("retrying stalled job %s (%s)", job.id, job.task_name)
         try:
             await manager.retry_job(job)
-        except Exception as e:  # it changed meanwhile (e.g. retried from the Admin)
+        except Exception as e:  # it changed meanwhile (e.g. retried from the panel or `job_retry`)
             log.warning("stalled job %s not retried: %s", job.id, type(e).__name__)
 
 

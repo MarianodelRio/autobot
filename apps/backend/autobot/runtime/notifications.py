@@ -29,7 +29,7 @@ from core.serialization import Outbound
 log = logging.getLogger(__name__)
 COOLDOWN_S = 30 * 60
 # Alerts that only a person resolves from the panel; every other kind self-resolves
-# once ops/check.py stops finding it (DESIGN §7.1).
+# once ops/check.py stops finding it.
 MANUAL_KINDS = frozenset({"deploy_aborted", "deploy_rollback"})
 _SEVERITY_BY_EMOJI = {"🔴": "critical", "🟠": "warning", "🟡": "notice", "🟢": "info"}
 

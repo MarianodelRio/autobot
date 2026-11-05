@@ -28,7 +28,7 @@ export function Timeline({
         }),
       ),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
-    // DESIGN §9.7: only the first page refreshes, so "Cargar más" keeps its place.
+    // Only the first page refreshes, so "Cargar más" keeps its place.
     refetchInterval: (q) =>
       (q.state.data?.pages.length ?? 0) <= 1 ? 15_000 : false,
   });

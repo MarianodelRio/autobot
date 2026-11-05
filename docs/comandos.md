@@ -7,6 +7,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 
 | Comando | Qué hace |
 |---|---|
+| `make help` | Lista los objetivos por sección (Desarrollo, Calidad, Panel, Negocios, Bus, Producción); objetivo por defecto |
 | `make up` | Tras el bootstrap, levanta los contenedores (`docker compose up -d --build`) |
 | `make dev-bootstrap` | Prepara db y roles, construye la imagen local con herramientas dev, migra, reaplica permisos, siembra demos y levanta web/worker; se puede repetir |
 | `make dev-reset` | Exige escribir `RESET`, elimina el volumen local y repite el bootstrap |
@@ -31,7 +32,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make check-prod-config` | Ejecuta `apps/backend/tools/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
 | `make api` | Regenera `apps/panel/openapi.json` (esquema de la API del panel) y `apps/panel/src/api/schema.d.ts` (tipos TypeScript) |
 | `make fix` | `ruff check --fix` y `ruff format` en el backend, `biome check --write` en `apps/panel/`, y `make api` |
-| `make panel-dev` | `pnpm -C panel dev`: Vite en modo desarrollo, con proxy `/api` hacia el backend local |
+| `make panel-dev` | `pnpm -C apps/panel dev`: Vite en modo desarrollo, con proxy `/api` hacia el backend local |
 | `make panel-check` | Puerta de calidad del frontend: `biome check`, `tsc -b --noEmit`, `vitest run` y el build de producción |
 | `make panel-tunnel [HOST=<servidor>]` | Túnel SSH al puerto del contenedor `panel` en producción (8080→18000 local); nunca a `web` directamente |
 | `make deploy [SHA=]` | Sin `SHA`, usa `origin/main`; comprueba con `gh` que su CI está en verde y lanza el workflow de despliegue |

@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CodeEditorLanguage } from "./code-editor-inner";
 
-// Lazily loaded (DESIGN §9.2): CodeMirror is only needed on the config editor and
+// Lazily loaded: CodeMirror is only needed on the config editor and
 // the SQL console, not on every other screen.
 const CodeEditorInner = lazy(() => import("./code-editor-inner"));
 

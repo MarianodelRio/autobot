@@ -1,4 +1,4 @@
-"""Ships structured logs to VictoriaLogs (DESIGN §7.3): never blocks, never raises,
+"""Ships structured logs to VictoriaLogs: never blocks, never raises,
 and never logs through `logging` itself (that would recurse back into this handler)."""
 
 import atexit

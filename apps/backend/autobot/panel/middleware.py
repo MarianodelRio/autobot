@@ -1,4 +1,4 @@
-"""PanelGateMiddleware (DESIGN §3.2, point 5): keeps `/api/panel/` unreachable from the
+"""PanelGateMiddleware (ADR-008): keeps `/api/panel/` unreachable from the
 public edge, and inert on a process without the `owner` alias. Runs before
 `SessionMiddleware`, so a request that fails here never touches the session."""
 

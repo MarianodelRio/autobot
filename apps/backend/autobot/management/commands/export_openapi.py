@@ -1,4 +1,4 @@
-"""Writes the panel API's OpenAPI schema (DESIGN §6.3); `make api` keeps it committed
+"""Writes the panel API's OpenAPI schema; `make api` keeps it committed
 and in sync, and CI fails if it isn't."""
 
 import json

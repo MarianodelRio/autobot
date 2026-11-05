@@ -19,7 +19,7 @@ CONFIG_TABLES: tuple[str, ...] = (
     "tenant_secret",
     "config_revision",
 )
-# Django's own auth/session/OTP tables (T14): routed to fp_owner by AuthDatabaseRouter.
+# Django's own auth/session/OTP tables: routed to fp_owner by AuthDatabaseRouter.
 # fp_app has no business with them at all, unlike CONFIG_TABLES (no SELECT either).
 AUTH_TABLES: tuple[str, ...] = (
     "auth_user",

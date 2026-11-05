@@ -1,4 +1,4 @@
-"""System samples (DESIGN §7.4), taken every five minutes by ops/check.py: no RLS by
+"""System samples, taken every five minutes by ops/check.py: no RLS by
 design (ADR-009), since they describe the host, not a tenant. `fp_app` keeps its
 default privileges (it also deletes the ones older than 62 days)."""
 

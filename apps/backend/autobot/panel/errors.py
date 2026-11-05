@@ -1,4 +1,4 @@
-"""Unified API error shape (DESIGN §6.3): `{"code", "message", "details"}`."""
+"""Unified API error shape: `{"code", "message", "details"}`."""
 
 
 class ApiError(Exception):

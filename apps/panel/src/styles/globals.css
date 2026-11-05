@@ -6,7 +6,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Single dark theme (DESIGN §9.3): `.dark` is always on `<html>`, so `:root`
+/* Single dark theme: `.dark` is always on `<html>`, so `:root`
    carries the same values as a safe fallback. */
 :root,
 .dark {
@@ -36,7 +36,7 @@
   --chart-4: #f87171;
   --chart-5: #38bdf8;
 
-  /* Health levels (DESIGN §7.5), used by status-badge. */
+  /* Health levels, used by status-badge. */
   --status-ok: #34d399;
   --status-notice: #38bdf8;
   --status-warning: #fbbf24;

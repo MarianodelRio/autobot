@@ -1,4 +1,4 @@
-"""A tenant channel's public link (DESIGN §9.4): `wa.me/<display_phone>` or
+"""A tenant channel's public link: `wa.me/<display_phone>` or
 `t.me/<bot_username>`. Shared by the panel (`GET tenants/{slug}`) and the operator's
 `tools/qr.py`, so both show the same link."""
 

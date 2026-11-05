@@ -1,4 +1,4 @@
-"""Manages the panel's single operator role (DESIGN §6.2): a `User` with `is_staff` and
+"""Manages the panel's single operator role: a `User` with `is_staff` and
 a confirmed `TOTPDevice`. Run on the server with `make prod-manage TTY=1
 CMD="panel_user create <usuario>"`."""
 
