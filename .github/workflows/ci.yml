@@ -83,7 +83,8 @@ jobs:
         working-directory: apps/backend
         run: PYTHONPATH=src uv run lint-imports
       - name: pytest
-        run: uv run --project apps/backend pytest -c apps/backend/pyproject.toml --confcutdir=.
+        working-directory: apps/backend
+        run: uv run pytest
       - name: Migrations
         working-directory: apps/backend
         run: |

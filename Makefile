@@ -3,13 +3,11 @@ NGROK_DOMAIN ?= unpermanently-repairable-devon.ngrok-free.dev
 
 .DEFAULT_GOAL := help
 
-# apps/backend is self-contained (its own pyproject.toml, uv.lock, .venv); backend
-# tooling that only touches apps/backend runs from inside it, while targets whose
-# relative paths (datos/, tenants/, var/) are anchored at the repo root run from here
-# with --project. Tests still live at the repo root until they move in a later phase,
-# so the test target needs --confcutdir to pick up the root conftest.py too.
+# apps/backend is self-contained (its own pyproject.toml, uv.lock, .venv, tests/);
+# backend tooling runs from inside it, while targets whose relative paths (datos/,
+# tenants/, var/) are anchored at the repo root run from here with --project.
 BACKEND = cd apps/backend &&
-PYTEST = uv run --project apps/backend pytest -c apps/backend/pyproject.toml --confcutdir=.
+PYTEST = $(BACKEND) uv run pytest
 
 ##@ Ayuda
 
@@ -76,10 +74,13 @@ ngrok: ## Abre el túnel al puerto 8000 ([NGROK_DOMAIN=<dominio>])
 
 ##@ Calidad
 
-.PHONY: test check fix api
+.PHONY: test test-fast check fix api
 
 test: ## uv run pytest
 	$(PYTEST)
+
+test-fast: ## pytest -m "not db", sin base de datos levantada
+	$(PYTEST) -m "not db"
 
 check: ## Puerta de calidad del backend: ruff, mypy, import-linter, pytest
 	$(BACKEND) uv run ruff check .

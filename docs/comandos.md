@@ -20,6 +20,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make logs SERVICE=<servicio>` | Sigue los logs de un servicio (`docker compose logs --tail=100 --follow`) |
 | `make shell` | Abre una shell de Django dentro de `web` |
 | `make test` | `uv run pytest` |
+| `make test-fast` | `pytest -m "not db"`, sin base de datos levantada |
 | `make check` | Puerta de calidad del backend: `ruff check`, `ruff format --check`, `mypy`, `import-linter`, `pytest` |
 | `make telegram-poll SLUG=<slug>` | *Long polling* del bot de Telegram de un tenant (o `notify`), para desarrollo local sin webhook |
 | `make bus-bajar TENANT=<slug> [PROD=1]` | Exporta el dataset vigente a `datos/<slug>/timetable` y `.publicado/timetable`; sustituye ambas copias locales |

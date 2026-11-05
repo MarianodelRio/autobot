@@ -43,7 +43,7 @@ package = false
 [tool.ruff]
 line-length = 100
 target-version = "py314"
-src = ["src", "../../tests"]
+src = ["src", "tests"]
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
@@ -58,7 +58,7 @@ mypy_path = "src"
 strict = true
 plugins = ["mypy_django_plugin.main"]
 explicit_package_bases = true
-files = ["src", "../../tests", "manage.py"]
+files = ["src", "tests", "manage.py"]
 
 [tool.django-stubs]
 django_settings_module = "config.settings"
@@ -66,8 +66,12 @@ django_settings_module = "config.settings"
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"
 pythonpath = ["src"]
-testpaths = ["../../tests", "src"]
+testpaths = ["tests"]
 addopts = "--strict-markers"
+markers = [
+    "db: needs PostgreSQL (applied automatically to anything requesting django_db)",
+    "contract: contract test against a simulated external provider",
+]
 
 # Module dependency rules. Run with `PYTHONPATH=src lint-imports` from apps/backend.
 [tool.importlinter]
