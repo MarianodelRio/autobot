@@ -129,7 +129,7 @@ def main() -> None:
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1)
                 break
-            except (urllib.error.URLError, TimeoutError, ConnectionError):
+            except urllib.error.URLError, TimeoutError, ConnectionError:
                 time.sleep(0.3)
         else:
             raise RuntimeError("Caddy/upstream did not start")
