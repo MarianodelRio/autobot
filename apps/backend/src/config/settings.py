@@ -67,8 +67,9 @@ if importlib.util.find_spec("django_migration_linter"):
     MIGRATION_LINTER_OPTIONS = {
         "exclude_apps": ["procrastinate", "otp_totp"],
         # Drops the retired test-bot tables: approved by the person (2026-10-26,
-        # see ADR-006).
-        "ignore_name": ["0008_demo_channels"],
+        # see ADR-006). Drops saved_query (the panel's retired saved queries):
+        # approved by the person (2026-11-08).
+        "ignore_name": ["0008_demo_channels", "0020_delete_savedquery"],
     }
 
 MIDDLEWARE = [
