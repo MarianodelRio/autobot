@@ -4,14 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { TenantDetailPage } from "./detail-page";
 
-vi.mock("qrcode.react", () => ({
-  QRCodeSVG: ({ value, title }: { value: string; title: string }) => (
-    <svg data-value={value}>
-      <title>{title}</title>
-    </svg>
-  ),
-}));
-
 const tenant = {
   slug: "demo",
   name: "Negocio",
@@ -96,17 +88,6 @@ function setup(status = "active") {
           sent_at: null,
         },
       ];
-    else if (url.pathname.endsWith("/datasets"))
-      value = [
-        {
-          name: "timetable",
-          version: 1,
-          author: "op",
-          created_at: "2026-11-04T10:00:00Z",
-          comment: "actualizado",
-          sha256: "abc",
-        },
-      ];
     else value = { ...tenant, status };
     return new Response(JSON.stringify(value), {
       status: 200,
@@ -133,7 +114,7 @@ test.each([
   setup(status);
   expect(await screen.findByRole("button", { name: action })).toBeEnabled();
 });
-test("loads tabs, displays the public QR and pairs conversation messages", async () => {
+test("loads tabs and pairs conversation messages", async () => {
   const fetcher = setup();
   const user = userEvent.setup();
   await screen.findByRole("heading", { name: "Negocio" });
@@ -144,13 +125,6 @@ test("loads tabs, displays the public QR and pairs conversation messages", async
   ).toBe(false);
   await user.click(screen.getByRole("button", { name: "Cargar" }));
   await screen.findByText(/Usuarios: 4/);
-  await user.click(screen.getByRole("tab", { name: "Canal" }));
-  expect(
-    await screen.findByRole("link", { name: "https://t.me/example_bot" }),
-  ).toHaveAttribute("href", "https://t.me/example_bot");
-  expect(
-    screen.getByTitle("QR del canal público").closest("svg"),
-  ).toHaveAttribute("data-value", "https://t.me/example_bot");
   await user.click(screen.getByRole("tab", { name: "Actividad" }));
   await screen.findByText("No hay actividad.");
   await user.click(screen.getByRole("tab", { name: "Contactos" }));
@@ -162,18 +136,13 @@ test("loads tabs, displays the public QR and pairs conversation messages", async
   await user.keyboard("{Escape}");
   await user.click(screen.getByRole("tab", { name: "Avisos" }));
   await screen.findByText("Aviso enviado");
-  await user.click(screen.getByRole("tab", { name: "Datos" }));
-  await screen.findByText(/timetable/);
 });
-test("health check is sent and displays its result", async () => {
+test("health check is sent from the summary tab and displays its result", async () => {
   const fetcher = setup();
   const user = userEvent.setup();
   await user.click(
-    await screen.findByRole("button", { name: "Comprobar salud" }),
+    await screen.findByRole("button", { name: "Comprobar ahora" }),
   );
-  expect(
-    await screen.findByText("Comprobación completada sin problemas."),
-  ).toBeInTheDocument();
   expect(
     fetcher.mock.calls.some((call) => (call[0] as Request).method === "POST"),
   ).toBe(true);

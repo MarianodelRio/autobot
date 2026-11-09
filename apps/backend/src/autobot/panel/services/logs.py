@@ -10,7 +10,6 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
-from zoneinfo import ZoneInfo
 
 import httpx
 from django.conf import settings
@@ -19,8 +18,6 @@ from ninja import Schema
 
 from autobot.panel.errors import ApiError
 from autobot.tenancy.models import Tenant
-
-MADRID = ZoneInfo("Europe/Madrid")
 
 
 class LogFilters(Schema):
@@ -46,7 +43,7 @@ def quote(value: str) -> str:
 
 def prepare(filters: LogFilters) -> tuple[LogFilters, bool]:
     now = timezone.now()
-    boundary = now.astimezone(MADRID).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    boundary = now - timedelta(days=31)
     end = filters.end or now
     start = filters.start or end - timedelta(hours=1)
     if start.utcoffset() is None or end.utcoffset() is None:

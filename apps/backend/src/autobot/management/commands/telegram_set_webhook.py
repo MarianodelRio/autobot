@@ -5,12 +5,10 @@ PUBLIC_URL."""
 
 from typing import Any
 
-import httpx
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
-from autobot.channels.telegram.adapter import TelegramApiError, call
-from autobot.channels.telegram.polling import ALLOWED_UPDATES, source
+from autobot.channels.telegram.polling import source
+from autobot.channels.telegram.registration import WebhookError, register_webhook, remove_webhook
 
 
 class Command(BaseCommand):
@@ -24,32 +22,11 @@ class Command(BaseCommand):
         target = options["target"]
         slug = None if target == "demo" else target
         try:
-            bot = source(slug)
-        except ValueError as e:
+            if options["delete"]:
+                remove_webhook(slug)
+                self.stdout.write(f"Webhook of {source(slug).name} deleted.")
+                return
+            url = register_webhook(slug)
+        except (ValueError, WebhookError) as e:
             raise CommandError(str(e)) from None
-        with httpx.Client() as client:
-            try:
-                if options["delete"]:
-                    call(client, bot.secrets, "deleteWebhook", {})
-                    self.stdout.write(f"Webhook of {bot.name} deleted.")
-                    return
-                url = self._url(bot.webhook_path)
-                if slug is None and not settings.DEMO_TELEGRAM_WEBHOOK_SECRET:
-                    raise CommandError("DEMO_TELEGRAM_WEBHOOK_SECRET is not set")
-                if target == "notify" and not settings.NOTIFY_BOT_WEBHOOK_SECRET:
-                    raise CommandError("NOTIFY_BOT_WEBHOOK_SECRET is not set")
-                params = {
-                    "url": url,
-                    "secret_token": bot.secrets.webhook_secret.get_secret_value(),
-                    "allowed_updates": ALLOWED_UPDATES,
-                }
-                call(client, bot.secrets, "setWebhook", params)
-            except TelegramApiError as e:
-                raise CommandError(f"Telegram refused it: {e}") from None
-        self.stdout.write(f"Webhook of {bot.name} set to {url}")
-
-    def _url(self, webhook_path: str) -> str:
-        base = settings.PUBLIC_URL.rstrip("/")
-        if not base:
-            raise CommandError("PUBLIC_URL is not set (e.g. https://api.<dominio>)")
-        return f"{base}/{webhook_path}"
+        self.stdout.write(f"Webhook of {source(slug).name} set to {url}")

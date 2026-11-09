@@ -416,7 +416,12 @@ def set_secrets(slug: str, *, secrets: Mapping[str, str], actor: str) -> None:
     channel = _document(current.document).get("channel")
     if channel is None or current.document.get("demo") is not None:
         raise StoreError("bad_request", "Un demo no admite secretos de canal")
-    raw = _secrets(channel["type"], secrets)
+    # Partial substitution: blank or absent fields keep the currently readable
+    # secrets. If a field is missing from both, validation below rejects it.
+    provided = {name: value for name, value in secrets.items() if value}
+    existing = current.secrets or {}
+    merged = {**existing, **provided}
+    raw = _secrets(channel["type"], merged)
     candidate = replace(current, secrets=raw, secrets_error=None)
     _validate(candidate, sources)
     _write_secret(candidate, raw, actor)

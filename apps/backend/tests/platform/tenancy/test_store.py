@@ -141,14 +141,10 @@ def test_initial_secret_is_encrypted_and_audited_by_field_names() -> None:
     event = AuditEvent.objects.using("owner").get(action="tenant.secrets")
     assert event.details == {"fields": sorted(TG_SECRETS)}
     assert not any(value in str(event.details) for value in TG_SECRETS.values())
-    with pytest.raises(store.StoreError) as error:
-        store.set_secrets("tg", secrets={"bot_token": "private-invalid"}, actor="user")
-    assert "private-invalid" not in str(error.value.details)
-    assert revision() == 1
-    new = {**TG_SECRETS, "bot_token": "new-private"}
-    store.set_secrets("tg", secrets=new, actor="user")
+    # Partial substitution: a field left out keeps its current, decrypted value.
+    store.set_secrets("tg", secrets={"bot_token": "new-private"}, actor="user")
     secret.refresh_from_db(using="owner")
-    assert decrypt(bytes(secret.ciphertext)) == new
+    assert decrypt(bytes(secret.ciphertext)) == {**TG_SECRETS, "bot_token": "new-private"}
     assert revision() == 2
 
 

@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { api, unwrap } from "@/api/client";
 import { ErrorState } from "@/components/error-state";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -17,7 +16,6 @@ import { errorMessage } from "@/lib/errors";
 import { formatBytes, formatNumber } from "@/lib/format";
 
 export function TableDetailPage({ table }: { table: string }) {
-  const navigate = useNavigate();
   const query = useQuery({
     queryKey: ["data-table", table],
     queryFn: () =>
@@ -36,22 +34,12 @@ export function TableDetailPage({ table }: { table: string }) {
   const detail = query.data;
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={detail.name}
-        description={detail.description}
-        actions={
-          <Button
-            onClick={() =>
-              void navigate({
-                to: "/datos/consulta",
-                search: { sql: `SELECT * FROM "${detail.name}" LIMIT 100` },
-              })
-            }
-          >
-            Consultar esta tabla
-          </Button>
-        }
-      />
+      <div>
+        <Link to="/datos" className="text-sm underline">
+          ← Datos
+        </Link>
+      </div>
+      <PageHeader title={detail.name} description={detail.description} />
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         <Badge variant="outline">Escrita por: {detail.written_by}</Badge>
         <Badge variant="outline">Retención: {detail.retention}</Badge>
@@ -91,36 +79,48 @@ export function TableDetailPage({ table }: { table: string }) {
         </Table>
       </section>
 
-      {(detail.incoming.length > 0 || detail.outgoing.length > 0) && (
+      {detail.outgoing.length > 0 && (
         <section>
-          <h2 className="mb-2 font-semibold">Relaciones</h2>
+          <h2 className="mb-2 font-semibold">Apunta a</h2>
           <ul className="space-y-1 text-sm">
-            {detail.outgoing.map((relation) => (
-              <li key={relation.name}>
-                {relation.columns.join(", ")} →{" "}
-                <Link
-                  className="underline"
-                  to="/datos/$table"
-                  params={{ table: relation.target }}
-                >
-                  {relation.target}
-                </Link>{" "}
-                ({relation.target_columns.join(", ")})
-              </li>
-            ))}
-            {detail.incoming.map((relation) => (
-              <li key={relation.name}>
-                <Link
-                  className="underline"
-                  to="/datos/$table"
-                  params={{ table: relation.source }}
-                >
-                  {relation.source}
-                </Link>{" "}
-                → {relation.columns.join(", ")} (
-                {relation.target_columns.join(", ")})
-              </li>
-            ))}
+            {detail.outgoing.map((relation) =>
+              relation.columns.map((column, index) => (
+                <li key={`${relation.name}-${column}`}>
+                  <code>{column}</code> →{" "}
+                  <Link
+                    className="underline"
+                    to="/datos/$table"
+                    params={{ table: relation.target }}
+                  >
+                    {relation.target}
+                  </Link>
+                  <code>.{relation.target_columns[index]}</code>
+                </li>
+              )),
+            )}
+          </ul>
+        </section>
+      )}
+
+      {detail.incoming.length > 0 && (
+        <section>
+          <h2 className="mb-2 font-semibold">La usan</h2>
+          <ul className="space-y-1 text-sm">
+            {detail.incoming.map((relation) =>
+              relation.target_columns.map((column, index) => (
+                <li key={`${relation.name}-${column}`}>
+                  <code>{column}</code> →{" "}
+                  <Link
+                    className="underline"
+                    to="/datos/$table"
+                    params={{ table: relation.source }}
+                  >
+                    {relation.source}
+                  </Link>
+                  <code>.{relation.columns[index]}</code>
+                </li>
+              )),
+            )}
           </ul>
         </section>
       )}

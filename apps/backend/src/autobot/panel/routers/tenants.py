@@ -29,7 +29,7 @@ class CreateTenantIn(Schema):
 class DocumentIn(Schema):
     document: dict[str, Any]
     base_version: int
-    comment: str
+    comment: str = ""
 
 
 class RollbackIn(Schema):
@@ -44,6 +44,10 @@ class StatusIn(Schema):
 
 class SecretsIn(Schema):
     secrets: dict[str, str]
+
+
+class DeleteTenantIn(Schema):
+    confirm_slug: str
 
 
 class VersionOut(Schema):
@@ -71,9 +75,9 @@ def create_tenant(request: HttpRequest, payload: CreateTenantIn) -> VersionOut:
 
 @router.put("/tenants/{slug}/document", response=VersionOut)
 def publish_document(request: HttpRequest, slug: str, payload: DocumentIn) -> VersionOut:
-    return VersionOut(
-        version=store.publish(slug, actor=request.user.username, **payload.model_dump())
-    )
+    data = payload.model_dump()
+    data["comment"] = data["comment"].strip() or "Edición desde el panel"
+    return VersionOut(version=store.publish(slug, actor=request.user.username, **data))
 
 
 @router.post("/tenants/{slug}/rollback", response=VersionOut)
@@ -123,11 +127,6 @@ def tenant_version(request: HttpRequest, slug: str, version: int) -> service.Ver
     return service.tenant_version(slug, version)
 
 
-@router.get("/tenants/{slug}/datasets", response=list[service.DatasetVersionOut])
-def tenant_datasets(request: HttpRequest, slug: str) -> list[service.DatasetVersionOut]:
-    return service.tenant_datasets(slug)
-
-
 @router.get("/tenants/{slug}/secrets", response=service.SecretsStatus)
 def tenant_secrets(request: HttpRequest, slug: str) -> service.SecretsStatus:
     return service.tenant_secrets(slug)
@@ -151,3 +150,20 @@ def tenant_notifications(request: HttpRequest, slug: str) -> list[service.Notifi
 @router.post("/tenants/{slug}/health-check", response=list[service.HealthIssueOut])
 def tenant_health_check(request: HttpRequest, slug: str) -> list[service.HealthIssueOut]:
     return service.tenant_health_check(slug)
+
+
+@router.post("/tenants/{slug}/telegram-webhook", response=service.WebhookRegisterOut)
+def telegram_set_webhook(request: HttpRequest, slug: str) -> service.WebhookRegisterOut:
+    return service.telegram_set_webhook(slug, actor=request.user.username)
+
+
+@router.post("/tenants/{slug}/owner-invite", response=service.OwnerInviteOut)
+def tenant_owner_invite(request: HttpRequest, slug: str) -> service.OwnerInviteOut:
+    return service.tenant_owner_invite(slug, actor=request.user.username)
+
+
+@router.post("/tenants/{slug}/delete", response=service.DeleteTenantOut)
+def delete_tenant(
+    request: HttpRequest, slug: str, payload: DeleteTenantIn
+) -> service.DeleteTenantOut:
+    return service.delete_tenant(slug, payload.confirm_slug, actor=request.user.username)

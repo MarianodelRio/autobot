@@ -15,14 +15,14 @@ ops llegó.
 `make deploy SHA=<sha-completo>` (comprueba antes que su CI está en verde) y aprueba
 el job en el entorno `production`. No reviertas migraciones: deben ser compatibles
 hacia atrás. Si la causa fue una configuración de tenant, publica una versión anterior
-desde el historial del panel (`POST /tenants/{slug}/rollback`) o con `tenant_config
-import`; no hace falta un SHA nuevo. No cambies webhooks de canales reales sin
-autorización.
+con `POST /tenants/{slug}/rollback` o con `tenant_config import`; no hace falta un
+SHA nuevo. El panel ya no muestra el historial en pantalla, pero esos endpoints se
+conservan. No cambies webhooks de canales reales sin autorización.
 
 **Verificación:** `var/.deployed-sha` coincide con el SHA sano, `/health` devuelve
 200, la cola continúa y una consulta por el bot de demo funciona.
 
 La configuración de negocios no vuelve atrás al desplegar otra imagen: está versionada
-en PostgreSQL. Para recuperarla se publica una versión anterior desde el historial del
-panel (`POST /tenants/{slug}/rollback`) o se importa un documento exportado con
+en PostgreSQL. Para recuperarla se publica una versión anterior con
+`POST /tenants/{slug}/rollback` o se importa un documento exportado con
 `tenant_config import <dir> --comment "Recuperación"`, conservando identidad y estado.

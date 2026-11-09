@@ -40,16 +40,25 @@ un evento de la puerta (`demo_tg`/`demo_wa`) del negocio (`provider_event_id` o
 persona. Los eventos del selector sin negocio atribuido son datos de plataforma y
 caducan a los siete días (treinta para las sesiones); no se borran por compartir
 remitente con eventos de otro negocio. `tenant_purge` aplica la misma regla de
-asociación y exige escribir literalmente el slug, sin espacios adicionales. Solo admite negocios en `offboarded`. Conserva el espejo `tenant` y una última
-versión del documento sin testers ni dueño; elimina secretos cifrados, métricas,
-historiales y datasets. Conserva los calendarios y los datos de otros negocios.
-Todo el borrado y su auditoría ocurren en la misma transacción.
+asociación y exige escribir literalmente el slug, sin espacios adicionales. Solo
+admite negocios en `offboarded`. Borra todo lo que el sistema guarda del negocio:
+contactos, conversaciones, mensajes, avisos, métricas, sesiones y eventos de demo,
+el enlace del dueño, secretos cifrados, versiones de configuración y datasets, sus
+alertas y su auditoría, y su propia fila `tenant`; el slug queda libre. Lo único
+que permanece es una entrada de auditoría `tenant.purge` con `tenant_id` nulo
+(prueba de que el borrado se hizo, sin datos del negocio), los logs técnicos
+(caducan a los 31 días) y las copias de seguridad (retención de restic). Conserva
+los datos de otros negocios. Todo el borrado y su auditoría ocurren en la misma
+transacción; si el canal es Telegram, el webhook se retira antes, fuera de esa
+transacción. El panel ofrece el mismo borrado desde la ficha del cliente (menú
+«⋯» → «Eliminar cliente»), con confirmación de slug.
 
 Para dar de baja un negocio, el operador registra la fecha real de baja y una
 fecha límite de borrado de como máximo 30 días en el registro operativo de la baja.
 Ejecuta `tenant_status <slug> offboard` confirmando el slug y realiza la exportación acordada y ejecuta `tenant_purge` dentro de
-ese plazo; comprueba la versión depurada y la ausencia de secretos y datasets antes
-de retirar las copias locales y los accesos externos. No se retira la entrada del registro antes del borrado: el worker
+ese plazo; comprueba que el negocio ya no aparece (`GET /tenants/<slug>` o la lista
+del panel da 404) y que no quedan secretos ni datasets antes de retirar las copias
+locales y los accesos externos. No se retira la entrada del registro antes del borrado: el worker
 recorre ese registro. `synced_at` se actualiza al publicar configuración y nunca demuestra
 la fecha de baja. La gestión de calendarios pertenece al negocio y la retención de
 backups corresponde a restic (`deploy/scripts/backup.sh`); estos comandos no modifican ninguno de ellos.

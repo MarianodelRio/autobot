@@ -178,9 +178,6 @@ CATALOG: dict[str, TableDoc] = {
     "system_sample": TableDoc(
         PANEL, "Muestras periódicas del sistema.", "Worker", "62 días", False
     ),
-    "saved_query": TableDoc(
-        PANEL, "Consultas SQL guardadas por el operador.", "Panel", "Hasta su eliminación", False
-    ),
     "platform_cache": TableDoc(
         PANEL,
         "Caché de plataforma y señales operativas.",

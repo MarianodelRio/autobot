@@ -2,9 +2,11 @@
 
 import json
 import time
+import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -14,7 +16,10 @@ from django.core.cache import cache
 from django.db import connections
 
 from autobot.ops.models import SystemSample
+from autobot.panel.services import system
 from autobot.panel.services.system import tls_days_left
+from autobot.runtime.models import Contact, InboundEvent, OutboundMessage
+from autobot.tenancy.models import Tenant
 from tests.platform.panel.conftest import get
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
@@ -168,3 +173,123 @@ def test_overview_uses_shared_tls_check(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr("autobot.panel.services.overview.tls_days_left", lambda: 17)
     assert build_overview(NOW).system.tls_days_left == 17
+
+
+def _tenant(monkeypatch: pytest.MonkeyPatch, **tenants: Any) -> None:
+    monkeypatch.setattr(system, "get_registry", lambda: SimpleNamespace(by_slug=tenants))
+
+
+def test_flow_ok_idle_and_critical(monkeypatch: pytest.MonkeyPatch) -> None:
+    a = Tenant.objects.using("owner").create(
+        id=uuid.uuid7(),
+        slug="a",
+        name="A",
+        pack="toy",
+        status="active",
+        timezone="UTC",
+        synced_at=NOW,
+    )
+    contact = Contact.objects.using("owner").create(tenant=a, channel="main", external_id="1")
+    _tenant(monkeypatch, a=SimpleNamespace(id=a.id))
+
+    # No traffic at all: idle.
+    idle = system.flow(NOW, queues=[])
+    assert idle.state == "idle"
+    assert idle.received_1h == 0 and idle.answered_1h == 0
+
+    # A message inside the last hour, answered, nothing failed: ok.
+    InboundEvent.objects.using("owner").create(
+        tenant=a,
+        channel="main",
+        kind="message",
+        provider_event_id="1",
+        payload={},
+        status="done",
+        received_at=NOW - timedelta(minutes=5),
+    )
+    OutboundMessage.objects.using("owner").create(
+        tenant=a,
+        contact=contact,
+        channel="main",
+        kind="reply",
+        idem_key="1",
+        payload={},
+        status="sent",
+        sent_at=NOW - timedelta(minutes=4),
+    )
+    ok = system.flow(NOW, queues=[])
+    assert ok.state == "ok"
+    assert ok.received_1h == 1 and ok.answered_1h == 1 and ok.failed_1h == 0
+
+    # A failure in the last hour turns it critical, regardless of queue delay.
+    OutboundMessage.objects.using("owner").create(
+        tenant=a,
+        contact=contact,
+        channel="main",
+        kind="reply",
+        idem_key="2",
+        payload={},
+        status="failed",
+    )
+    failed = system.flow(NOW, queues=[])
+    assert failed.state == "critical"
+    assert failed.failed_1h == 1
+    assert failed.reason and "fallo" in failed.reason
+
+    # A delayed inbound job is also critical, even with no failures.
+    delayed = system.flow(
+        NOW,
+        queues=[{"queue_name": "inbound", "pending": 1, "oldest": None, "age_s": 200}],
+    )
+    assert delayed.state == "critical"
+    assert "2 min" in (delayed.reason or "")
+
+
+def test_bot_integration_off_unknown_and_critical(
+    monkeypatch: pytest.MonkeyPatch, settings: Any
+) -> None:
+    cache.delete("health:bot:notify")
+    cache.delete("bot:notify:auth")
+    settings.NOTIFY_BOT_TOKEN = ""
+    off = system._bot_integration("bot:notify", "Bot de avisos", "notify", off=True)
+    assert off.state == "off"
+
+    unknown = system._bot_integration("bot:notify", "Bot de avisos", "notify", off=False)
+    assert unknown.state == "unknown"
+
+    cache.set("bot:notify:auth", True, timeout=None)
+    critical = system._bot_integration("bot:notify", "Bot de avisos", "notify", off=False)
+    assert critical.state == "critical"
+    cache.delete("bot:notify:auth")
+
+
+def test_calendar_integration_counts_accessible_tenants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pack = SimpleNamespace(periodic=[SimpleNamespace(name="calendar_sweep")])
+    a_id, b_id, c_id = uuid.uuid7(), uuid.uuid7(), uuid.uuid7()
+    _tenant(
+        monkeypatch,
+        a=SimpleNamespace(id=a_id, document=SimpleNamespace(status="active"), pack=pack),
+        b=SimpleNamespace(id=b_id, document=SimpleNamespace(status="active"), pack=pack),
+        # Offboarded tenants don't count.
+        c=SimpleNamespace(id=c_id, document=SimpleNamespace(status="offboarded"), pack=pack),
+    )
+    cache.set(
+        f"health:{a_id}",
+        {"checked_at": NOW.timestamp(), "issues": []},
+        timeout=None,
+    )
+    cache.set(
+        f"health:{b_id}",
+        {
+            "checked_at": NOW.timestamp(),
+            "issues": [SimpleNamespace(code="main:calendar_unavailable", message="x")],
+        },
+        timeout=None,
+    )
+    result = system._calendar_integration()
+    assert result.state == "critical"
+    assert result.detail == "1 de 2 accesibles"
+    cache.delete(f"health:{a_id}")
+    cache.delete(f"health:{b_id}")

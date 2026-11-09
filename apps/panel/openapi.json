@@ -1,6 +1,63 @@
 {
   "components": {
     "schemas": {
+      "ActivityDetail": {
+        "properties": {
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          },
+          "contact_link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Link"
+          },
+          "facts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contact",
+          "text",
+          "facts",
+          "tenant",
+          "contact_link"
+        ],
+        "title": "ActivityDetail",
+        "type": "object"
+      },
       "ActivityItem": {
         "properties": {
           "at": {
@@ -19,14 +76,6 @@
             ],
             "title": "Channel"
           },
-          "detail": {
-            "title": "Detail",
-            "type": "string"
-          },
-          "icon": {
-            "title": "Icon",
-            "type": "string"
-          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -35,16 +84,9 @@
             "title": "Kind",
             "type": "string"
           },
-          "link": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Link"
+          "label": {
+            "title": "Label",
+            "type": "string"
           },
           "status": {
             "anyOf": [
@@ -67,10 +109,6 @@
               }
             ],
             "title": "Tenant"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
           }
         },
         "required": [
@@ -79,11 +117,8 @@
           "kind",
           "tenant",
           "channel",
-          "icon",
-          "title",
-          "detail",
-          "status",
-          "link"
+          "label",
+          "status"
         ],
         "title": "ActivityItem",
         "type": "object"
@@ -683,45 +718,6 @@
         "title": "CreateTenantIn",
         "type": "object"
       },
-      "DatasetVersionOut": {
-        "properties": {
-          "author": {
-            "title": "Author",
-            "type": "string"
-          },
-          "comment": {
-            "title": "Comment",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "sha256": {
-            "title": "Sha256",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "name",
-          "version",
-          "sha256",
-          "author",
-          "comment",
-          "created_at"
-        ],
-        "title": "DatasetVersionOut",
-        "type": "object"
-      },
       "DayCount": {
         "properties": {
           "date": {
@@ -746,6 +742,39 @@
         "title": "DayCount",
         "type": "object"
       },
+      "DeleteTenantIn": {
+        "properties": {
+          "confirm_slug": {
+            "title": "Confirm Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm_slug"
+        ],
+        "title": "DeleteTenantIn",
+        "type": "object"
+      },
+      "DeleteTenantOut": {
+        "properties": {
+          "telegram_webhook_removed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Webhook Removed"
+          }
+        },
+        "required": [
+          "telegram_webhook_removed"
+        ],
+        "title": "DeleteTenantOut",
+        "type": "object"
+      },
       "DocumentIn": {
         "properties": {
           "base_version": {
@@ -753,6 +782,7 @@
             "type": "integer"
           },
           "comment": {
+            "default": "",
             "title": "Comment",
             "type": "string"
           },
@@ -764,8 +794,7 @@
         },
         "required": [
           "document",
-          "base_version",
-          "comment"
+          "base_version"
         ],
         "title": "DocumentIn",
         "type": "object"
@@ -838,6 +867,72 @@
         "title": "Exchange",
         "type": "object"
       },
+      "FlowOut": {
+        "properties": {
+          "answered_1h": {
+            "title": "Answered 1H",
+            "type": "integer"
+          },
+          "failed_1h": {
+            "title": "Failed 1H",
+            "type": "integer"
+          },
+          "last_inbound_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Inbound At"
+          },
+          "last_outbound_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Outbound At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "received_1h": {
+            "title": "Received 1H",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "reason",
+          "last_inbound_at",
+          "last_outbound_at",
+          "received_1h",
+          "answered_1h",
+          "failed_1h"
+        ],
+        "title": "FlowOut",
+        "type": "object"
+      },
       "HealthIssueOut": {
         "properties": {
           "code": {
@@ -891,6 +986,54 @@
           "jobs"
         ],
         "title": "IncidentsOut",
+        "type": "object"
+      },
+      "IntegrationOut": {
+        "properties": {
+          "checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "state",
+          "detail",
+          "checked_at"
+        ],
+        "title": "IntegrationOut",
         "type": "object"
       },
       "JobOut": {
@@ -1469,6 +1612,30 @@
         "title": "Overview",
         "type": "object"
       },
+      "OwnerInviteOut": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "replaces_chat": {
+            "title": "Replaces Chat",
+            "type": "boolean"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_at",
+          "replaces_chat"
+        ],
+        "title": "OwnerInviteOut",
+        "type": "object"
+      },
       "PackOut": {
         "properties": {
           "has_datasets": {
@@ -1682,64 +1849,20 @@
         "title": "RollbackIn",
         "type": "object"
       },
-      "SavedQueryIn": {
-        "properties": {
-          "name": {
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          },
-          "sql": {
-            "maxLength": 20000,
-            "minLength": 1,
-            "title": "Sql",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "sql"
-        ],
-        "title": "SavedQueryIn",
-        "type": "object"
-      },
-      "SavedQueryOut": {
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "sql": {
-            "title": "Sql",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "sql",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "SavedQueryOut",
-        "type": "object"
-      },
       "SecretField": {
         "properties": {
+          "generatable": {
+            "title": "Generatable",
+            "type": "boolean"
+          },
+          "help": {
+            "title": "Help",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1751,7 +1874,10 @@
         },
         "required": [
           "name",
-          "set"
+          "set",
+          "label",
+          "help",
+          "generatable"
         ],
         "title": "SecretField",
         "type": "object"
@@ -2101,6 +2227,16 @@
             "title": "Deploys",
             "type": "array"
           },
+          "flow": {
+            "$ref": "#/components/schemas/FlowOut"
+          },
+          "integrations": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationOut"
+            },
+            "title": "Integrations",
+            "type": "array"
+          },
           "machine": {
             "additionalProperties": {
               "anyOf": [
@@ -2166,7 +2302,9 @@
           "backup",
           "deploys",
           "release",
-          "tls"
+          "tls",
+          "flow",
+          "integrations"
         ],
         "title": "SystemOut",
         "type": "object"
@@ -2781,6 +2919,19 @@
         ],
         "title": "VersionSummary",
         "type": "object"
+      },
+      "WebhookRegisterOut": {
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "WebhookRegisterOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -2876,6 +3027,52 @@
           }
         ],
         "summary": "Activity",
+        "tags": [
+          "activity"
+        ]
+      }
+    },
+    "/activity/{kind}/{id}": {
+      "get": {
+        "operationId": "autobot_panel_routers_activity_activity_detail_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityDetail"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Activity Detail View",
         "tags": [
           "activity"
         ]
@@ -3045,6 +3242,37 @@
         ]
       }
     },
+    "/audit/actions": {
+      "get": {
+        "operationId": "autobot_panel_routers_audit_audit_actions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Audit Actions",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
     "/auth/csrf": {
       "get": {
         "operationId": "autobot_panel_auth_csrf",
@@ -3200,147 +3428,6 @@
           }
         ],
         "summary": "Run Query",
-        "tags": [
-          "data"
-        ]
-      }
-    },
-    "/data/saved-queries": {
-      "get": {
-        "operationId": "autobot_panel_routers_data_saved_queries",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SavedQueryOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "PanelAuth": []
-          }
-        ],
-        "summary": "Saved Queries",
-        "tags": [
-          "data"
-        ]
-      },
-      "post": {
-        "operationId": "autobot_panel_routers_data_create_query",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SavedQueryIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SavedQueryOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "PanelAuth": []
-          }
-        ],
-        "summary": "Create Query",
-        "tags": [
-          "data"
-        ]
-      }
-    },
-    "/data/saved-queries/{id}": {
-      "delete": {
-        "operationId": "autobot_panel_routers_data_delete_query",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "title": "Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          }
-        },
-        "security": [
-          {
-            "PanelAuth": []
-          }
-        ],
-        "summary": "Delete Query",
-        "tags": [
-          "data"
-        ]
-      },
-      "put": {
-        "operationId": "autobot_panel_routers_data_update_query",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "title": "Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SavedQueryIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SavedQueryOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "PanelAuth": []
-          }
-        ],
-        "summary": "Update Query",
         "tags": [
           "data"
         ]
@@ -4158,9 +4245,9 @@
         ]
       }
     },
-    "/tenants/{slug}/datasets": {
-      "get": {
-        "operationId": "autobot_panel_routers_tenants_tenant_datasets",
+    "/tenants/{slug}/delete": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_delete_tenant",
         "parameters": [
           {
             "in": "path",
@@ -4172,16 +4259,22 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteTenantIn"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DatasetVersionOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/DeleteTenantOut"
                 }
               }
             },
@@ -4193,7 +4286,7 @@
             "PanelAuth": []
           }
         ],
-        "summary": "Tenant Datasets",
+        "summary": "Delete Tenant",
         "tags": [
           "tenants"
         ]
@@ -4323,6 +4416,43 @@
           }
         ],
         "summary": "Tenant Notifications",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/owner-invite": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_tenant_owner_invite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerInviteOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Owner Invite",
         "tags": [
           "tenants"
         ]
@@ -4529,6 +4659,43 @@
           }
         ],
         "summary": "Tenant Summary",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/telegram-webhook": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_telegram_set_webhook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookRegisterOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Telegram Set Webhook",
         "tags": [
           "tenants"
         ]

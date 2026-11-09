@@ -67,6 +67,16 @@ def page(
     return items, next_cursor
 
 
+@router.get("/audit/actions", response=list[str])
+def audit_actions(request: HttpRequest) -> list[str]:
+    return list(
+        AuditEvent.objects.using("owner")
+        .order_by("action")
+        .values_list("action", flat=True)
+        .distinct()
+    )
+
+
 @router.get("/audit", response=AuditPage)
 def audit(
     request: HttpRequest, tenant: str = "", action: str = "", cursor: str = "", limit: int = 50

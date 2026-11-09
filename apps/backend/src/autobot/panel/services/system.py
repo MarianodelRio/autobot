@@ -20,8 +20,11 @@ from procrastinate.contrib.django.models import (
     ProcrastinateWorker,
 )
 
+from autobot.channels.demo.doors import door
 from autobot.ops import system as host
 from autobot.ops.models import SystemSample
+from autobot.runtime.models import Channel, InboundEvent, OutboundMessage
+from autobot.tenancy.registry import get_registry
 
 
 class SystemOut(Schema):
@@ -34,6 +37,26 @@ class SystemOut(Schema):
     deploys: list[dict[str, Any]]
     release: str
     tls: dict[str, int | None]
+    flow: FlowOut
+    integrations: list[IntegrationOut]
+
+
+class FlowOut(Schema):
+    state: str
+    reason: str | None
+    last_inbound_at: datetime | None
+    last_outbound_at: datetime | None
+    received_1h: int
+    answered_1h: int
+    failed_1h: int
+
+
+class IntegrationOut(Schema):
+    key: str
+    label: str
+    state: str
+    detail: str | None
+    checked_at: datetime | None
 
 
 def tls_days_left() -> int | None:
@@ -107,6 +130,131 @@ def queue_rows(now: datetime) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda row: row["queue_name"])
 
 
+def flow(now: datetime, queues: list[dict[str, Any]]) -> FlowOut:
+    ids = [tenant.id for tenant in get_registry().by_slug.values()]
+    hour_ago = now - timedelta(hours=1)
+    inbound = InboundEvent.objects.using("owner").filter(tenant_id__in=ids, kind="message")
+    outbound = OutboundMessage.objects.using("owner").filter(tenant_id__in=ids)
+    received_1h = inbound.filter(received_at__gte=hour_ago).count()
+    answered_1h = outbound.filter(sent_at__gte=hour_ago).count()
+    failed_1h = inbound.filter(status="failed", received_at__gte=hour_ago).count() + (
+        outbound.filter(status__in=["failed", "unknown"], created_at__gte=hour_ago).count()
+    )
+    last_inbound_at = inbound.order_by("-received_at").values_list("received_at", flat=True).first()
+    last_outbound_at = (
+        outbound.exclude(sent_at=None)
+        .order_by("-sent_at")
+        .values_list("sent_at", flat=True)
+        .first()
+    )
+    delayed = any(
+        row["queue_name"] == "inbound" and row["age_s"] is not None and row["age_s"] > 120
+        for row in queues
+    )
+    if delayed or failed_1h:
+        state, reason = (
+            "critical",
+            (
+                "Trabajo de entrada pendiente más de 2 minutos."
+                if delayed
+                else f"{failed_1h} fallos en la última hora."
+            ),
+        )
+    elif received_1h == 0 and answered_1h == 0:
+        state, reason = "idle", "Sin tráfico reciente."
+    else:
+        state, reason = "ok", None
+    return FlowOut(
+        state=state,
+        reason=reason,
+        last_inbound_at=last_inbound_at,
+        last_outbound_at=last_outbound_at,
+        received_1h=received_1h,
+        answered_1h=answered_1h,
+        failed_1h=failed_1h,
+    )
+
+
+def _bot_integration(key: str, label: str, name: str, off: bool) -> IntegrationOut:
+    if off:
+        return IntegrationOut(key=key, label=label, state="off", detail=None, checked_at=None)
+    if cache.get(f"bot:{name}:auth"):
+        return IntegrationOut(
+            key=key,
+            label=label,
+            state="critical",
+            detail="Envío rechazado por autenticación.",
+            checked_at=None,
+        )
+    cached = cache.get(f"health:bot:{name}")
+    if not isinstance(cached, dict):
+        return IntegrationOut(key=key, label=label, state="unknown", detail=None, checked_at=None)
+    checked_at = datetime.fromtimestamp(cached["checked_at"], tz=UTC)
+    issues = cached.get("issues") or []
+    if issues:
+        detail = getattr(issues[0], "message", None)
+        return IntegrationOut(
+            key=key, label=label, state="critical", detail=detail, checked_at=checked_at
+        )
+    return IntegrationOut(key=key, label=label, state="ok", detail=None, checked_at=checked_at)
+
+
+def _calendar_integration() -> IntegrationOut:
+    candidates = [
+        tenant
+        for tenant in get_registry().by_slug.values()
+        if tenant.document.status != "offboarded"
+        and tenant.pack is not None
+        and any(p.name == "calendar_sweep" for p in tenant.pack.periodic)
+    ]
+    if not candidates:
+        return IntegrationOut(
+            key="calendar", label="Calendar", state="off", detail=None, checked_at=None
+        )
+    total = len(candidates)
+    accessible = 0
+    latest_checked: datetime | None = None
+    any_checked = False
+    for tenant in candidates:
+        cached = cache.get(f"health:{tenant.id}")
+        if not isinstance(cached, dict):
+            continue
+        any_checked = True
+        checked_at = datetime.fromtimestamp(cached["checked_at"], tz=UTC)
+        if latest_checked is None or checked_at > latest_checked:
+            latest_checked = checked_at
+        issues = cached.get("issues") or []
+        if not any(getattr(issue, "code", "").endswith("calendar_unavailable") for issue in issues):
+            accessible += 1
+    if not any_checked:
+        return IntegrationOut(
+            key="calendar", label="Calendar", state="unknown", detail=None, checked_at=None
+        )
+    state = "ok" if accessible == total else "critical"
+    return IntegrationOut(
+        key="calendar",
+        label="Calendar",
+        state=state,
+        detail=f"{accessible} de {total} accesibles",
+        checked_at=latest_checked,
+    )
+
+
+def integrations() -> list[IntegrationOut]:
+    return [
+        _bot_integration(
+            "bot:notify", "Bot de avisos", "notify", off=not settings.NOTIFY_BOT_TOKEN
+        ),
+        _bot_integration(
+            "bot:demo_tg", "Demo Telegram", "demo_tg", off=door(Channel.DEMO_TG) is None
+        ),
+        _bot_integration(
+            "bot:demo_wa", "Demo WhatsApp", "demo_wa", off=door(Channel.DEMO_WA) is None
+        ),
+        _calendar_integration(),
+    ]
+
+
 def build_system() -> SystemOut:
     now = timezone.now()
     start = now.astimezone(ZoneInfo("Europe/Madrid")).replace(
@@ -137,6 +285,7 @@ def build_system() -> SystemOut:
         stale = finished_at.utcoffset() is None or now - finished_at > timedelta(hours=8)
     except KeyError, ValueError, TypeError:
         stale = True
+    queues = queue_rows(now)
     return SystemOut(
         machine=dict(
             cpu_pct=host.cpu_percent(root=host.PROC),
@@ -148,7 +297,7 @@ def build_system() -> SystemOut:
         samples=[dict(row) for row in samples],
         services=dict(web=True, worker=worker, db=database["ok"], victorialogs=logs_ok),
         database=database,
-        queues=queue_rows(now),
+        queues=queues,
         backup={**backup, "stale": stale},
         deploys=[
             row
@@ -157,4 +306,6 @@ def build_system() -> SystemOut:
         ],
         release=settings.RELEASE_SHA,
         tls={"days_left": tls_days_left()},
+        flow=flow(now, queues),
+        integrations=integrations(),
     )

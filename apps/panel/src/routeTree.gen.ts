@@ -12,8 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as AppActividadRouteImport } from './routes/_app/actividad'
-import { Route as AppAuditoriaRouteImport } from './routes/_app/auditoria'
 import { Route as AppIncidenciasRouteImport } from './routes/_app/incidencias'
 import { Route as AppLogsRouteImport } from './routes/_app/logs'
 import { Route as AppSistemaRouteImport } from './routes/_app/sistema'
@@ -22,7 +20,6 @@ import { Route as AppClientesSlugRouteImport } from './routes/_app/clientes/$slu
 import { Route as AppClientesNuevoRouteImport } from './routes/_app/clientes/nuevo'
 import { Route as AppDatosIndexRouteImport } from './routes/_app/datos/index'
 import { Route as AppDatosTableRouteImport } from './routes/_app/datos/$table'
-import { Route as AppDatosConsultaRouteImport } from './routes/_app/datos/consulta'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -36,16 +33,6 @@ const LoginRoute = LoginRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppActividadRoute = AppActividadRouteImport.update({
-  id: '/actividad',
-  path: '/actividad',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppAuditoriaRoute = AppAuditoriaRouteImport.update({
-  id: '/auditoria',
-  path: '/auditoria',
   getParentRoute: () => AppRoute,
 } as any)
 const AppIncidenciasRoute = AppIncidenciasRouteImport.update({
@@ -88,31 +75,21 @@ const AppDatosTableRoute = AppDatosTableRouteImport.update({
   path: '/datos/$table',
   getParentRoute: () => AppRoute,
 } as any)
-const AppDatosConsultaRoute = AppDatosConsultaRouteImport.update({
-  id: '/datos/consulta',
-  path: '/datos/consulta',
-  getParentRoute: () => AppRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
-  '/actividad': typeof AppActividadRoute
-  '/auditoria': typeof AppAuditoriaRoute
   '/incidencias': typeof AppIncidenciasRoute
   '/logs': typeof AppLogsRoute
   '/sistema': typeof AppSistemaRoute
   '/clientes/$slug': typeof AppClientesSlugRoute
   '/clientes/nuevo': typeof AppClientesNuevoRoute
   '/datos/$table': typeof AppDatosTableRoute
-  '/datos/consulta': typeof AppDatosConsultaRoute
   '/clientes/': typeof AppClientesIndexRoute
   '/datos/': typeof AppDatosIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
-  '/actividad': typeof AppActividadRoute
-  '/auditoria': typeof AppAuditoriaRoute
   '/incidencias': typeof AppIncidenciasRoute
   '/logs': typeof AppLogsRoute
   '/sistema': typeof AppSistemaRoute
@@ -120,7 +97,6 @@ export interface FileRoutesByTo {
   '/clientes/$slug': typeof AppClientesSlugRoute
   '/clientes/nuevo': typeof AppClientesNuevoRoute
   '/datos/$table': typeof AppDatosTableRoute
-  '/datos/consulta': typeof AppDatosConsultaRoute
   '/clientes': typeof AppClientesIndexRoute
   '/datos': typeof AppDatosIndexRoute
 }
@@ -128,8 +104,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
-  '/_app/actividad': typeof AppActividadRoute
-  '/_app/auditoria': typeof AppAuditoriaRoute
   '/_app/incidencias': typeof AppIncidenciasRoute
   '/_app/logs': typeof AppLogsRoute
   '/_app/sistema': typeof AppSistemaRoute
@@ -137,7 +111,6 @@ export interface FileRoutesById {
   '/_app/clientes/$slug': typeof AppClientesSlugRoute
   '/_app/clientes/nuevo': typeof AppClientesNuevoRoute
   '/_app/datos/$table': typeof AppDatosTableRoute
-  '/_app/datos/consulta': typeof AppDatosConsultaRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
   '/_app/datos/': typeof AppDatosIndexRoute
 }
@@ -146,22 +119,17 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
-    | '/actividad'
-    | '/auditoria'
     | '/incidencias'
     | '/logs'
     | '/sistema'
     | '/clientes/$slug'
     | '/clientes/nuevo'
     | '/datos/$table'
-    | '/datos/consulta'
     | '/clientes/'
     | '/datos/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
-    | '/actividad'
-    | '/auditoria'
     | '/incidencias'
     | '/logs'
     | '/sistema'
@@ -169,15 +137,12 @@ export interface FileRouteTypes {
     | '/clientes/$slug'
     | '/clientes/nuevo'
     | '/datos/$table'
-    | '/datos/consulta'
     | '/clientes'
     | '/datos'
   id:
     | '__root__'
     | '/_app'
     | '/login'
-    | '/_app/actividad'
-    | '/_app/auditoria'
     | '/_app/incidencias'
     | '/_app/logs'
     | '/_app/sistema'
@@ -185,7 +150,6 @@ export interface FileRouteTypes {
     | '/_app/clientes/$slug'
     | '/_app/clientes/nuevo'
     | '/_app/datos/$table'
-    | '/_app/datos/consulta'
     | '/_app/clientes/'
     | '/_app/datos/'
   fileRoutesById: FileRoutesById
@@ -216,20 +180,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/actividad': {
-      id: '/_app/actividad'
-      path: '/actividad'
-      fullPath: '/actividad'
-      preLoaderRoute: typeof AppActividadRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/auditoria': {
-      id: '/_app/auditoria'
-      path: '/auditoria'
-      fullPath: '/auditoria'
-      preLoaderRoute: typeof AppAuditoriaRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/incidencias': {
@@ -288,19 +238,10 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDatosTableRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/datos/consulta': {
-      id: '/_app/datos/consulta'
-      path: '/datos/consulta'
-      fullPath: '/datos/consulta'
-      preLoaderRoute: typeof AppDatosConsultaRouteImport
-      parentRoute: typeof AppRoute
-    }
   }
 }
 
 interface AppRouteChildren {
-  AppActividadRoute: typeof AppActividadRoute
-  AppAuditoriaRoute: typeof AppAuditoriaRoute
   AppIncidenciasRoute: typeof AppIncidenciasRoute
   AppLogsRoute: typeof AppLogsRoute
   AppSistemaRoute: typeof AppSistemaRoute
@@ -308,14 +249,11 @@ interface AppRouteChildren {
   AppClientesSlugRoute: typeof AppClientesSlugRoute
   AppClientesNuevoRoute: typeof AppClientesNuevoRoute
   AppDatosTableRoute: typeof AppDatosTableRoute
-  AppDatosConsultaRoute: typeof AppDatosConsultaRoute
   AppClientesIndexRoute: typeof AppClientesIndexRoute
   AppDatosIndexRoute: typeof AppDatosIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppActividadRoute: AppActividadRoute,
-  AppAuditoriaRoute: AppAuditoriaRoute,
   AppIncidenciasRoute: AppIncidenciasRoute,
   AppLogsRoute: AppLogsRoute,
   AppSistemaRoute: AppSistemaRoute,
@@ -323,7 +261,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppClientesSlugRoute: AppClientesSlugRoute,
   AppClientesNuevoRoute: AppClientesNuevoRoute,
   AppDatosTableRoute: AppDatosTableRoute,
-  AppDatosConsultaRoute: AppDatosConsultaRoute,
   AppClientesIndexRoute: AppClientesIndexRoute,
   AppDatosIndexRoute: AppDatosIndexRoute,
 }

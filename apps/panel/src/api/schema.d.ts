@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/activity/{kind}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Activity Detail View */
+        get: operations["autobot_panel_routers_activity_activity_detail_view"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/alerts": {
         parameters: {
             query?: never;
@@ -64,6 +81,23 @@ export interface paths {
         };
         /** Audit */
         get: operations["autobot_panel_routers_audit_audit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Actions */
+        get: operations["autobot_panel_routers_audit_audit_actions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -169,42 +203,6 @@ export interface paths {
         /** Run Query */
         post: operations["autobot_panel_routers_data_run_query"];
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/data/saved-queries": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Saved Queries */
-        get: operations["autobot_panel_routers_data_saved_queries"];
-        put?: never;
-        /** Create Query */
-        post: operations["autobot_panel_routers_data_create_query"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/data/saved-queries/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Update Query */
-        put: operations["autobot_panel_routers_data_update_query"];
-        post?: never;
-        /** Delete Query */
-        delete: operations["autobot_panel_routers_data_delete_query"];
         options?: never;
         head?: never;
         patch?: never;
@@ -517,17 +515,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tenants/{slug}/datasets": {
+    "/tenants/{slug}/delete": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Tenant Datasets */
-        get: operations["autobot_panel_routers_tenants_tenant_datasets"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** Delete Tenant */
+        post: operations["autobot_panel_routers_tenants_delete_tenant"];
         delete?: never;
         options?: never;
         head?: never;
@@ -579,6 +577,23 @@ export interface paths {
         get: operations["autobot_panel_routers_tenants_tenant_notifications"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{slug}/owner-invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tenant Owner Invite */
+        post: operations["autobot_panel_routers_tenants_tenant_owner_invite"];
         delete?: never;
         options?: never;
         head?: never;
@@ -654,6 +669,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{slug}/telegram-webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Telegram Set Webhook */
+        post: operations["autobot_panel_routers_tenants_telegram_set_webhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{slug}/versions": {
         parameters: {
             query?: never;
@@ -692,6 +724,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivityDetail */
+        ActivityDetail: {
+            /** Contact */
+            contact: string | null;
+            /** Contact Link */
+            contact_link: string | null;
+            /** Facts */
+            facts: string[];
+            /** Tenant */
+            tenant: string | null;
+            /** Text */
+            text: string;
+        };
         /** ActivityItem */
         ActivityItem: {
             /**
@@ -701,22 +746,16 @@ export interface components {
             at: string;
             /** Channel */
             channel: string | null;
-            /** Detail */
-            detail: string;
-            /** Icon */
-            icon: string;
             /** Id */
             id: string;
             /** Kind */
             kind: string;
-            /** Link */
-            link: string | null;
+            /** Label */
+            label: string;
             /** Status */
             status: string | null;
             /** Tenant */
             tenant: string | null;
-            /** Title */
-            title: string;
         };
         /** ActivityPage */
         ActivityPage: {
@@ -928,24 +967,6 @@ export interface components {
             /** Timezone */
             timezone: string;
         };
-        /** DatasetVersionOut */
-        DatasetVersionOut: {
-            /** Author */
-            author: string;
-            /** Comment */
-            comment: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Name */
-            name: string;
-            /** Sha256 */
-            sha256: string;
-            /** Version */
-            version: number;
-        };
         /** DayCount */
         DayCount: {
             /**
@@ -958,11 +979,24 @@ export interface components {
             /** Outbound */
             outbound: number;
         };
+        /** DeleteTenantIn */
+        DeleteTenantIn: {
+            /** Confirm Slug */
+            confirm_slug: string;
+        };
+        /** DeleteTenantOut */
+        DeleteTenantOut: {
+            /** Telegram Webhook Removed */
+            telegram_webhook_removed: boolean | null;
+        };
         /** DocumentIn */
         DocumentIn: {
             /** Base Version */
             base_version: number;
-            /** Comment */
+            /**
+             * Comment
+             * @default
+             */
             comment: string;
             /** Document */
             document: {
@@ -992,6 +1026,23 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** FlowOut */
+        FlowOut: {
+            /** Answered 1H */
+            answered_1h: number;
+            /** Failed 1H */
+            failed_1h: number;
+            /** Last Inbound At */
+            last_inbound_at: string | null;
+            /** Last Outbound At */
+            last_outbound_at: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Received 1H */
+            received_1h: number;
+            /** State */
+            state: string;
+        };
         /** HealthIssueOut */
         HealthIssueOut: {
             /** Code */
@@ -1009,6 +1060,19 @@ export interface components {
             jobs: components["schemas"]["JobOut"][];
             /** Outbound */
             outbound: components["schemas"]["OutboundIncidentOut"][];
+        };
+        /** IntegrationOut */
+        IntegrationOut: {
+            /** Checked At */
+            checked_at: string | null;
+            /** Detail */
+            detail: string | null;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** State */
+            state: string;
         };
         /** JobOut */
         JobOut: {
@@ -1229,6 +1293,18 @@ export interface components {
             tenant_rows: components["schemas"]["TenantRow"][];
             tenants: components["schemas"]["TenantCounts"];
         };
+        /** OwnerInviteOut */
+        OwnerInviteOut: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Replaces Chat */
+            replaces_chat: boolean;
+            /** Url */
+            url: string;
+        };
         /** PackOut */
         PackOut: {
             /** Has Datasets */
@@ -1306,34 +1382,14 @@ export interface components {
             /** Version */
             version: number;
         };
-        /** SavedQueryIn */
-        SavedQueryIn: {
-            /** Name */
-            name: string;
-            /** Sql */
-            sql: string;
-        };
-        /** SavedQueryOut */
-        SavedQueryOut: {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /** Sql */
-            sql: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
         /** SecretField */
         SecretField: {
+            /** Generatable */
+            generatable: boolean;
+            /** Help */
+            help: string;
+            /** Label */
+            label: string;
             /** Name */
             name: string;
             /** Set */
@@ -1456,6 +1512,9 @@ export interface components {
             deploys: {
                 [key: string]: unknown;
             }[];
+            flow: components["schemas"]["FlowOut"];
+            /** Integrations */
+            integrations: components["schemas"]["IntegrationOut"][];
             /** Machine */
             machine: {
                 [key: string]: number | null;
@@ -1685,6 +1744,11 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** WebhookRegisterOut */
+        WebhookRegisterOut: {
+            /** Url */
+            url: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -1716,6 +1780,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_activity_activity_detail_view: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityDetail"];
                 };
             };
         };
@@ -1787,6 +1874,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_audit_audit_actions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
                 };
             };
         };
@@ -1910,96 +2017,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["QueryOut"];
                 };
-            };
-        };
-    };
-    autobot_panel_routers_data_saved_queries: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SavedQueryOut"][];
-                };
-            };
-        };
-    };
-    autobot_panel_routers_data_create_query: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SavedQueryIn"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SavedQueryOut"];
-                };
-            };
-        };
-    };
-    autobot_panel_routers_data_update_query: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SavedQueryIn"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SavedQueryOut"];
-                };
-            };
-        };
-    };
-    autobot_panel_routers_data_delete_query: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description No Content */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -2428,7 +2445,7 @@ export interface operations {
             };
         };
     };
-    autobot_panel_routers_tenants_tenant_datasets: {
+    autobot_panel_routers_tenants_delete_tenant: {
         parameters: {
             query?: never;
             header?: never;
@@ -2437,7 +2454,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteTenantIn"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -2445,7 +2466,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DatasetVersionOut"][];
+                    "application/json": components["schemas"]["DeleteTenantOut"];
                 };
             };
         };
@@ -2516,6 +2537,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationOut"][];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_tenant_owner_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerInviteOut"];
                 };
             };
         };
@@ -2636,6 +2679,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SummaryOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_telegram_set_webhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookRegisterOut"];
                 };
             };
         };

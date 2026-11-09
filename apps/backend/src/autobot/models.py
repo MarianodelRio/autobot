@@ -1,6 +1,6 @@
 """Django loads the app's models from here; they live in their modules."""
 
-from autobot.ops.models import AuditEvent, OpsAlert, SavedQuery, SystemSample
+from autobot.ops.models import AuditEvent, OpsAlert, SystemSample
 from autobot.runtime.models import (
     Contact,
     Conversation,
@@ -30,7 +30,6 @@ __all__ = [
     "OwnerEvent",
     "OwnerLink",
     "PlatformCache",
-    "SavedQuery",
     "SystemSample",
     "Tenant",
 ]

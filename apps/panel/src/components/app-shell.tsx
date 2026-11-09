@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useOverview } from "@/features/overview/use-overview";
-import { CommandMenu } from "./command-menu";
 import { AppSidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
@@ -13,7 +11,6 @@ export function AppShell({
   username: string;
   children: ReactNode;
 }) {
-  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const overview = useOverview();
 
   return (
@@ -22,11 +19,10 @@ export function AppShell({
         username={username}
         incidentsCount={overview.data?.incidents_open}
       />
-      <SidebarInset>
-        <Topbar onOpenCommandMenu={() => setCommandMenuOpen(true)} />
+      <SidebarInset className="min-w-0">
+        <Topbar />
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </SidebarInset>
-      <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
     </SidebarProvider>
   );
 }

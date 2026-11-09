@@ -15,10 +15,12 @@ from uuid import UUID
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django.utils import timezone
 from ninja import Schema
 
 from autobot.ops import health
+from autobot.ops.audit import record
 from autobot.ops.models import OpsAlert
 from autobot.ops.status import tenant_status
 from autobot.owner import links as owner_links
@@ -26,9 +28,10 @@ from autobot.panel.errors import ApiError
 from autobot.runtime import costs
 from autobot.runtime.models import InboundEvent, Notification, OutboundMessage
 from autobot.runtime.summary import build_summary, month_to_date
+from autobot.tenancy import store
 from autobot.tenancy.crypto import SecretsUnreadable, decrypt
 from autobot.tenancy.links import channel_link
-from autobot.tenancy.models import TenantDatasetVersion, TenantDocumentVersion, TenantSecret
+from autobot.tenancy.models import Tenant, TenantDocumentVersion, TenantSecret
 from autobot.tenancy.registry import LoadedTenant, get_registry
 from autobot.tenancy.schema import SECRETS_SCHEMA
 
@@ -181,30 +184,26 @@ def tenant_version(slug: str, version: int) -> VersionDetail:
     return VersionDetail(**row)
 
 
-class DatasetVersionOut(Schema):
-    name: str
-    version: int
-    sha256: str
-    author: str
-    comment: str
-    created_at: datetime
-
-
-def tenant_datasets(slug: str) -> list[DatasetVersionOut]:
-    tenant = _tenant(slug)
-    rows = (
-        TenantDatasetVersion.objects.using("owner")
-        .filter(tenant_id=tenant.id)
-        .order_by("name", "-version")
-        .distinct("name")
-        .values("name", "version", "sha256", "author", "comment", "created_at")
-    )
-    return [DatasetVersionOut(**row) for row in rows]
+SECRET_FIELDS: dict[str, tuple[str, str, bool]] = {
+    # name -> (label, help, generatable)
+    "app_secret": ("Secreto de la app", "App de Meta, Ajustes básicos", False),
+    "access_token": ("Token de acceso", "Token permanente del System User", False),
+    "verify_token": (
+        "Token de verificación",
+        "Se pega también en el webhook de Meta",
+        True,
+    ),
+    "bot_token": ("Token del bot", "Lo da @BotFather", False),
+    "webhook_secret": ("Secreto del webhook", "Mínimo 32 caracteres", True),
+}
 
 
 class SecretField(Schema):
     name: str
     set: bool
+    label: str
+    help: str
+    generatable: bool
 
 
 class SecretsStatus(Schema):
@@ -236,7 +235,16 @@ def tenant_secrets(slug: str) -> SecretsStatus:
         readable=readable,
         updated_at=row.updated_at if row is not None else None,
         updated_by=row.updated_by if row is not None else None,
-        fields=[SecretField(name=name, set=name in present) for name in schema.model_fields],
+        fields=[
+            SecretField(
+                name=name,
+                set=name in present,
+                label=SECRET_FIELDS[name][0],
+                help=SECRET_FIELDS[name][1],
+                generatable=SECRET_FIELDS[name][2],
+            )
+            for name in schema.model_fields
+        ],
     )
 
 
@@ -333,3 +341,97 @@ def tenant_health_check(slug: str) -> list[HealthIssueOut]:
     tenant = _tenant(slug)
     issues = health.daily(tenant.id, lambda: health.tenant_health(tenant), force=True)
     return [HealthIssueOut(code=i.code, message=i.message, severity=i.severity) for i in issues]
+
+
+class WebhookRegisterOut(Schema):
+    url: str
+
+
+def telegram_set_webhook(slug: str, actor: str) -> WebhookRegisterOut:
+    from autobot.channels.telegram.registration import WebhookError, register_webhook
+
+    tenant = _tenant(slug)
+    channel = tenant.document.channel
+    if channel is None or channel.type != "telegram":
+        raise ApiError("bad_request", "El canal no es Telegram", 400)
+    try:
+        url = register_webhook(slug)
+    except WebhookError:
+        raise ApiError("unavailable", "No se pudo registrar el webhook.", 502) from None
+    record(
+        actor=actor,
+        action="tenant.webhook_register",
+        tenant_id=tenant.id,
+        target_type="tenant",
+        target_id=str(tenant.id),
+        summary="Webhook de Telegram registrado",
+    )
+    return WebhookRegisterOut(url=url)
+
+
+class OwnerInviteOut(Schema):
+    url: str
+    expires_at: datetime
+    replaces_chat: bool
+
+
+def tenant_owner_invite(slug: str, actor: str) -> OwnerInviteOut:
+    from autobot.owner.invites import InviteError, create_invite_link
+
+    tenant = _tenant(slug)
+    try:
+        link = create_invite_link(tenant)
+    except InviteError as e:
+        raise ApiError("bad_request", str(e), 400) from None
+    record(
+        actor=actor,
+        action="tenant.owner_invite",
+        tenant_id=tenant.id,
+        target_type="tenant",
+        target_id=str(tenant.id),
+        summary="Enlace de invitación generado",
+    )
+    return OwnerInviteOut(
+        url=link.url, expires_at=link.expires_at, replaces_chat=link.replaces_chat
+    )
+
+
+class DeleteTenantOut(Schema):
+    telegram_webhook_removed: bool | None
+
+
+def delete_tenant(slug: str, confirm_slug: str, actor: str) -> DeleteTenantOut:
+    from autobot.runtime import privacy
+
+    tenant = _tenant(slug)
+    if confirm_slug != slug:
+        raise ApiError("bad_request", "El slug no coincide.", 400)
+    if tenant.document.demo is not None:
+        raise ApiError("bad_request", "Los demos no se pueden eliminar.", 400)
+    if tenant.document.status == "active":
+        raise ApiError("conflict", "Páusalo antes de eliminarlo.", 409)
+
+    telegram_webhook_removed: bool | None = None
+    channel = tenant.document.channel
+    if channel is not None and channel.type == "telegram":
+        has_secrets = TenantSecret.objects.using("owner").filter(tenant_id=tenant.id).exists()
+        if has_secrets:
+            from autobot.channels.telegram.registration import WebhookError, remove_webhook
+
+            try:
+                remove_webhook(slug)
+                telegram_webhook_removed = True
+            except WebhookError:
+                telegram_webhook_removed = False
+
+    db_tenant = Tenant.objects.using("owner").get(pk=tenant.id)
+    try:
+        with transaction.atomic(using="owner"):
+            if tenant.document.status != "offboarded":
+                store.change_status(slug, action="offboard", actor=actor, confirm_slug=slug)
+            privacy.purge(db_tenant, actor=actor)
+    except privacy.PurgeBlocked:
+        raise ApiError(
+            "conflict", "Hay trabajos en curso; inténtalo en unos segundos.", 409
+        ) from None
+    return DeleteTenantOut(telegram_webhook_removed=telegram_webhook_removed)

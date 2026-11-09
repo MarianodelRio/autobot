@@ -12,8 +12,10 @@ import type { components } from "@/api/schema";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { KpiCard } from "@/components/kpi-card";
+import { Meter } from "@/components/meter";
 import { PageHeader } from "@/components/page-header";
 import { type Status, StatusBadge } from "@/components/status-badge";
+import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
 import { TimeAgo } from "@/components/time-ago";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -58,10 +60,20 @@ function statusLabel(value: string) {
   );
 }
 
+function backupLevel(ok: boolean | null): StatusDotLevel {
+  if (ok === null) return "unknown";
+  return ok ? "ok" : "critical";
+}
+
+function tlsLevel(daysLeft: number | null): StatusDotLevel {
+  if (daysLeft === null) return "unknown";
+  if (daysLeft < 7) return "critical";
+  if (daysLeft < 20) return "warning";
+  return "ok";
+}
+
 export function OverviewContent({ data }: { data: Overview }) {
   const { status, tenants, month, system } = data;
-  const percent = (value: number | null) =>
-    value === null ? "—" : `${formatNumber(value)} %`;
   return (
     <div className="space-y-6">
       <PageHeader title="Resumen" />
@@ -231,47 +243,59 @@ export function OverviewContent({ data }: { data: Overview }) {
       </Card>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between">
             <CardTitle>Sistema</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p>
-              CPU: {percent(system.cpu_pct)} · RAM:{" "}
-              {percent(system.mem_used_pct)} · Disco:{" "}
-              {percent(system.disk_used_pct)}
-            </p>
-            <p>
-              Backup:{" "}
-              {system.backup_ok === null
-                ? "Desconocido"
-                : system.backup_ok
-                  ? "Correcto"
-                  : "Fallido"}
-              {system.last_backup_at && (
-                <>
-                  {" "}
-                  · <TimeAgo date={system.last_backup_at} />
-                </>
-              )}
-            </p>
-            <p>
-              TLS:{" "}
-              {system.tls_days_left === null
-                ? "Desconocido"
-                : `${formatNumber(system.tls_days_left)} días`}
-            </p>
-            <p>
-              Versión: {system.release || "Desconocida"}
-              {system.deployed_at && (
-                <>
-                  {" "}
-                  · <TimeAgo date={system.deployed_at} />
-                </>
-              )}
-            </p>
-            <a className="underline" href="/sistema">
+            <a className="text-sm underline" href="/sistema">
               Ver sistema
             </a>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1.5">
+              <Meter label="CPU" value={system.cpu_pct} />
+              <Meter label="RAM" value={system.mem_used_pct} />
+              <Meter label="Disco" value={system.disk_used_pct} />
+            </div>
+            <div className="space-y-1.5 border-t pt-3">
+              <div className="flex items-center justify-between text-sm">
+                <StatusDot
+                  level={backupLevel(system.backup_ok)}
+                  label="Backup"
+                />
+                <span className="text-muted-foreground">
+                  {system.backup_ok === null
+                    ? "Desconocido"
+                    : system.backup_ok
+                      ? "Correcto"
+                      : "Fallido"}
+                  {system.last_backup_at && (
+                    <>
+                      {" "}
+                      · <TimeAgo date={system.last_backup_at} />
+                    </>
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <StatusDot level={tlsLevel(system.tls_days_left)} label="TLS" />
+                <span className="text-muted-foreground">
+                  {system.tls_days_left === null
+                    ? "Desconocido"
+                    : `${formatNumber(system.tls_days_left)} días`}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <StatusDot level="unknown" label="Versión" />
+                <span className="text-muted-foreground">
+                  {system.release || "Desconocida"}
+                  {system.deployed_at && (
+                    <>
+                      {" "}
+                      · <TimeAgo date={system.deployed_at} />
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
           </CardContent>
         </Card>
         <Card>

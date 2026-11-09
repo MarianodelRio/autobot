@@ -151,8 +151,8 @@ ejemplo:
       que `DJANGO_ALLOWED_HOSTS` del servidor incluye `127.0.0.1` y `localhost`, porque
       el panel llega con ese host al entrar por el túnel SSH.
 - [ ] `make panel-tunnel` y abrir `http://127.0.0.1:18000`: entrar con usuario,
-      contraseña y TOTP, y recorrer Resumen, Clientes, Actividad, Incidencias, Logs,
-      Datos, Sistema y Auditoría con datos reales.
+      contraseña y TOTP, y recorrer Resumen, Clientes, Incidencias, Logs, Datos y
+      Sistema con datos reales.
 - [ ] Comprobar la CPU y la RAM del contenedor `panel` frente a `htop` en el host y
       `docker stats` (unos 20 MB de RAM).
 - [ ] Una vez verificado, borrar las copias locales de `var/tenants/autocares-ss` y

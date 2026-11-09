@@ -3,28 +3,27 @@ import { useState } from "react";
 import { api, unwrap } from "@/api/client";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
-import { PageHeader } from "@/components/page-header";
+import { TenantSelect } from "@/components/tenant-select";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/errors";
 
-export interface AuditFilters {
+export interface OperatorFilters {
   tenant: string;
   action: string;
 }
 
-export function AuditPage({
+export function OperatorTab({
   filters,
   onFilterChange,
 }: {
-  filters: AuditFilters;
-  onFilterChange: (next: Partial<AuditFilters>) => void;
+  filters: OperatorFilters;
+  onFilterChange: (next: Partial<OperatorFilters>) => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const tenants = useQuery({
-    queryKey: ["tenants"],
-    queryFn: () => unwrap(api.GET("/tenants")),
+  const actions = useQuery({
+    queryKey: ["audit-actions"],
+    queryFn: () => unwrap(api.GET("/audit/actions")),
   });
   const query = useInfiniteQuery({
     queryKey: ["audit", filters.tenant, filters.action],
@@ -45,39 +44,35 @@ export function AuditPage({
   });
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   return (
-    <div>
-      <PageHeader title="Auditoría" />
-      <div className="mb-4 flex flex-wrap gap-3">
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3">
+        <TenantSelect
+          value={filters.tenant}
+          onChange={(value) => onFilterChange({ tenant: value })}
+        />
         <select
           className="rounded-md border bg-background px-3 py-2 text-sm"
-          aria-label="Cliente"
-          value={filters.tenant}
-          onChange={(event) => onFilterChange({ tenant: event.target.value })}
+          aria-label="Acción"
+          value={filters.action}
+          onChange={(event) => onFilterChange({ action: event.target.value })}
         >
-          <option value="">Todos los clientes</option>
-          {(tenants.data ?? []).map((row) => (
-            <option key={row.slug} value={row.slug}>
-              {row.name}
+          <option value="">Todas las acciones</option>
+          {(actions.data ?? []).map((action) => (
+            <option key={action} value={action}>
+              {action}
             </option>
           ))}
         </select>
-        <Input
-          className="max-w-xs"
-          aria-label="Acción"
-          placeholder="Acción (p. ej. alert.resolve)"
-          value={filters.action}
-          onChange={(event) => onFilterChange({ action: event.target.value })}
-        />
       </div>
       {query.isPending ? (
-        <p>Cargando auditoría…</p>
+        <p>Cargando acciones…</p>
       ) : query.isError && !query.data ? (
         <ErrorState
-          message={errorMessage(query.error, "No se pudo cargar la auditoría.")}
+          message={errorMessage(query.error, "No se pudo cargar el historial.")}
           onRetry={() => void query.refetch()}
         />
       ) : items.length === 0 ? (
-        <EmptyState message="No hay eventos de auditoría." />
+        <EmptyState message="No hay acciones del operador." />
       ) : (
         <div>
           <ul className="divide-y">
@@ -118,7 +113,7 @@ export function AuditPage({
             })}
           </ul>
           {query.isFetchNextPageError && (
-            <p>No se pudo cargar más auditoría.</p>
+            <p>No se pudo cargar más historial.</p>
           )}
           {query.hasNextPage && (
             <Button

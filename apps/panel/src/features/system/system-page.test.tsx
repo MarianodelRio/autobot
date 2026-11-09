@@ -26,6 +26,45 @@ const BASE: Record<string, unknown> = {
   deploys: [],
   release: "abc123",
   tls: { days_left: 30 },
+  flow: {
+    state: "ok",
+    reason: null,
+    last_inbound_at: "2026-11-04T09:56:00Z",
+    last_outbound_at: "2026-11-04T09:57:00Z",
+    received_1h: 12,
+    answered_1h: 12,
+    failed_1h: 0,
+  },
+  integrations: [
+    {
+      key: "bot:notify",
+      label: "Bot de avisos",
+      state: "ok",
+      detail: null,
+      checked_at: null,
+    },
+    {
+      key: "bot:demo_tg",
+      label: "Demo Telegram",
+      state: "ok",
+      detail: null,
+      checked_at: null,
+    },
+    {
+      key: "bot:demo_wa",
+      label: "Demo WhatsApp",
+      state: "off",
+      detail: null,
+      checked_at: null,
+    },
+    {
+      key: "calendar",
+      label: "Calendar",
+      state: "ok",
+      detail: "3 de 3 accesibles",
+      checked_at: null,
+    },
+  ],
 };
 
 function renderWith(overrides: Record<string, unknown>) {
@@ -116,4 +155,30 @@ test("shows an explicit message when there is no backup at all", async () => {
   expect(
     (await backupCard()).getByText(/Sin backup registrado/),
   ).toBeInTheDocument();
+});
+
+test("shows the flow counts and a critical reason when there is one", async () => {
+  renderWith({
+    flow: {
+      state: "critical",
+      reason: "2 fallos en la última hora.",
+      last_inbound_at: "2026-11-04T09:56:00Z",
+      last_outbound_at: null,
+      received_1h: 5,
+      answered_1h: 3,
+      failed_1h: 2,
+    },
+  });
+  expect(
+    await screen.findByText("2 fallos en la última hora."),
+  ).toBeInTheDocument();
+  expect(screen.getByText("5")).toBeInTheDocument();
+  expect(screen.getByText("recibidos")).toBeInTheDocument();
+});
+
+test("shows an off integration as apagada and a calendar detail", async () => {
+  renderWith({});
+  expect(await screen.findByText("Demo WhatsApp")).toBeInTheDocument();
+  expect(screen.getByText("apagada")).toBeInTheDocument();
+  expect(screen.getByText("3 de 3 accesibles")).toBeInTheDocument();
 });

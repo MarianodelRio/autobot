@@ -4,7 +4,6 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
@@ -12,8 +11,17 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { KpiCard } from "@/components/kpi-card";
 import { PageHeader } from "@/components/page-header";
+import { type Status, StatusBadge } from "@/components/status-badge";
+import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Sheet,
@@ -27,21 +35,36 @@ import { Timeline } from "@/features/activity/components/timeline";
 import { errorMessage } from "@/lib/errors";
 import { formatEur, formatNumber } from "@/lib/format";
 import { ConfigEditor } from "./config/editor";
-import { History } from "./config/history";
-import { MissingChecklist } from "./config/missing-checklist";
-import { SecretsForm } from "./config/secrets-form";
 import { StatusAction } from "./config/status-action";
+import { DeleteTenantAction } from "./delete-tenant-action";
 
 type Detail = components["schemas"]["TenantDetail"];
 const param = (slug: string) => ({ params: { path: { slug } } });
 
+const HEALTH_LEVEL: Record<string, StatusDotLevel> = {
+  ok: "ok",
+  notice: "notice",
+  warning: "warning",
+  critical: "critical",
+  unknown: "unknown",
+};
+
 function Summary({ detail }: { detail: Detail }) {
   const [load, setLoad] = useState(false);
+  const client = useQueryClient();
   const summary = useQuery({
     queryKey: ["tenant-summary", detail.slug],
     queryFn: () =>
       unwrap(api.GET("/tenants/{slug}/summary", param(detail.slug))),
     enabled: load,
+  });
+  const health = useMutation({
+    mutationFn: () =>
+      unwrap(api.POST("/tenants/{slug}/health-check", param(detail.slug))),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["tenant", detail.slug] });
+      void client.invalidateQueries({ queryKey: ["overview"] });
+    },
   });
   return (
     <div className="space-y-6">
@@ -63,142 +86,106 @@ function Summary({ detail }: { detail: Detail }) {
           value={formatEur(Number(detail.month.cost_eur))}
         />
       </div>
-      <section>
-        <h2 className="font-semibold">Salud: {detail.health}</h2>
-        {detail.health_reasons.map((reason) => (
-          <p key={reason}>{reason}</p>
-        ))}
-        {detail.health_checked_at && (
-          <p>
-            Comprobada <TimeAgo date={detail.health_checked_at} />
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle>Salud del canal</CardTitle>
+          <CardAction>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={health.isPending}
+              onClick={() => health.mutate()}
+            >
+              Comprobar ahora
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex items-center gap-2 text-sm">
+            <StatusDot level={HEALTH_LEVEL[detail.health] ?? "unknown"} />
+            <span>
+              {detail.health === "ok" ? "Correcta" : detail.health}
+              {detail.health_checked_at && (
+                <>
+                  {" "}
+                  · comprobada <TimeAgo date={detail.health_checked_at} />
+                </>
+              )}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Comprueba Telegram o Meta y el calendario. Se hace sola cada 24 h.
           </p>
-        )}
-      </section>
-      <section>
-        <h2 className="font-semibold">Resumen del dueño</h2>
-        {!load && (
-          <Button variant="outline" onClick={() => setLoad(true)}>
-            Cargar
-          </Button>
-        )}
-        {load &&
-          (summary.isPending ? (
-            <p>Cargando…</p>
-          ) : summary.isError ? (
-            <ErrorState
-              message={errorMessage(
-                summary.error,
-                "No se pudo cargar el resumen.",
-              )}
-              onRetry={() => void summary.refetch()}
-            />
-          ) : (
-            <div>
-              {summary.data.pack_failed && (
-                <p>No se pudo cargar el resumen del pack.</p>
-              )}
-              {summary.data.pack_lines.map((line) => (
-                <p key={line.label}>
-                  {line.icon} {line.label}:{" "}
-                  {line.unit === "eur"
-                    ? formatEur(Number(line.value))
-                    : formatNumber(Number(line.value))}{" "}
-                  {line.note}
-                </p>
+          {detail.health_reasons.length > 0 && (
+            <ul className="space-y-1 text-sm">
+              {detail.health_reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
               ))}
-              <p>
-                Usuarios: {formatNumber(summary.data.users)} · Mensajes:{" "}
-                {formatNumber(summary.data.messages)} · Coste:{" "}
-                {formatEur(Number(summary.data.cost_eur))}
-              </p>
-            </div>
-          ))}
-      </section>
-      <section>
-        <h2 className="font-semibold">Alertas abiertas</h2>
-        {detail.open_alerts.length ? (
-          detail.open_alerts.map((alert) => <p key={alert.id}>{alert.text}</p>)
-        ) : (
-          <EmptyState message="No hay alertas abiertas." />
-        )}
-      </section>
-    </div>
-  );
-}
-function Channel({ detail }: { detail: Detail }) {
-  const secrets = useQuery({
-    queryKey: ["tenant-secrets", detail.slug],
-    queryFn: () =>
-      unwrap(api.GET("/tenants/{slug}/secrets", param(detail.slug))),
-    enabled: detail.channel_type !== null,
-  });
-  return (
-    <div className="space-y-4">
-      {detail.status === "onboarding" && (
-        <MissingChecklist slug={detail.slug} />
-      )}
-      <p>Canal: {detail.channel_type ?? "Demo"}</p>
-      <p>Webhook: {detail.webhook_url ?? "—"}</p>
-      {detail.public_link && (
-        <div>
-          <a className="underline" href={detail.public_link}>
-            {detail.public_link}
-          </a>
-          <div className="mt-4 w-fit bg-white p-4">
-            <QRCodeSVG
-              value={detail.public_link}
-              title="QR del canal público"
-            />
-          </div>
-        </div>
-      )}
-      <p>Dueño enlazado: {detail.owner_linked ? "Sí" : "No"}</p>
-      <p>
-        Canal: <code>{JSON.stringify(detail.document.channel ?? null)}</code>
-      </p>
-      <p>
-        Testers: <code>{JSON.stringify(detail.document.testers ?? null)}</code>
-      </p>
-      <p>
-        Dueño: <code>{JSON.stringify(detail.document.owner ?? null)}</code>
-      </p>
-      {detail.channel_type &&
-        (secrets.isPending ? (
-          <p>Cargando estado de secretos…</p>
-        ) : secrets.isError ? (
-          <ErrorState
-            message={errorMessage(
-              secrets.error,
-              "No se pudo cargar el estado de secretos.",
-            )}
-            onRetry={() => void secrets.refetch()}
-          />
-        ) : (
-          <div>
-            <h2 className="font-semibold">Secretos</h2>
-            {!secrets.data.readable && (
-              <p>No se pueden leer los secretos configurados.</p>
-            )}
-            {secrets.data.fields.map((field) => (
-              <p key={field.name}>
-                {field.name}: {field.set ? "Configurado" : "No configurado"}
-              </p>
+            </ul>
+          )}
+          {health.isError && <p role="alert">No se pudo comprobar la salud.</p>}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Resumen del dueño</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!load && (
+            <Button variant="outline" onClick={() => setLoad(true)}>
+              Cargar
+            </Button>
+          )}
+          {load &&
+            (summary.isPending ? (
+              <p>Cargando…</p>
+            ) : summary.isError ? (
+              <ErrorState
+                message={errorMessage(
+                  summary.error,
+                  "No se pudo cargar el resumen.",
+                )}
+                onRetry={() => void summary.refetch()}
+              />
+            ) : (
+              <div className="space-y-1">
+                {summary.data.pack_failed && (
+                  <p>No se pudo cargar el resumen del pack.</p>
+                )}
+                {summary.data.pack_lines.map((line) => (
+                  <p key={line.label}>
+                    {line.icon} {line.label}:{" "}
+                    {line.unit === "eur"
+                      ? formatEur(Number(line.value))
+                      : formatNumber(Number(line.value))}{" "}
+                    {line.note}
+                  </p>
+                ))}
+                <p>
+                  Usuarios: {formatNumber(summary.data.users)} · Mensajes:{" "}
+                  {formatNumber(summary.data.messages)} · Coste:{" "}
+                  {formatEur(Number(summary.data.cost_eur))}
+                </p>
+              </div>
             ))}
-            <p>
-              Actualizado:{" "}
-              {secrets.data.updated_at ? (
-                <TimeAgo date={secrets.data.updated_at} />
-              ) : (
-                "Nunca"
-              )}
-              {secrets.data.updated_by && ` · ${secrets.data.updated_by}`}
-            </p>
-            <SecretsForm
-              slug={detail.slug}
-              fields={secrets.data.fields.map((field) => field.name)}
-            />
-          </div>
-        ))}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Alertas abiertas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {detail.open_alerts.length ? (
+            <ul className="space-y-1">
+              {detail.open_alerts.map((alert) => (
+                <li key={alert.id}>{alert.text}</li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState message="No hay alertas abiertas." />
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -346,45 +333,20 @@ function Notifications({ slug }: { slug: string }) {
       />
     );
   return q.data.length ? (
-    <ul>
-      {q.data.map((n) => (
-        <li className="border-b py-3" key={`${n.created_at}-${n.kind}`}>
-          <p>{n.text}</p>
-          <p>
-            {n.status} · <TimeAgo date={n.created_at} />
-          </p>
-        </li>
-      ))}
-    </ul>
+    <Card>
+      <CardContent className="divide-y p-0">
+        {q.data.map((n) => (
+          <div className="px-6 py-3" key={`${n.created_at}-${n.kind}`}>
+            <p>{n.text}</p>
+            <p className="text-sm text-muted-foreground">
+              {n.status} · <TimeAgo date={n.created_at} />
+            </p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   ) : (
     <EmptyState message="No hay avisos." />
-  );
-}
-function Datasets({ slug }: { slug: string }) {
-  const q = useQuery({
-    queryKey: ["datasets", slug],
-    queryFn: () => unwrap(api.GET("/tenants/{slug}/datasets", param(slug))),
-  });
-  if (q.isPending) return <p>Cargando datos…</p>;
-  if (q.isError)
-    return (
-      <ErrorState
-        message={errorMessage(q.error, "No se pudieron cargar los datos.")}
-        onRetry={() => void q.refetch()}
-      />
-    );
-  return q.data.length ? (
-    <ul>
-      {q.data.map((d) => (
-        <li className="border-b py-3" key={d.name}>
-          {d.name} · v{d.version} · {d.author} · <TimeAgo date={d.created_at} />{" "}
-          · {d.comment}
-          <p className="font-mono text-xs">{d.sha256}</p>
-        </li>
-      ))}
-    </ul>
-  ) : (
-    <EmptyState message="No hay datasets." />
   );
 }
 export function TenantDetailPage({
@@ -392,25 +354,18 @@ export function TenantDetailPage({
   dirty = false,
   onDirtyChange = () => {},
   initialTab = "resumen",
+  initialSection,
 }: {
   slug: string;
   dirty?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   initialTab?: string;
+  initialSection?: "canal";
 }) {
   const [tab, setTab] = useState(initialTab);
-  const client = useQueryClient();
   const q = useQuery({
     queryKey: ["tenant", slug],
     queryFn: () => unwrap(api.GET("/tenants/{slug}", param(slug))),
-  });
-  const health = useMutation({
-    mutationFn: () =>
-      unwrap(api.POST("/tenants/{slug}/health-check", param(slug))),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["tenant", slug] });
-      void client.invalidateQueries({ queryKey: ["overview"] });
-    },
   });
   if (q.isPending) return <p>Cargando cliente…</p>;
   if (q.isError)
@@ -425,30 +380,22 @@ export function TenantDetailPage({
     <div>
       <PageHeader
         title={d.name}
-        description={`${d.slug} · ${d.pack} · ${d.status} · salud: ${d.health}`}
+        description={
+          <span className="flex flex-wrap items-center gap-2">
+            <span>
+              {d.slug} · {d.pack}
+            </span>
+            <StatusBadge status={d.status as Status} />
+            <StatusBadge status={d.health as Status} />
+          </span>
+        }
         actions={
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <StatusAction slug={slug} status={d.status} />
-            <Button
-              variant="outline"
-              disabled={health.isPending}
-              onClick={() => health.mutate()}
-            >
-              Comprobar salud
-            </Button>
+            <DeleteTenantAction detail={d} />
           </div>
         }
       />
-      {health.isError && <p role="alert">No se pudo comprobar la salud.</p>}
-      {health.data && (
-        <div role="status">
-          {health.data.length
-            ? health.data.map((issue) => (
-                <p key={issue.code}>{issue.message}</p>
-              ))
-            : "Comprobación completada sin problemas."}
-        </div>
-      )}
       <Tabs
         value={tab}
         onValueChange={(value) => {
@@ -463,44 +410,38 @@ export function TenantDetailPage({
         }}
       >
         <TabsList className="max-w-full overflow-x-auto">
-          {[
-            "Resumen",
-            "Configuración",
-            "Historial",
-            "Canal",
-            "Actividad",
-            "Contactos",
-            "Avisos",
-            "Datos",
-          ].map((tab) => (
-            <TabsTrigger key={tab} value={tab.toLowerCase()}>
-              {tab}
+          {(
+            [
+              ["resumen", "Resumen"],
+              ["configuracion", "Configuración"],
+              ["actividad", "Actividad"],
+              ["contactos", "Contactos"],
+              ["avisos", "Avisos"],
+            ] as const
+          ).map(([id, label]) => (
+            <TabsTrigger key={id} value={id}>
+              {label}
             </TabsTrigger>
           ))}
         </TabsList>
         <TabsContent value="resumen">
           <Summary detail={d} />
         </TabsContent>
-        <TabsContent value="configuración">
-          <ConfigEditor detail={d} onDirtyChange={onDirtyChange} />
-        </TabsContent>
-        <TabsContent value="historial">
-          <History slug={slug} />
-        </TabsContent>
-        <TabsContent value="canal">
-          <Channel detail={d} />
+        <TabsContent value="configuracion">
+          <ConfigEditor
+            detail={d}
+            onDirtyChange={onDirtyChange}
+            initialSection={initialSection === "canal" ? "channel" : undefined}
+          />
         </TabsContent>
         <TabsContent value="actividad">
-          <Timeline tenant={slug} />
+          <Timeline tenant={slug} kinds="inbound,outbound" />
         </TabsContent>
         <TabsContent value="contactos">
           <Contacts slug={slug} />
         </TabsContent>
         <TabsContent value="avisos">
           <Notifications slug={slug} />
-        </TabsContent>
-        <TabsContent value="datos">
-          <Datasets slug={slug} />
         </TabsContent>
       </Tabs>
     </div>

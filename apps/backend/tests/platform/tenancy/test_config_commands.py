@@ -199,7 +199,7 @@ def test_status_requires_exact_confirmation(monkeypatch: pytest.MonkeyPatch) -> 
     assert Tenant.objects.using("owner").get().status == "offboarded"
 
 
-def test_purge_requires_offboard_and_leaves_only_sanitized_version() -> None:
+def test_purge_requires_offboard_and_erases_everything() -> None:
     doc = create()
     MetricEvent.objects.using("owner").create(
         tenant_id=doc["id"], kind="event", value=1, idem_key="x"
@@ -208,16 +208,15 @@ def test_purge_requires_offboard_and_leaves_only_sanitized_version() -> None:
     with pytest.raises(CommandError, match="offboarded"):
         privacy.purge(tenant)
     store.change_status("tg", action="offboard", confirm_slug="tg", actor="user")
-    before = TenantDocumentVersion.objects.using("owner").latest("version").version
     privacy.purge(tenant)
-    (latest,) = TenantDocumentVersion.objects.using("owner").all()
-    assert latest.version == before + 1
-    assert latest.document["testers"] == {"main": []} and latest.document["owner"] is None
+    assert not TenantDocumentVersion.objects.using("owner").exists()
     assert not TenantDatasetVersion.objects.using("owner").exists()
     assert not TenantSecret.objects.using("owner").exists()
     assert not MetricEvent.objects.using("owner").exists()
-    assert Tenant.objects.using("owner").count() == 1
-    assert AuditEvent.objects.using("owner").filter(action="tenant.purge").count() == 1
+    assert not Tenant.objects.using("owner").exists()
+    event = AuditEvent.objects.using("owner").get(action="tenant.purge")
+    assert event.tenant_id is None
+    assert event.details["slug"] == "tg"
 
 
 @pytest.mark.parametrize(

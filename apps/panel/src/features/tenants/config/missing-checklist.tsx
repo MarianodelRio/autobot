@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { ErrorState } from "@/components/error-state";
+import { StatusDot } from "@/components/status-dot";
 
 export function MissingChecklist({ slug }: { slug: string }) {
   const q = useQuery({
@@ -26,9 +27,10 @@ export function MissingChecklist({ slug }: { slug: string }) {
     <section>
       <h2 className="font-semibold">Pendiente para activar</h2>
       {missing.length ? (
-        <ul>
+        <ul className="space-y-1">
           {missing.map((item) => (
             <li key={item.key}>
+              <StatusDot level={item.blocking ? "critical" : "notice"} />{" "}
               {item.label}: {item.detail}
               {item.blocking && " (bloqueante)"}
             </li>

@@ -16,3 +16,4 @@ Plantilla: [`plantilla.md`](plantilla.md).
 | [008](ADR-008-panel.md) | Panel interno: arquitectura, acceso y observabilidad | aceptada |
 | [009](ADR-009-config-en-bd.md) | Config y datasets de los negocios en PostgreSQL, versionados | aceptada |
 | [010](ADR-010-estructura-del-repo.md) | Estructura del repositorio: apps autocontenidas, compose por entorno y `var/` | aceptada |
+| [011](ADR-011-borrado-total-de-un-cliente.md) | Borrado total de un cliente | aceptada |

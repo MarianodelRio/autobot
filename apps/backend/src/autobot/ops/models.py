@@ -10,7 +10,7 @@ from django.utils import timezone
 class OpsAlert(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
     kind = models.CharField(max_length=64, db_index=True)
-    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)  # no FK: survives purge
+    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)  # no FK; purged, too
     severity = models.CharField(max_length=16)
     text = models.TextField()
     first_seen_at = models.DateTimeField(default=timezone.now)
@@ -43,7 +43,7 @@ class AuditEvent(models.Model):
     at = models.DateTimeField(default=timezone.now, db_index=True)
     actor = models.CharField(max_length=150)
     action = models.CharField(max_length=64, db_index=True)
-    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)  # no FK: survives purge
+    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)  # no FK; purged, too
     target_type = models.CharField(max_length=64, blank=True, default="")
     target_id = models.CharField(max_length=200, blank=True, default="")
     summary = models.TextField()
@@ -69,18 +69,3 @@ class SystemSample(models.Model):
 
     def __str__(self) -> str:
         return f"system_sample {self.id} {self.taken_at}"
-
-
-class SavedQuery(models.Model):
-    """Operator-maintained SQL queries, accessible only to the panel owner."""
-
-    name = models.TextField()
-    sql = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "saved_query"
-
-    def __str__(self) -> str:
-        return self.name

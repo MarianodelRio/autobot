@@ -1,21 +1,16 @@
-"""Catalogue, masking and saved queries against the real PostgreSQL schema."""
+"""Catalogue and masking against the real PostgreSQL schema."""
 
-import importlib
-import json
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from django.apps import apps
 from django.core.cache import cache
 from django.db import connections
 
-from autobot.ops.models import AuditEvent, SavedQuery
 from autobot.panel.services import catalog
 from autobot.runtime.models import OwnerLink
 from autobot.tenancy.models import Tenant
 from tests.helpers.integration import tg_tenant
-from tests.platform.panel.conftest import HOST, get, post
+from tests.platform.panel.conftest import get
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 
@@ -33,25 +28,14 @@ def test_permissions_are_reapplied() -> None:
     with connections["owner"].cursor() as cursor:
         for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
             cursor.execute(
-                "SELECT has_table_privilege(%s, %s, %s)", ["fp_app", "saved_query", privilege]
+                "SELECT has_table_privilege(%s, %s, %s)", ["fp_app", "auth_user", privilege]
             )
             assert cursor.fetchone() == (False,)
         cursor.execute(
             "SELECT has_table_privilege(%s, %s, %s)",
-            ["fp_owner", "saved_query", "SELECT,INSERT,UPDATE,DELETE"],
+            ["fp_owner", "auth_user", "SELECT,INSERT,UPDATE,DELETE"],
         )
         assert cursor.fetchone() == (True,)
-
-
-def test_seed_queries_are_executable() -> None:
-    migration = importlib.import_module("autobot.migrations.0018_savedquery")
-    migration.seed_queries(apps, SimpleNamespace(connection=connections["owner"]))
-    rows = list(SavedQuery.objects.using("owner").order_by("-id")[:4])
-    assert len(rows) == 4
-    with connections["owner"].cursor() as cursor:
-        for query in rows:
-            cursor.execute("EXPLAIN " + query.sql)
-            assert cursor.fetchall()
 
 
 def test_catalog_and_six_hidden_columns(authed_client: Any, tenants: Any) -> None:
@@ -77,37 +61,6 @@ def test_catalog_and_six_hidden_columns(authed_client: Any, tenants: Any) -> Non
         assert data["rows"], table
         assert all(row[index] == "<oculto>" for row in data["rows"])
     assert get(authed_client, "data/tables/does_not_exist").status_code == 404
-
-
-def test_saved_queries_crud_and_audit(authed_client: Any) -> None:
-    created = post(authed_client, "data/saved-queries", {"name": "Mis datos", "sql": "SELECT 1"})
-    assert created.status_code == 200, created.content
-    id = created.json()["id"]
-    assert any(row["id"] == id for row in get(authed_client, "data/saved-queries").json())
-    updated = authed_client.put(
-        f"/api/panel/data/saved-queries/{id}",
-        data=json.dumps({"name": "Nuevo", "sql": "SELECT 2"}),
-        content_type="application/json",
-        HTTP_HOST=HOST,
-    )
-    assert updated.status_code == 200
-    assert updated.json()["sql"] == "SELECT 2"
-    deleted = authed_client.delete(f"/api/panel/data/saved-queries/{id}", HTTP_HOST=HOST)
-    assert deleted.status_code == 204
-    assert (
-        authed_client.delete(f"/api/panel/data/saved-queries/{id}", HTTP_HOST=HOST).status_code
-        == 404
-    )
-    assert not SavedQuery.objects.using("owner").filter(pk=id).exists()
-    assert set(
-        AuditEvent.objects.using("owner")
-        .filter(target_type="saved_query", target_id=str(id))
-        .values_list("action", flat=True)
-    ) == {"saved_query.create", "saved_query.update", "saved_query.delete"}
-    assert (
-        post(authed_client, "data/saved-queries", {"name": "", "sql": "SELECT 1"}).status_code
-        == 422
-    )
 
 
 def test_unknown_table_and_binary_preview(

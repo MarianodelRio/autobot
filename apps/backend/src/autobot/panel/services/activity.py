@@ -7,17 +7,23 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from django.db import connections
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from ninja import Schema
 
-from autobot.ops.models import AuditEvent, OpsAlert
+from autobot.ops.audit import record
 from autobot.panel.errors import ApiError
 from autobot.runtime.models import InboundEvent, Notification, OutboundMessage
 from autobot.tenancy.models import Tenant
 
 UNAVAILABLE = "(contenido no disponible)"
+
+SOURCES: dict[str, tuple[Any, str]] = {
+    "inbound": (InboundEvent, "received_at"),
+    "outbound": (OutboundMessage, "created_at"),
+    "notification": (Notification, "created_at"),
+}
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -69,16 +75,21 @@ class ActivityItem(Schema):
     kind: str
     tenant: str | None
     channel: str | None
-    icon: str
-    title: str
-    detail: str
+    label: str
     status: str | None
-    link: str | None
 
 
 class ActivityPage(Schema):
     items: list[ActivityItem]
     next_cursor: str | None
+
+
+class ActivityDetail(Schema):
+    contact: str | None
+    text: str
+    facts: list[str]
+    tenant: str | None
+    contact_link: str | None
 
 
 def encode_cursor(at: datetime, rank: int, id: str) -> str:
@@ -98,15 +109,11 @@ def decode_cursor(cursor: str) -> tuple[datetime, int, str]:
             at is None
             or at.utcoffset() is None
             or type(rank) is not int
-            or rank not in range(6)
+            or rank not in range(3)
             or not isinstance(id, str)
         ):
             raise ValueError
-        if rank == 5:
-            if int(id) < 0 or str(int(id)) != id:
-                raise ValueError
-        else:
-            UUID(id)
+        UUID(id)
         return at, rank, id
     except ValueError, TypeError, KeyError, json.JSONDecodeError, OverflowError:
         raise ApiError("bad_request", "Cursor no válido.", 400) from None
@@ -121,15 +128,8 @@ def activity_page(
     tenant_id = next((id for id, slug in slugs.items() if slug == tenant), None) if tenant else None
     if tenant and tenant_id is None:
         return ActivityPage(items=[], next_cursor=None)
-    sources: list[tuple[str, Any, str]] = [
-        ("inbound", InboundEvent, "received_at"),
-        ("outbound", OutboundMessage, "created_at"),
-        ("notification", Notification, "created_at"),
-        ("alert", OpsAlert, "first_seen_at"),
-        ("audit", AuditEvent, "at"),
-    ]
     rows: list[tuple[datetime, int, Any, ActivityItem]] = []
-    for rank, (kind, model, field) in enumerate(sources):
+    for rank, (kind, (model, field)) in enumerate(SOURCES.items()):
         if selected and kind not in selected:
             continue
         qs = model.objects.using("owner").all()
@@ -140,10 +140,6 @@ def activity_page(
         if status:
             if kind in ("inbound", "outbound", "notification"):
                 qs = qs.filter(status=status)
-            elif kind == "alert":
-                if status not in ("open", "resolved"):
-                    continue
-                qs = qs.filter(resolved_at__isnull=status == "open")
             else:
                 continue
         if position:
@@ -154,105 +150,27 @@ def activity_page(
             elif rank == cr:
                 condition |= Q(**{field: at, "id__lt": cid})
             qs = qs.filter(condition)
-        if kind == "outbound":
-            qs = qs.select_related("contact")
         for obj in qs.order_by("-" + field, "-id")[: limit + 1]:
             at = getattr(obj, field)
             slug = slugs.get(obj.tenant_id)
             channel = getattr(obj, "channel", None)
-            link = f"/clientes/{slug}" if slug else None
             if kind == "inbound":
-                title, detail, state, icon = (
-                    "Mensaje recibido",
-                    describe_inbound(channel or "", obj.payload),
-                    obj.status,
-                    "📩",
-                )
+                label, state = "Mensaje recibido", obj.status
             elif kind == "outbound":
-                title, detail, state, icon = (
-                    f"Respuesta a {obj.contact.display_name or obj.contact.external_id}",
-                    describe_outbound(obj.payload),
-                    obj.status,
-                    "📤",
-                )
-                if obj.last_error:
-                    detail += f" · {obj.last_error}"
-                if obj.pricing_category:
-                    detail += f" · {obj.pricing_category}"
-                if obj.billable is not None:
-                    detail += " · facturable" if obj.billable else " · no facturable"
-                link = f"/clientes/{slug}/contactos" if slug else None
-            elif kind == "notification":
-                title, detail, state, icon = (
-                    f"Aviso al dueño: {obj.kind}",
-                    obj.text,
-                    obj.status,
-                    "🔔",
-                )
-            elif kind == "alert":
-                title, detail, state, icon = (
-                    "Alerta",
-                    f"{obj.text} · enviada {obj.sent_count} veces",
-                    "resolved" if obj.resolved_at else "open",
-                    "🚨",
-                )
+                label, state = "Respuesta", obj.status
             else:
-                title, detail, state, icon = obj.summary, f"{obj.action} · {obj.actor}", None, "⚙️"
+                label, state = "Aviso al dueño", obj.status
             item = ActivityItem(
                 id=str(obj.pk),
                 at=at,
                 kind=kind,
                 tenant=slug,
                 channel=channel,
-                icon=icon,
-                title=title,
-                detail=detail,
+                label=label,
                 status=state,
-                link=link,
             )
             rows.append((at, rank, obj.pk, item))
-    if (not selected or "job" in selected) and (not status or status == "failed"):
-        clauses = ["e.type = 'failed'"]
-        params: list[Any] = []
-        if tenant_id:
-            clauses.append("j.args->>'tenant_id' = %s")
-            params.append(str(tenant_id))
-        if position:
-            at, cr, cid = position
-            if cr < 5:
-                clauses.append("(e.at < %s OR e.at = %s)")
-                params.extend([at, at])
-            elif cr == 5:
-                clauses.append("(e.at < %s OR (e.at = %s AND e.id < %s))")
-                params.extend([at, at, int(cid)])
-        params.append(limit + 1)
-        with connections["owner"].cursor() as db:
-            db.execute(
-                "SELECT e.id, e.at, j.task_name, j.attempts, j.args->>'tenant_id' "
-                "FROM procrastinate_events e JOIN procrastinate_jobs j ON j.id = e.job_id WHERE "
-                + " AND ".join(clauses)
-                + " ORDER BY e.at DESC, e.id DESC LIMIT %s",
-                params,
-            )
-            for id, at, task, attempts, job_tenant in db.fetchall():
-                try:
-                    slug = slugs.get(UUID(job_tenant)) if job_tenant else None
-                except ValueError, TypeError:
-                    slug = None
-                item = ActivityItem(
-                    id=str(id),
-                    at=at,
-                    kind="job",
-                    tenant=slug,
-                    channel=None,
-                    icon="💥",
-                    title=f"Trabajo {task} falló",
-                    detail=f"Intento {attempts}",
-                    status="failed",
-                    link="/incidencias",
-                )
-                rows.append((at, 5, id, item))
-    # Stable sorts preserve each source's native ID ordering, including numeric job IDs.
+    # Stable sorts preserve each source's native ID ordering.
     rows.sort(key=lambda row: row[1])
     rows.sort(key=lambda row: row[0], reverse=True)
     page = rows[:limit]
@@ -260,3 +178,58 @@ def activity_page(
         encode_cursor(page[-1][0], page[-1][1], str(page[-1][2])) if len(rows) > limit else None
     )
     return ActivityPage(items=[row[3] for row in page], next_cursor=next_cursor)
+
+
+def activity_detail(kind: str, id: str, actor: str) -> ActivityDetail:
+    if kind not in SOURCES:
+        raise ApiError("not_found", "Tipo de actividad no válido.", 404)
+    model, _field = SOURCES[kind]
+    try:
+        UUID(id)
+    except ValueError:
+        raise ApiError("not_found", "No se encuentra esa actividad.", 404) from None
+    qs = model.objects.using("owner")
+    if kind == "outbound":
+        qs = qs.select_related("contact")
+    try:
+        obj = qs.get(pk=id)
+    except ObjectDoesNotExist:
+        raise ApiError("not_found", "No se encuentra esa actividad.", 404) from None
+
+    slug = (
+        Tenant.objects.using("owner")
+        .filter(pk=obj.tenant_id)
+        .values_list("slug", flat=True)
+        .first()
+    )
+    contact_link = f"/clientes/{slug}?tab=contactos" if slug else None
+    facts: list[str] = []
+    if kind == "inbound":
+        contact = None
+        text = describe_inbound(obj.channel, obj.payload)
+        if obj.error:
+            facts.append(f"Error: {obj.error}")
+    elif kind == "outbound":
+        contact = obj.contact.display_name or obj.contact.external_id
+        text = describe_outbound(obj.payload)
+        if obj.last_error:
+            facts.append(f"Error: {obj.last_error}")
+        if obj.pricing_category:
+            facts.append(f"Categoría: {obj.pricing_category}")
+        if obj.billable is not None:
+            facts.append("Facturable" if obj.billable else "No facturable")
+    else:
+        contact = None
+        text = obj.text
+
+    record(
+        actor=actor,
+        action="activity.view",
+        summary="Consulta de actividad",
+        tenant_id=obj.tenant_id,
+        target_type=kind,
+        target_id=str(id),
+    )
+    return ActivityDetail(
+        contact=contact, text=text, facts=facts, tenant=slug, contact_link=contact_link
+    )

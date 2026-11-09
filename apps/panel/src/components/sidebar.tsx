@@ -9,10 +9,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   Sidebar as SidebarRoot,
-  SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { useLogout } from "@/features/auth/use-logout";
-import { AUDIT_SECTION, NAV_SECTIONS } from "./nav-sections";
+import { NAV_SECTIONS } from "./nav-sections";
 
 export function AppSidebar({
   username,
@@ -46,17 +45,6 @@ export function AppSidebar({
               )}
             </SidebarMenuItem>
           ))}
-        </SidebarMenu>
-        <SidebarSeparator />
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={pathname === AUDIT_SECTION.to}>
-              <Link to={AUDIT_SECTION.to}>
-                <AUDIT_SECTION.icon />
-                <span>{AUDIT_SECTION.title}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter>

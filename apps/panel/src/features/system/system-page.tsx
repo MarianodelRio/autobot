@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { KpiCard } from "@/components/kpi-card";
 import { PageHeader } from "@/components/page-header";
+import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
 import { TimeAgo } from "@/components/time-ago";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -36,11 +37,140 @@ function percent(value: number | null | undefined): string {
     : `${formatNumber(value)} %`;
 }
 
-function ServiceBadge({ ok, label }: { ok: boolean; label: string }) {
+const SERVICE_LABEL: Record<string, string> = {
+  web: "web",
+  worker: "worker",
+  db: "db",
+  victorialogs: "logs",
+};
+
+const FLOW_LEVEL: Record<string, StatusDotLevel> = {
+  ok: "ok",
+  idle: "notice",
+  critical: "critical",
+};
+
+const FLOW_LABEL: Record<string, string> = {
+  ok: "Funcionando",
+  idle: "Sin tráfico reciente",
+  critical: "Con problemas",
+};
+
+const INTEGRATION_LEVEL: Record<string, StatusDotLevel> = {
+  ok: "ok",
+  critical: "critical",
+  off: "unknown",
+  unknown: "unknown",
+};
+
+function FlowCard({ flow }: { flow: components["schemas"]["FlowOut"] }) {
+  const lastAt =
+    flow.last_inbound_at && flow.last_outbound_at
+      ? flow.last_inbound_at > flow.last_outbound_at
+        ? flow.last_inbound_at
+        : flow.last_outbound_at
+      : (flow.last_inbound_at ?? flow.last_outbound_at);
   return (
-    <span className={ok ? "text-status-ok" : "text-status-critical"}>
-      {ok ? "🟢" : "🔴"} {label}
-    </span>
+    <Card>
+      <CardHeader>
+        <CardTitle>Flujo de mensajes</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <StatusDot
+            level={FLOW_LEVEL[flow.state] ?? "unknown"}
+            label={
+              flow.state === "critical" && flow.reason
+                ? flow.reason
+                : FLOW_LABEL[flow.state]
+            }
+          />
+          <p className="mt-1 text-sm text-muted-foreground">
+            {lastAt ? (
+              <>
+                Último mensaje <TimeAgo date={lastAt} />
+              </>
+            ) : (
+              "Sin mensajes todavía"
+            )}
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="font-mono text-2xl tabular-nums">
+              {formatNumber(flow.received_1h)}
+            </p>
+            <p className="text-sm text-muted-foreground">recibidos</p>
+          </div>
+          <div>
+            <p className="font-mono text-2xl tabular-nums">
+              {formatNumber(flow.answered_1h)}
+            </p>
+            <p className="text-sm text-muted-foreground">respondidos</p>
+          </div>
+          <div>
+            <p className="font-mono text-2xl tabular-nums">
+              {formatNumber(flow.failed_1h)}
+            </p>
+            <p className="text-sm text-muted-foreground">fallos</p>
+          </div>
+        </div>
+        <p className="text-center text-xs text-muted-foreground">última hora</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusCard({
+  services,
+  integrations,
+}: {
+  services: Record<string, boolean>;
+  integrations: components["schemas"]["IntegrationOut"][];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Estado</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Plataforma
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {Object.entries(services).map(([name, ok]) => (
+              <StatusDot
+                key={name}
+                level={ok ? "ok" : "critical"}
+                label={SERVICE_LABEL[name] ?? name}
+              />
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Integraciones
+          </p>
+          <div className="space-y-1.5">
+            {integrations.map((integration) => (
+              <div
+                key={integration.key}
+                className="flex items-center justify-between text-sm"
+              >
+                <StatusDot
+                  level={INTEGRATION_LEVEL[integration.state] ?? "unknown"}
+                  label={integration.label}
+                />
+                <span className="text-muted-foreground">
+                  {integration.state === "off" ? "apagada" : integration.detail}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -88,6 +218,11 @@ function SystemContent({ data }: { data: components["schemas"]["SystemOut"] }) {
           : "text-muted-foreground";
   return (
     <>
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+        <FlowCard flow={data.flow} />
+        <StatusCard services={data.services} integrations={data.integrations} />
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="CPU" value={percent(data.machine.cpu_pct)} />
         <KpiCard title="RAM" value={percent(data.machine.mem_used_pct)} />
@@ -150,19 +285,7 @@ function SystemContent({ data }: { data: components["schemas"]["SystemOut"] }) {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Servicios</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {Object.entries(data.services).map(([name, ok]) => (
-              <div key={name}>
-                <ServiceBadge ok={Boolean(ok)} label={name} />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Base de datos</CardTitle>

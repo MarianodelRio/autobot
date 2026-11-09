@@ -15,7 +15,7 @@ import { PageHeader } from "@/components/page-header";
 import { type Status, StatusBadge } from "@/components/status-badge";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { errorMessage } from "@/lib/errors";
+import { IncidentRow } from "./incident-row";
 
 type Alert = components["schemas"]["AlertOut"];
 type Outbound = components["schemas"]["OutboundIncidentOut"];
@@ -38,11 +39,35 @@ const DELIVERY_LABEL: Record<string, string> = {
   "": "Sin intentos",
 };
 
+function logsWindow(at: string): { start: string; end: string } {
+  const center = new Date(at).getTime();
+  return {
+    start: new Date(center - 15 * 60_000).toISOString(),
+    end: new Date(center + 5 * 60_000).toISOString(),
+  };
+}
+
 function invalidateIncidents(client: ReturnType<typeof useQueryClient>) {
   void client.invalidateQueries({ queryKey: ["incidents"] });
   void client.invalidateQueries({ queryKey: ["alerts"] });
   void client.invalidateQueries({ queryKey: ["overview"] });
   void client.invalidateQueries({ queryKey: ["activity"] });
+}
+
+function GroupHeading({ children }: { children: string }) {
+  return (
+    <p className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      {children}
+    </p>
+  );
+}
+
+function EmptyGroup({ message }: { message: string }) {
+  return (
+    <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+      <span aria-hidden="true">✓</span> {message}
+    </p>
+  );
 }
 
 function ResolveAction({ alert }: { alert: Alert }) {
@@ -85,56 +110,29 @@ function ResolveAction({ alert }: { alert: Alert }) {
 }
 
 function OpenAlerts({ alerts }: { alerts: Alert[] }) {
-  if (!alerts.length) return <EmptyState message="No hay alertas abiertas." />;
+  if (!alerts.length) return <EmptyGroup message="No hay alertas abiertas." />;
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {[
-            "Severidad",
-            "Texto",
-            "Cliente",
-            "Primera vez",
-            "Última vez",
-            "Ocurrencias",
-            "Última entrega",
-            "",
-          ].map((label) => (
-            <TableHead key={label}>{label}</TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {alerts.map((alert) => (
-          <TableRow key={alert.id}>
-            <TableCell>
-              <StatusBadge status={alert.severity as Status} />
-            </TableCell>
-            <TableCell>{alert.text}</TableCell>
-            <TableCell>{alert.tenant ?? "—"}</TableCell>
-            <TableCell>
-              <TimeAgo date={alert.first_seen_at} />
-            </TableCell>
-            <TableCell>
-              <TimeAgo date={alert.last_seen_at} />
-            </TableCell>
-            <TableCell>{alert.occurrences}</TableCell>
-            <TableCell>
+    <div>
+      {alerts.map((alert) => (
+        <IncidentRow
+          key={alert.id}
+          severity={alert.severity as Status}
+          text={alert.text}
+          meta={
+            <>
+              {alert.tenant ?? "—"} · <TimeAgo date={alert.last_seen_at} /> ·{" "}
+              {alert.occurrences} veces ·{" "}
               {DELIVERY_LABEL[alert.last_delivery] ?? alert.last_delivery}
-              {alert.last_sent_at && (
-                <>
-                  {" · "}
-                  <TimeAgo date={alert.last_sent_at} />
-                </>
-              )}
-            </TableCell>
-            <TableCell>
-              <ResolveAction alert={alert} />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+            </>
+          }
+          logsLink={{
+            tenant: alert.tenant ?? undefined,
+            ...logsWindow(alert.last_seen_at),
+          }}
+          actions={<ResolveAction alert={alert} />}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -206,41 +204,36 @@ function ResendAction({ message }: { message: Outbound }) {
 }
 
 function PendingSends({ sends }: { sends: Outbound[] }) {
-  if (!sends.length) return <EmptyState message="No hay envíos pendientes." />;
+  if (!sends.length) return <EmptyGroup message="No hay envíos pendientes." />;
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {["Cliente", "Canal", "Estado", "Creado", "Motivo", "Acciones"].map(
-            (label) => (
-              <TableHead key={label}>{label}</TableHead>
-            ),
-          )}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {sends.map((message) => (
-          <TableRow key={message.id}>
-            <TableCell>{message.tenant}</TableCell>
-            <TableCell>{message.channel}</TableCell>
-            <TableCell>{message.status}</TableCell>
-            <TableCell>
-              <TimeAgo date={message.created_at} />
-            </TableCell>
-            <TableCell>
+    <div>
+      {sends.map((message) => (
+        <IncidentRow
+          key={message.id}
+          severity="critical"
+          text={`Sin confirmar · ${message.channel} · ${message.tenant}`}
+          meta={
+            <>
+              <TimeAgo date={message.created_at} /> ·{" "}
               {message.mark_sent_reason ||
                 message.resend_reason ||
                 message.last_error ||
                 "—"}
-            </TableCell>
-            <TableCell className="flex gap-2">
+            </>
+          }
+          logsLink={{
+            tenant: message.tenant,
+            ...logsWindow(message.created_at),
+          }}
+          actions={
+            <>
               <MarkSentAction message={message} />
               <ResendAction message={message} />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+            </>
+          }
+        />
+      ))}
+    </div>
   );
 }
 
@@ -270,33 +263,30 @@ function RetryAction({ job }: { job: Job }) {
 }
 
 function FailedJobs({ jobs }: { jobs: Job[] }) {
-  if (!jobs.length) return <EmptyState message="No hay trabajos fallidos." />;
+  if (!jobs.length) return <EmptyGroup message="Sin trabajos fallidos." />;
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {["Tarea", "Cola", "Intentos", "Último evento", "Motivo", ""].map(
-            (label) => (
-              <TableHead key={label}>{label}</TableHead>
-            ),
-          )}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {jobs.map((job) => (
-          <TableRow key={job.id}>
-            <TableCell>{job.task_name}</TableCell>
-            <TableCell>{job.queue}</TableCell>
-            <TableCell>{job.attempts}</TableCell>
-            <TableCell>{job.at ? <TimeAgo date={job.at} /> : "—"}</TableCell>
-            <TableCell>{job.retry_reason || "—"}</TableCell>
-            <TableCell>
-              <RetryAction job={job} />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div>
+      {jobs.map((job) => (
+        <IncidentRow
+          key={job.id}
+          severity="critical"
+          text={`Trabajo ${job.task_name} falló`}
+          meta={`Intento ${job.attempts} · ${job.retry_reason || "—"}`}
+          logsLink={
+            job.at
+              ? {
+                  tenant:
+                    typeof job.ids.tenant_id === "string"
+                      ? job.ids.tenant_id
+                      : undefined,
+                  ...logsWindow(job.at),
+                }
+              : undefined
+          }
+          actions={<RetryAction job={job} />}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -365,14 +355,29 @@ function ResolvedHistory() {
 }
 
 export function IncidentsPage() {
+  const [historyOpen, setHistoryOpen] = useState(false);
   const query = useQuery({
     queryKey: ["incidents"],
     queryFn: () => unwrap(api.GET("/incidents")),
     refetchInterval: 30_000,
   });
+  const openCount = query.data
+    ? query.data.alerts.length +
+      query.data.outbound.length +
+      query.data.jobs.length
+    : 0;
   return (
     <div className="space-y-6">
-      <PageHeader title="Incidencias" />
+      <PageHeader
+        title="Incidencias"
+        actions={
+          query.data && (
+            <span className="text-sm text-muted-foreground">
+              {openCount} abiertas
+            </span>
+          )
+        }
+      />
       {query.isPending ? (
         <p>Cargando incidencias…</p>
       ) : query.isError ? (
@@ -383,42 +388,44 @@ export function IncidentsPage() {
           )}
           onRetry={() => void query.refetch()}
         />
+      ) : openCount === 0 ? (
+        <Card>
+          <CardContent className="py-6 text-center text-muted-foreground">
+            Todo en orden.
+          </CardContent>
+        </Card>
       ) : (
-        <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Alertas abiertas</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <OpenAlerts alerts={query.data.alerts} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Envíos sin confirmar</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PendingSends sends={query.data.outbound} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Trabajos fallidos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FailedJobs jobs={query.data.jobs} />
-            </CardContent>
-          </Card>
-        </>
+        <div className="space-y-4">
+          <OpenAlerts alerts={query.data.alerts} />
+          <div>
+            <GroupHeading>
+              {query.data.outbound.length > 0
+                ? `Envíos sin confirmar (${query.data.outbound.length})`
+                : "Envíos sin confirmar"}
+            </GroupHeading>
+            <PendingSends sends={query.data.outbound} />
+          </div>
+          <div>
+            <GroupHeading>Trabajos fallidos</GroupHeading>
+            <FailedJobs jobs={query.data.jobs} />
+          </div>
+        </div>
       )}
-      <Card>
-        <CardHeader>
-          <CardTitle>Historial de alertas resueltas</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResolvedHistory />
-        </CardContent>
-      </Card>
+      <details
+        open={historyOpen}
+        onToggle={(event) =>
+          setHistoryOpen((event.target as HTMLDetailsElement).open)
+        }
+      >
+        <summary className="cursor-pointer text-sm text-muted-foreground">
+          Alertas resueltas
+        </summary>
+        {historyOpen && (
+          <div className="mt-3">
+            <ResolvedHistory />
+          </div>
+        )}
+      </details>
     </div>
   );
 }

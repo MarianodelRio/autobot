@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { QueryPage } from "./query-page";
+import { QueryConsole } from "./query-console";
 
 vi.mock("@uiw/react-codemirror", () => ({
   default: ({
@@ -45,10 +45,6 @@ function stubFetch(
       return new Response(JSON.stringify([]), {
         headers: { "Content-Type": "application/json" },
       });
-    if (url.pathname.endsWith("/data/saved-queries"))
-      return new Response(JSON.stringify([]), {
-        headers: { "Content-Type": "application/json" },
-      });
     if (url.pathname.endsWith("/data/query"))
       return new Response(JSON.stringify(queryResponse), {
         headers: { "Content-Type": "application/json" },
@@ -59,13 +55,13 @@ function stubFetch(
   });
 }
 
-function renderPage(initialSql?: string) {
+function renderConsole(sql = "SELECT 1") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
-      <QueryPage initialSql={initialSql} />
+      <QueryConsole sql={sql} onSqlChange={vi.fn()} />
     </QueryClientProvider>,
   );
 }
@@ -81,7 +77,7 @@ test("warns when the result was truncated", async () => {
       duration_ms: 5,
     }),
   );
-  renderPage();
+  renderConsole();
 
   await user.click(await screen.findByRole("button", { name: /Ejecutar/ }));
 
@@ -109,7 +105,7 @@ test("shows the PostgreSQL error in red when the query fails", async () => {
       return stubFetch()(request);
     }),
   );
-  renderPage();
+  renderConsole();
 
   await user.click(await screen.findByRole("button", { name: /Ejecutar/ }));
 
@@ -118,14 +114,11 @@ test("shows the PostgreSQL error in red when the query fails", async () => {
   expect(alert.className).toContain("text-destructive");
 });
 
-test("prefills from initialSql and remembers the last query for next time", async () => {
+test("remembers the last query for next time", async () => {
   const user = userEvent.setup();
   vi.stubGlobal("fetch", stubFetch());
-  renderPage("SELECT * FROM tenant");
+  renderConsole("SELECT * FROM tenant");
 
-  expect(await screen.findByLabelText("sql")).toHaveValue(
-    "SELECT * FROM tenant",
-  );
   await user.click(screen.getByRole("button", { name: /Ejecutar/ }));
 
   await screen.findByText("0 filas");

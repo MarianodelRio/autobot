@@ -1,17 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef, useState } from "react";
-import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
-import { PageHeader } from "@/components/page-header";
+import { TenantSelect } from "@/components/tenant-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { errorMessage } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { LogDetailSheet } from "./log-detail-sheet";
 
-export interface LogsFilters {
+export interface TechnicalFilters {
   tenant: string;
   level: string;
   service: string;
@@ -27,8 +29,16 @@ const QUICK_RANGES: { value: string; label: string; minutes: number }[] = [
   { value: "1h", label: "1 h", minutes: 60 },
   { value: "24h", label: "24 h", minutes: 24 * 60 },
   { value: "7d", label: "7 días", minutes: 7 * 24 * 60 },
-  { value: "mes", label: "Mes", minutes: 31 * 24 * 60 },
+  { value: "31d", label: "31 días", minutes: 31 * 24 * 60 },
 ];
+
+const LEVEL_COLOR: Record<string, string> = {
+  DEBUG: "text-muted-foreground",
+  INFO: "text-foreground",
+  WARNING: "text-status-warning",
+  ERROR: "text-status-critical",
+  CRITICAL: "text-status-critical",
+};
 
 function toLocalInput(iso: string): string {
   if (!iso) return "";
@@ -52,69 +62,25 @@ function field(item: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
-function LogRow({
-  item,
-  open,
-  onToggle,
-}: {
-  item: Record<string, unknown>;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const eventId = field(item, "event_id");
-  return (
-    <div className="border-b">
-      <button
-        type="button"
-        className="grid w-full grid-cols-[140px_90px_90px_120px_1fr] items-start gap-3 py-2 text-left text-sm"
-        aria-expanded={open}
-        onClick={onToggle}
-      >
-        <span>
-          {formatDateTime(
-            field(item, "_time", "ts") || new Date().toISOString(),
-          )}
-        </span>
-        <span>{field(item, "level") || "—"}</span>
-        <span>{field(item, "service") || "—"}</span>
-        <span>{field(item, "tenant") || "—"}</span>
-        <span className="truncate">{field(item, "_msg", "msg")}</span>
-      </button>
-      {open && (
-        <div className="mb-2 space-y-2 pl-4 text-sm">
-          {field(item, "exception") && (
-            <pre className="overflow-auto whitespace-pre-wrap text-destructive">
-              {field(item, "exception")}
-            </pre>
-          )}
-          <pre className="overflow-auto">{JSON.stringify(item, null, 2)}</pre>
-          {eventId && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                void navigator.clipboard?.writeText(eventId);
-                toast.success("event_id copiado.");
-              }}
-            >
-              Copiar event_id
-            </Button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function LogsPage({
+export function TechnicalTab({
   filters,
   onFilterChange,
 }: {
-  filters: LogsFilters;
-  onFilterChange: (next: Partial<LogsFilters>) => void;
+  filters: TechnicalFilters;
+  onFilterChange: (next: Partial<TechnicalFilters>) => void;
 }) {
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<number | null>(null);
+  const [serviceText, setServiceText] = useState(filters.service);
+  const [queryText, setQueryText] = useState(filters.q);
   const parentRef = useRef<HTMLDivElement>(null);
+  const debouncedService = useDebouncedCallback(
+    (value: string) => onFilterChange({ service: value }),
+    300,
+  );
+  const debouncedQuery = useDebouncedCallback(
+    (value: string) => onFilterChange({ q: value }),
+    300,
+  );
   const query = useQuery({
     queryKey: ["logs", filters],
     queryFn: () =>
@@ -141,9 +107,8 @@ export function LogsPage({
     overscan: 10,
   });
   return (
-    <div>
-      <PageHeader title="Logs" />
-      <div className="mb-3 flex flex-wrap gap-2">
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
         {QUICK_RANGES.map((range) => (
           <Button
             key={range.value}
@@ -163,7 +128,7 @@ export function LogsPage({
           </Button>
         ))}
       </div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Input
           type="datetime-local"
           aria-label="Desde"
@@ -197,22 +162,25 @@ export function LogsPage({
           className="max-w-xs"
           aria-label="Servicio"
           placeholder="Servicio (p. ej. web, worker)"
-          value={filters.service}
-          onChange={(event) => onFilterChange({ service: event.target.value })}
+          value={serviceText}
+          onChange={(event) => {
+            setServiceText(event.target.value);
+            debouncedService(event.target.value);
+          }}
         />
-        <Input
-          className="max-w-xs"
-          aria-label="Cliente"
-          placeholder="Cliente (slug)"
+        <TenantSelect
           value={filters.tenant}
-          onChange={(event) => onFilterChange({ tenant: event.target.value })}
+          onChange={(value) => onFilterChange({ tenant: value })}
         />
         <Input
           className="max-w-xs"
           aria-label="Texto"
           placeholder="Buscar en el mensaje"
-          value={filters.q}
-          onChange={(event) => onFilterChange({ q: event.target.value })}
+          value={queryText}
+          onChange={(event) => {
+            setQueryText(event.target.value);
+            debouncedQuery(event.target.value);
+          }}
         />
       </div>
       {query.isPending ? (
@@ -225,8 +193,9 @@ export function LogsPage({
       ) : (
         <>
           {query.data.clipped && (
-            <p role="status" className="mb-2 text-sm text-status-notice">
-              El rango se ha recortado: solo se conserva el mes en curso.
+            <p role="status" className="text-sm text-status-notice">
+              El rango se ha recortado a los últimos 31 días, los que se
+              conservan.
             </p>
           )}
           {items.length === 0 ? (
@@ -245,43 +214,60 @@ export function LogsPage({
                 {virtualizer.getVirtualItems().map((row) => {
                   const item = items[row.index];
                   if (!item) return null;
+                  const level = field(item, "level");
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={row.key}
+                      aria-current={selected === row.index}
+                      onClick={() => setSelected(row.index)}
                       style={{
                         position: "absolute",
                         top: 0,
                         left: 0,
                         width: "100%",
+                        height: `${row.size}px`,
                         transform: `translateY(${row.start}px)`,
                       }}
+                      className={cn(
+                        "grid grid-cols-[140px_90px_90px_120px_minmax(0,1fr)] items-center gap-3 border-b px-2 text-left text-sm hover:bg-accent",
+                        selected === row.index && "bg-accent",
+                      )}
                     >
-                      <LogRow
-                        item={item}
-                        open={expanded.has(row.index)}
-                        onToggle={() =>
-                          setExpanded((current) => {
-                            const next = new Set(current);
-                            if (next.has(row.index)) next.delete(row.index);
-                            else next.add(row.index);
-                            return next;
-                          })
-                        }
-                      />
-                    </div>
+                      <span>
+                        {formatDateTime(
+                          field(item, "_time", "ts") ||
+                            new Date().toISOString(),
+                        )}
+                      </span>
+                      <span className={LEVEL_COLOR[level] ?? ""}>
+                        {level || "—"}
+                      </span>
+                      <span>{field(item, "service") || "—"}</span>
+                      <span>{field(item, "tenant") || "—"}</span>
+                      <span className="truncate">
+                        {field(item, "_msg", "msg")}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
             </div>
           )}
           {query.data.truncated && (
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Hay más resultados de los que se muestran: afina los filtros o
               reduce el rango.
             </p>
           )}
         </>
       )}
+      <LogDetailSheet
+        item={selected !== null ? (items[selected] ?? null) : null}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+      />
     </div>
   );
 }

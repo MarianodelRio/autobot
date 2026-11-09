@@ -1,5 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
+import type { components } from "@/api/schema";
+
+export type TableSummary = components["schemas"]["TableSummaryOut"];
 
 export function useTables() {
   return useQuery({

@@ -31,18 +31,17 @@ def test_query_defaults_escaping_and_limits() -> None:
         assert build_query(LogFilters()).endswith("limit 201")
 
 
-@pytest.mark.parametrize(
-    "now,boundary",
-    [
-        (datetime(2026, 11, 1, 0, 30, tzinfo=UTC), datetime(2026, 10, 31, 23, tzinfo=UTC)),
-        (datetime(2026, 7, 2, tzinfo=UTC), datetime(2026, 6, 30, 22, tzinfo=UTC)),
-    ],
-)
-def test_madrid_month_boundary(now: datetime, boundary: datetime) -> None:
+def test_31_day_boundary() -> None:
+    now = datetime(2026, 11, 4, 12, tzinfo=UTC)
+    boundary = now - timedelta(days=31)
     with patch("autobot.panel.services.logs.timezone.now", return_value=now):
         filters, clipped = prepare(LogFilters(start=boundary - timedelta(days=1)))
     assert clipped
     assert filters.start == boundary
+    with patch("autobot.panel.services.logs.timezone.now", return_value=now):
+        filters, clipped = prepare(LogFilters(start=boundary + timedelta(hours=1)))
+    assert not clipped
+    assert filters.start == boundary + timedelta(hours=1)
 
 
 def test_http_contract(

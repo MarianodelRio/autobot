@@ -16,14 +16,18 @@
 4. En `salon`, el negocio comparte su calendario con la cuenta de servicio y declara
    su `calendar_id`. Las plantillas de WhatsApp deben estar creadas y aprobadas.
 5. `manage.py owner_invite <slug>` genera el enlace privado y de un solo uso para el
-   dueño. `owner.notify` y `owner.summary_monthly` se cambian en la configuración
-   versionada, exportando y volviendo a importar. `owner_unlink` desconecta el chat.
-6. La persona registra el webhook con `telegram_set_webhook <slug>` si procede y
-   ejecuta `tenant_health <slug>`. Con `onboarding`, solo se atiende a `testers.main`.
+   dueño; en el panel, la ficha del cliente (Configuración → Dueño y testers) tiene
+   el mismo botón «Invitar al dueño», con el enlace mostrado una sola vez.
+   `owner.notify` y `owner.summary_monthly` se cambian en la configuración
+   versionada, exportando y volviendo a importar, o directamente en ese formulario.
+   `owner_unlink` desconecta el chat.
+6. La persona registra el webhook con `telegram_set_webhook <slug>` si procede (o con
+   «Registrar webhook» en la misma pestaña del panel) y ejecuta `tenant_health <slug>`.
+   Con `onboarding`, solo se atiende a `testers.main`.
 7. Antes de activar: documento válido, ids y secretos completos, salud sin errores
    críticos, plantillas aprobadas y al menos un mensaje real de un tester por `main`.
    En el panel, la ficha del cliente muestra esas comprobaciones y «Activar» pide
-   escribir el slug; la baja siempre se hace por terminal.
+   escribir el slug.
 
 Para editar, `tenant_config export <slug> <dir>` crea un directorio nuevo o vacío,
 sin secretos. Después de editar, `tenant_config import <dir> --comment "Motivo"`
@@ -108,18 +112,20 @@ puertas del bot de demo sin usar ningún negocio real (ver `docs/procedimientos/
 ## Baja
 
 La persona operadora registra la fecha efectiva de baja y ejecuta el borrado en un
-máximo de 30 días; `synced_at` no es una fecha de baja. La entrada del tenant se
-conserva hasta comprobar el borrado (ver `retencion-rgpd.md`).
+máximo de 30 días; `synced_at` no es una fecha de baja.
 
 1. `manage.py tenant_status <slug> offboard` pide escribir el slug y publica la baja.
    Los webhooks tardíos se contestan con 200 sin guardar nada.
-2. Si el canal es Telegram, la persona retira el webhook mientras los secretos siguen
-   disponibles.
-3. `manage.py tenant_data_export <slug> --output <ruta-privada>`, si se acordó con el negocio.
-4. `manage.py tenant_purge <slug>` exige de nuevo el slug y comprueba que sigue dado de
-   baja. Borra contactos, conversaciones, eventos, mensajes, avisos, métricas, secretos y
-   versiones de datasets. Deja una sola versión del documento, con `testers.main: []`
-   y `owner: null`, y conserva el espejo para los webhooks tardíos. Se audita atómicamente.
-5. El negocio revoca el acceso del operador a Meta y deja de compartir el calendario.
-6. Retirar las copias locales de importación o guardarlas cifradas fuera del repositorio.
+2. `manage.py tenant_data_export <slug> --output <ruta-privada>`, si se acordó con el negocio.
+3. `manage.py tenant_purge <slug>` exige de nuevo el slug y comprueba que sigue dado de
+   baja. Si el canal es Telegram, retira primero el webhook; si falla, sigue y lo
+   comunica. Borra contactos, conversaciones, eventos, mensajes, avisos, métricas,
+   sesiones y eventos de demo, el enlace del dueño, secretos, versiones de documento y
+   datasets, sus alertas y su auditoría, y la propia fila del tenant: el slug queda
+   libre. Un webhook tardío de ese canal recibirá 404 a partir de entonces. Se audita
+   atómicamente, con una sola entrada `tenant.purge` sin datos del negocio. El panel
+   ofrece el mismo borrado desde la ficha del cliente (menú «⋯» → «Eliminar cliente»,
+   deshabilitado si el negocio está activo).
+4. El negocio revoca el acceso del operador a Meta y deja de compartir el calendario.
+5. Retirar las copias locales de importación o guardarlas cifradas fuera del repositorio.
    Las copias antiguas de la BD caducan con la retención de backups; ver RGPD.

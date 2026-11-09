@@ -61,7 +61,7 @@ comando. `NGROK_DOMAIN` usa el dominio reservado de desarrollo documentado en el
 | `contact_export <slug> <external_id> [--channel main\|demo_tg\|demo_wa] --output <fichero>` | Exporta los datos de un contacto a un fichero privado (derechos RGPD) |
 | `tenant_data_export <slug> --output <fichero>` | Exporta todos los datos de un negocio a un fichero privado (derechos RGPD) |
 | `contact_forget <slug> <external_id> [--channel ...]` | Borra los datos de un contacto |
-| `tenant_purge <slug>` | Solo tras la baja: borra datos, secretos, métricas e historiales; conserva una versión depurada y exige escribir el slug |
+| `tenant_purge <slug>` | Solo tras la baja: borra todo lo que el sistema guarda del negocio, incluida su fila y su slug (que queda libre); exige escribir el slug |
 | `outbound_resolve <uuid> (--mark-sent\|--resend) --confirm` | Resuelve un envío ambiguo a mano; sin `--confirm` explica el riesgo y no hace nada |
 | `job_retry <id>` | Reintenta un trabajo fallido idempotente a mano; rechaza los de envío (`send_message`, `send_notification`) |
 | `tenant_secrets_reencrypt` | Recifra todos los secretos de canal con la primera clave de `SECRETS_ENCRYPTION_KEY`, atómicamente y con auditoría; ver [rotación](../procedimientos/rotar-secretos.md) |

@@ -1,8 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { IncidentsPage } from "./incidents-page";
+import { routeTree } from "@/routeTree.gen";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -55,6 +60,15 @@ function stubFetch() {
   return vi.fn(async (request: RequestInfo | URL) => {
     const req = request instanceof Request ? request : new Request(request);
     const url = new URL(req.url);
+    if (url.pathname.endsWith("/me"))
+      return new Response(JSON.stringify({ username: "operator" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    if (url.pathname.endsWith("/overview"))
+      return new Response(
+        JSON.stringify({ status: { level: "ok" }, tenant_rows: [] }),
+        { headers: { "Content-Type": "application/json" } },
+      );
     if (url.pathname.endsWith("/incidents"))
       return new Response(
         JSON.stringify({ alerts: [alert], outbound: [outbound], jobs: [job] }),
@@ -98,10 +112,15 @@ function stubFetch() {
 }
 
 function renderPage() {
-  const client = new QueryClient();
+  const queryClient = new QueryClient();
+  const router = createRouter({
+    routeTree,
+    context: { queryClient },
+    history: createMemoryHistory({ initialEntries: ["/incidencias"] }),
+  });
   render(
-    <QueryClientProvider client={client}>
-      <IncidentsPage />
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
 }
@@ -120,11 +139,13 @@ test("resolves an alert that does not auto-resolve", async () => {
   vi.stubGlobal("fetch", fetcher);
   renderPage();
 
-  await user.click(await screen.findByRole("button", { name: "Resolver" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Resolver" }, { timeout: 8000 }),
+  );
   await user.click(await screen.findByRole("button", { name: "Resolver" }));
 
   await waitFor(() => expect(posted(fetcher, "/alerts/a1/resolve")).toBe(true));
-});
+}, 10_000);
 
 test("marking a send as sent posts without confirmation", async () => {
   const user = userEvent.setup();
@@ -133,13 +154,17 @@ test("marking a send as sent posts without confirmation", async () => {
   renderPage();
 
   await user.click(
-    await screen.findByRole("button", { name: "Marcar enviado" }),
+    await screen.findByRole(
+      "button",
+      { name: "Marcar enviado" },
+      { timeout: 8000 },
+    ),
   );
 
   await waitFor(() =>
     expect(posted(fetcher, "/outbound/o1/mark-sent")).toBe(true),
   );
-});
+}, 10_000);
 
 test("resending a message requires confirming the duplicate risk", async () => {
   const user = userEvent.setup();
@@ -147,7 +172,9 @@ test("resending a message requires confirming the duplicate risk", async () => {
   vi.stubGlobal("fetch", fetcher);
   renderPage();
 
-  await user.click(await screen.findByRole("button", { name: "Reenviar" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Reenviar" }, { timeout: 8000 }),
+  );
   expect(
     screen.getByText(/reenviar puede crear un duplicado/),
   ).toBeInTheDocument();
@@ -161,7 +188,7 @@ test("resending a message requires confirming the duplicate risk", async () => {
   await waitFor(() =>
     expect(posted(fetcher, "/outbound/o1/resend")).toBe(true),
   );
-});
+}, 10_000);
 
 test("retries a failed job", async () => {
   const user = userEvent.setup();
@@ -169,7 +196,13 @@ test("retries a failed job", async () => {
   vi.stubGlobal("fetch", fetcher);
   renderPage();
 
-  await user.click(await screen.findByRole("button", { name: "Reintentar" }));
+  await user.click(
+    await screen.findByRole(
+      "button",
+      { name: "Reintentar" },
+      { timeout: 8000 },
+    ),
+  );
 
   await waitFor(() => expect(posted(fetcher, "/jobs/1/retry")).toBe(true));
-});
+}, 10_000);

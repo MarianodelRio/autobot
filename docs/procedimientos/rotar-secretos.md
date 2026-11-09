@@ -6,10 +6,17 @@ Telegram, bot de demo, avisos u otra integración. La firma del webhook usa
 `app_secret` o `webhook_secret`; cambiarla exige coordinación con el proveedor.
 
 **Pasos:** con aprobación humana, genera el nuevo valor en el proveedor y guárdalo en
-el gestor de contraseñas. Para un canal, exporta el documento con `tenant_config export
-<slug> <dir>` y vuelve a importarlo con `tenant_config import <dir> --secrets <yaml>
---comment "Rotación de canal"`. Ese YAML privado solo es una entrada de importación
-(slug → campos); se cifra al escribirlo en BD y no se monta en el servidor.
+el gestor de contraseñas. Para un canal, lo más simple es la ficha del cliente en el
+panel (pestaña Configuración, sección Canal, «Cambiar credenciales»): el diálogo
+sustituye el valor dejando en blanco los que no cambian, y «Generar» rellena
+`verify_token`/`webhook_secret` con un valor aleatorio de 48 caracteres que se
+muestra para copiarlo; los valores guardados nunca se muestran. Tras cambiar
+`webhook_secret`, pulsa «Registrar webhook» en la misma pantalla (solo Telegram);
+tras cambiar `verify_token`, actualízalo también en Meta. Alternativamente, por
+terminal: exporta el documento con `tenant_config export <slug> <dir>` y vuelve a
+importarlo con `tenant_config import <dir> --secrets <yaml> --comment "Rotación de
+canal"`. Ese YAML privado solo es una entrada de importación (slug → campos); se
+cifra al escribirlo en BD y no se monta en el servidor.
 Los secretos de plataforma se cambian en `.env` (0600), recreando `web` y `worker`.
 Coordina el cambio
 de webhook y ventana de solape; prueba primero con `testers.main`. Nunca incluyas

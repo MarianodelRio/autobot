@@ -1,20 +1,22 @@
 """Synchronous operator exports and erasure; never pass customer data to jobs."""
 
-import copy
 import json
 import os
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from django.core.cache import cache
 from django.core.management.base import CommandError
-from django.db import transaction
+from django.db import connections, transaction
 from django.db.models import Q, QuerySet
-from django.utils import timezone
 
+from autobot.ops import state as runtime_state
 from autobot.ops.audit import record
+from autobot.ops.models import AuditEvent, OpsAlert
 from autobot.runtime.models import (
     DEMO_CHANNELS,
+    Channel,
     Contact,
     Conversation,
     DemoEvent,
@@ -25,6 +27,7 @@ from autobot.runtime.models import (
     OutboundMessage,
     OwnerLink,
 )
+from autobot.runtime.notifications import _cooldown_key
 from autobot.tenancy.models import (
     ConfigRevision,
     Tenant,
@@ -187,53 +190,72 @@ def forget(contact: Contact) -> None:
         Contact.objects.using("owner").filter(tenant_id=contact.tenant_id, id=contact.id).delete()
 
 
-def purge(tenant: Tenant) -> None:
+class PurgeBlocked(CommandError):
+    """Raised when a job for this tenant is currently running; nothing is deleted."""
+
+
+def purge(tenant: Tenant, *, actor: str = "command:tenant_purge") -> None:
+    """Erase everything the platform stores about `tenant` (ADR-011): every
+    customer-data table, its secrets, document and dataset versions, its alerts,
+    its audit history and its own row, freeing its slug. Only a sanitized
+    `tenant.purge` audit entry (with `tenant_id=None`) survives, plus whatever
+    VictoriaLogs and the backups still retain under their own retention."""
     with transaction.atomic(using="owner"):
         revision = ConfigRevision.objects.using("owner").select_for_update().get(pk=1)
         current = Tenant.objects.using("owner").get(pk=tenant.pk)
         if current.status != "offboarded":
             raise CommandError("Solo se puede purgar un negocio dado de baja (offboarded).")
-        latest = (
-            TenantDocumentVersion.objects.using("owner")
-            .filter(tenant=tenant)
-            .order_by("-version")
-            .first()
-        )
-        if (
-            latest is None
-            or not isinstance(latest.document, dict)
-            or latest.document.get("status") != "offboarded"
-        ):
-            raise CommandError(
-                "El negocio necesita una versión de configuración que refleje la baja."
+        tenant_id = tenant.id
+        slug = current.slug
+        with connections["owner"].cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM procrastinate_jobs WHERE args->>'tenant_id' = %s "
+                "AND status = 'doing' LIMIT 1",
+                [str(tenant_id)],
             )
-        document = copy.deepcopy(latest.document)
-        document["testers"] = {"main": []}
-        document["owner"] = None
-        version = latest.version + 1
-        demo_events(tenant.id).delete()
-        for model in MODELS:
-            model.objects.using("owner").filter(tenant_id=tenant.id).delete()
-        MetricEvent.objects.using("owner").filter(tenant_id=tenant.id).delete()
-        TenantSecret.objects.using("owner").filter(tenant_id=tenant.id).delete()
-        TenantDatasetVersion.objects.using("owner").filter(tenant_id=tenant.id).delete()
-        TenantDocumentVersion.objects.using("owner").filter(tenant_id=tenant.id).delete()
-        TenantDocumentVersion.objects.using("owner").create(
-            tenant_id=tenant.id,
-            version=version,
-            document=document,
-            author="command:tenant_purge",
-            comment="Datos personales purgados",
+            if cursor.fetchone() is not None:
+                raise PurgeBlocked(
+                    "Hay trabajos en curso para este negocio; inténtalo de nuevo en unos segundos."
+                )
+        kinds = set(
+            OpsAlert.objects.using("owner")
+            .filter(tenant_id=tenant_id)
+            .values_list("kind", flat=True)
+            .distinct()
         )
-        Tenant.objects.using("owner").filter(pk=tenant.pk).update(synced_at=timezone.now())
+        demo_events(tenant_id).delete()
+        for model in MODELS:
+            model.objects.using("owner").filter(tenant_id=tenant_id).delete()
+        MetricEvent.objects.using("owner").filter(tenant_id=tenant_id).delete()
+        TenantSecret.objects.using("owner").filter(tenant_id=tenant_id).delete()
+        TenantDatasetVersion.objects.using("owner").filter(tenant_id=tenant_id).delete()
+        TenantDocumentVersion.objects.using("owner").filter(tenant_id=tenant_id).delete()
+        OpsAlert.objects.using("owner").filter(tenant_id=tenant_id).delete()
+        AuditEvent.objects.using("owner").filter(tenant_id=tenant_id).delete()
+        with connections["owner"].cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM procrastinate_jobs WHERE args->>'tenant_id' = %s "
+                "AND status <> 'doing'",
+                [str(tenant_id)],
+            )
+        Tenant.objects.using("owner").filter(pk=tenant.pk).delete()
         revision.revision += 1
         revision.save(using="owner", update_fields=["revision", "updated_at"])
         record(
-            actor="command:tenant_purge",
+            actor=actor,
             action="tenant.purge",
-            tenant_id=tenant.id,
+            tenant_id=None,
             target_type="tenant",
-            target_id=str(tenant.id),
-            summary="Datos del negocio purgados",
-            details={"version": version},
+            target_id=str(tenant_id),
+            summary=f"Negocio eliminado: {slug}",
+            details={"slug": slug},
         )
+
+        def _clear_cache() -> None:
+            cache.delete(f"health:{tenant_id}")
+            for channel in Channel:
+                cache.delete(runtime_state.key(tenant_id, channel))
+            for kind in kinds:
+                cache.delete(_cooldown_key(kind, tenant_id))
+
+        transaction.on_commit(_clear_cache)

@@ -91,22 +91,27 @@ test("editor synchronizes YAML, shows diff and applies 422 errors", async () => 
   const name = await screen.findByLabelText("Nombre");
   await user.clear(name);
   await user.type(name, "Nuevo");
-  await user.click(screen.getByRole("button", { name: "YAML" }));
+  await user.click(screen.getByRole("button", { name: "Editar YAML" }));
   expect(
     (screen.getByLabelText("Documento YAML") as HTMLTextAreaElement).value,
   ).toContain("Nuevo");
   fireEvent.change(screen.getByLabelText("Documento YAML"), {
     target: { value: "name: Desde YAML\nconfig:\n  price: 2\n" },
   });
-  await user.click(screen.getByRole("button", { name: "Formulario" }));
+  await user.click(
+    screen.getByRole("button", { name: "Volver al formulario" }),
+  );
   expect(screen.getByLabelText("Nombre")).toHaveValue("Desde YAML");
-  await user.click(screen.getByRole("button", { name: "YAML" }));
+  await user.click(screen.getByRole("button", { name: "Editar YAML" }));
   await user.click(screen.getByRole("button", { name: "Ver cambios" }));
   expect(screen.getByText(/Original/)).toBeInTheDocument();
-  await user.type(screen.getByLabelText("Comentario obligatorio"), "Cambio");
+  await user.keyboard("{Escape}");
+  await user.type(screen.getByLabelText("Comentario (opcional)"), "Cambio");
   await user.click(screen.getByRole("button", { name: "Guardar" }));
   expect(await screen.findByText("name: nombre no válido")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Formulario" }));
+  await user.click(
+    screen.getByRole("button", { name: "Volver al formulario" }),
+  );
   expect(screen.getAllByText("nombre no válido").length).toBeGreaterThan(0);
   expect(changed).toHaveBeenCalledWith(true);
 });
@@ -130,7 +135,7 @@ test("conflict offers differences and reload", async () => {
   const name = await screen.findByLabelText("Nombre");
   await user.clear(name);
   await user.type(name, "Local");
-  await user.type(screen.getByLabelText("Comentario obligatorio"), "Cambio");
+  await user.type(screen.getByLabelText("Comentario (opcional)"), "Cambio");
   await user.click(screen.getByRole("button", { name: "Guardar" }));
   await screen.findByText("Hay una versión más reciente.");
   await user.click(screen.getByRole("button", { name: "Ver diferencias" }));
@@ -183,7 +188,15 @@ test("activation requires unblocked checklist and exact slug", async () => {
     ).toBe(true),
   );
 });
-test("secret form clears values on failure and does not cache them", async () => {
+const accessTokenField = {
+  name: "access_token",
+  set: true,
+  label: "Token de acceso",
+  help: "Token permanente del System User",
+  generatable: false,
+};
+
+test("secret form shows an error on failure without caching the typed value", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () =>
@@ -191,22 +204,23 @@ test("secret form clears values on failure and does not cache them", async () =>
     ),
   );
   const client = provider(
-    <SecretsForm slug="test" fields={["access_token"]} />,
+    <SecretsForm slug="test" fields={[accessTokenField]} />,
   );
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "Sustituir secretos" }));
-  const input = screen.getByLabelText("access_token");
+  await user.click(
+    screen.getByRole("button", { name: "Cambiar credenciales" }),
+  );
+  const input = screen.getByLabelText("Token de acceso");
   await user.type(input, "test-secret");
   await user.click(screen.getByRole("button", { name: "Guardar secretos" }));
   await screen.findByRole("alert");
-  expect(input).toHaveValue("");
   expect(JSON.stringify(client.getQueryCache().getAll())).not.toContain(
     "test-secret",
   );
   expect(client.getMutationCache().getAll()).toHaveLength(0);
 });
 
-test("successful secret replacement sends all fields without retaining mutation values", async () => {
+test("partial replacement omits blank fields and a generated value fills its field", async () => {
   let sent: unknown;
   vi.stubGlobal(
     "fetch",
@@ -215,20 +229,30 @@ test("successful secret replacement sends all fields without retaining mutation 
       return new Response(null, { status: 204 });
     }),
   );
-  const client = provider(
-    <SecretsForm slug="test" fields={["token", "verify_token"]} />,
+  provider(
+    <SecretsForm
+      slug="test"
+      fields={[
+        accessTokenField,
+        {
+          name: "verify_token",
+          set: true,
+          label: "Token de verificación",
+          help: "Se pega también en el webhook de Meta",
+          generatable: true,
+        },
+      ]}
+    />,
   );
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "Sustituir secretos" }));
-  await user.type(screen.getByLabelText("token"), "secret-one");
-  await user.type(screen.getByLabelText("verify_token"), "secret-two");
+  await user.click(
+    screen.getByRole("button", { name: "Cambiar credenciales" }),
+  );
+  await user.type(screen.getByLabelText("Token de acceso"), "secret-one");
+  await user.click(screen.getByRole("button", { name: "Generar" }));
   await user.click(screen.getByRole("button", { name: "Guardar secretos" }));
-  await screen.findByRole("button", { name: "Sustituir secretos" });
-  expect(sent).toEqual({
-    secrets: { token: "secret-one", verify_token: "secret-two" },
-  });
-  expect(client.getMutationCache().getAll()).toHaveLength(0);
-  await user.click(screen.getByRole("button", { name: "Sustituir secretos" }));
-  expect(screen.getByLabelText("token")).toHaveValue("");
-  expect(screen.getByLabelText("verify_token")).toHaveValue("");
+  await waitFor(() => expect(sent).toBeDefined());
+  const body = sent as { secrets: Record<string, string> };
+  expect(body.secrets.access_token).toBe("secret-one");
+  expect(body.secrets.verify_token).toHaveLength(48);
 });

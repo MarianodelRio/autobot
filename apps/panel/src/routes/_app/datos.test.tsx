@@ -67,7 +67,7 @@ function renderAt(path: string) {
   return router;
 }
 
-function stubFetch() {
+function stubFetch({ onQuery }: { onQuery?: () => void } = {}) {
   return vi.fn(async (request: RequestInfo | URL) => {
     const url = new URL(
       request instanceof Request ? request.url : String(request),
@@ -89,10 +89,18 @@ function stubFetch() {
       return new Response(JSON.stringify([tenant]), {
         headers: { "Content-Type": "application/json" },
       });
-    if (url.pathname.endsWith("/data/saved-queries"))
-      return new Response(JSON.stringify([]), {
-        headers: { "Content-Type": "application/json" },
-      });
+    if (url.pathname.endsWith("/data/query")) {
+      onQuery?.();
+      return new Response(
+        JSON.stringify({
+          columns: [],
+          rows: [],
+          truncated: false,
+          duration_ms: 1,
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    }
     if (url.pathname.endsWith("/tenants"))
       return new Response(JSON.stringify([]), {
         headers: { "Content-Type": "application/json" },
@@ -103,20 +111,34 @@ function stubFetch() {
   });
 }
 
-test("drills from the catalogue into a table and on to a prefilled query", async () => {
+test("inserting a SELECT fills the editor without running it", async () => {
+  const onQuery = vi.fn();
+  const user = userEvent.setup();
+  vi.stubGlobal("fetch", stubFetch({ onQuery }));
+  renderAt("/datos");
+
+  await user.click(await screen.findByText("tenant", {}, { timeout: 8000 }));
+  await screen.findByRole("heading", { name: "tenant" });
+
+  await user.click(screen.getByRole("button", { name: "Insertar SELECT" }));
+
+  expect(await screen.findByLabelText("sql")).toHaveValue(
+    'SELECT * FROM "tenant" LIMIT 100',
+  );
+  expect(onQuery).not.toHaveBeenCalled();
+  expect(
+    screen.queryByRole("heading", { name: "tenant" }),
+  ).not.toBeInTheDocument();
+}, 10_000);
+
+test("viewing details navigates to the table page", async () => {
   const user = userEvent.setup();
   vi.stubGlobal("fetch", stubFetch());
   const router = renderAt("/datos");
 
   await user.click(await screen.findByText("tenant", {}, { timeout: 8000 }));
+  await user.click(screen.getByRole("button", { name: "Ver detalle" }));
+
   expect(router.state.location.pathname).toBe("/datos/tenant");
   await screen.findByRole("heading", { name: "tenant" });
-
-  await user.click(
-    screen.getByRole("button", { name: "Consultar esta tabla" }),
-  );
-  expect(router.state.location.pathname).toBe("/datos/consulta");
-  expect(await screen.findByLabelText("sql")).toHaveValue(
-    'SELECT * FROM "tenant" LIMIT 100',
-  );
 }, 10_000);

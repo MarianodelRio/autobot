@@ -22,6 +22,6 @@ queda registrado; corrige la causa para envíos futuros y comprueba con un
 edites filas SQL ni crees otra clave para el mismo efecto.
 
 **Verificación:** para `unknown`, el mensaje queda en `sent` o tiene una nueva
-entrega confirmada y la Auditoría del panel registra la resolución. Para `failed`, el registro
+entrega confirmada y Logs, pestaña Operador, registra la resolución. Para `failed`, el registro
 permanece en ese estado, mientras el nuevo envío autorizado confirma que la
 causa se corrigió. Revisa que no se crearon duplicados.

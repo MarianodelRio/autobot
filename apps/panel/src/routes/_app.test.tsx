@@ -72,6 +72,16 @@ test("renders the section once there is a session", {
               deploys: [],
               release: "",
               tls: { days_left: null },
+              flow: {
+                state: "idle",
+                reason: null,
+                last_inbound_at: null,
+                last_outbound_at: null,
+                received_1h: 0,
+                answered_1h: 0,
+                failed_1h: 0,
+              },
+              integrations: [],
             }
           : { username: "operator" };
       return new Response(JSON.stringify(body), {

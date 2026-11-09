@@ -33,12 +33,14 @@ class PackTemplateOut(Schema):
     config: dict[str, Any] | None
 
 
-GENERAL_FIELDS = ["id", "slug", "name", "status", "timezone", "pack", "testers", "owner", "demo"]
 GROUPS: tuple[tuple[str, str, list[str]], ...] = (
-    ("general", "General", GENERAL_FIELDS),
+    ("business", "Negocio", ["name", "timezone", "demo"]),
     ("channel", "Canal", ["channel"]),
-    ("config", "Config del pack", ["config"]),
+    ("people", "Dueño y testers", ["owner", "testers"]),
+    ("config", "Ajustes del pack", ["config"]),
 )
+HIDDEN = ("id", "slug", "pack", "status")
+COLLAPSED = ("config.texts", "config.special_event")
 READ_ONLY = ("id", "slug", "pack", "status", "channel.type", "channel.public_id")
 
 
@@ -110,6 +112,8 @@ def ui_schema(pack_name: str) -> dict[str, Any]:
     return {
         "groups": [{"key": key, "label": label, "fields": fields} for key, label, fields in GROUPS],
         "read_only": list(READ_ONLY),
+        "hidden": list(HIDDEN),
+        "collapsed": list(COLLAPSED),
         "widgets": {field: "textarea" for field in _textarea_fields(pack)},
     }
 

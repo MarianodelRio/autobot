@@ -5,13 +5,18 @@ from typing import Any
 
 import pytest
 from django.contrib.auth.models import User
-from django.db import connections
 from django.test import RequestFactory
 from django.utils import timezone
 
-from autobot.ops.models import AuditEvent, OpsAlert
+from autobot.ops.models import AuditEvent
+from autobot.panel.errors import ApiError
 from autobot.panel.routers.contacts import contact_detail, contacts
-from autobot.panel.services.activity import activity_page, describe_inbound, describe_outbound
+from autobot.panel.services.activity import (
+    activity_detail,
+    activity_page,
+    describe_inbound,
+    describe_outbound,
+)
 from autobot.runtime.models import (
     Contact,
     Conversation,
@@ -49,6 +54,9 @@ def test_activity_pagination_filters_and_contact_audit() -> None:
     Conversation.objects.using("owner").create(
         tenant=tenant, contact=contact, state={"step": "booking"}
     )
+    other_contact = Contact.objects.using("owner").create(
+        tenant=other, channel="main", external_id="999", display_name="Otro"
+    )
     inbound = InboundEvent.objects.using("owner").create(
         tenant=tenant,
         channel="main",
@@ -69,28 +77,19 @@ def test_activity_pagination_filters_and_contact_audit() -> None:
         status="sent",
     )
     OutboundMessage.objects.using("owner").filter(pk=outbound.pk).update(created_at=now)
+    OutboundMessage.objects.using("owner").create(
+        tenant=other,
+        contact=other_contact,
+        channel="main",
+        kind="reply",
+        idem_key="1",
+        payload={"body": "Hola Otro"},
+        status="sent",
+    )
     notice = Notification.objects.using("owner").create(
         tenant=tenant, idem_key="1", kind="booking", text="reserva", status="sent"
     )
     Notification.objects.using("owner").filter(pk=notice.pk).update(created_at=now)
-    OpsAlert.objects.using("owner").create(
-        tenant_id=tenant.id, kind="test", severity="warning", text="aviso", first_seen_at=now
-    )
-    AuditEvent.objects.using("owner").create(
-        tenant_id=tenant.id, actor="operador", action="test", summary="cambio", at=now
-    )
-    with connections["owner"].cursor() as db:
-        for t in (tenant, other):
-            db.execute(
-                "INSERT INTO procrastinate_jobs(task_name, queue_name, status, args, attempts) "
-                "VALUES ('send_message', 'outbound', 'failed', %s, 3) RETURNING id",
-                [json.dumps({"tenant_id": str(t.id)})],
-            )
-            job_id = db.fetchone()[0]
-            db.execute(
-                "INSERT INTO procrastinate_events(job_id, type, at) VALUES (%s, 'failed', %s)",
-                [job_id, now],
-            )
     items = []
     cursor = ""
     while True:
@@ -99,17 +98,13 @@ def test_activity_pagination_filters_and_contact_audit() -> None:
         if not page.next_cursor:
             break
         cursor = page.next_cursor
-    assert [item.kind for item in items] == [
-        "inbound",
-        "outbound",
-        "notification",
-        "alert",
-        "audit",
-        "job",
-    ]
-    assert len({(item.kind, item.id) for item in items}) == 6
-    assert len(activity_page(tenant="test", kinds="job", status="failed").items) == 1
-    assert activity_page(tenant="test", kinds="job", status="sent").items == []
+    assert [item.kind for item in items] == ["inbound", "outbound", "notification"]
+    assert len({(item.kind, item.id) for item in items}) == 3
+    # The feed carries no message text or contact name, only metadata.
+    for item in items:
+        assert "Hola" not in (item.label or "")
+        assert "Ana" not in (item.label or "")
+
     request = RequestFactory().get("/")
     request.user = User(username="operador")
     assert contacts(request, "test", search="Ana").items[0].id == contact.id
@@ -121,6 +116,31 @@ def test_activity_pagination_filters_and_contact_audit() -> None:
         .filter(action="contact.view", target_id=str(contact.id))
         .exists()
     )
+
+    inbound_detail = activity_detail("inbound", str(inbound.pk), actor="operador")
+    assert inbound_detail.text == "Hola"
+    outbound_detail = activity_detail("outbound", str(outbound.pk), actor="operador")
+    assert outbound_detail.contact == "Ana"
+    assert outbound_detail.text == "Hola Ana"
+    assert outbound_detail.contact_link == "/clientes/test?tab=contactos"
+    notification_detail = activity_detail("notification", str(notice.pk), actor="operador")
+    assert notification_detail.text == "reserva"
+
+    event = (
+        AuditEvent.objects.using("owner")
+        .filter(action="activity.view", target_type="outbound", target_id=str(outbound.pk))
+        .get()
+    )
+    assert "Hola Ana" not in json.dumps(event.details)
+    assert "Ana" not in json.dumps(event.details)
+
+    with pytest.raises(ApiError) as excinfo:
+        activity_detail("alert", str(inbound.pk), actor="operador")
+    assert excinfo.value.status == 404
+
+    with pytest.raises(ApiError) as excinfo:
+        activity_detail("inbound", "not-a-uuid", actor="operador")
+    assert excinfo.value.status == 404
 
 
 def test_descriptions_from_fixtures() -> None:

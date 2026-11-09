@@ -325,7 +325,9 @@ def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: 
     for model in privacy.MODELS:
         assert not model.objects.using("owner").filter(tenant=a).exists()
         assert model.objects.using("owner").filter(tenant=b).count() == 1
-    assert Tenant.objects.using("owner").count() == 2
+    # The tenant's own row is gone too, and its slug is free again.
+    assert not Tenant.objects.using("owner").filter(pk=a.id).exists()
+    assert Tenant.objects.using("owner").count() == 1
     assert DemoEvent.objects.exists()
 
 

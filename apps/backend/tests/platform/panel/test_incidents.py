@@ -140,3 +140,15 @@ def test_audit_cursor_and_filters(authed_client: Any, tenants: Any) -> None:
     ]
     assert second["next_cursor"] is None
     assert get(authed_client, "audit?tenant=missing").json()["items"] == []
+
+
+def test_audit_actions(authed_client: Any) -> None:
+    now = timezone.now()
+    for action in ("zzz.action", "yyy.action", "yyy.action"):
+        AuditEvent.objects.using("owner").create(
+            at=now, actor="operator", action=action, summary="test"
+        )
+    actions = get(authed_client, "audit/actions").json()
+    assert actions == sorted(set(actions))
+    assert actions.count("yyy.action") == 1
+    assert actions.index("yyy.action") < actions.index("zzz.action")

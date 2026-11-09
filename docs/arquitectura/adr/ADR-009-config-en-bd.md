@@ -48,11 +48,14 @@ fija las decisiones de arquitectura.
   (`seed_demos`) solo si el tenant no tiene ninguna versión; después, la verdad es la base
   y se editan en el panel. La plantilla es también el punto de partida del asistente de
   alta de un negocio nuevo.
-- **Baja y purga.** Dar de baja (`offboarded`) solo por comando (`tenant_status <slug>
-  offboard`), nunca desde el panel. La purga, además de lo que borra hoy, elimina también
-  `tenant_secret`, todas las versiones de datasets y todas las versiones del documento
-  salvo una última versión depurada (sin testers ni dueño). La fila espejo `tenant` se
-  conserva para que los webhooks tardíos sigan respondiendo.
+- **Baja y purga.** Dar de baja (`offboarded`) por comando (`tenant_status <slug>
+  offboard`) o, para un negocio pausado o en alta, desde el borrado del panel, que lo
+  hace por su cuenta. La purga (`tenant_purge`, o «Eliminar cliente» en el panel) borra
+  todo lo que el sistema guarda del negocio —incluidos `tenant_secret`, todas las
+  versiones de datasets y de documento, sus alertas y su auditoría— y también la fila
+  espejo `tenant`: el slug queda libre. Un webhook tardío de ese canal recibe 404.
+  Solo permanece una entrada de auditoría `tenant.purge` sin datos del negocio
+  (ADR-011).
 - **Permisos de base de datos reproducibles.** Un único módulo (`autobot/db/grants.py`) declara el
   estado deseado como sentencias SQL idempotentes (GRANT, REVOKE, `ALTER DEFAULT
   PRIVILEGES`), que se vuelve a aplicar (`apply_grants`) en cada migración que cree tablas
