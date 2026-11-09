@@ -76,6 +76,12 @@ def source(slug: str | None) -> Source:
                     store_owner_event(item)
 
         return Source("notify bot", secrets, accept_notify, "webhooks/telegram-notify")
+    return tenant_source(slug)
+
+
+def tenant_source(slug: str) -> Source:
+    """The own bot of a tenant whose main channel is Telegram. Never the demo nor the
+    notify bot, whatever the slug is (the panel resolves through here)."""
     found = get_registry().by_slug.get(slug)
     if found is None:
         raise ValueError(f"no tenant {slug!r}")

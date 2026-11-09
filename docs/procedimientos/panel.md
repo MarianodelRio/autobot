@@ -30,7 +30,10 @@ ahora» y las alertas abiertas; el resumen del dueño se carga a petición, pues
 puede consultar Calendar. Configuración edita con formulario o YAML, con diff y
 comentario opcional, e incluye el canal (enlace, QR, webhook y «Cambiar
 credenciales», con «Generar» para los campos que lo admiten) y el dueño («Invitar
-al dueño», con el enlace mostrado una sola vez). Actividad usa la misma lista que
+al dueño», con el enlace mostrado una sola vez, su caducidad y el aviso de que
+sustituirá al chat ya conectado). En Telegram, el estado del webhook («Registrado»,
+«Sin registrar» o «Sin comprobar») se consulta a Telegram (`getWebhookInfo`) y se
+refresca al registrarlo; «Sin comprobar» significa que no se pudo saberlo. Actividad usa la misma lista que
 Logs → Conversaciones, limitada a este cliente. Cada consulta de una
 conversación desde Contactos queda auditada. El panel pide confirmación para
 pausar o reactivar y exige comprobaciones y slug para activar.

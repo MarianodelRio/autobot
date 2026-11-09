@@ -209,11 +209,13 @@ def purge(tenant: Tenant, *, actor: str = "command:tenant_purge") -> None:
         slug = current.slug
         with connections["owner"].cursor() as cursor:
             cursor.execute(
-                "SELECT 1 FROM procrastinate_jobs WHERE args->>'tenant_id' = %s "
-                "AND status = 'doing' LIMIT 1",
+                "SELECT status FROM procrastinate_jobs WHERE args->>'tenant_id' = %s "
+                "AND status IN ('todo', 'doing') FOR UPDATE",
                 [str(tenant_id)],
             )
-            if cursor.fetchone() is not None:
+            # Locking the 'todo' rows too: `procrastinate_fetch_job` uses FOR UPDATE
+            # SKIP LOCKED, so no worker can start them until this transaction ends.
+            if any(status == "doing" for (status,) in cursor.fetchall()):
                 raise PurgeBlocked(
                     "Hay trabajos en curso para este negocio; inténtalo de nuevo en unos segundos."
                 )
@@ -258,4 +260,4 @@ def purge(tenant: Tenant, *, actor: str = "command:tenant_purge") -> None:
             for kind in kinds:
                 cache.delete(_cooldown_key(kind, tenant_id))
 
-        transaction.on_commit(_clear_cache)
+        transaction.on_commit(_clear_cache, using="owner")

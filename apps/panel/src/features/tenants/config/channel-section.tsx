@@ -36,6 +36,19 @@ export function ChannelSection({ detail }: { detail: Detail }) {
       ),
     enabled: detail.channel_type !== null,
   });
+  const isTelegram = detail.channel_type === "telegram";
+  const webhookStatus = useQuery({
+    queryKey: ["tenant-webhook", detail.slug],
+    queryFn: () =>
+      unwrap(
+        api.GET("/tenants/{slug}/telegram-webhook", {
+          params: { path: { slug: detail.slug } },
+        }),
+      ),
+    enabled: isTelegram,
+    retry: false,
+  });
+  const registered = webhookStatus.data?.registered ?? null;
   const webhook = useMutation({
     mutationFn: () =>
       unwrap(
@@ -46,6 +59,9 @@ export function ChannelSection({ detail }: { detail: Detail }) {
     onSuccess: () => {
       toast.success("Webhook registrado.");
       void client.invalidateQueries({ queryKey: ["tenant", detail.slug] });
+      void client.invalidateQueries({
+        queryKey: ["tenant-webhook", detail.slug],
+      });
     },
   });
   if (detail.channel_type === null) return null;
@@ -72,10 +88,23 @@ export function ChannelSection({ detail }: { detail: Detail }) {
           <code className="truncate">{detail.webhook_url ?? "—"}</code>
           {detail.webhook_url && <CopyButton value={detail.webhook_url} />}
           <StatusDot
-            level={detail.webhook_url ? "ok" : "unknown"}
-            label={detail.webhook_url ? "Registrado" : "Sin registrar"}
+            level={
+              registered === true
+                ? "ok"
+                : registered === false
+                  ? "warning"
+                  : "unknown"
+            }
+            label={
+              registered === true
+                ? "Registrado"
+                : registered === false
+                  ? "Sin registrar"
+                  : "Sin comprobar"
+            }
           />
           <Button
+            type="button"
             size="sm"
             variant="outline"
             disabled={webhook.isPending}

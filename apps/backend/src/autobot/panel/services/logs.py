@@ -50,7 +50,8 @@ def prepare(filters: LogFilters) -> tuple[LogFilters, bool]:
         raise ApiError("bad_request", "Las fechas deben incluir la zona horaria.", 400)
     if start > end or filters.limit < 1:
         raise ApiError("bad_request", "Rango o límite no válido.", 400)
-    clipped = start < boundary
+    # A minute of tolerance: the client computes "31 days ago" a moment before the server.
+    clipped = start < boundary - timedelta(minutes=1)
     return filters.model_copy(
         update={"start": max(start, boundary), "end": end, "limit": min(filters.limit, 1000)}
     ), clipped

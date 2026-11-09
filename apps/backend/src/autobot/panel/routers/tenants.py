@@ -152,6 +152,11 @@ def tenant_health_check(request: HttpRequest, slug: str) -> list[service.HealthI
     return service.tenant_health_check(slug)
 
 
+@router.get("/tenants/{slug}/telegram-webhook", response=service.WebhookStatusOut)
+def telegram_webhook_status(request: HttpRequest, slug: str) -> service.WebhookStatusOut:
+    return service.telegram_webhook_status(slug)
+
+
 @router.post("/tenants/{slug}/telegram-webhook", response=service.WebhookRegisterOut)
 def telegram_set_webhook(request: HttpRequest, slug: str) -> service.WebhookRegisterOut:
     return service.telegram_set_webhook(slug, actor=request.user.username)

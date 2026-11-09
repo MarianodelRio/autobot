@@ -51,6 +51,11 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
       void navigate({ to: "/clientes" });
     },
   });
+  function close() {
+    setOpen(false);
+    setTyped("");
+    mutation.reset();
+  }
   if (detail.document.demo) return null;
   const active = detail.status === "active";
   return (
@@ -81,8 +86,8 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          setOpen(next);
-          if (!next) setTyped("");
+          if (next) setOpen(true);
+          else close();
         }}
       >
         <DialogContent>
@@ -122,7 +127,7 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
             </p>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button variant="outline" onClick={close}>
               Cancelar
             </Button>
             <Button

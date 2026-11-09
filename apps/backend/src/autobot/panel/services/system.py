@@ -213,30 +213,31 @@ def _calendar_integration() -> IntegrationOut:
         )
     total = len(candidates)
     accessible = 0
+    failing = 0
     latest_checked: datetime | None = None
-    any_checked = False
     for tenant in candidates:
         cached = cache.get(f"health:{tenant.id}")
         if not isinstance(cached, dict):
             continue
-        any_checked = True
         checked_at = datetime.fromtimestamp(cached["checked_at"], tz=UTC)
         if latest_checked is None or checked_at > latest_checked:
             latest_checked = checked_at
         issues = cached.get("issues") or []
-        if not any(getattr(issue, "code", "").endswith("calendar_unavailable") for issue in issues):
+        if any(getattr(issue, "code", "").endswith("calendar_unavailable") for issue in issues):
+            failing += 1
+        else:
             accessible += 1
-    if not any_checked:
+    unchecked = total - accessible - failing
+    if accessible + failing == 0:
         return IntegrationOut(
             key="calendar", label="Calendar", state="unknown", detail=None, checked_at=None
         )
-    state = "ok" if accessible == total else "critical"
+    state = "critical" if failing else "unknown" if unchecked else "ok"
+    detail = f"{accessible} de {total} accesibles"
+    if unchecked:
+        detail += f" · {unchecked} sin comprobar"
     return IntegrationOut(
-        key="calendar",
-        label="Calendar",
-        state=state,
-        detail=f"{accessible} de {total} accesibles",
-        checked_at=latest_checked,
+        key="calendar", label="Calendar", state=state, detail=detail, checked_at=latest_checked
     )
 
 

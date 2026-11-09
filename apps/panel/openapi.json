@@ -2932,6 +2932,26 @@
         ],
         "title": "WebhookRegisterOut",
         "type": "object"
+      },
+      "WebhookStatusOut": {
+        "properties": {
+          "registered": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered"
+          }
+        },
+        "required": [
+          "registered"
+        ],
+        "title": "WebhookStatusOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -4665,6 +4685,41 @@
       }
     },
     "/tenants/{slug}/telegram-webhook": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_telegram_webhook_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookStatusOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Telegram Webhook Status",
+        "tags": [
+          "tenants"
+        ]
+      },
       "post": {
         "operationId": "autobot_panel_routers_tenants_telegram_set_webhook",
         "parameters": [

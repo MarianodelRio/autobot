@@ -143,3 +143,30 @@ test("requires typing the exact slug, then deletes and returns to the list", asy
     expect(router.state.location.pathname).toBe("/clientes"),
   );
 }, 10_000);
+
+test("cancelling clears the typed slug", async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  renderAt("/clientes/demo", base);
+  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
+  const openDialog = async () => {
+    const trigger = await screen.findByRole("button", {
+      name: "Más acciones",
+      hidden: true,
+    });
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Eliminar cliente" }),
+    );
+  };
+  await openDialog();
+  await user.type(await screen.findByLabelText(/demo/), "demo");
+  expect(screen.getByRole("button", { name: "Eliminar" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Cancelar" }));
+  await vi.waitFor(() =>
+    expect(screen.queryByLabelText(/demo/)).not.toBeInTheDocument(),
+  );
+  await openDialog();
+  expect(await screen.findByLabelText(/demo/)).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Eliminar" })).toBeDisabled();
+}, 10_000);

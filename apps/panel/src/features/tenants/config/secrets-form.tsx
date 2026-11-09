@@ -78,7 +78,9 @@ export function SecretsForm({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="outline">Cambiar credenciales</Button>
+        <Button type="button" variant="outline">
+          Cambiar credenciales
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

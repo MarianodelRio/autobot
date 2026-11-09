@@ -32,11 +32,15 @@ esa fila y esa versión, y qué queda como prueba del borrado.
   confirmarse la transacción.
 - **Solo un negocio dado de baja (`offboarded`) se puede borrar**, y nunca un
   demo. Desde el panel, un negocio activo debe pausarse primero; el botón queda
-  deshabilitado con esa explicación. Si el canal es Telegram, el webhook se
-  retira antes del borrado y **fuera** de su transacción (nunca una transacción
-  abierta durante una llamada a Telegram); si falla, el borrado sigue y lo
-  comunica. Si hay un trabajo de ese cliente en curso (`doing`), el borrado se
-  rechaza sin borrar nada y se puede reintentar en unos segundos.
+  deshabilitado con esa explicación. Si el canal es Telegram, el panel
+  resuelve el bot y sus secretos **antes** (después ya no existen), ejecuta el
+  borrado y, **solo si ha confirmado**, retira el webhook **fuera** de la transacción
+  (nunca una transacción abierta durante una llamada a Telegram); si esa llamada
+  falla, el borrado ya está hecho y se comunica. Dentro de la transacción se
+  bloquean (`FOR UPDATE`) los trabajos `todo` y `doing` de ese cliente; como
+  `procrastinate_fetch_job` usa `SKIP LOCKED`, ningún worker puede arrancar los
+  pendientes mientras dura. Si alguno está en curso (`doing`), el borrado se
+  rechaza sin borrar nada, sin tocar el webhook, y se puede reintentar en unos segundos.
 - **El panel ofrece el mismo borrado** que `tenant_purge` (ficha del cliente, menú
   «⋯» → «Eliminar cliente», con confirmación de slug), no un camino aparte: ambos
   llaman a la misma función (`autobot.runtime.privacy.purge`).

@@ -15,9 +15,10 @@ import {
 import { errorMessage } from "@/lib/errors";
 
 type Detail = components["schemas"]["TenantDetail"];
+type Invite = components["schemas"]["OwnerInviteOut"];
 
 export function OwnerSection({ detail }: { detail: Detail }) {
-  const [link, setLink] = useState<string | null>(null);
+  const [link, setLink] = useState<Invite | null>(null);
   const invite = useMutation({
     mutationFn: () =>
       unwrap(
@@ -25,7 +26,7 @@ export function OwnerSection({ detail }: { detail: Detail }) {
           params: { path: { slug: detail.slug } },
         }),
       ),
-    onSuccess: (result) => setLink(result.url),
+    onSuccess: (result) => setLink(result),
   });
   return (
     <div className="space-y-3 border-t pt-4">
@@ -35,6 +36,7 @@ export function OwnerSection({ detail }: { detail: Detail }) {
           label={detail.owner_linked ? "Dueño enlazado" : "Dueño sin enlazar"}
         />
         <Button
+          type="button"
           size="sm"
           variant="outline"
           disabled={invite.isPending}
@@ -60,11 +62,27 @@ export function OwnerSection({ detail }: { detail: Detail }) {
             </DialogDescription>
           </DialogHeader>
           <code className="block overflow-auto rounded-md border p-2 text-sm">
-            {link}
+            {link?.url}
           </code>
+          {link && (
+            <div className="space-y-1 text-sm">
+              <p>
+                Caduca el {new Date(link.expires_at).toLocaleString("es-ES")}.
+              </p>
+              {link.replaces_chat && (
+                <p className="text-status-warning">
+                  Ya hay un chat conectado; este enlace lo sustituirá cuando se
+                  use.
+                </p>
+              )}
+            </div>
+          )}
           <DialogFooter>
             <Button
-              onClick={() => link && void navigator.clipboard?.writeText(link)}
+              type="button"
+              onClick={() =>
+                link && void navigator.clipboard?.writeText(link.url)
+              }
             >
               Copiar
             </Button>

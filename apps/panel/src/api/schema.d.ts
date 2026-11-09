@@ -676,7 +676,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Telegram Webhook Status */
+        get: operations["autobot_panel_routers_tenants_telegram_webhook_status"];
         put?: never;
         /** Telegram Set Webhook */
         post: operations["autobot_panel_routers_tenants_telegram_set_webhook"];
@@ -1749,6 +1750,11 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** WebhookStatusOut */
+        WebhookStatusOut: {
+            /** Registered */
+            registered: boolean | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -2679,6 +2685,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SummaryOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_telegram_webhook_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookStatusOut"];
                 };
             };
         };

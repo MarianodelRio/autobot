@@ -355,7 +355,7 @@ def telegram_set_webhook(slug: str, actor: str) -> WebhookRegisterOut:
     if channel is None or channel.type != "telegram":
         raise ApiError("bad_request", "El canal no es Telegram", 400)
     try:
-        url = register_webhook(slug)
+        url = register_webhook(slug, tenant_only=True)
     except WebhookError:
         raise ApiError("unavailable", "No se pudo registrar el webhook.", 502) from None
     record(
@@ -367,6 +367,22 @@ def telegram_set_webhook(slug: str, actor: str) -> WebhookRegisterOut:
         summary="Webhook de Telegram registrado",
     )
     return WebhookRegisterOut(url=url)
+
+
+class WebhookStatusOut(Schema):
+    registered: bool | None
+
+
+def telegram_webhook_status(slug: str) -> WebhookStatusOut:
+    """Asks Telegram (outside any transaction) whether the webhook is set to the expected
+    url. `registered` is None when it cannot be known."""
+    from autobot.channels.telegram.registration import is_webhook_registered
+
+    tenant = _tenant(slug)
+    channel = tenant.document.channel
+    if channel is None or channel.type != "telegram":
+        raise ApiError("bad_request", "El canal no es Telegram", 400)
+    return WebhookStatusOut(registered=is_webhook_registered(slug))
 
 
 class OwnerInviteOut(Schema):
@@ -411,18 +427,22 @@ def delete_tenant(slug: str, confirm_slug: str, actor: str) -> DeleteTenantOut:
     if tenant.document.status == "active":
         raise ApiError("conflict", "Páusalo antes de eliminarlo.", 409)
 
-    telegram_webhook_removed: bool | None = None
+    # The bot and its secrets are resolved BEFORE the purge (afterwards they are gone);
+    # the webhook is only removed once the deletion has been committed.
+    bot = None
+    bot_unresolved = False
     channel = tenant.document.channel
-    if channel is not None and channel.type == "telegram":
-        has_secrets = TenantSecret.objects.using("owner").filter(tenant_id=tenant.id).exists()
-        if has_secrets:
-            from autobot.channels.telegram.registration import WebhookError, remove_webhook
+    if (
+        channel is not None
+        and channel.type == "telegram"
+        and TenantSecret.objects.using("owner").filter(tenant_id=tenant.id).exists()
+    ):
+        from autobot.channels.telegram.registration import WebhookError, resolve_tenant_bot
 
-            try:
-                remove_webhook(slug)
-                telegram_webhook_removed = True
-            except WebhookError:
-                telegram_webhook_removed = False
+        try:
+            bot = resolve_tenant_bot(slug)
+        except WebhookError, SecretsUnreadable:
+            bot_unresolved = True
 
     db_tenant = Tenant.objects.using("owner").get(pk=tenant.id)
     try:
@@ -434,4 +454,14 @@ def delete_tenant(slug: str, confirm_slug: str, actor: str) -> DeleteTenantOut:
         raise ApiError(
             "conflict", "Hay trabajos en curso; inténtalo en unos segundos.", 409
         ) from None
+
+    telegram_webhook_removed: bool | None = False if bot_unresolved else None
+    if bot is not None:
+        from autobot.channels.telegram.registration import WebhookError, remove_bot_webhook
+
+        try:
+            remove_bot_webhook(bot)
+            telegram_webhook_removed = True
+        except WebhookError:
+            telegram_webhook_removed = False
     return DeleteTenantOut(telegram_webhook_removed=telegram_webhook_removed)

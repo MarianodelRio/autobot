@@ -44,6 +44,17 @@ def test_31_day_boundary() -> None:
     assert filters.start == boundary + timedelta(hours=1)
 
 
+def test_31_day_boundary_tolerates_client_clock_skew() -> None:
+    now = datetime(2026, 11, 4, 12, tzinfo=UTC)
+    boundary = now - timedelta(days=31)
+    with patch("autobot.panel.services.logs.timezone.now", return_value=now):
+        filters, clipped = prepare(LogFilters(start=boundary - timedelta(seconds=2)))
+        assert not clipped
+        assert filters.start == boundary  # the real clipping stays
+        _, clipped = prepare(LogFilters(start=boundary - timedelta(minutes=2)))
+        assert clipped
+
+
 def test_http_contract(
     authed_client: Any, tenants: Any, settings: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:

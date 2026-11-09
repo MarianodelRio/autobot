@@ -293,3 +293,42 @@ def test_calendar_integration_counts_accessible_tenants(
     assert result.detail == "1 de 2 accesibles"
     cache.delete(f"health:{a_id}")
     cache.delete(f"health:{b_id}")
+
+
+def _calendar_tenants(monkeypatch: pytest.MonkeyPatch) -> tuple[uuid.UUID, uuid.UUID]:
+    pack = SimpleNamespace(periodic=[SimpleNamespace(name="calendar_sweep")])
+    a_id, b_id = uuid.uuid7(), uuid.uuid7()
+    _tenant(
+        monkeypatch,
+        a=SimpleNamespace(id=a_id, document=SimpleNamespace(status="active"), pack=pack),
+        b=SimpleNamespace(id=b_id, document=SimpleNamespace(status="active"), pack=pack),
+    )
+    return a_id, b_id
+
+
+def test_calendar_integration_unchecked_tenants_are_not_critical(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    a_id, b_id = _calendar_tenants(monkeypatch)
+    cache.set(f"health:{a_id}", {"checked_at": NOW.timestamp(), "issues": []}, timeout=None)
+    cache.delete(f"health:{b_id}")
+    result = system._calendar_integration()
+    assert result.state == "unknown"
+    assert result.detail == "1 de 2 accesibles · 1 sin comprobar"
+    # A checked failure still wins over the unchecked one.
+    cache.set(
+        f"health:{b_id}",
+        {
+            "checked_at": NOW.timestamp(),
+            "issues": [SimpleNamespace(code="main:calendar_unavailable", message="x")],
+        },
+        timeout=None,
+    )
+    cache.delete(f"health:{a_id}")
+    assert system._calendar_integration().state == "critical"
+    cache.set(f"health:{a_id}", {"checked_at": NOW.timestamp(), "issues": []}, timeout=None)
+    cache.set(f"health:{b_id}", {"checked_at": NOW.timestamp(), "issues": []}, timeout=None)
+    ok = system._calendar_integration()
+    assert (ok.state, ok.detail) == ("ok", "2 de 2 accesibles")
+    cache.delete(f"health:{a_id}")
+    cache.delete(f"health:{b_id}")

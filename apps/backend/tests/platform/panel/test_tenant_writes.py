@@ -185,6 +185,84 @@ def test_telegram_webhook_failure_returns_502_without_the_token(
     assert TG_SECRETS["bot_token"] not in response.content.decode()
 
 
+def _mock_telegram(monkeypatch: pytest.MonkeyPatch, handle: Any) -> None:
+    original = httpx.Client
+    monkeypatch.setattr(
+        "httpx.Client", lambda **kwargs: original(transport=httpx.MockTransport(handle))
+    )
+
+
+def test_telegram_webhook_status_compares_the_registered_url(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    tenants(tg_tenant())
+    settings.PUBLIC_URL = "https://api.example.org/"
+    current = {"url": "https://api.example.org/webhooks/telegram/pubtg0000"}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/getWebhookInfo")
+        return httpx.Response(
+            200, json={"ok": True, "result": {**current, "last_error_message": "https://s/SECRET"}}
+        )
+
+    _mock_telegram(monkeypatch, handle)
+    response = get(authed_client, "tenants/tg/telegram-webhook")
+    assert response.status_code == 200, response.content
+    assert response.json() == {"registered": True}
+    current["url"] = ""
+    assert get(authed_client, "tenants/tg/telegram-webhook").json() == {"registered": False}
+    current["url"] = "https://other.example.org/x"
+    assert get(authed_client, "tenants/tg/telegram-webhook").json() == {"registered": False}
+
+
+def test_telegram_webhook_status_is_unknown_when_it_cannot_be_checked(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    tenants(tg_tenant())
+    settings.PUBLIC_URL = "https://api.example.org/"
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"ok": False, "error_code": 401})
+
+    _mock_telegram(monkeypatch, handle)
+    response = get(authed_client, "tenants/tg/telegram-webhook")
+    assert response.json() == {"registered": None}
+    assert TG_SECRETS["bot_token"] not in response.content.decode()
+
+
+def test_telegram_webhook_status_without_secrets_or_telegram(
+    authed_client: Any, tenants: Any, settings: Settings
+) -> None:
+    settings.PUBLIC_URL = "https://api.example.org/"
+    tenants(tg_tenant(), wa_tenant("a"))
+    TenantSecret.objects.using("owner").filter(tenant__slug="tg").delete()
+    from autobot.tenancy.registry import reset_registry
+
+    reset_registry()
+    assert get(authed_client, "tenants/tg/telegram-webhook").json() == {"registered": None}
+    assert get(authed_client, "tenants/a/telegram-webhook").status_code == 400
+
+
+def test_a_tenant_named_notify_uses_its_own_bot_not_the_platform_one(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    settings.PUBLIC_URL = "https://api.example.org/"
+    settings.NOTIFY_BOT_TOKEN = "999:NOTIFY-PLATFORM-TOKEN"
+    tenants(tg_tenant("notify"))
+    urls: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(200, json={"ok": True, "result": {"url": ""}})
+
+    _mock_telegram(monkeypatch, handle)
+    assert post(authed_client, "tenants/notify/telegram-webhook", {}).status_code == 200
+    assert get(authed_client, "tenants/notify/telegram-webhook").status_code == 200
+    assert urls
+    assert all(TG_SECRETS["bot_token"] in u for u in urls)
+    assert not any("NOTIFY-PLATFORM-TOKEN" in u for u in urls)
+
+
 def test_owner_invite_returns_the_link_once_without_the_code_in_audit(
     authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
 ) -> None:
@@ -372,6 +450,52 @@ def test_delete_blocked_by_a_running_job_deletes_nothing(
     assert TenantSecret.objects.using("owner").filter(tenant_id=tenant_id).exists()
 
 
+def test_delete_removes_the_webhook_only_after_the_deletion_committed(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenants(tg_tenant(status="paused"))
+    seen: list[tuple[str, bool, str]] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            (
+                request.url.path.rsplit("/", 1)[1],
+                Tenant.objects.using("owner").filter(slug="tg").exists(),
+                request.url.path,
+            )
+        )
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    _mock_telegram(monkeypatch, handle)
+    response = post(authed_client, "tenants/tg/delete", {"confirm_slug": "tg"})
+    assert response.status_code == 200, response.content
+    assert response.json()["telegram_webhook_removed"] is True
+    assert [(m, exists) for m, exists, _ in seen] == [("deleteWebhook", False)]
+    assert TG_SECRETS["bot_token"] in seen[0][2]  # secrets captured before the purge
+
+
+def test_delete_blocked_does_not_touch_the_webhook(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenants(tg_tenant(status="paused"))
+    tenant_id = Tenant.objects.using("owner").get(slug="tg").id
+    calls: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    _mock_telegram(monkeypatch, handle)
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO procrastinate_jobs(task_name, queue_name, status, args, attempts) "
+            "VALUES ('send_message', 'outbound', 'doing', %s, 0)",
+            [json.dumps({"tenant_id": str(tenant_id)})],
+        )
+    assert post(authed_client, "tenants/tg/delete", {"confirm_slug": "tg"}).status_code == 409
+    assert calls == []
+
+
 def test_delete_continues_when_telegram_refuses_the_webhook_removal(
     authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -390,6 +514,28 @@ def test_delete_continues_when_telegram_refuses_the_webhook_removal(
     assert not Tenant.objects.using("owner").exists()
 
 
+def test_delete_locks_pending_jobs_so_workers_cannot_start_them(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_telegram_ok(monkeypatch)
+    tenants(tg_tenant(status="paused"))
+    tenant_id = Tenant.objects.using("owner").get(slug="tg").id
+    statements: list[str] = []
+    from django.test.utils import CaptureQueriesContext
+
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO procrastinate_jobs(task_name, queue_name, status, args, attempts) "
+            "VALUES ('send_message', 'outbound', 'todo', %s, 0)",
+            [json.dumps({"tenant_id": str(tenant_id)})],
+        )
+    with CaptureQueriesContext(connections["owner"]) as queries:
+        response = post(authed_client, "tenants/tg/delete", {"confirm_slug": "tg"})
+    assert response.status_code == 200, response.content
+    statements = [q["sql"] for q in queries.captured_queries]
+    assert any("FROM procrastinate_jobs" in q and "FOR UPDATE" in q for q in statements)
+
+
 def test_delete_rolls_back_everything_on_audit_failure(
     authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -400,9 +546,11 @@ def test_delete_rolls_back_everything_on_audit_failure(
     def fail(**kwargs: Any) -> None:
         raise RuntimeError("audit unavailable")
 
+    cache.set(f"health:{tenant_id}", {"checked_at": 1})
     monkeypatch.setattr("autobot.runtime.privacy.record", fail)
     with pytest.raises(RuntimeError):
         post(authed_client, "tenants/tg/delete", {"confirm_slug": "tg"})
+    assert cache.get(f"health:{tenant_id}") is not None  # a rollback keeps the cache
     assert Tenant.objects.using("owner").filter(pk=tenant_id).exists()
     assert TenantSecret.objects.using("owner").filter(tenant_id=tenant_id).exists()
 
