@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Multi-stage image: build the SPA with Node, serve it with a minimal non-root Caddy.
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 # The repo this build came from, for the commit links on the system page. Empty for a
 # local dev build.
