@@ -47,8 +47,10 @@ demo` registra `https://api.<dominio>/webhooks/telegram-demo` con
 Mismo mecanismo que el servidor (webhook), sobre un túnel de
 [ngrok](https://ngrok.com) hacia `web`, en vez de una URL de dominio propio:
 
-1. `make dev-bootstrap` prepara la BD y siembra los demos. `make ngrok` abre el
-   dominio reservado hacia el puerto 8000; `NGROK_DOMAIN=<otro>` permite cambiarlo.
+1. `make dev-bootstrap` prepara la BD y siembra los demos. `make ngrok` abre el túnel
+   hacia el puerto 8000 con el `NGROK_DOMAIN` de `.env` (tu dominio reservado; también
+   se puede pasar en la línea de comandos). Para que el demo de `salon` reserve de
+   verdad, fija `DEMO_SALON_CALENDAR_ID` en `.env` antes de sembrar.
 2. En `.env`: `PUBLIC_URL=<la URL https de ngrok>`, `DEMO_TELEGRAM_TOKEN` (bot de
    desarrollo propio, distinto del de producción), `DEMO_TELEGRAM_USERS` y
    `DEMO_TELEGRAM_WEBHOOK_SECRET` (aleatorio, p. ej. `openssl rand -hex 32`).
@@ -68,8 +70,7 @@ Mismo checklist que [el alta de la puerta WhatsApp](#alta-de-la-puerta-whatsapp)
 una app de WhatsApp **de desarrollo** (nunca la de producción) y la URL de ngrok en
 vez del dominio propio:
 
-1. `make ngrok` abre el túnel hacia el puerto 8000 (dominio reservado;
-   `NGROK_DOMAIN=<otro>` para cambiarlo).
+1. `make ngrok` abre el túnel hacia el puerto 8000 (con `NGROK_DOMAIN` de `.env`).
 2. En la app de WhatsApp de desarrollo, el webhook de la suscripción es
    `<URL de ngrok>/webhooks/whatsapp-demo`, con `DEMO_WHATSAPP_VERIFY_TOKEN` como
    `verify_token`.

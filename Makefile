@@ -1,5 +1,5 @@
 HOST ?= autobot
-NGROK_DOMAIN ?= unpermanently-repairable-devon.ngrok-free.dev
+NGROK_DOMAIN ?= $(shell sed -n 's/^NGROK_DOMAIN=//p' .env 2>/dev/null)
 
 .DEFAULT_GOAL := help
 
@@ -69,7 +69,8 @@ dev-activity: ## Crea actividad falsa en local para ver el panel con datos
 tenant-import: ## Importa un directorio contra la BD local (DIR=<dir> [SECRETS=<yaml>])
 	bash apps/backend/src/tools/tenant/tenant_import.sh
 
-ngrok: ## Abre el túnel al puerto 8000 ([NGROK_DOMAIN=<dominio>])
+ngrok: ## Abre el túnel al puerto 8000 (NGROK_DOMAIN en .env o en la línea de comandos)
+	@test -n "$(NGROK_DOMAIN)" || { echo 'Set NGROK_DOMAIN in .env (your reserved ngrok domain)' >&2; exit 1; }
 	ngrok http --domain=$(NGROK_DOMAIN) 8000
 
 ##@ Calidad

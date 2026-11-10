@@ -1,0 +1,25 @@
+# Línea inventada con nombre largo y nombre_corto (como en la plantilla de
+# demo), y la condición de negocio "solo_si_viajeros": solo una de las
+# salidas (la de las 20:00) la lleva, igual que en la red real solo una
+# salida llevaba el aviso de viajeros.
+nombre: Riomayor – Fuenteclara (directo)
+nombre_corto: Riomayor-Fuenteclara
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      RIO    FCL
+      12:00  13:35
+      13:10  15:10
+      20:00  21:45  | solo_si_viajeros
+
+pendientes: []

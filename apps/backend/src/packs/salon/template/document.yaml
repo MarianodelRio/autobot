@@ -1,8 +1,10 @@
 # Pack salon template: initial demo document (ADR-009).
 # Seeded once by seed_demos; later changes belong in the database.
-# Usa un calendario de Google de demostración (docs/runbooks/demo.md). El chat del
-# dueño se conecta con `manage.py owner_invite demo-peluqueria`; los avisos que recibe
-# se eligen en `owner.notify`.
+# Usa un calendario de Google de demostración (docs/procedimientos/demo.md): el id de
+# abajo es un valor de relleno, sustituido por `DEMO_SALON_CALENDAR_ID` al crear el
+# tenant (`seed_demos`). El chat del dueño se conecta con
+# `manage.py owner_invite demo-peluqueria`; los avisos que recibe se eligen en
+# `owner.notify`.
 id: 01a179e5-5e58-70eb-be24-ae547d510745
 slug: demo-peluqueria
 name: Peluquería de Prueba
@@ -11,7 +13,7 @@ pack: salon
 config:
   business_name: Peluquería de Prueba
   contact_phone: "600 000 000"
-  calendar_id: 3bcf89f949952084660bfacd4db22164871eb33c41f92f53c733d052d9c074fa@group.calendar.google.com
+  calendar_id: CHANGEME-DEMO-CALENDAR-ID@group.calendar.google.com
   services:
     corte:
       name: Corte de pelo

@@ -1,5 +1,6 @@
 """packs/bus/tests/test_matcher.py — reglas de coincidencia de texto,
-contra `horarios/` real y una fixture pequeña para el límite de candidatas."""
+contra `horarios_ficticios/` (red inventada, sin relación con ninguna red
+real) y una fixture pequeña para el límite de candidatas."""
 
 from __future__ import annotations
 
@@ -9,11 +10,11 @@ from pathlib import Path
 from packs.bus import formato, loader, matcher
 
 FIXTURES = Path(__file__).parent / "fixtures"
-HORARIOS_REAL = FIXTURES / "horarios_real"
+HORARIOS_FICTICIOS = FIXTURES / "horarios_ficticios"
 
 
-def _horarios_real() -> loader.Horarios:
-    return loader.cargar(HORARIOS_REAL)
+def _horarios() -> loader.Horarios:
+    return loader.cargar(HORARIOS_FICTICIOS)
 
 
 def _nombres(h: loader.Horarios, coincidencia: matcher.Coincidencia) -> list[str]:
@@ -24,150 +25,112 @@ def _nombres(h: loader.Horarios, coincidencia: matcher.Coincidencia) -> list[str
 
 
 def test_exacto_alias_y_mayusculas() -> None:
-    h = _horarios_real()
+    h = _horarios()
     m = matcher.Matcher(h)
-    for texto in ("Pozoblanco", "POZOBLANCO", "pozo"):
+    for texto in ("Pozoluengo", "POZOLUENGO", "pozo"):
         r = m.buscar(texto)
         assert r.tipo == "unico"
-        assert _nombres(h, r) == ["Pozoblanco"]
+        assert _nombres(h, r) == ["Pozoluengo"]
 
 
-def test_cordoba_exacto_no_arrastra_villanueva_de_cordoba() -> None:
-    h = _horarios_real()
+def test_riomayor_exacto_no_arrastra_villagrande() -> None:
+    h = _horarios()
     m = matcher.Matcher(h)
-    r = m.buscar("Córdoba")
+    r = m.buscar("Riomayor")
     assert r.tipo == "unico"
-    assert _nombres(h, r) == ["Córdoba"]
+    assert _nombres(h, r) == ["Riomayor"]
 
 
-def test_prefijo_cor_elegir_cordoba_coronada() -> None:
-    h = _horarios_real()
+def test_prefijo_rio_elegir_riomayor_riofondo() -> None:
+    h = _horarios()
     m = matcher.Matcher(h)
-    r = m.buscar("cor")
+    r = m.buscar("rio")
     assert r.tipo == "elegir"
-    assert set(_nombres(h, r)) == {"Córdoba", "Coronada"}
+    assert set(_nombres(h, r)) == {"Riomayor", "Riofondo"}
 
 
-def test_prefijo_fuente_elegir_cuatro() -> None:
-    h = _horarios_real()
-    m = matcher.Matcher(h)
-    r = m.buscar("fuente")
+def test_villagrande_elegir_las_dos() -> None:
+    h = _horarios()
+    r = matcher.Matcher(h).buscar("villagrande")
     assert r.tipo == "elegir"
-    assert set(_nombres(h, r)) == {
-        "Fuente Carreteros",
-        "Fuente La Lancha",
-        "Fuente Obejuna",
-        "Fuente Palmera",
-    }
+    assert set(_nombres(h, r)) == {"Villagrande de Riomayor", "Villagrande del Soto"}
 
 
-def test_prefijo_vil_elegir_nueve() -> None:
-    h = _horarios_real()
+def test_villagrande_soto_sin_articulo_resuelve_sola() -> None:
+    # "del" se quita al normalizar: no hace falta escribirlo para que el
+    # nombre completo deje de ser ambiguo.
+    h = _horarios()
     m = matcher.Matcher(h)
-    r = m.buscar("vil")
-    assert r.tipo == "elegir"
-    assert len(r.localidades) == 9
-
-
-def test_villanueva_elegir_tres_sin_estacion_ave() -> None:
-    h = _horarios_real()
-    r = matcher.Matcher(h).buscar("villanueva")
-    assert r.tipo == "elegir"
-    assert set(_nombres(h, r)) == {
-        "Villanueva de Córdoba",
-        "Villanueva del Duque",
-        "Villanueva del Rey",
-    }
-
-
-def test_villanueva_de_cordoba_unico_y_estacion_unico() -> None:
-    h = _horarios_real()
-    m = matcher.Matcher(h)
-    r = m.buscar("villanueva de cordoba")
-    assert r.tipo == "unico"
-    assert _nombres(h, r) == ["Villanueva de Córdoba"]
-    r = m.buscar("estacion")
-    assert r.tipo == "unico"
-    assert _nombres(h, r) == ["Estación AVE Villanueva de Córdoba"]
-
-
-def test_el_viso_el_vacar_santa_eufemia_pantano_unicos() -> None:
-    h = _horarios_real()
-    m = matcher.Matcher(h)
-    esperado = {
-        "el viso": "El Viso",
-        "el vacar": "El Vacar",
-        "santa eufemia": "Santa Eufemia",
-        "pantano": "Pantano",
-    }
-    for texto, nombre in esperado.items():
-        r = m.buscar(texto)
-        assert r.tipo == "unico", texto
-        assert _nombres(h, r) == [nombre], texto
-
-
-def test_sta_eufemia_confirma_y_st_eufemia_no_coincide() -> None:
-    h = _horarios_real()
-    m = matcher.Matcher(h)
-    r = m.buscar("sta eufemia")
-    assert r.tipo == "confirmar"
-    assert _nombres(h, r) == ["Santa Eufemia"]
-    assert m.buscar("st eufemia").tipo == "sin_coincidencia"
-
-
-def test_villanueva_duque_unico() -> None:
-    h = _horarios_real()
-    m = matcher.Matcher(h)
-    for texto in ("villanueva duque", "Villanueva del Duque"):
+    for texto in ("villagrande soto", "Villagrande del Soto"):
         r = m.buscar(texto)
         assert r.tipo == "unico"
-        assert _nombres(h, r) == ["Villanueva del Duque"]
+        assert _nombres(h, r) == ["Villagrande del Soto"]
 
 
-def test_villafranca_siempre_pregunta() -> None:
-    h = _horarios_real()
+def test_villagrande_de_riomayor_y_del_soto_resuelven_solos() -> None:
+    h = _horarios()
+    m = matcher.Matcher(h)
+    r = m.buscar("villagrande de riomayor")
+    assert r.tipo == "unico"
+    assert _nombres(h, r) == ["Villagrande de Riomayor"]
+    r = m.buscar("villagrande del soto")
+    assert r.tipo == "unico"
+    assert _nombres(h, r) == ["Villagrande del Soto"]
+
+
+def test_villagrande_siempre_pregunta() -> None:
+    h = _horarios()
     m = matcher.Matcher(h)
 
-    esperadas = {"Villafranca de Córdoba", "Villafranca de los Barros"}
+    esperadas = {"Villagrande de Riomayor", "Villagrande del Soto"}
 
-    r = m.buscar("villafranca")
+    r = m.buscar("villagrande")
     assert r.tipo == "elegir"
     assert set(_nombres(h, r)) == esperadas
 
-    r = m.buscar("villafranka")
+    r = m.buscar("villagrand")  # incompleto, pero sigue siendo prefijo de las dos
     assert r.tipo == "elegir"  # nunca 'confirmar', aunque sea una errata
     assert set(_nombres(h, r)) == esperadas
 
-    r = m.buscar("Villafranca de Córdoba")
+    r = m.buscar("Villagrande de Riomayor")
     assert r.tipo == "unico"
-    assert _nombres(h, r) == ["Villafranca de Córdoba"]
+    assert _nombres(h, r) == ["Villagrande de Riomayor"]
+
+
+def test_carrascal_montealto_fuenteclara_odalla_unicos() -> None:
+    h = _horarios()
+    m = matcher.Matcher(h)
+    for nombre in ("Carrascal", "Montealto", "Fuenteclara", "Odalla", "Peñablanca"):
+        r = m.buscar(nombre)
+        assert r.tipo == "unico", nombre
+        assert _nombres(h, r) == [nombre], nombre
 
 
 def test_errata_unica_confirma() -> None:
-    h = _horarios_real()
+    h = _horarios()
     m = matcher.Matcher(h)
 
-    r = m.buscar("pozoblnco")
+    r = m.buscar("pozolengo")
     assert r.tipo == "confirmar"
-    assert _nombres(h, r) == ["Pozoblanco"]
+    assert _nombres(h, r) == ["Pozoluengo"]
 
-    r = m.buscar("zafar")
+    r = m.buscar("zarge")
     assert r.tipo == "confirmar"
-    assert _nombres(h, r) == ["Zafra"]
+    assert _nombres(h, r) == ["Zarfe"]
 
 
 def test_errata_distancia_2_en_clave_corta_no_coincide() -> None:
-    # 'zafra' tiene 5 letras (umbral <=1); una query a distancia 2 no debe
+    # 'zarfe' tiene 5 letras (umbral <=1); una query a distancia 2 no debe
     # generar ninguna candidata.
-    assert matcher.damerau("zabsa", "zafra") == 2
-    h = _horarios_real()
+    assert matcher.damerau("zorfa", "zarfe") == 2
+    h = _horarios()
     m = matcher.Matcher(h)
-    r = m.buscar("zabsa")
+    r = m.buscar("zorfa")
     assert r.tipo == "sin_coincidencia"
 
 
 def test_menos_de_minimo_letras_sin_exacto() -> None:
-    h = _horarios_real()
+    h = _horarios()
     m = matcher.Matcher(h)
     for texto in ("po", "z"):
         r = m.buscar(texto)
@@ -175,42 +138,41 @@ def test_menos_de_minimo_letras_sin_exacto() -> None:
 
 
 def test_relleno_inicial_se_quita() -> None:
-    h = _horarios_real()
+    h = _horarios()
     m = matcher.Matcher(h)
 
-    r = m.buscar("desde pozoblanco")
+    r = m.buscar("desde pozoluengo")
     assert r.tipo == "unico"
-    assert _nombres(h, r) == ["Pozoblanco"]
+    assert _nombres(h, r) == ["Pozoluengo"]
 
-    r = m.buscar("a la herreria")
+    r = m.buscar("a la vereda")
     assert r.tipo == "unico"
-    assert _nombres(h, r) == ["La Herrería"]
+    assert _nombres(h, r) == ["La Vereda"]
 
-    r = m.buscar("voy a cordoba")
+    r = m.buscar("voy a riomayor")
     assert r.tipo == "unico"
-    assert _nombres(h, r) == ["Córdoba"]
+    assert _nombres(h, r) == ["Riomayor"]
 
 
 def test_relleno_inicial_con_puntuacion() -> None:
-    h = _horarios_real()
+    h = _horarios()
     m = matcher.Matcher(h)
-    for texto in ("¿desde pozoblanco?", "Desde, Pozoblanco", "¿Hacia Pozoblanco?"):
+    for texto in ("¿desde pozoluengo?", "Desde, Pozoluengo", "¿Hacia Pozoluengo?"):
         r = m.buscar(texto)
         assert r.tipo == "unico", texto
-        assert _nombres(h, r) == ["Pozoblanco"]
+        assert _nombres(h, r) == ["Pozoluengo"]
 
 
 def test_mayusculas_tildes_y_espacios() -> None:
-    h = _horarios_real()
+    h = _horarios()
     m = matcher.Matcher(h)
     for texto, esperado in (
-        ("POZOBLANCO", "Pozoblanco"),
-        ("  pOzObLaNcO  ", "Pozoblanco"),
-        ("CÓRDOBA", "Córdoba"),
-        ("cordoba", "Córdoba"),
-        ("PENARROYA", "Peñarroya-Pueblonuevo"),
-        ("peñarroya pueblonuevo", "Peñarroya-Pueblonuevo"),
-        ("BELALCÁZAR", "Belalcázar"),
+        ("POZOLUENGO", "Pozoluengo"),
+        ("  pOzOlUeNgO  ", "Pozoluengo"),
+        ("RIOMAYOR", "Riomayor"),
+        ("riomayor", "Riomayor"),
+        ("PENABLANCA", "Peñablanca"),
+        ("peñablanca", "Peñablanca"),
     ):
         r = m.buscar(texto)
         assert r.tipo == "unico", texto
@@ -218,37 +180,44 @@ def test_mayusculas_tildes_y_espacios() -> None:
 
 
 def test_nombre_de_parada_exacto() -> None:
-    h = _horarios_real()
+    h = _horarios()
     m = matcher.Matcher(h)
-    r = m.buscar("Pozoblanco (Hospital)")
+    r = m.buscar("Pozoluengo (Hospital)")
     assert r.tipo == "unico"
-    assert _nombres(h, r) == ["Pozoblanco"]
+    assert _nombres(h, r) == ["Pozoluengo"]
+
+
+def test_nombre_de_parada_con_coma() -> None:
+    h = _horarios()
+    m = matcher.Matcher(h)
+    r = m.buscar("Odalla (cruce, gasolinera)")
+    assert r.tipo == "unico"
+    assert _nombres(h, r) == ["Odalla"]
 
 
 def test_alias_el_cruce() -> None:
-    h = _horarios_real()
+    h = _horarios()
     m = matcher.Matcher(h)
     r = m.buscar("el cruce")
     assert r.tipo == "unico"
-    assert _nombres(h, r) == ["Cruce de Villaharta"]
+    assert _nombres(h, r) == ["Cruce del Risco"]
 
 
 def test_sin_coincidencia() -> None:
-    h = _horarios_real()
+    h = _horarios()
     m = matcher.Matcher(h)
-    for texto in ("pozoblanco cordoba", "xyz", "la", ""):
+    for texto in ("pozoluengo riomayor", "xyz", "la", ""):
         r = m.buscar(texto)
         assert r.tipo == "sin_coincidencia"
 
 
 def test_sin_alias_no_reconocido() -> None:
-    # 'pueblonuevo' y 'obejuna' solo se reconocerían con alias (P13); hoy no
-    # existen.
-    h = _horarios_real()
+    # 'soto' es la segunda palabra de "Villagrande del Soto" pero no tiene
+    # alias propio: no debe reconocerse sola.
+    h = _horarios()
     m = matcher.Matcher(h)
-    for texto in ("pueblonuevo", "obejuna"):
-        r = m.buscar(texto)
-        assert r.tipo == "sin_coincidencia"
+    r = m.buscar("soto")
+    assert r.tipo == "sin_coincidencia"
 
 
 # ── límite de candidatas (9 -> elegir, 10 -> demasiadas) ────────────────────
@@ -283,17 +252,17 @@ def test_localidad_no_usada_se_encuentra_pero_no_sale_en_lineas() -> None:
     assert matcher.lineas(h) == ()  # esta fixture no tiene ninguna línea
 
 
-# ── lineas() sobre horarios/ real ───────────────────────────────────────────
+# ── lineas() sobre horarios_ficticios/ ──────────────────────────────────────
 
 
 def test_zonas_ya_no_existe() -> None:
     assert not hasattr(matcher, "zonas")
 
 
-def test_lineas_reales_en_orden_de_titulo_con_pueblos_ordenados() -> None:
-    h = _horarios_real()
+def test_lineas_en_orden_de_titulo_con_pueblos_ordenados() -> None:
+    h = _horarios()
     ls = matcher.lineas(h)
-    assert len(ls) == 15
+    assert len(ls) == 8
     titulos = [formato.normalizar(linea.titulo) for linea, _ in ls]
     assert titulos == sorted(titulos)
     assert [linea.id for linea, _ in ls] == list(h.lineas_pueblos)
@@ -304,25 +273,6 @@ def test_lineas_reales_en_orden_de_titulo_con_pueblos_ordenados() -> None:
         for loc in localidades:
             assert loc.id in h.localidad_viajes
             assert loc.pendiente is None
-
-
-def test_rivero_y_los_mochos_son_pueblos_normales_y_vecinas() -> None:
-    h = _horarios_real()
-    m = matcher.Matcher(h)
-    esperado = {
-        "los mochos": ["Los Mochos"],
-        "rivero": ["Rivero de Posadas"],
-        "posadas": ["Posadas"],
-        "blazquez": ["Los Blázquez"],
-        "granja": ["Granja de Torrehermosa"],
-    }
-    for texto, nombres in esperado.items():
-        r = m.buscar(texto)
-        assert r.tipo == "unico", texto
-        assert _nombres(h, r) == nombres, texto
-    assert m.buscar("los mochos").localidades == ("los-mochos",)
-    assert m.buscar("rivero").localidades == ("rivero-de-posadas",)
-    assert m.buscar("blazquez").localidades == ("los-blazquez",)
 
 
 def test_lineas_pendientes_no_aparecen_en_ninguna_linea() -> None:
@@ -338,11 +288,11 @@ def test_lineas_pendientes_no_aparecen_en_ninguna_linea() -> None:
 
 def test_propiedad_toda_localidad_por_su_nombre_exacto() -> None:
     # El nombre oficial completo de cada localidad es único incluso para el
-    # par Villafranca (de Córdoba / de los Barros): la ambigüedad declarada
-    # solo salta al escribir el alias compartido "villafranca" (ver
-    # test_villafranca_siempre_pregunta), nunca al escribir el nombre
-    # completo ("Villafranca de Córdoba" resuelve sola).
-    h = _horarios_real()
+    # par Villagrande (de Riomayor / del Soto): la ambigüedad declarada solo
+    # salta al escribir el prefijo compartido "villagrande" (ver
+    # test_villagrande_siempre_pregunta), nunca al escribir el nombre
+    # completo.
+    h = _horarios()
     m = matcher.Matcher(h)
     for lid, loc in h.modelo.localidades.items():
         r = m.buscar(loc.nombre)

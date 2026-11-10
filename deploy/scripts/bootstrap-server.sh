@@ -10,9 +10,10 @@ if ! grep -q '^VERSION_ID="24.04"$' /etc/os-release; then
   exit 1
 fi
 if [[ $# -ne 4 || ! -s $1 || ! -s $2 || ! -s $3 || ! -s $4 ]]; then
-  echo 'Usage: bootstrap-server.sh <operator.pub> <ci.pub> <github-read-key> <github-known-hosts>' >&2
+  echo 'Usage: REPO_URL=<git@host:owner/repo.git> bootstrap-server.sh <operator.pub> <ci.pub> <github-read-key> <github-known-hosts>' >&2
   exit 2
 fi
+: "${REPO_URL:?Set REPO_URL, e.g. git@github.com:<owner>/<repo>.git}"
 operator_key=$(cat "$1")
 ci_key=$(cat "$2")
 if [[ $(wc -l <"$1") -ne 1 || $(wc -l <"$2") -ne 1 ]] || \
@@ -101,7 +102,7 @@ fi
 install -d -m 0750 -o deploy -g deploy /srv/autobot
 if [[ ! -d /srv/autobot/.git ]]; then
   runuser -u deploy -- env GIT_SSH_COMMAND='ssh -i /home/deploy/.ssh/github_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/deploy/.ssh/known_hosts -o StrictHostKeyChecking=yes' \
-    git clone --quiet git@github.com:MarianodelRio/autobot.git /srv/autobot
+    git clone --quiet "$REPO_URL" /srv/autobot
 fi
 runuser -u deploy -- git -C /srv/autobot config core.sshCommand \
   'ssh -i /home/deploy/.ssh/github_readonly -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/deploy/.ssh/known_hosts -o StrictHostKeyChecking=yes'

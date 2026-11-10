@@ -13,6 +13,8 @@ EXTERNALS = {
     "PUBLIC_HOST": "api.example.com",
     "DJANGO_ALLOWED_HOSTS": "api.example.com,localhost,127.0.0.1",
     "DEPLOY_UID": "10001",
+    "AUTOBOT_IMAGE": "ghcr.io/example-owner/autobot",
+    "AUTOBOT_PANEL_IMAGE": "ghcr.io/example-owner/autobot-panel",
 }
 GENERATED_NAMES = {
     "FP_OWNER_PASSWORD",
@@ -66,6 +68,8 @@ def test_generates_missing_internals_without_the_externals(script: Path, tmp_pat
     assert "PUBLIC_HOST" in result.stderr
     assert "DJANGO_ALLOWED_HOSTS" in result.stderr
     assert "DEPLOY_UID" in result.stderr
+    assert "AUTOBOT_IMAGE" in result.stderr
+    assert "AUTOBOT_PANEL_IMAGE" in result.stderr
     env = env_dict(tmp_path)
     assert set(env) == GENERATED_NAMES
     assert env["DB_APP_URL"] == f"postgres://fp_app:{env['FP_APP_PASSWORD']}@db:5432/autobot"
@@ -104,6 +108,8 @@ def test_never_overwrites_an_existing_external_value(script: Path, tmp_path: Pat
         "PUBLIC_HOST=already.example.com\n"
         "DJANGO_ALLOWED_HOSTS=already.example.com,localhost,127.0.0.1\n"
         "DEPLOY_UID=1234\n"
+        "AUTOBOT_IMAGE=ghcr.io/example-owner/autobot\n"
+        "AUTOBOT_PANEL_IMAGE=ghcr.io/example-owner/autobot-panel\n"
     )
     result = run(script)
     assert result.returncode == 0, result.stderr

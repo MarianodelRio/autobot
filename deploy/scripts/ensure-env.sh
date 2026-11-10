@@ -77,7 +77,7 @@ if ((${#generated_lines[@]})); then
 fi
 
 missing=()
-for name in PUBLIC_HOST DJANGO_ALLOWED_HOSTS DEPLOY_UID; do
+for name in PUBLIC_HOST DJANGO_ALLOWED_HOSTS DEPLOY_UID AUTOBOT_IMAGE AUTOBOT_PANEL_IMAGE; do
   [[ -n ${!name:-} ]] || missing+=("$name")
 done
 if ((${#missing[@]})); then

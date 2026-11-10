@@ -186,6 +186,22 @@ def test_seed_demos_preserves_operator_changes() -> None:
     assert ConfigRevision.objects.using("owner").get().revision == revision
 
 
+def test_seed_demos_warns_without_the_demo_calendar(settings: Any) -> None:
+    settings.DEMO_SALON_CALENDAR_ID = ""
+    errors = io.StringIO()
+    call_command("seed_demos", stdout=io.StringIO(), stderr=errors)
+    assert "DEMO_SALON_CALENDAR_ID is empty" in errors.getvalue()
+
+
+def test_seed_demos_applies_the_demo_calendar(settings: Any) -> None:
+    settings.DEMO_SALON_CALENDAR_ID = "demo@group.calendar.google.com"
+    command("seed_demos")
+    document = (
+        TenantDocumentVersion.objects.using("owner").get(tenant__slug="demo-peluqueria").document
+    )
+    assert document["config"]["calendar_id"] == "demo@group.calendar.google.com"
+
+
 def test_status_requires_exact_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
     create()
     command("tenant_status", "tg", "pause")

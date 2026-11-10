@@ -1,4 +1,4 @@
-"""Doble de compatibilidad para escribir los tests de conversación e interfaz
+"""Arnés de compatibilidad para escribir los tests de conversación e interfaz
 (`test_conversation`, `test_interactive`, `test_messages`) sobre una API compacta.
 
 Aquellos tests llamaban a `conv.handle_message(...)`, leían los payloads de
@@ -6,7 +6,11 @@ WhatsApp de un `mock_wa` y fijaban el reloj con `freeze_calendario`. Aquí lo
 mismo pasa por el arnés de Autobot (`core.testing.Conversation`): cada
 mensaje recorre las reglas comunes, `plan_sends` y los límites de los dos
 canales, y las respuestas de `core.replies` se convierten al payload de
-WhatsApp que leían los tests (`wa`)."""
+WhatsApp que leían los tests (`wa`).
+
+Este fichero no tiene nada que ver con datos reales de ningún negocio: es
+solo el arnés de compatibilidad de la API antigua de tests sobre
+`core.testing.Conversation` (antes `compat.py`)."""
 
 from __future__ import annotations
 
@@ -29,28 +33,25 @@ from packs.bus.config import BusConfig
 from packs.bus.pack import pack
 
 FIXTURES = Path(__file__).parent / "fixtures"
-HORARIOS_REAL = FIXTURES / "horarios_real"
+HORARIOS_FICTICIOS = FIXTURES / "horarios_ficticios"
 TZ = ZoneInfo("Europe/Madrid")
 
-# La config de Autocares San Sebastián, en el formato de `BusConfig`.
+# Negocio ficticio de demo, sin relación con ningún cliente real.
 CONFIG = BusConfig.model_validate(
     dict(
-        business_name="Autocares San Sebastián",
-        contact_phone="957 42 90 30",
+        business_name="Autobuses Ejemplo",
+        contact_phone="600 00 00 00",
         office_hours=[
             {"days": ["lunes", "martes", "miercoles"], "ranges": ["08:00-15:00", "17:00-19:00"]},
             {"days": ["jueves", "viernes"], "ranges": ["08:00-15:00"]},
         ],
-        links={"web": "https://www.autocaressansebastian.es"},
+        links={"web": "https://www.autobuses-ejemplo.invalid"},
         start_menu_towns=[
-            "Córdoba",
-            "Pozoblanco",
-            "Peñarroya-Pueblonuevo",
-            "Villanueva de Córdoba",
-            "Hinojosa del Duque",
-            "Belalcázar",
-            "Adamuz",
-            "Fuente Palmera",
+            "Riomayor",
+            "Pozoluengo",
+            "Montealto",
+            "Fuenteclara",
+            "Odalla",
         ],
     )
 )
@@ -58,8 +59,8 @@ NEGOCIO_TELEFONO = CONFIG.contact_phone
 
 
 @cache
-def datos_reales() -> horarios_datos.Datos:
-    return horarios_datos.cargar(HORARIOS_REAL, CONFIG.start_menu_towns)
+def datos_demo() -> horarios_datos.Datos:
+    return horarios_datos.cargar(HORARIOS_FICTICIOS, CONFIG.start_menu_towns)
 
 
 def wa(reply: Reply) -> dict[str, Any]:
@@ -160,7 +161,7 @@ class Conv:
     def __init__(self, mock_wa: MockWA, channel: ChannelType) -> None:
         self.mock_wa = mock_wa
         self.channel = channel
-        self.instalados: dict[str, horarios_datos.Datos] = {"datos": datos_reales()}
+        self.instalados: dict[str, horarios_datos.Datos] = {"datos": datos_demo()}
         self.ahora = datetime(2026, 9, 23, 0, 0, tzinfo=TZ)
         self._chats: dict[str, Conversation] = {}
 

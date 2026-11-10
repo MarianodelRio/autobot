@@ -13,7 +13,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make dev-reset` | Exige escribir `RESET`, elimina el volumen local y repite el bootstrap |
 | `make tenant-import DIR=<dir> [SECRETS=<yaml>]` | Importa un directorio contra la BD local desde el host; acepta rutas con espacios |
 | `make dev-activity` | `manage.py seed_dev_activity`: actividad falsa y realista (mensajes, respuestas, avisos, alertas abiertas y resueltas, un `unknown`, un trabajo fallido y muestras de sistema) para ver el panel con datos; se niega fuera de `local` |
-| `make ngrok [NGROK_DOMAIN=<dominio>]` | Abre el túnel al puerto 8000 usando el dominio reservado configurado |
+| `make ngrok` | Abre el túnel al puerto 8000 con tu dominio reservado de ngrok |
 | `make down` | Para los contenedores |
 | `make status` | `docker compose ps` |
 | `make db-roles` | Ejecuta `init-roles.sh` dentro del contenedor `db`: crea `fp_owner`, `fp_app` y `fp_readonly`, o actualiza sus contraseñas, sin recrear el contenedor |
@@ -44,8 +44,8 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make tenant-push SLUG=<slug> [SECRETS=<yaml>]` | Exporta la BD local y la importa por SSH. El YAML privado aporta solo la entrada del slug; el temporal se borra al salir |
 
 `HOST ?= autobot` usa el alias de `~/.ssh/config`; se puede sobrescribir en cada
-comando. `NGROK_DOMAIN` usa el dominio reservado de desarrollo documentado en el
-`Makefile`.
+comando. `NGROK_DOMAIN` no tiene valor por defecto: `make ngrok` lo lee de `.env` y
+también se puede pasar en la línea de comandos.
 
 ## `manage.py`
 

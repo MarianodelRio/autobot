@@ -1,7 +1,7 @@
 """Escenarios obligatorios del pack `bus`, con el arnés de
 conversación en los dos tipos de canal. Cada respuesta pasa por los límites
 comunes y por el renderizado de los dos adaptadores. Los datos son los
-reales congelados (`fixtures/horarios_real/`) salvo donde se indica.
+ficticios congelados (`fixtures/horarios_ficticios/`) salvo donde se indica.
 
 La consulta completa de extremo a extremo (webhook → runtime → envío real) está en
 `tests/integration/test_bus_pack.py`."""
@@ -19,7 +19,7 @@ from core.testing.harness import ChannelType, Turn
 from packs.bus import query
 from packs.bus.datos import Datos
 from packs.bus.pack import pack
-from tests.packs.bus.compat import CONFIG, datos_reales
+from tests.packs.bus.conversation_harness import CONFIG, datos_demo
 
 MIERCOLES = "2026-09-23T10:00:00+02:00"  # laborable, dentro de la vigencia
 MENU = ["🚌 Ver horarios", "ℹ️ Contacto"]
@@ -32,15 +32,15 @@ def canal(request: pytest.FixtureRequest) -> ChannelType:
 
 
 def charla(canal: ChannelType, datos: Datos | None = None, now: str = MIERCOLES) -> Conversation:
-    return Conversation(pack, config=CONFIG, data=datos or datos_reales(), channel=canal, now=now)
+    return Conversation(pack, config=CONFIG, data=datos or datos_demo(), channel=canal, now=now)
 
 
 def hasta_dias(chat: Conversation) -> Turn:
-    """Pozoblanco → Córdoba, hasta la lista de días."""
+    """Pozoluengo → Riomayor, hasta la lista de días."""
     chat.send("hola").expect(buttons=MENU)
-    chat.press("menu_horarios").expect(list_includes="Pozoblanco")
-    chat.press("loc:pozoblanco")
-    return chat.press("loc:cordoba")
+    chat.press("menu_horarios").expect(list_includes="Pozoluengo")
+    chat.press("loc:pozoluengo")
+    return chat.press("loc:riomayor")
 
 
 def cuerpo(turn: Turn) -> str:
@@ -54,21 +54,21 @@ def test_consulta_completa(canal: ChannelType) -> None:
     chat = charla(canal)
     dias = hasta_dias(chat)
     lista = dias.replies[-1]
-    assert isinstance(lista, List) and lista.header == "🚌 Pozoblanco → Córdoba"
+    assert isinstance(lista, List) and lista.header == "🚌 Pozoluengo → Riomayor"
     ids = [r.id for s in lista.sections for r in s.rows]
     assert ids == [f"dia:2026-09-{d}" for d in range(23, 30)] + ["otra_fecha"]
 
     turn = chat.press("dia:2026-09-24").expect(buttons=RESULTADO)
     texto = cuerpo(turn)
-    assert texto.startswith("🚌 Pozoblanco → Córdoba\n📅 Jueves 24/09")
-    esperadas = query.consultar(datos_reales().horarios, "pozoblanco", "cordoba", date(2026, 9, 24))
+    assert texto.startswith("🚌 Pozoluengo → Riomayor\n📅 Jueves 24/09")
+    esperadas = query.consultar(datos_demo().horarios, "pozoluengo", "riomayor", date(2026, 9, 24))
     assert esperadas.estado == "con_salidas"
     for salida in esperadas.salidas:
         assert f"{salida.hora_salida:%H:%M} → {salida.hora_llegada:%H:%M}" in texto
     assert chat.state == {
         "step": "RESULTADO",
-        "origen": "pozoblanco",
-        "destino": "cordoba",
+        "origen": "pozoluengo",
+        "destino": "riomayor",
         "fecha": "2026-09-24",
     }
 
@@ -79,8 +79,8 @@ def test_ver_la_vuelta(canal: ChannelType) -> None:
     chat.press("dia:2026-09-24")
     turn = chat.press("vuelta").expect(list_includes="📅 Otra fecha")
     lista = turn.replies[-1]
-    assert isinstance(lista, List) and lista.header == "🚌 Córdoba → Pozoblanco"
-    chat.press("dia:2026-09-24").expect(text_contains="🚌 Córdoba → Pozoblanco", buttons=RESULTADO)
+    assert isinstance(lista, List) and lista.header == "🚌 Riomayor → Pozoluengo"
+    chat.press("dia:2026-09-24").expect(text_contains="🚌 Riomayor → Pozoluengo", buttons=RESULTADO)
 
 
 def test_otro_dia(canal: ChannelType) -> None:
@@ -96,10 +96,10 @@ def test_informacion(canal: ChannelType) -> None:
     chat.send("hola")
     turn = chat.press("menu_info").expect(buttons=["🚌 Ver horarios", "↩️ Menú"])
     texto = cuerpo(turn)
-    assert "📞 Teléfono: 957 42 90 30" in texto
+    assert "📞 Teléfono: 600 00 00 00" in texto
     assert "lunes a miércoles laborables de 08:00 a 15:00 y de 17:00 a 19:00" in texto
     # `HttpUrl` normaliza una URL sin ruta con la barra final.
-    assert texto.endswith("🌐 Web: https://www.autocaressansebastian.es/")
+    assert texto.endswith("🌐 Web: https://www.autobuses-ejemplo.invalid/")
 
 
 # ── Días sin salidas ──────────────────────────────────────────────────────
@@ -109,8 +109,8 @@ def test_dia_sin_servicio_ofrece_el_siguiente_dia(canal: ChannelType) -> None:
     chat = charla(canal)
     chat.send("hola")
     chat.press("menu_horarios")
-    chat.send("Ochavillos")  # no está en el menú de inicio: se escribe
-    chat.press("loc:cordoba")
+    chat.send("Ribazo")  # no está en el menú de inicio: se escribe
+    chat.press("loc:riomayor")
     turn = chat.press("dia:2026-09-26")  # sábado: sin servicio
     texto = cuerpo(turn)
     assert "Ese día no hay servicio" in texto
@@ -139,7 +139,7 @@ def test_25_de_diciembre_sin_servicio_en_ninguna_linea(canal: ChannelType) -> No
     assert fila.description == "festivo · sin servicio"
     texto = cuerpo(chat.press("dia:2026-12-25"))
     assert "El 25/12 no hay servicio en ninguna línea." in texto
-    assert "📞 957 42 90 30 (horario de oficina:" in texto
+    assert "📞 600 00 00 00 (horario de oficina:" in texto
 
 
 def test_hoy_sin_salidas_restantes_ofrece_manana(canal: ChannelType) -> None:
@@ -161,8 +161,8 @@ def test_no_vendible(canal: ChannelType) -> None:
     chat = charla(canal)
     chat.send("hola")
     chat.press("menu_horarios")
-    chat.press("loc:cordoba")
-    turn = chat.send("Alcolea")
+    chat.press("loc:riomayor")
+    turn = chat.send("Campoalto")
     assert "no vendemos billetes" in cuerpo(turn)
     assert chat.state["step"] == "SEL_DESTINO"
 
@@ -171,55 +171,55 @@ def test_sin_trayecto_directo(canal: ChannelType) -> None:
     chat = charla(canal)
     chat.send("hola")
     chat.press("menu_horarios")
-    chat.press("loc:pozoblanco")
-    turn = chat.send("Badajoz")
-    assert "No hay trayecto directo de Pozoblanco a Badajoz." in cuerpo(turn)
-    assert "📞 957 42 90 30" in cuerpo(turn)
+    chat.press("loc:pozoluengo")
+    turn = chat.send("Campoalto")
+    assert "No hay trayecto directo de Pozoluengo a Campoalto." in cuerpo(turn)
+    assert "📞 600 00 00 00" in cuerpo(turn)
 
 
 def test_origen_igual_a_destino(canal: ChannelType) -> None:
     chat = charla(canal)
     chat.send("hola")
     chat.press("menu_horarios")
-    chat.press("loc:pozoblanco")
-    turn = chat.send("pozoblanco")
+    chat.press("loc:pozoluengo")
+    turn = chat.send("pozoluengo")
     assert "Elige un destino distinto." in cuerpo(turn)
     assert chat.state["step"] == "SEL_DESTINO"
 
 
-@pytest.mark.parametrize("texto", ["villafranca", "villafranka"])
-def test_villafranca_siempre_pregunta(canal: ChannelType, texto: str) -> None:
+@pytest.mark.parametrize("texto", ["villagrande", "villagrand"])
+def test_villagrande_siempre_pregunta(canal: ChannelType, texto: str) -> None:
     chat = charla(canal)
     chat.send("hola")
     chat.press("menu_horarios")
     turn = chat.send(texto).expect(
-        list_includes="Villafranca de Córdoba"
-    )  # 22 letras: no caben en un botón, va en lista
+        list_includes="Villagrande de Riomayor"
+    )  # no cabe en un botón, va en lista
     lista = turn.replies[-1]
     assert isinstance(lista, List)
     ids = {r.id for s in lista.sections for r in s.rows}
-    assert {"loc:villafranca-de-cordoba", "loc:villafranca-de-los-barros"} <= ids
-    chat.press("loc:villafranca-de-cordoba").expect(text_contains="¿A dónde vas?")
+    assert {"loc:villagrande-de-riomayor", "loc:villagrande-del-soto"} <= ids
+    chat.press("loc:villagrande-de-riomayor").expect(text_contains="¿A dónde vas?")
 
 
 def test_errata_confirmada(canal: ChannelType) -> None:
     chat = charla(canal)
     chat.send("hola")
     chat.press("menu_horarios")
-    chat.send("pozoblnco").expect(text="¿Querías decir Pozoblanco?", buttons=["Sí", "No"])
+    chat.send("pozolengo").expect(text="¿Querías decir Pozoluengo?", buttons=["Sí", "No"])
     turn = chat.press("si")
     lista = turn.replies[-1]
-    assert isinstance(lista, List) and lista.header == "🚌 Desde Pozoblanco"
+    assert isinstance(lista, List) and lista.header == "🚌 Desde Pozoluengo"
 
 
 def test_errata_rechazada(canal: ChannelType) -> None:
     chat = charla(canal)
     chat.send("hola")
     chat.press("menu_horarios")
-    chat.send("pozoblnco")
+    chat.send("pozolengo")
     chat.press("no").expect(text="Vale, escríbelo de otra forma.")
     assert chat.state["step"] == "ESCRIBIR_ORIGEN"
-    chat.send("Pozoblanco").expect(text_contains="¿A dónde vas?")
+    chat.send("Pozoluengo").expect(text_contains="¿A dónde vas?")
 
 
 def test_pueblo_desconocido_ofrece_pueblos_por_linea(
@@ -313,7 +313,7 @@ def test_resultado_largo_se_corta_y_va_aparte(
     assert isinstance(texto, Text) and isinstance(botones, Buttons)
     assert len(texto.body) <= 4096
     assert texto.body.startswith("🚌 Origen → Destino")
-    assert "salidas más, llama al 957 42 90 30." in texto.body
+    assert "salidas más, llama al 600 00 00 00." in texto.body
     assert "05:00 → 05:55" in texto.body
     turn.expect(text="¿Qué quieres hacer ahora?", buttons=RESULTADO)
 

@@ -1,0 +1,67 @@
+# Línea principal, inventada: Pozoluengo - Carrascal - Riomayor. Varias
+# salidas de lunes a viernes, menos el sábado y menos aún domingos/festivos
+# (otro conjunto de horas, no un subconjunto). El último viaje de la tarde
+# lleva "a demanda" en Carrascal (letra D) y un aviso de llegada a la
+# estación en Riomayor (letra C): mismo patrón que `bus:<id>` compartido
+# entre varias letras en una sola fila.
+nombre: Pozoluengo – Riomayor
+telefono_demanda: "600 11 22 33"
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: horario, domingos-festivos: horario }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      POZ    CRL     RIO
+      07:00  07:20   07:45
+      08:30  08:50   09:15
+      10:15  10:35   11:00
+      15:00  15:20   15:45
+      18:00  18:20D  18:45C
+
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      RIO    CRL    POZ
+      09:30  09:55  10:15
+      13:00  13:25  13:45
+      16:00  16:25  16:45
+      19:15  19:40  20:00
+
+  - temporada: anual
+    dias: sabado
+    tabla: |
+      POZ    CRL    RIO
+      09:00  09:20  09:45
+      17:00  17:20  17:45
+
+  - temporada: anual
+    dias: sabado
+    tabla: |
+      RIO    CRL    POZ
+      11:00  11:25  11:45
+      19:00  19:25  19:45
+
+  - temporada: anual
+    dias: domingos-festivos
+    tabla: |
+      POZ    CRL    RIO
+      08:15  08:35  09:00
+      15:15  15:35  16:00
+      17:45  18:05  18:30
+
+  - temporada: anual
+    dias: domingos-festivos
+    tabla: |
+      RIO    CRL    POZ
+      10:00  10:25  10:45
+      18:00  18:25  18:45
+
+pendientes: []

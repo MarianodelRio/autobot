@@ -31,7 +31,7 @@ x-app-env: &app-env
   RETENTION_CLEANUP_ENABLED: ${RETENTION_CLEANUP_ENABLED:-false}
 
 x-app: &app
-  image: ghcr.io/marianodelrio/autobot:${SHA:?Set the published image SHA}
+  image: ${AUTOBOT_IMAGE:?Set AUTOBOT_IMAGE}:${SHA:?Set the published image SHA}
   # Match the host owner of mode-0600 secret files, while remaining non-root.
   user: ${DEPLOY_UID:?Set the numeric uid of the deploy user}
   environment: *app-env
@@ -100,7 +100,7 @@ services:
     init: true
 
   panel:
-    image: ghcr.io/marianodelrio/autobot-panel:${SHA:?Set the published image SHA}
+    image: ${AUTOBOT_PANEL_IMAGE:?Set AUTOBOT_PANEL_IMAGE}:${SHA:?Set the published image SHA}
     user: ${DEPLOY_UID:?Set the numeric uid of the deploy user}
     ports:
       - "127.0.0.1:8080:8080"

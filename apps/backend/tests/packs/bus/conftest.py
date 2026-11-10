@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from packs.bus import datos as horarios_datos
-from tests.packs.bus.compat import Conv, MockWA, congelar, datos_reales
+from tests.packs.bus.conversation_harness import Conv, MockWA, congelar, datos_demo
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -19,7 +19,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 def _instalados() -> dict[str, horarios_datos.Datos]:
     """Los datos que verá la conversación: los reales, salvo que un test pida
     unos sintéticos (`datos_motor`, `datos_pendientes`, `datos_muchas_lineas`)."""
-    return {"datos": datos_reales()}
+    return {"datos": datos_demo()}
 
 
 @pytest.fixture

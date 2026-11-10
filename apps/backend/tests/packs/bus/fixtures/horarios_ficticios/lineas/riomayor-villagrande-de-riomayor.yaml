@@ -1,0 +1,28 @@
+# Una de las dos "Villagrande" inventadas (ambigüedad de nombre: ver
+# riomayor-villagrande-del-soto.yaml). Buscar "villagrande" debe preguntar
+# entre las dos; el nombre completo de cada una resuelve sola.
+nombre: Riomayor – Villagrande de Riomayor
+nombre_corto: Villagrande Riomayor
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      RIO    VGR
+      10:00  10:20
+
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      VGR    RIO
+      16:00  16:20
+
+pendientes: []

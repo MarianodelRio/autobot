@@ -1,7 +1,8 @@
 # Mismo autobús (bus:pas-1500) repartido entre dos tablas de la misma línea
 # (lunes-jueves y viernes, sin días solapados) y un viaje lunes-viernes de
-# corta.yaml. Es válido (caso Badajoz).
-nombre: Paso – Córdoba
+# corta.yaml. Es válido (el mismo autobús puede repartirse entre tramos de
+# días que no se solapan).
+nombre: Paso – Riomayor
 avisos: []
 no_circula: []
 

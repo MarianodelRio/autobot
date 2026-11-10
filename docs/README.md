@@ -23,7 +23,7 @@
 - **Buscar un comando** → [referencia/comandos.md](referencia/comandos.md)
 - **Buscar una variable de entorno** → [referencia/variables-entorno.md](referencia/variables-entorno.md)
 - **Configurar un pack concreto** → [referencia/packs/](referencia/packs/)
-- **Qué queda pendiente antes de producción** → [puesta-en-marcha.md](puesta-en-marcha.md)
+- **Qué queda pendiente antes de producción** → [plan-lanzamiento.md](plan-lanzamiento.md)
 
 Reglas para trabajar en el repo (idioma, forma de trabajo, arquitectura, reglas
 obligatorias): [`CLAUDE.md`](../CLAUDE.md).

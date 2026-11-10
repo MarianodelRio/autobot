@@ -67,6 +67,8 @@ def invoke(
         "PUBLIC_HOST": "api.example.com",
         "DJANGO_ALLOWED_HOSTS": "api.example.com,localhost,127.0.0.1",
         "DEPLOY_UID": "10001",
+        "AUTOBOT_IMAGE": "ghcr.io/example-owner/autobot",
+        "AUTOBOT_PANEL_IMAGE": "ghcr.io/example-owner/autobot-panel",
     }
     return subprocess.run(
         ["bash", str(script), sha],

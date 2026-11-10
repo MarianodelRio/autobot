@@ -14,7 +14,7 @@ fija las decisiones de arquitectura.
 
 - **La base de datos es la única fuente de verdad** de la config y los datasets de cada
   negocio. `tenants/` desaparece del repositorio y de la imagen (sigue en `.gitignore`
-  para la copia local de `autocares-ss`); la CI falla si algo queda versionado ahí.
+  para la copia local del tenant de ejemplo); la CI falla si algo queda versionado ahí.
 - **Versiones inmutables.** `tenant_document_version` guarda cada versión del
   `TenantDocument`; `tenant_dataset_version` guarda cada versión de los datasets
   (horarios de `bus`). La

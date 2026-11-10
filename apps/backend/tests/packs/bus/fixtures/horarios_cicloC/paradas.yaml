@@ -3,22 +3,22 @@
 # (P18): sin zonas.
 
 localidades:
-  cordoba: { nombre: Córdoba }
-  el-vacar: { nombre: El Vacar }
-  espiel: { nombre: Espiel }
-  villanueva-del-rey: { nombre: Villanueva del Rey }
-  belmez: { nombre: Belmez }
-  penarroya: { nombre: Peñarroya }
-  el-porvenir: { nombre: El Porvenir }
-  los-blazquez: { nombre: Los Blázquez }
+  riomayor: { nombre: Riomayor }
+  valdeflor: { nombre: Valdeflor }
+  montesierra: { nombre: Montesierra }
+  villanueva-del-pinar: { nombre: Villanueva del Pinar }
+  belmonte: { nombre: Belmonte }
+  penarroja: { nombre: Peñarroja }
+  el-mirador: { nombre: El Mirador }
+  los-alamos: { nombre: Los Álamos }
 
 paradas:
-  COR: { nombre: Córdoba, localidad: cordoba }
-  VAC: { nombre: El Vacar, localidad: el-vacar }
-  ESP: { nombre: Espiel, localidad: espiel }
-  VRE: { nombre: Villanueva del Rey (pueblo), localidad: villanueva-del-rey }
-  VRC: { nombre: Villanueva del Rey (cruce), localidad: villanueva-del-rey }
-  BEL: { nombre: Belmez, localidad: belmez }
-  PNR: { nombre: Peñarroya, localidad: penarroya }
-  PVN: { nombre: El Porvenir, localidad: el-porvenir }
-  BLQ: { nombre: Los Blázquez, localidad: los-blazquez }
+  COR: { nombre: Riomayor, localidad: riomayor }
+  VAC: { nombre: Valdeflor, localidad: valdeflor }
+  ESP: { nombre: Montesierra, localidad: montesierra }
+  VRE: { nombre: Villanueva del Pinar (pueblo), localidad: villanueva-del-pinar }
+  VRC: { nombre: Villanueva del Pinar (cruce), localidad: villanueva-del-pinar }
+  BEL: { nombre: Belmonte, localidad: belmonte }
+  PNR: { nombre: Peñarroja, localidad: penarroja }
+  PVN: { nombre: El Mirador, localidad: el-mirador }
+  BLQ: { nombre: Los Álamos, localidad: los-alamos }

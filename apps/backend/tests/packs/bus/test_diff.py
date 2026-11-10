@@ -44,7 +44,7 @@ OBSERVACIONES = {
         letra=None,
         tipo="aviso",
         ambitos=("viaje",),
-        texto="Pasa por Rivero de Posadas.",
+        texto="Pasa por Vallehondo.",
     ),
 }
 
@@ -308,7 +308,7 @@ def test_observacion_anadida_en_viaje() -> None:
     anterior = _modelo({"l1": _linea(viajes=(v_ant,))})
     actual = _modelo({"l1": _linea(viajes=(v_act,))})
     mensajes = diff.comparar(anterior, actual)
-    assert any("se añade la observación «Pasa por Rivero de Posadas.»" in m for m in mensajes)
+    assert any("se añade la observación «Pasa por Vallehondo.»" in m for m in mensajes)
 
 
 def test_observacion_quitada_en_viaje() -> None:
@@ -317,7 +317,7 @@ def test_observacion_quitada_en_viaje() -> None:
     anterior = _modelo({"l1": _linea(viajes=(v_ant,))})
     actual = _modelo({"l1": _linea(viajes=(v_act,))})
     mensajes = diff.comparar(anterior, actual)
-    assert any("se quita la observación «Pasa por Rivero de Posadas.»" in m for m in mensajes)
+    assert any("se quita la observación «Pasa por Vallehondo.»" in m for m in mensajes)
 
 
 def test_temporada_rango_cambiada() -> None:
@@ -526,7 +526,7 @@ def test_observacion_quitada_del_modelo_usa_el_texto_anterior_o_el_id() -> None:
     anterior = _modelo({"l1": _linea(viajes=(v_ant,))})
     actual = _modelo({"l1": _linea(viajes=(v_act,))}, observaciones={})
     frases = diff.comparar(anterior, actual)
-    assert any("«Pasa por Rivero de Posadas.»" in m for m in frases)
+    assert any("«Pasa por Vallehondo.»" in m for m in frases)
     ambos_vacios_ant = _modelo({"l1": _linea(viajes=(v_ant,))}, observaciones={})
     frases = diff.comparar(ambos_vacios_ant, actual)
     assert any("«pasa_por_rivero»" in m for m in frases)
@@ -547,10 +547,10 @@ def test_aviso_en_tres_lineas_se_agrupa_en_una_frase() -> None:
     anterior = _modelo(_lineas_con_aviso(3, False))
     actual = _modelo(_lineas_con_aviso(3, True))
     assert diff.comparar(anterior, actual) == [
-        "Se añade el aviso «Pasa por Rivero de Posadas.» a 3 líneas: Línea 1, Línea 2, Línea 3."
+        "Se añade el aviso «Pasa por Vallehondo.» a 3 líneas: Línea 1, Línea 2, Línea 3."
     ]
     assert diff.comparar(actual, anterior) == [
-        "Se quita el aviso «Pasa por Rivero de Posadas.» a 3 líneas: Línea 1, Línea 2, Línea 3."
+        "Se quita el aviso «Pasa por Vallehondo.» a 3 líneas: Línea 1, Línea 2, Línea 3."
     ]
 
 
@@ -558,8 +558,8 @@ def test_aviso_en_menos_de_tres_lineas_va_linea_a_linea() -> None:
     anterior = _modelo(_lineas_con_aviso(2, False))
     actual = _modelo(_lineas_con_aviso(2, True))
     assert diff.comparar(anterior, actual) == [
-        "Línea 1: se añade el aviso «Pasa por Rivero de Posadas.».",
-        "Línea 2: se añade el aviso «Pasa por Rivero de Posadas.».",
+        "Línea 1: se añade el aviso «Pasa por Vallehondo.».",
+        "Línea 2: se añade el aviso «Pasa por Vallehondo.».",
     ]
 
 
@@ -584,7 +584,7 @@ def test_avisos_no_circula_y_telefono_no_generan_frases() -> None:
     ant = _linea()
     act = _linea()
     object.__setattr__(act, "no_circula", ("agosto",))
-    object.__setattr__(act, "telefono_demanda", "957 00 00 00")
+    object.__setattr__(act, "telefono_demanda", "600 55 55 55")
     assert diff.comparar(_modelo({"l1": ant}), _modelo({"l1": act})) == []
 
 
@@ -614,7 +614,7 @@ def test_calendario_cambios() -> None:
     ant = _modelo({}, calendario=_calendario())
     act = _modelo(
         {},
-        localidades={"cor": Localidad(id="cor", nombre="Córdoba")},
+        localidades={"cor": Localidad(id="cor", nombre="Riomayor")},
         calendario=_calendario(
             festivos={date(2026, 12, 25): "Navidad"},
             inicio_clases=date(2026, 9, 15),
@@ -622,13 +622,16 @@ def test_calendario_cambios() -> None:
             vigencia_inicio=date(2026, 2, 1),
             vigencia_fin=date(2027, 9, 30),
             sin_servicio_todas_las_lineas=frozenset({(12, 25)}),
-            festivos_locales={"cor": {date(2026, 9, 8): "Fuensanta"}},
+            festivos_locales={"cor": {date(2026, 9, 8): "Fiesta del Risco"}},
         ),
     )
     mensajes = diff.comparar(ant, act)
     assert "Se añade el festivo «Navidad» (25 de diciembre de 2026)." in mensajes
     assert "Se quita el festivo «Año Nuevo» (1 de enero de 2026)." in mensajes
-    assert "Se añade el festivo local «Fuensanta» en Córdoba (8 de septiembre de 2026)." in mensajes
+    assert (
+        "Se añade el festivo local «Fiesta del Risco» en Riomayor (8 de septiembre de 2026)."
+        in mensajes
+    )
     assert "Se añade el 25 de diciembre como día sin servicio en ninguna línea." in mensajes
     assert (
         "El inicio de las clases pasa del 14 de septiembre de 2026 al 15 de "
@@ -649,8 +652,8 @@ def test_calendario_cambios() -> None:
 
 
 def test_paradas_localidades_alias_y_no_vendibles() -> None:
-    cor = Localidad(id="cor", nombre="Córdoba", alias=("cba",))
-    poz = Localidad(id="poz", nombre="Pozoblanco")
+    cor = Localidad(id="cor", nombre="Riomayor", alias=("rma",))
+    poz = Localidad(id="poz", nombre="Pozoluengo")
     ant = _modelo(
         {},
         localidades={"cor": cor, "poz": poz},
@@ -661,27 +664,27 @@ def test_paradas_localidades_alias_y_no_vendibles() -> None:
     act = _modelo(
         {},
         localidades={
-            "cor": Localidad(id="cor", nombre="Córdoba capital", alias=("cordoba",)),
-            "riv": Localidad(id="riv", nombre="Rivero de Posadas"),
+            "cor": Localidad(id="cor", nombre="Riomayor capital", alias=("riomayor",)),
+            "riv": Localidad(id="riv", nombre="Vallehondo"),
         },
         paradas={
             "AAA": Parada(codigo="AAA", nombre="Estación AVE", localidad="cor"),
-            "RIV": Parada(codigo="RIV", nombre="Rivero de Posadas", localidad="riv"),
+            "RIV": Parada(codigo="RIV", nombre="Vallehondo", localidad="riv"),
         },
         no_vendibles=frozenset({frozenset({"cor", "riv"})}),
     )
     mensajes = diff.comparar(ant, act)
-    assert "Se añade la localidad «Rivero de Posadas»." in mensajes
-    assert "Se quita la localidad «Pozoblanco»." in mensajes
-    assert "La localidad «Córdoba» pasa a llamarse «Córdoba capital»." in mensajes
-    assert "Córdoba capital: se añade el alias «cordoba»." in mensajes
-    assert "Córdoba capital: se quita el alias «cba»." in mensajes
-    assert "Se añade la parada «Rivero de Posadas» (localidad Rivero de Posadas)." in mensajes
+    assert "Se añade la localidad «Vallehondo»." in mensajes
+    assert "Se quita la localidad «Pozoluengo»." in mensajes
+    assert "La localidad «Riomayor» pasa a llamarse «Riomayor capital»." in mensajes
+    assert "Riomayor capital: se añade el alias «riomayor»." in mensajes
+    assert "Riomayor capital: se quita el alias «rma»." in mensajes
+    assert "Se añade la parada «Vallehondo» (localidad Vallehondo)." in mensajes
     assert "La parada «Estación» pasa a llamarse «Estación AVE»." in mensajes
-    assert "Ya no se venden billetes entre Córdoba capital y Rivero de Posadas." in mensajes
+    assert "Ya no se venden billetes entre Riomayor capital y Vallehondo." in mensajes
     inversa = diff.comparar(act, ant)
-    assert "Se quita la parada «Rivero de Posadas»." in inversa
-    assert "Vuelven a venderse billetes entre Córdoba capital y Rivero de Posadas." in inversa
+    assert "Se quita la parada «Vallehondo»." in inversa
+    assert "Vuelven a venderse billetes entre Riomayor capital y Vallehondo." in inversa
 
 
 def test_texto_de_observacion_cambiado() -> None:

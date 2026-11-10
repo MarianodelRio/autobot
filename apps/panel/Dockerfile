@@ -2,6 +2,10 @@
 # Multi-stage image: build the SPA with Node, serve it with a minimal non-root Caddy.
 FROM node:24-alpine AS build
 WORKDIR /app
+# The repo this build came from, for the commit links on the system page. Empty for a
+# local dev build.
+ARG VITE_GITHUB_REPO=
+ENV VITE_GITHUB_REPO=$VITE_GITHUB_REPO
 COPY package.json pnpm-lock.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY . .

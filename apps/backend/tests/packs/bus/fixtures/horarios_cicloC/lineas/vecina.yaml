@@ -1,7 +1,7 @@
 # Par NO declarado que parece el mismo autobús que larga.yaml y corta.yaml
-# (misma salida de Córdoba y El Vacar) pero llega a Espiel a otra hora:
+# (misma salida de Riomayor y Valdeflor) pero llega a Montesierra a otra hora:
 # solo aviso heurístico, nunca error.
-nombre: Vecina – Córdoba
+nombre: Vecina – Riomayor
 avisos: []
 no_circula: []
 

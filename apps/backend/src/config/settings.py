@@ -188,6 +188,10 @@ if DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD <= 0:
 # Public base of the webhooks (https://api.<dominio>), for `telegram_set_webhook`.
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "")
 
+# Google Calendar used by the salon pack's demo business, applied by `seed_demos`
+# over the template's placeholder (docs/procedimientos/demo.md).
+DEMO_SALON_CALENDAR_ID = os.environ.get("DEMO_SALON_CALENDAR_ID", "")
+
 LANGUAGE_CODE = "es-es"
 TIME_ZONE = "UTC"
 USE_I18N = True

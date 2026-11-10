@@ -1,7 +1,7 @@
-# Peñarroya – Córdoba. La primera fila es el mismo autobús que larga.yaml;
+# Peñarroja – Riomayor. La primera fila es el mismo autobús que larga.yaml;
 # la segunda es un viaje propio que para en el cruce (VRC); la segunda tabla
 # comparte autobús con paso.yaml.
-nombre: Peñarroya – Córdoba
+nombre: Peñarroja – Riomayor
 avisos: []
 no_circula: []
 

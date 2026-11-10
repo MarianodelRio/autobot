@@ -87,7 +87,7 @@ NOMBRES_PUBLICOS_TEMPORADA = {
 CONDICIONES_CONOCIDAS = {
     "a_demanda",
     "solo_viernes_lectivo",
-    "solo_si_viajeros_desde_cordoba",
+    "solo_si_viajeros",
 }
 
 CAMPOS_LINEA_OBLIGATORIOS = {"nombre", "temporadas", "dias", "horarios"}
@@ -148,7 +148,7 @@ _DIAS_DEL_ANIO: list[tuple[int, int]] = [
 _INDICE_DIA = {md: i for i, md in enumerate(_DIAS_DEL_ANIO)}
 
 # Artículos y preposiciones de enlace que se descartan al
-# normalizar (villanueva duque = Villanueva del Duque).
+# normalizar (villagrande soto = Villagrande del Soto).
 _PALABRAS_VACIAS_NORMALIZAR = frozenset({"el", "la", "los", "las", "de", "del"})
 
 
@@ -463,7 +463,7 @@ def _validar_localidades_paradas(
 
     # Ambigüedades declaradas (aviso, no error): un nombre o alias compartido
     # por varias localidades, o un alias que coincide con el nombre de otra
-    # (caso real: 'villafranca').
+    # (caso real: dos localidades con el mismo nombre de uso común).
     mapa_claves: dict[str, set[str]] = {}
     for lid, loc in localidades.items():
         claves = {normalizar(loc.nombre)} | {normalizar(a) for a in loc.alias}
@@ -1431,7 +1431,7 @@ def _validar_buses(
     """Grupos `bus:<id>` declarados: todo lo declarado tiene
     que cuadrar; si no, error concreto. Solo compara entre sí los miembros que
     circulan algún mismo día (el mismo `bus:` puede repartirse entre viajes
-    de días distintos, p.ej. Badajoz lunes-jueves y viernes)."""
+    de días distintos, p.ej. una línea lunes-jueves y viernes)."""
     grupos: dict[str, list[_InfoViaje]] = {}
     for info in infos:
         if info.viaje.bus is not None:

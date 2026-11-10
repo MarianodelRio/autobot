@@ -10,6 +10,8 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `COMPOSE_PROJECT_NAME` | Nombre del proyecto Compose (nombres de contenedor y volumen) | sí | `autobot` | fija en `.env.example`; `ensure-env.sh` la fuerza en el servidor |
 | `PUBLIC_HOST` | Dominio público que atiende Caddy | sí (prod) | vacío | la persona |
 | `SHA` | SHA completo de la imagen a desplegar | sí (prod) | vacío | `make deploy`/CI |
+| `AUTOBOT_IMAGE` | Imagen de `web`/`worker`, sin tag (p.ej. `ghcr.io/<owner>/autobot`) | sí (prod) | vacío | la persona |
+| `AUTOBOT_PANEL_IMAGE` | Imagen del panel, sin tag | sí (prod) | vacío | la persona |
 | `DEPLOY_UID` | `id -u deploy` en la VPS; dueño de los ficheros montados en modo 0600 | sí (prod) | vacío | la persona |
 | `ENVIRONMENT` | `local` o `prod`; cambia los valores por defecto exigidos | sí | `local` | fija en `.env.example` |
 | `DJANGO_SECRET_KEY` | Clave de firma de Django | sí (prod) | `change-me` | `ensure-env.sh` en el servidor |
@@ -36,6 +38,8 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `DEMO_WHATSAPP_USERS` | Teléfonos o BSUID con acceso a la puerta de demo (WhatsApp) | no | vacío | la persona |
 | `DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD` | Umbral de aviso de coste mensual de la puerta de demo | no | `300` | fija en `.env.example` |
 | `PUBLIC_URL` | URL pública base de los webhooks; solo la usa `telegram_set_webhook` | no (local: dominio ngrok) | vacío | la persona |
+| `DEMO_SALON_CALENDAR_ID` | Calendario de Google del `salon` de demo; sustituye el valor de la plantilla al crearla (`seed_demos`) | no (sin ella el demo no reserva de verdad) | vacío | la persona |
+| `NGROK_DOMAIN` | Dominio reservado de ngrok para `make ngrok` (solo local) | no | vacío | la persona |
 | `NOTIFY_BOT_TOKEN` | Token del bot de avisos / asistente del dueño | no | vacío | la persona (@BotFather) |
 | `NOTIFY_BOT_WEBHOOK_SECRET` | Secreto del webhook del bot de avisos | no (local no lo necesita) | vacío | `ensure-env.sh` en el servidor |
 | `OWNER_SUPPORT_EMAIL` | Email de soporte que ofrece el menú del dueño (opción "Contacto") | no | vacío | la persona |

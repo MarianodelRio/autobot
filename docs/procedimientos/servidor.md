@@ -14,7 +14,7 @@ con tu clave en la VPS recién creada.
    huella SSH de GitHub verificada por un canal independiente. Las claves privadas
    del operador y de CI permanecen fuera de la VPS.
 2. Como `root`, ejecuta
-   `bash deploy/scripts/bootstrap-server.sh operator.pub ci.pub github-read-key github-known-hosts`. El
+   `REPO_URL=git@github.com:<owner>/<repo>.git bash deploy/scripts/bootstrap-server.sh operator.pub ci.pub github-read-key github-known-hosts`. El
    script exige Ubuntu 24.04, instala Docker Engine/Compose desde el repositorio oficial,
    `ufw`, `fail2ban`, actualizaciones automáticas y restic; crea `deploy`, clona el
    repositorio en `/srv/autobot`, instala el timer de backup y deshabilita SSH de
@@ -33,7 +33,9 @@ con tu clave en la VPS recién creada.
    aparecer 22, 80 y 443. Los puertos 8000 (`web`) y 8080 (`panel`) escuchan
    únicamente en 127.0.0.1.
 5. En `/srv/autobot/.env`, usa `.env.example` como guía y fija `DEPLOY_UID` con
-   `id -u deploy`. Crea `var/google_sa.json`, `var/backup.env` y
+   `id -u deploy`, y `AUTOBOT_IMAGE` y `AUTOBOT_PANEL_IMAGE` con las imágenes de tu
+   repo sin tag (`ghcr.io/<owner>/autobot` y `ghcr.io/<owner>/autobot-panel`);
+   `ensure-env.sh` se niega a seguir sin ellas. Crea `var/google_sa.json`, `var/backup.env` y
    `var/restic-password` como propietario `deploy`, modo 0600. El usuario no root de
    `web` y `worker` usa ese UID para leer el fichero de cuenta de servicio montado. La cuenta de
    servicio y los tokens reales dependen de Google Cloud, del bot de avisos y de los secretos de GitHub. En
@@ -52,8 +54,8 @@ con tu clave en la VPS recién creada.
 **Verificación:** la sesión de operación funciona, la clave de CI rechaza comandos
 distintos del despliegue, `docker compose version` responde, el timer está activo,
 `ufw` solo abre 22/80/443 y un segundo bootstrap deja los mismos ficheros de
-configuración. El primer despliegue y el escaneo externo son pasos de la puesta en marcha (`docs/puesta-en-marcha.md`);
-este procedimiento no los da por hechos.
+configuración. El primer despliegue y el escaneo externo son pasos del plan de lanzamiento
+(`docs/plan-lanzamiento.md`); este procedimiento no los da por hechos.
 
 El Django Admin se eliminó (ADR-008); el panel (`docs/procedimientos/panel.md`) solo se
 alcanza por `make panel-tunnel` (túnel al puerto 8080 del contenedor `panel`), nunca

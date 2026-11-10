@@ -60,10 +60,10 @@ class TestNormalize:
         [
             ("¡Menú!", "menu"),
             ("Corte y barba", "corte y barba"),
-            ("Villanueva   del\tDuque", "villanueva del duque"),
-            ("Pozoblanco-Córdoba", "pozoblanco cordoba"),
+            ("Villagrande   del\tSoto", "villagrande del soto"),
+            ("Pozoluengo-Riomayor", "pozoluengo riomayor"),
             ("[CFG] Vacáciones", "cfg vacaciones"),
-            ("Añora", "anora"),
+            ("Odalla de Ñora", "odalla de nora"),
             ("📅 Pedir cita", "pedir cita"),
             ("/start", "start"),
         ],

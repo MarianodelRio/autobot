@@ -73,7 +73,7 @@ def _observaciones_usadas_en_tabla(modelo: Modelo, viajes: list[Viaje], letra: b
 
 # Por encima de este número de paradas, la tabla se pinta trasponiendo filas
 # y columnas (paradas en filas) para que no se salga de la página impresa
-# (caso real: Badajoz, 20 paradas).
+# (caso real: una línea con 20 paradas).
 _MAX_COLUMNAS_TABLA_NORMAL = 12
 # Trasponiendo, cada bloque de viajes (ahora columnas) no puede tener más de
 # esto, o se sigue saliendo de la página: se reparte en varios bloques.

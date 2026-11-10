@@ -1,5 +1,5 @@
 """packs/bus/tests/test_formato.py — cada regla del formato rechaza su caso con un
-mensaje concreto; horarios/ real valida sin errores."""
+mensaje concreto; horarios_ficticios/ valida sin errores."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from tests.packs.bus.helpers import modelo_de
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
-HORARIOS_REAL = FIXTURES / "horarios_real"
+HORARIOS_FICTICIOS = FIXTURES / "horarios_ficticios"
 
 
 def _build(
@@ -377,24 +377,24 @@ paradas:
     assert any("coincide con el nombre de la localidad" in e for e in resultado.errores)
 
 
-def test_horarios_real_avisa_ambiguedad_villafranca() -> None:
-    resultado = formato.validar(HORARIOS_REAL)
+def test_horarios_ficticios_avisa_ambiguedad_villagrande() -> None:
+    resultado = formato.validar(HORARIOS_FICTICIOS)
     assert resultado.errores == []
-    avisos_villafranca = [a for a in resultado.avisos if "villafranca" in a]
-    assert len(avisos_villafranca) == 1
-    assert "villafranca-de-cordoba" in avisos_villafranca[0]
-    assert "villafranca-de-los-barros" in avisos_villafranca[0]
+    avisos_villagrande = [a for a in resultado.avisos if "villagrande" in a]
+    assert len(avisos_villagrande) == 1
+    assert "villagrande-de-riomayor" in avisos_villagrande[0]
+    assert "villagrande-del-soto" in avisos_villagrande[0]
 
 
-def test_horarios_real_valida_sin_errores() -> None:
-    resultado = formato.validar(HORARIOS_REAL)
+def test_horarios_ficticios_valida_sin_errores() -> None:
+    resultado = formato.validar(HORARIOS_FICTICIOS)
     assert resultado.errores == []
     assert resultado.modelo is not None
 
 
-def test_horarios_real_avisa_de_pendientes_y_sin_datos() -> None:
-    resultado = formato.validar(HORARIOS_REAL)
-    assert any("pendiente" in a for a in resultado.avisos)
+def test_horarios_ficticios_avisa_de_localidades_sin_usar() -> None:
+    resultado = formato.validar(HORARIOS_FICTICIOS)
+    assert any("ninguna línea usa" in a for a in resultado.avisos)
 
 
 def test_localidad_sin_usar_avisa(tmp_path: Path) -> None:
@@ -613,13 +613,13 @@ def test_no_vendibles_par_que_ninguna_linea_conecta_avisa(tmp_path: Path) -> Non
     )
 
 
-def test_horarios_real_declara_los_tres_no_vendibles_de_p12b() -> None:
-    resultado = formato.validar(HORARIOS_REAL)
+def test_horarios_ficticios_declara_los_tres_no_vendibles_de_p12b() -> None:
+    resultado = formato.validar(HORARIOS_FICTICIOS)
     assert modelo_de(resultado).no_vendibles == frozenset(
         {
-            frozenset({"cordoba", "campus-de-rabanales"}),
-            frozenset({"cordoba", "alcolea"}),
-            frozenset({"campus-de-rabanales", "alcolea"}),
+            frozenset({"riomayor", "campoalto"}),
+            frozenset({"riomayor", "pinarnuevo"}),
+            frozenset({"campoalto", "pinarnuevo"}),
         }
     )
     assert not any("no_vendibles" in a for a in resultado.avisos)
@@ -786,9 +786,9 @@ def test_aviso_heuristico_texto_y_un_solo_aviso_por_par(tmp_path: Path) -> None:
         assert "posible mismo autobús con horas distintas: " in aviso and aviso.endswith(
             "(no se fusionará)"
         )
-        assert "Córdoba 10:30 en ambas y Espiel 11:15 frente a 11:20" in aviso
-    par_larga = "'Los Blázquez – Córdoba' y 'Vecina – Córdoba'"
-    par_corta = "'Peñarroya – Córdoba' y 'Vecina – Córdoba'"
+        assert "Riomayor 10:30 en ambas y Montesierra 11:15 frente a 11:20" in aviso
+    par_larga = "'Los Álamos – Riomayor' y 'Vecina – Riomayor'"
+    par_corta = "'Peñarroja – Riomayor' y 'Vecina – Riomayor'"
     assert sum(par_larga in a for a in avisos) == 1
     assert sum(par_corta in a for a in avisos) == 1
 
@@ -796,8 +796,8 @@ def test_aviso_heuristico_texto_y_un_solo_aviso_por_par(tmp_path: Path) -> None:
 def test_no_hay_aviso_si_el_par_esta_declarado_con_el_mismo_bus(tmp_path: Path) -> None:
     resultado = formato.validar(CICLO_C)
     assert not any(
-        "'Los Blázquez – Córdoba' y 'Peñarroya – Córdoba'" in a
-        or "'Peñarroya – Córdoba' y 'Los Blázquez – Córdoba'" in a
+        "'Los Álamos – Riomayor' y 'Peñarroja – Riomayor'" in a
+        or "'Peñarroja – Riomayor' y 'Los Álamos – Riomayor'" in a
         for a in resultado.avisos
     )
 
@@ -873,7 +873,8 @@ def test_bus_con_paradas_distintas_en_una_localidad_es_error(tmp_path: Path) -> 
         b=_lv("B", "COR VRC BEL", "10:00 10:30 11:00 | bus:x"),
     )
     assert any(
-        "bus:x: paradas distintas en Villanueva del Rey (VRE / VRC" in e for e in resultado.errores
+        "bus:x: paradas distintas en Villanueva del Pinar (VRE / VRC" in e
+        for e in resultado.errores
     )
 
 
@@ -935,21 +936,17 @@ def test_bus_y_pendiente_conviven_en_la_misma_fila(tmp_path: Path) -> None:
     assert viaje.bus == "x" and viaje.pendientes == ("P01",)
 
 
-def test_horarios_real_tiene_exactamente_7_avisos_de_posible_mismo_autobus() -> None:
-    resultado = formato.validar(HORARIOS_REAL)
+def test_cicloc_tiene_dos_avisos_de_posible_mismo_autobus() -> None:
+    # vecina.yaml parece compartir autobús con corta.yaml y con larga.yaml
+    # (misma salida, llegada distinta a Montesierra) pero no está declarado
+    # con `bus:`: aviso heurístico, nunca error ni fusión.
+    resultado = formato.validar(FIXTURES / "horarios_cicloC")
     assert resultado.errores == []
     posibles = [a for a in resultado.avisos if "posible mismo autobús" in a]
-    assert len(posibles) == 7
+    assert len(posibles) == 2
     pares = [
-        ("Belalcázar – Córdoba", "Villaviciosa – Córdoba"),
-        ("Belalcázar – Córdoba", "Belalcázar – Pozoblanco"),
-        ("Belalcázar – Córdoba", "Pozoblanco – Córdoba"),
-        ("Los Blázquez", "Pozoblanco – Córdoba"),
-        # Nuevo con el Excel del 07/10/2026: El Vacar 10:55 en ambas, pero
-        # Córdoba 11:30 (BLAZQUEZ) frente a 11:25 (VILLAVIC).
-        ("Los Blázquez", "Villaviciosa – Córdoba"),
-        ("Peñarroya – Córdoba", "Pozoblanco – Córdoba"),
-        ("Peñarroya – Córdoba", "Villaviciosa – Córdoba"),
+        ("Peñarroja – Riomayor", "Vecina – Riomayor"),
+        ("Los Álamos – Riomayor", "Vecina – Riomayor"),
     ]
     for a, b in pares:
         assert sum(f"'{a}' y '{b}'" in p for p in posibles) == 1, (a, b)
@@ -1159,17 +1156,16 @@ def test_aviso_cuyo_texto_no_contiene_los_minutos_avisa(tmp_path: Path) -> None:
     ) in r.avisos
 
 
-def test_horarios_real_no_tiene_localidades_pendientes() -> None:
-    resultado = formato.validar(HORARIOS_REAL)
+def test_horarios_ficticios_no_tiene_localidades_pendientes() -> None:
+    resultado = formato.validar(HORARIOS_FICTICIOS)
     assert resultado.errores == []
     pendientes = {
         lid: loc.pendiente
         for lid, loc in modelo_de(resultado).localidades.items()
         if loc.pendiente is not None
     }
-    # P32 cerrada el 07/10/2026: Rivero y Los Mochos son localidades normales.
     assert pendientes == {}
-    assert len(resultado.avisos) == 11
+    assert len(resultado.avisos) == 3
 
 
 # ── P18: pueblos por línea (ciclo C3) ────────────────────────────────────
@@ -1319,20 +1315,19 @@ def test_id_de_linea_invalido_es_error(tmp_path: Path) -> None:
     )
 
 
-def test_horarios_real_tiene_11_avisos_y_4_nombres_cortos() -> None:
-    resultado = formato.validar(HORARIOS_REAL)
+def test_horarios_ficticios_tiene_3_avisos_y_3_nombres_cortos() -> None:
+    resultado = formato.validar(HORARIOS_FICTICIOS)
     assert resultado.errores == []
-    assert len(resultado.avisos) == 11
+    assert len(resultado.avisos) == 3
     cortos = {
         lid: linea.nombre_corto
         for lid, linea in modelo_de(resultado).lineas.items()
         if linea.nombre_corto
     }
     assert cortos == {
-        "adamuz-cordoba": "Adamuz – Córdoba",
-        "fuente-carreteros-cordoba": "F. Carreteros – Córdoba",
-        "pozoblanco-estacion-ave": "Estación AVE Villanueva",
-        "santa-eufemia-villaralto-pozoblanco": "Santa Eufemia-Villaralto",
+        "riomayor-fuenteclara": "Riomayor-Fuenteclara",
+        "riomayor-villagrande-de-riomayor": "Villagrande Riomayor",
+        "riomayor-villagrande-del-soto": "Villagrande Soto",
     }
     assert all(len(linea.titulo) <= 24 for linea in modelo_de(resultado).lineas.values())
 

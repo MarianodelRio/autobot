@@ -1,0 +1,23 @@
+# Línea inventada que pasa por Riomayor, Campoalto y Pinarnuevo: no se
+# venden billetes entre ninguna pareja de las tres (ver `no_vendibles` en
+# paradas.yaml), aunque el autobús físico pase por las tres. Sigue hasta
+# Valdejunco para que Campoalto y Pinarnuevo tengan algún destino propio
+# vendible (no solo entre ellas).
+nombre: Riomayor – Pinarnuevo
+avisos: []
+no_circula: []
+
+temporadas:
+  anual: todo el año
+
+dias:
+  anual: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: anual
+    dias: lunes-viernes
+    tabla: |
+      RIO    CAM    PIN    VLJ
+      09:00  09:10  09:25  09:40
+
+pendientes: []

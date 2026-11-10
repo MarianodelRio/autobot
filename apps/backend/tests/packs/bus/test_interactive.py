@@ -10,7 +10,7 @@ from packs.bus import matcher, query
 from packs.bus.datos import Datos
 from packs.bus.interactive import descripcion_linea
 from packs.bus.modelo import Linea, Localidad
-from tests.packs.bus.compat import CONFIG, NEGOCIO_TELEFONO, datos_reales, wa, wa_all
+from tests.packs.bus.conversation_harness import CONFIG, NEGOCIO_TELEFONO, datos_demo, wa, wa_all
 
 # Los constructores sin la config y el payload de WhatsApp que leen estos tests.
 
@@ -124,7 +124,7 @@ def test_info_within_limits() -> None:
 
 
 def test_build_origen_within_limits() -> None:
-    datos = datos_reales()
+    datos = datos_demo()
     localidades = [
         (lid, datos.horarios.modelo.localidades[lid].nombre) for lid in datos.menu_origen
     ]
@@ -136,7 +136,7 @@ def test_build_destinos_every_real_origin_within_limits() -> None:
     """Propiedad obligatoria (plan fase 4): recorre TODOS los orígenes
     reales de horarios/ y comprueba que la lista de destinos nunca supera
     el límite de WhatsApp, sea cual sea su longitud."""
-    datos = datos_reales()
+    datos = datos_demo()
     horarios = datos.horarios
     for origen_id in horarios.localidad_viajes:
         alcanzables = list(query.destinos_desde(horarios, origen_id))
@@ -151,7 +151,7 @@ def test_build_destinos_every_real_origin_within_limits() -> None:
 
 
 def test_build_candidatas_within_limits() -> None:
-    datos = datos_reales()
+    datos = datos_demo()
     localidades = [
         (lid, datos.horarios.modelo.localidades[lid].nombre)
         for lid in list(datos.horarios.modelo.localidades)[:9]
@@ -164,7 +164,7 @@ def test_build_candidatas_within_limits() -> None:
 
 
 def test_build_confirmar_within_limits() -> None:
-    _assert_button_limits(build_confirmar("Pozoblanco"))
+    _assert_button_limits(build_confirmar("Pozoluengo"))
 
 
 def test_build_escribir_within_limits() -> None:
@@ -172,7 +172,7 @@ def test_build_escribir_within_limits() -> None:
 
 
 def _lineas_reales() -> tuple[tuple[Linea, tuple[Localidad, ...]], ...]:
-    datos = datos_reales()
+    datos = datos_demo()
     return matcher.lineas(datos.horarios)
 
 
@@ -199,19 +199,18 @@ def _linea_falsa(n: int, nombre_corto: str | None = None, nombre: str | None = N
     )
 
 
-def test_build_lineas_real_within_limits() -> None:
+def test_build_lineas_ficticias_within_limits() -> None:
     todas = [(linea, len(locs)) for linea, locs in _lineas_reales()]
-    assert len(todas) == 15
-    # Las 15 líneas reales: página 0 con 8 + "Más líneas" + volver; página 1 con 7.
+    assert len(todas) == 8
+    # Las 8 líneas ficticias caben en una sola página: 8 + volver = 9 filas.
     for campo in ("origen", "destino"):
-        for pagina, n_filas in ((0, 10), (1, 8)):
-            payload = build_lineas(todas, pagina, campo)
-            _assert_list_limits(payload)
-            _assert_titulos_whatsapp(payload)
-            assert len(_rows(payload)) == n_filas
-    ids = [r["id"] for r in _rows(build_lineas(todas, 1, "origen"))]
+        payload = build_lineas(todas, 0, campo)
+        _assert_list_limits(payload)
+        _assert_titulos_whatsapp(payload)
+        assert len(_rows(payload)) == 9
+    ids = [r["id"] for r in _rows(build_lineas(todas, 0, "origen"))]
     assert ids[-1] == "menu"
-    ids = [r["id"] for r in _rows(build_lineas(todas, 1, "destino"))]
+    ids = [r["id"] for r in _rows(build_lineas(todas, 0, "destino"))]
     assert ids[-1] == "cambiar_origen"
 
 
@@ -309,7 +308,7 @@ def test_build_escribir_boton_ver_por_linea() -> None:
 
 
 def test_filas_ver_pueblos_por_linea_en_origen_y_destino() -> None:
-    datos = datos_reales()
+    datos = datos_demo()
     localidades = [
         (lid, datos.horarios.modelo.localidades[lid].nombre) for lid in datos.menu_origen
     ]
@@ -325,7 +324,7 @@ def test_filas_ver_pueblos_por_linea_en_origen_y_destino() -> None:
 
 def test_build_dias_within_limits() -> None:
     filas = [(f"dia:2026-09-{20 + i}", f"Fila {i}", "5 salidas") for i in range(7)]
-    _assert_list_limits(build_dias("Pozoblanco", "Córdoba", filas))
+    _assert_list_limits(build_dias("Pozoluengo", "Riomayor", filas))
 
 
 def test_build_resultado_within_limits() -> None:
@@ -338,8 +337,8 @@ def test_build_resultado_within_limits() -> None:
 
 
 def test_truncated_locality_names_keep_full_name_in_description() -> None:
-    nombre_largo = "Villafranca de los Barros muy largo de verdad"
-    payload = build_origen([("villafranca-de-los-barros", nombre_largo)])
+    nombre_largo = "Villagrande del Soto muy largo de verdad para forzar el truncado"
+    payload = build_origen([("villagrande-del-soto", nombre_largo)])
     fila = _rows(payload)[0]
     assert len(fila["title"]) <= MAX_ROW_TITLE
     assert fila["description"] == nombre_largo[:MAX_ROW_DESC]
@@ -358,8 +357,8 @@ def test_msg_resultado_truncates_at_4096_chars() -> None:
             hora_llegada=time(8, 0),
             duracion_min=120,
             parada_origen="POZ",
-            parada_destino="COR",
-            lineas=("pozoblanco-cordoba",),
+            parada_destino="RIO",
+            lineas=("pozoluengo-riomayor",),
             notas=(f"Nota número {i} bastante larga para forzar el truncado.",),
         )
         for i in range(200)
@@ -381,13 +380,13 @@ def test_msg_resultado_truncates_at_4096_chars() -> None:
         fuera_de_calendario=False,
         siguiente_con_servicio=None,
     )
-    datos = datos_reales()
+    datos = datos_demo()
     texto = msg_resultado(
         CONFIG,
         consulta,
         datos.horarios,
-        "Pozoblanco",
-        "Córdoba",
+        "Pozoluengo",
+        "Riomayor",
         __import__("datetime").date(2026, 9, 23),
     )
     assert len(texto) <= 4096
@@ -401,7 +400,7 @@ def test_msg_resultado_sin_servicio_general_sin_siguiente_da_hecho_y_telefono() 
     from packs.bus.messages import msg_resultado
     from packs.bus.query import Consulta
 
-    datos = datos_reales()
+    datos = datos_demo()
     calendario_de_datos = datos.horarios.modelo.calendario
     assert calendario_de_datos is not None
     fecha = date(2027, 12, 25)
@@ -415,7 +414,7 @@ def test_msg_resultado_sin_servicio_general_sin_siguiente_da_hecho_y_telefono() 
         siguiente_con_servicio=None,
         sin_servicio_general=True,
     )
-    texto = msg_resultado(CONFIG, consulta, datos.horarios, "Pozoblanco", "Córdoba", fecha)
+    texto = msg_resultado(CONFIG, consulta, datos.horarios, "Pozoluengo", "Riomayor", fecha)
     assert "El 25/12 no hay servicio en ninguna línea" in texto
     assert NEGOCIO_TELEFONO in texto
     assert "próximos días" not in texto
@@ -423,12 +422,12 @@ def test_msg_resultado_sin_servicio_general_sin_siguiente_da_hecho_y_telefono() 
 
 
 def test_lista_de_destinos_con_no_vendibles_filtrados_respeta_limites() -> None:
-    datos = datos_reales()
+    datos = datos_demo()
     horarios = datos.horarios
-    for origen_id in ("cordoba", "campus-de-rabanales", "alcolea"):
+    for origen_id in ("riomayor", "campoalto", "pinarnuevo"):
         alcanzables = list(query.destinos_desde(horarios, origen_id))
         assert alcanzables
-        for otro in ("cordoba", "campus-de-rabanales", "alcolea"):
+        for otro in ("riomayor", "campoalto", "pinarnuevo"):
             if otro != origen_id:
                 assert otro not in alcanzables
         nombres = {lid: horarios.modelo.localidades[lid].nombre for lid in alcanzables}
@@ -438,38 +437,39 @@ def test_lista_de_destinos_con_no_vendibles_filtrados_respeta_limites() -> None:
         assert len(_rows(payload)) <= MAX_ROWS
 
 
-# ── Fase 1b-1: Pozoblanco con 19 destinos y nombre largo de la Estación AVE ──
+# ── Fase 1b-1: origen con más de 9 destinos (paginación, P18) ───────────────
 
-NOMBRE_LARGO = "Estación AVE Villanueva de Córdoba"
+NOMBRE_LARGO = "Estación Grande de Villagrande del Soto"
 
 
-def test_destinos_de_pozoblanco_son_10_filas_con_los_8_esperados() -> None:
-    datos = datos_reales()
-    horarios = datos.horarios
-    alcanzables = list(query.destinos_desde(horarios, "pozoblanco"))
+def test_destinos_de_origen_con_30_aldeas_son_10_filas_con_las_8_esperadas(
+    datos_muchas_lineas: Datos,
+) -> None:
+    horarios = datos_muchas_lineas.horarios
+    alcanzables = list(query.destinos_desde(horarios, "origen"))
     assert len(alcanzables) > 9
     nombres = {lid: horarios.modelo.localidades[lid].nombre for lid in alcanzables}
-    ordenados = flujo.ordenar_destinos(alcanzables, list(datos.menu_origen), nombres)
-    payload = build_destinos("Pozoblanco", ordenados)
+    ordenados = flujo.ordenar_destinos(alcanzables, list(datos_muchas_lineas.menu_origen), nombres)
+    payload = build_destinos("Origen", ordenados)
     _assert_list_limits(payload)
     filas = _rows(payload)
     assert len(filas) == 10
     assert [f["title"] for f in filas[:8]] == [
-        "Córdoba",
-        "Villanueva de Córdoba",
-        "Hinojosa del Duque",
-        "Belalcázar",
-        "Alcaracejos",
-        "Añora",
-        "Cardeña",
-        "Conquista",
+        "Aldea 01",
+        "Aldea 02",
+        "Aldea 03",
+        "Aldea 04",
+        "Aldea 05",
+        "Aldea 06",
+        "Aldea 07",
+        "Aldea 08",
     ]
     assert [f["id"] for f in filas[8:]] == ["escribir", "cambiar_origen"]
 
 
 def test_nombre_largo_estacion_ave_respeta_limites_en_todos_los_constructores() -> None:
     assert len(NOMBRE_LARGO) > MAX_ROW_TITLE
-    fila = _rows(build_origen([("estacion-ave-villanueva", NOMBRE_LARGO)]))[0]
+    fila = _rows(build_origen([("estacion-grande", NOMBRE_LARGO)]))[0]
     assert len(fila["title"]) <= MAX_ROW_TITLE
     assert fila["description"] == NOMBRE_LARGO
 
@@ -478,8 +478,8 @@ def test_nombre_largo_estacion_ave_respeta_limites_en_todos_los_constructores() 
     # nombre largo: build_candidatas pasa de botones a lista
     cands = build_candidatas(
         [
-            ("estacion-ave-villanueva", NOMBRE_LARGO),
-            ("villanueva-de-cordoba", "Villanueva"),
+            ("estacion-grande", NOMBRE_LARGO),
+            ("villagrande-del-soto", "Villagrande"),
         ],
         "destino",
     )
@@ -487,7 +487,7 @@ def test_nombre_largo_estacion_ave_respeta_limites_en_todos_los_constructores() 
     assert NOMBRE_LARGO in [r.get("description") for r in _rows(cands)]
 
     _assert_list_limits(
-        build_dias("Pozoblanco", NOMBRE_LARGO, [("dia:2026-10-01", "Jueves 1", "2 salidas")])
+        build_dias("Pozoluengo", NOMBRE_LARGO, [("dia:2026-10-01", "Jueves 1", "2 salidas")])
     )
 
 
@@ -496,11 +496,11 @@ def test_nombre_largo_estacion_ave_respeta_limites_en_todos_los_constructores() 
 
 def test_build_localidad_pendiente_within_limits() -> None:
     for nombre in (
-        "Pozoblanco",
-        "Almodóvar del Río",
-        "Villanueva de Córdoba",
-        "Villafranca de los Barros",
-        "Santa Eufemia del Norte",
+        "Pozoluengo",
+        "Montealto del Risco",
+        "Villagrande de Riomayor",
+        "Villagrande del Soto",
+        "Fuenteclara del Norte",
     ):
         payload = build_localidad_pendiente("Texto", "ver-id", nombre, "origen")
         _assert_button_limits(payload)
@@ -513,9 +513,9 @@ def test_build_localidad_pendiente_acorta_nombre_largo() -> None:
         p = build_localidad_pendiente("t", "x", nombre, "destino")
         return str(_buttons(p)[0]["reply"]["title"])
 
-    assert titulo("Pozoblanco") == "Usar Pozoblanco"
-    assert titulo("Almodóvar del Río") == "Usar Almodóvar"
-    assert titulo("Villanueva de Córdoba") == "Usar Villanueva"
+    assert titulo("Pozoluengo") == "Usar Pozoluengo"
+    assert titulo("Montealto del Risco") == "Usar Montealto"
+    assert titulo("Villagrande de Riomayor") == "Usar Villagrande"
     assert titulo("Superextraordinariamente") == "Usar Superextraordin"
 
 
@@ -531,7 +531,6 @@ def test_build_localidad_pendiente_aldea_bonita_fixture(datos_pendientes: Datos)
     assert len(titulos[0]) <= 20
 
 
-def test_datos_reales_no_tienen_localidades_pendientes() -> None:
-    # P32 cerrada el 07/10/2026: Rivero y Los Mochos son localidades normales.
-    modelo = datos_reales().horarios.modelo
+def test_datos_demo_no_tienen_localidades_pendientes() -> None:
+    modelo = datos_demo().horarios.modelo
     assert all(loc.pendiente is None for loc in modelo.localidades.values())

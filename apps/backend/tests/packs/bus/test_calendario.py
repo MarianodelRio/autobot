@@ -13,14 +13,14 @@ from tests.packs.bus.helpers import calendario_de, modelo_de
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
-HORARIOS_REAL = FIXTURES / "horarios_real"
+HORARIOS_FICTICIOS = FIXTURES / "horarios_ficticios"
 
-_RESULTADO_REAL = formato.validar(HORARIOS_REAL)
-CAL_REAL = calendario_de(_RESULTADO_REAL)
+_RESULTADO_FICTICIOS = formato.validar(HORARIOS_FICTICIOS)
+CAL_REAL = calendario_de(_RESULTADO_FICTICIOS)
 
 
-def test_horarios_real_valida_calendario_sin_errores() -> None:
-    assert _RESULTADO_REAL.errores == []
+def test_horarios_ficticios_valida_calendario_sin_errores() -> None:
+    assert _RESULTADO_FICTICIOS.errores == []
     assert CAL_REAL is not None
 
 
@@ -99,23 +99,23 @@ def test_vigencia_no_se_amplia_mas_alla_del_curso_cargado() -> None:
     )
 
 
-def test_temporada_de_pozoblanco_cambia_el_14_y_15_de_septiembre() -> None:
-    linea = modelo_de(_RESULTADO_REAL).lineas["pozoblanco-cordoba"]
-    t14 = calendario.temporada_de(linea, date(2026, 9, 14))
-    t15 = calendario.temporada_de(linea, date(2026, 9, 15))
-    assert t14 is not None and t15 is not None
-    assert t14.nombre == "verano"
-    assert t15.nombre == "invierno"
-    assert t14.nombre != t15.nombre
+def test_temporada_de_montealto_cambia_el_30_de_junio_y_1_de_julio() -> None:
+    linea = modelo_de(_RESULTADO_FICTICIOS).lineas["riomayor-montealto"]
+    t30 = calendario.temporada_de(linea, date(2027, 6, 30))
+    t1 = calendario.temporada_de(linea, date(2027, 7, 1))
+    assert t30 is not None and t1 is not None
+    assert t30.nombre == "invierno"
+    assert t1.nombre == "verano"
+    assert t30.nombre != t1.nombre
 
 
-def test_temporada_de_adamuz_cambia_el_31_de_agosto_y_1_de_septiembre() -> None:
-    linea = modelo_de(_RESULTADO_REAL).lineas["adamuz-cordoba"]
-    t31 = calendario.temporada_de(linea, date(2026, 8, 31))
-    t1 = calendario.temporada_de(linea, date(2026, 9, 1))
+def test_temporada_de_montealto_cambia_el_31_de_julio_y_1_de_agosto() -> None:
+    linea = modelo_de(_RESULTADO_FICTICIOS).lineas["riomayor-montealto"]
+    t31 = calendario.temporada_de(linea, date(2027, 7, 31))
+    t1 = calendario.temporada_de(linea, date(2027, 8, 1))
     assert t31 is not None and t1 is not None
     assert t31.nombre == "verano"
-    assert t1.nombre == "invierno"
+    assert t1.nombre == "agosto"
     assert t31.nombre != t1.nombre
 
 
@@ -319,11 +319,11 @@ def test_calendario_campo_desconocido_cercano_es_error(tmp_path: Path) -> None:
 # ── Festivos locales por línea (P03e) ───────────────────────────────────────
 
 
-def test_calendario_real_declara_festivos_locales_de_cordoba() -> None:
+def test_calendario_ficticios_declara_festivos_locales_de_odalla() -> None:
     assert CAL_REAL.festivos_locales == {
-        "cordoba": {
-            date(2026, 9, 8): "Virgen de la Fuensanta",
-            date(2026, 10, 24): "San Rafael",
+        "odalla": {
+            date(2026, 10, 14): "Fiesta local de Odalla",
+            date(2026, 10, 16): "Feria de Odalla",
         }
     }
 
@@ -331,19 +331,20 @@ def test_calendario_real_declara_festivos_locales_de_cordoba() -> None:
 def test_clase_dia_linea_sin_festivo_local_es_la_del_dia() -> None:
     info = calendario.info_dia(CAL_REAL, date(2026, 9, 30))  # miércoles
     assert calendario.clase_dia_linea(info, {}) == ("miercoles", None)
-    otro = {date(2026, 10, 24): ("San Rafael", "cordoba")}
+    otro = {date(2026, 10, 24): ("San Rafael", "riomayor")}
     assert calendario.clase_dia_linea(info, otro) == ("miercoles", None)
 
 
 def test_clase_dia_linea_con_festivo_local_usa_festivos_aunque_sea_sabado() -> None:
-    # 24/10/2026 es sábado y festivo local de Córdoba.
+    # 24/10/2026 es sábado; se usa un festivo local de ejemplo, sin
+    # relación con los que de verdad declara el calendario ficticio.
     info = calendario.info_dia(CAL_REAL, date(2026, 10, 24))
     assert info.clase_dia == "sabado"
     assert info.es_festivo is False
-    locales = {date(2026, 10, 24): ("San Rafael", "cordoba")}
+    locales = {date(2026, 10, 24): ("San Rafael", "riomayor")}
     assert calendario.clase_dia_linea(info, locales) == (
         "festivos",
-        ("San Rafael", "cordoba"),
+        ("San Rafael", "riomayor"),
     )
     # InfoDia no cambia por un festivo local (P04)
     assert info.es_lectivo is False
@@ -358,10 +359,10 @@ def test_clase_dia_linea_local_no_cambia_es_lectivo() -> None:
 
 def test_clase_dia_linea_con_festivo_general_y_local_devuelve_ambos() -> None:
     info = calendario.info_dia(CAL_REAL, date(2026, 12, 25))
-    locales = {date(2026, 12, 25): ("Fiesta local", "cordoba")}
+    locales = {date(2026, 12, 25): ("Fiesta local", "riomayor")}
     clase, local = calendario.clase_dia_linea(info, locales)
     assert clase == "festivos"
-    assert local == ("Fiesta local", "cordoba")
+    assert local == ("Fiesta local", "riomayor")
     # y solo con el general: sin festivo local
     assert calendario.clase_dia_linea(info, {}) == ("festivos", None)
 

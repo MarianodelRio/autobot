@@ -23,7 +23,7 @@ cleanup() {
     -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml down -v) >/dev/null 2>&1 || true
   (cd "$target_dir" && docker compose --project-name "$target_project" \
     -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml down -v) >/dev/null 2>&1 || true
-  docker image rm "ghcr.io/marianodelrio/autobot:$sha" >/dev/null 2>&1 || true
+  docker image rm "ghcr.io/example-owner/autobot:$sha" >/dev/null 2>&1 || true
   rm -rf "$test_root"
 }
 trap cleanup EXIT
@@ -38,6 +38,8 @@ cat >"$source_dir/.env" <<EOF
 ENVIRONMENT=prod
 PUBLIC_HOST=localhost
 SHA=$sha
+AUTOBOT_IMAGE=ghcr.io/example-owner/autobot
+AUTOBOT_PANEL_IMAGE=ghcr.io/example-owner/autobot-panel
 DEPLOY_UID=$(id -u)
 DJANGO_SECRET_KEY=local-restore-test-only
 SECRETS_ENCRYPTION_KEY=$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
@@ -89,7 +91,7 @@ export AUTOBOT_BACKUP_CONFIG="$test_root/backup.env"
 "$RESTIC_BIN" -r "$test_root/repository" --password-file "$test_root/restic-password" init >/dev/null
 
 docker build -q -t autobot:restore-test -f apps/backend/Dockerfile apps/backend >/dev/null
-docker tag autobot:restore-test "ghcr.io/marianodelrio/autobot:$sha"
+docker tag autobot:restore-test "ghcr.io/example-owner/autobot:$sha"
 compose_args=(-f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml)
 (
   cd "$source_dir"

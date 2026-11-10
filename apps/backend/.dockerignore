@@ -4,4 +4,4 @@
 .ruff_cache
 .pytest_cache
 .import_linter_cache
-tests
+**/tests

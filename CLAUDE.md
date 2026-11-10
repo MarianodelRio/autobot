@@ -2,7 +2,7 @@
 
 Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de demo, por WhatsApp y Telegram, para enseñar los packs. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). Este fichero resume las reglas para trabajar en el repo.
 
-**Estado:** la plataforma está probada en local contra servicios reales (demo por Telegram y WhatsApp, bot de avisos, panel, Google Calendar); nada está desplegado todavía en producción. Los pasos manuales pendientes están en [`docs/puesta-en-marcha.md`](docs/puesta-en-marcha.md).
+**Estado:** la plataforma está probada en local contra servicios reales (demo por Telegram y WhatsApp, bot de avisos, panel, Google Calendar); nada está desplegado todavía en producción. Los pasos manuales pendientes están en [`docs/plan-lanzamiento.md`](docs/plan-lanzamiento.md).
 
 ## Idioma
 

@@ -40,8 +40,9 @@ jobs:
         env:
           SHA: ${{ inputs.sha }}
         run: |
-          docker manifest inspect ghcr.io/marianodelrio/autobot:"$SHA" >/dev/null
-          docker manifest inspect ghcr.io/marianodelrio/autobot-panel:"$SHA" >/dev/null
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker manifest inspect "ghcr.io/$owner/autobot:$SHA" >/dev/null
+          docker manifest inspect "ghcr.io/$owner/autobot-panel:$SHA" >/dev/null
       - name: Install deploy key and pinned host
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}

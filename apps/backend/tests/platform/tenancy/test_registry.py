@@ -44,16 +44,16 @@ def load(
 
 
 def test_valid_tenant_is_loaded_and_indexed(tmp_path: Path) -> None:
-    doc = tenant_yaml("dm-barber")
-    registry = load(tmp_path, doc, secrets={"dm-barber": WA_SECRETS})
+    doc = tenant_yaml("salon-ejemplo")
+    registry = load(tmp_path, doc, secrets={"salon-ejemplo": WA_SECRETS})
     (t,) = registry.tenants
     assert registry.problems == {}
     assert not t.is_degraded and t.main_enabled
-    assert t.info.slug == "dm-barber" and t.info.timezone.key == "Europe/Madrid"
-    assert registry.by_slug["dm-barber"] is t
+    assert t.info.slug == "salon-ejemplo" and t.info.timezone.key == "Europe/Madrid"
+    assert registry.by_slug["salon-ejemplo"] is t
     assert registry.tenant(t.id) is t
     assert registry.by_public_id[("whatsapp", doc["channel"]["public_id"])] is t
-    assert registry.by_phone_number_id[phone_number_id("dm-barber")] is t
+    assert registry.by_phone_number_id[phone_number_id("salon-ejemplo")] is t
     assert t.config == toy.ToyConfig()
 
 

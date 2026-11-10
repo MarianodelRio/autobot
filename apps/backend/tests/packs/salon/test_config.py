@@ -18,7 +18,7 @@ def configuration(**changes: Any) -> SalonConfig:
 
 def test_source_configuration_validates() -> None:
     cfg = configuration()
-    assert cfg.business_name == "DM Barber Shop"
+    assert cfg.business_name == "Salón Ejemplo"
     assert cfg.services["mechas"].client_presence_min == 180
     assert cfg.services["mechas"].duration_min == 60
     assert cfg.booking_window_days == 21

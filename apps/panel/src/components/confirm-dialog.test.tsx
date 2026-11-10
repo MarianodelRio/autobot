@@ -10,7 +10,7 @@ test("stays disabled until the exact text is typed, then confirms", async () => 
       open={true}
       onOpenChange={vi.fn()}
       title="Dar de baja"
-      confirmText="autocares-ss"
+      confirmText="negocio-ejemplo"
       onConfirm={onConfirm}
     />,
   );
@@ -18,12 +18,12 @@ test("stays disabled until the exact text is typed, then confirms", async () => 
   const confirmButton = screen.getByRole("button", { name: "Confirmar" });
   expect(confirmButton).toBeDisabled();
 
-  const input = screen.getByLabelText(/autocares-ss/);
+  const input = screen.getByLabelText(/negocio-ejemplo/);
   await user.type(input, "wrong-slug");
   expect(confirmButton).toBeDisabled();
 
   await user.clear(input);
-  await user.type(input, "autocares-ss");
+  await user.type(input, "negocio-ejemplo");
   expect(confirmButton).toBeEnabled();
 
   await user.click(confirmButton);

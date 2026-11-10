@@ -1,0 +1,24 @@
+a_demanda:
+  letra: D
+  tipo: condicion
+  ambitos: [parada]
+  texto: "A demanda: llama al {telefono}."
+
+solo_viernes_lectivo:
+  letra: V
+  tipo: condicion
+  ambitos: [parada, viaje]
+  texto: "Solo viernes en periodo escolar."
+
+# Condición de negocio sin letra (solo se usa a nivel de viaje, con el
+# marcador "| solo_si_viajeros" al final de la fila).
+solo_si_viajeros:
+  tipo: condicion
+  ambitos: [viaje]
+  texto: "Solo si hay viajeros con origen en Riomayor."
+
+llega_estacion:
+  letra: C
+  tipo: aviso
+  ambitos: [parada]
+  texto: "Llega a la estación de autobuses de Riomayor."

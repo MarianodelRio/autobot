@@ -17,7 +17,7 @@ from packs.bus.config import BusConfig
 from packs.bus.datos import Datos
 from packs.bus.loader import HorariosInvalidos
 from packs.bus.pack import DATASET_DIR, load_data, pack
-from tests.packs.bus.compat import CONFIG, HORARIOS_REAL
+from tests.packs.bus.conversation_harness import CONFIG, HORARIOS_FICTICIOS
 
 
 def _config(**cambios: Any) -> dict[str, Any]:
@@ -26,7 +26,7 @@ def _config(**cambios: Any) -> dict[str, Any]:
     return base
 
 
-def test_la_config_de_autocares_es_valida() -> None:
+def test_la_config_de_ejemplo_es_valida() -> None:
     assert BusConfig.model_validate(_config()) == CONFIG
     assert CONFIG.next_day_search_days == 45
 
@@ -38,8 +38,8 @@ def test_la_config_de_autocares_es_valida() -> None:
         {"contact_phone": ""},
         {"start_menu_towns": []},
         {"start_menu_towns": [f"Pueblo {i}" for i in range(9)]},
-        {"start_menu_towns": ["Córdoba", "cordoba"]},
-        {"start_menu_towns": ["Córdoba", " ¿? "]},
+        {"start_menu_towns": ["Riomayor", "riomayor"]},
+        {"start_menu_towns": ["Riomayor", " ¿? "]},
         {"links": {"web": "no es una url"}},
         {"links": {"facebook": "https://example.com"}},
         {"next_day_search_days": 0},
@@ -71,20 +71,20 @@ def test_franjas_contiguas_y_sin_horario_de_oficina_son_validas() -> None:
 
 
 def _tenant_dir(tmp_path: Path) -> Path:
-    shutil.copytree(HORARIOS_REAL, tmp_path / DATASET_DIR)
+    shutil.copytree(HORARIOS_FICTICIOS, tmp_path / DATASET_DIR)
     return tmp_path
 
 
 def test_load_data_lee_el_dataset_del_tenant(tmp_path: Path) -> None:
     datos = load_data(sample_tenant(), CONFIG, _tenant_dir(tmp_path))
     assert isinstance(datos, Datos)
-    assert datos.menu_origen[:2] == ("cordoba", "pozoblanco")
-    assert datos.matcher.buscar("pozoblnco").tipo == "confirmar"
+    assert datos.menu_origen[:2] == ("riomayor", "pozoluengo")
+    assert datos.matcher.buscar("pozolengo").tipo == "confirmar"
 
 
 def test_load_data_falla_con_un_pueblo_del_menu_desconocido(tmp_path: Path) -> None:
-    config = BusConfig.model_validate(_config(start_menu_towns=["Córdoba", "Cordobilla"]))
-    with pytest.raises(RuntimeError, match="'Cordobilla' no es una localidad"):
+    config = BusConfig.model_validate(_config(start_menu_towns=["Riomayor", "Riomayorejo"]))
+    with pytest.raises(RuntimeError, match="'Riomayorejo' no es una localidad"):
         load_data(sample_tenant(), config, _tenant_dir(tmp_path))
 
 

@@ -22,7 +22,7 @@ MAX_CANDIDATAS = 9
 LETRAS_ERRATA_CORTA = 5
 
 # Relleno inicial que se quita del texto del cliente ya
-# normalizado ("desde pozoblanco", "¿desde pozoblanco?", "voy a cordoba").
+# normalizado ("desde pozoluengo", "¿desde pozoluengo?", "voy a riomayor").
 # Se hace después de normalizar para que la puntuación ("¿", ",") no lo
 # impida. Comprobado una sola vez, de más largo a más corto, para que "voy a"
 # se quite entero y no deje una "a" suelta.

@@ -1,6 +1,6 @@
-# Config pública del bot anterior; ids de calendario sintéticos, solo para tests.
-business_name: DM Barber Shop
-contact_phone: +34 682 21 44 69
+# Config pública de ejemplo; ids de calendario sintéticos, solo para tests.
+business_name: Salón Ejemplo
+contact_phone: +34 600 00 00 00
 calendar_id: salon-main@example.invalid
 services:
   corte:

@@ -2,7 +2,7 @@
 # intermedia (M): consultar K -> L no debe llevar ninguna nota, porque M no
 # es ni la parada de origen ni la de destino elegidas para ese par.
 nombre: Línea Demanda
-telefono_demanda: "957 00 00 00"
+telefono_demanda: "600 55 55 55"
 avisos: []
 no_circula: []
 

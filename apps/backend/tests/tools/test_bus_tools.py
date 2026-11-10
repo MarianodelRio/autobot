@@ -9,24 +9,24 @@ from tools.bus import formatear as bus_formatear
 from tools.bus import revision as bus_revision
 from tools.bus import validar as bus_validar
 
-REAL = Path(__file__).parent.parent / "packs" / "bus" / "fixtures" / "horarios_real"
-SLUG = "autocares-ss"
+FICTICIOS = Path(__file__).parent.parent / "packs" / "bus" / "fixtures" / "horarios_ficticios"
+SLUG = "negocio-ejemplo"
 DATASET = Path("var") / "datos" / SLUG / "timetable"
-ROW = "      20:00  20:30  20:35D  21:00  21:10  21:15  21:45C"
+ROW = "      18:00  18:20D  18:45C"
 
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
-    shutil.copytree(REAL, root / DATASET)
+    shutil.copytree(FICTICIOS, root / DATASET)
     return root
 
 
 def change_time(repo: Path) -> None:
-    line = repo / DATASET / "lineas/pozoblanco-cordoba.yaml"
+    line = repo / DATASET / "lineas/pozoluengo-riomayor.yaml"
     text = line.read_text(encoding="utf-8")
     assert ROW in text
-    line.write_text(text.replace(ROW, ROW.replace("20:00", "20:05", 1), 1), encoding="utf-8")
+    line.write_text(text.replace(ROW, ROW.replace("18:00", "18:05", 1), 1), encoding="utf-8")
 
 
 @pytest.mark.parametrize("main", [bus_validar.main, bus_formatear.main])
@@ -43,21 +43,21 @@ def test_tenant_is_required_and_must_exist(
         assert "slug de tenant inválido" in capsys.readouterr().out
 
 
-def test_validate_real_dataset(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_validate_ficticios_dataset(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert bus_validar.main([SLUG], repo_root=repo) == 0
     output = capsys.readouterr().out
     assert "Sin errores." in output and "AVISOS (" in output
 
 
 def test_validate_broken_dataset(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    line = repo / DATASET / "lineas/pozoblanco-cordoba.yaml"
+    line = repo / DATASET / "lineas/pozoluengo-riomayor.yaml"
     text = line.read_text(encoding="utf-8")
-    line.write_text(text.replace(ROW, ROW.replace("20:00", "20:45", 1), 1), encoding="utf-8")
+    line.write_text(text.replace(ROW, ROW.replace("18:45", "17:45", 1), 1), encoding="utf-8")
     assert bus_validar.main([SLUG], repo_root=repo) == 1
     assert "ERRORES (" in capsys.readouterr().out
 
 
-def test_format_real_dataset_keeps_content(repo: Path) -> None:
+def test_format_ficticios_dataset_keeps_content(repo: Path) -> None:
     before = {
         path.relative_to(repo / DATASET): path.read_text()
         for path in (repo / DATASET).rglob("*")
@@ -79,10 +79,10 @@ def test_revision_compares_published_directory(repo: Path) -> None:
     html = (repo / "var" / "revision" / SLUG / "horarios.html").read_text(encoding="utf-8")
     assert "Versión: copia publicada" in html
     changes = html.split("Cambios desde la versión publicada")[1].split("<h2")[0]
-    assert "20:00" in changes and "20:05" in changes
+    assert "18:00" in changes and "18:05" in changes
 
 
-def test_revision_generates_real_pdf(repo: Path) -> None:
+def test_revision_generates_ficticios_pdf(repo: Path) -> None:
     shutil.copytree(repo / DATASET, repo / "var" / "datos" / SLUG / ".publicado/timetable")
     change_time(repo)
     assert bus_revision.main([SLUG], repo_root=repo) == 0

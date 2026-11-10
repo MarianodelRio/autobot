@@ -1,5 +1,5 @@
 # horarios/calendario.yaml — demo-autobuses.
-# Mismos festivos y el mismo curso 2026-27 que tenants/autocares-ss (sin
+# Mismos festivos y el mismo curso 2026-27 que el tenant de ejemplo (sin
 # festivos locales: aquí no hace falta distinguirlos por línea).
 #
 # Demo: ampliar la vigencia cada verano junto con el curso.

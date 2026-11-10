@@ -12,29 +12,29 @@ from packs.bus import datos
 from packs.bus.loader import HorariosInvalidos
 
 FIXTURES = Path(__file__).parent / "fixtures"
-HORARIOS_REAL = FIXTURES / "horarios_real"
+HORARIOS_FICTICIOS = FIXTURES / "horarios_ficticios"
 
 
 def test_cargar_resuelve_el_menu_por_nombre_normalizado() -> None:
-    d = datos.cargar(HORARIOS_REAL, ["córdoba", "POZOBLANCO"])
-    assert d.menu_origen == ("cordoba", "pozoblanco")
-    assert d.horarios.localidad_viajes["cordoba"]
-    assert d.matcher.buscar("desde pozoblnco").localidades == ("pozoblanco",)
+    d = datos.cargar(HORARIOS_FICTICIOS, ["riomayor", "POZOLUENGO"])
+    assert d.menu_origen == ("riomayor", "pozoluengo")
+    assert d.horarios.localidad_viajes["riomayor"]
+    assert d.matcher.buscar("desde pozolengo").localidades == ("pozoluengo",)
 
 
 def test_cargar_pueblo_desconocido_falla_con_su_nombre() -> None:
-    with pytest.raises(RuntimeError, match="'Cordobilla' no es una localidad conocida"):
-        datos.cargar(HORARIOS_REAL, ["Córdoba", "Cordobilla"])
+    with pytest.raises(RuntimeError, match="'Riomayorejo' no es una localidad conocida"):
+        datos.cargar(HORARIOS_FICTICIOS, ["Riomayor", "Riomayorejo"])
 
 
 def test_cargar_no_acepta_prefijos_ni_erratas() -> None:
-    with pytest.raises(RuntimeError, match="'Pozoblan' no es una localidad"):
-        datos.cargar(HORARIOS_REAL, ["Pozoblan"])
+    with pytest.raises(RuntimeError, match="'Pozoluen' no es una localidad"):
+        datos.cargar(HORARIOS_FICTICIOS, ["Pozoluen"])
 
 
 def test_cargar_pueblo_duplicado_falla() -> None:
-    with pytest.raises(RuntimeError, match="'cordoba' está duplicado"):
-        datos.cargar(HORARIOS_REAL, ["Córdoba", "cordoba"])
+    with pytest.raises(RuntimeError, match="'riomayor' está duplicado"):
+        datos.cargar(HORARIOS_FICTICIOS, ["Riomayor", "riomayor"])
 
 
 def test_cargar_pueblo_sin_viajes_falla(tmp_path: Path) -> None:

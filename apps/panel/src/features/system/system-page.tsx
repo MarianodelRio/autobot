@@ -29,7 +29,20 @@ import {
 import { errorMessage } from "@/lib/errors";
 import { formatBytes, formatDateTime, formatNumber } from "@/lib/format";
 
-const GITHUB_REPO = "https://github.com/MarianodelRio/autobot";
+// Set at image build time (apps/panel/Dockerfile ARG), from the checkout's own repo
+// URL in CI. Empty for a local dev build: commit links are then plain text.
+const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO ?? "";
+
+function CommitLink({ sha }: { sha: string }) {
+  if (!GITHUB_REPO) {
+    return <span className="font-mono text-sm">{sha}</span>;
+  }
+  return (
+    <a className="underline" href={`${GITHUB_REPO}/commit/${sha}`}>
+      {sha}
+    </a>
+  );
+}
 
 function percent(value: number | null | undefined): string {
   return value === null || value === undefined
@@ -388,12 +401,7 @@ function SystemContent({ data }: { data: components["schemas"]["SystemOut"] }) {
         </CardHeader>
         <CardContent>
           <p className="mb-3 font-mono text-sm">
-            <a
-              className="underline"
-              href={`${GITHUB_REPO}/commit/${data.release}`}
-            >
-              {data.release}
-            </a>
+            <CommitLink sha={data.release} />
           </p>
           {data.deploys.length === 0 ? (
             <EmptyState message="Sin despliegues registrados." />
@@ -419,12 +427,7 @@ function SystemContent({ data }: { data: components["schemas"]["SystemOut"] }) {
                       <TimeAgo date={deploy.at} />
                     </TableCell>
                     <TableCell className="font-mono">
-                      <a
-                        className="underline"
-                        href={`${GITHUB_REPO}/commit/${deploy.sha}`}
-                      >
-                        {deploy.sha}
-                      </a>
+                      <CommitLink sha={deploy.sha} />
                     </TableCell>
                     <TableCell>{deploy.result}</TableCell>
                   </TableRow>

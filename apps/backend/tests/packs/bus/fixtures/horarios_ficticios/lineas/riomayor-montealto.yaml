@@ -1,0 +1,35 @@
+# Línea inventada con las tres temporadas públicas (invierno, verano,
+# agosto): no circula en agosto. El horario de invierno y el de verano
+# tienen horas distintas, y algunas salidas son "a demanda" en Montealto.
+nombre: Riomayor – Montealto
+telefono_demanda: "600 11 22 33"
+avisos: []
+no_circula: []
+
+temporadas:
+  invierno: 01/09 - 30/06
+  verano: 01/07 - 31/07
+  agosto: 01/08 - 31/08
+
+dias:
+  invierno: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+  verano: { lunes-viernes: horario, sabado: sin_servicio, domingos-festivos: sin_servicio }
+  agosto: { lunes-viernes: sin_servicio, sabado: sin_servicio, domingos-festivos: sin_servicio }
+
+horarios:
+  - temporada: invierno
+    dias: lunes-viernes
+    tabla: |
+      RIO    MTA
+      08:00  08:30D
+      13:00  13:30
+      17:30  18:00D
+
+  - temporada: verano
+    dias: lunes-viernes
+    tabla: |
+      RIO    MTA
+      09:00  09:30D
+      18:00  18:30
+
+pendientes: []

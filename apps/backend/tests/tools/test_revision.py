@@ -115,7 +115,7 @@ def test_main_genera_html_con_cambios(tmp_path: Path, monkeypatch: pytest.Monkey
     assert "Línea de prueba" in contenido
     assert "todo el año" in contenido or "anual" in contenido
     assert "Este autobús entra en el pueblo." in contenido  # leyenda (parada)
-    assert "Pasa por Rivero de Posadas." in contenido  # leyenda (viaje)
+    assert "Pasa por Vallehondo." in contenido  # leyenda (viaje)
     assert "P07" in contenido  # pendiente
     assert "sin datos" in contenido
     assert "sin servicio" in contenido
@@ -133,7 +133,7 @@ def test_cambios_con_texto_de_negocio_y_html_escapado(
     obs = repo_root / DATASET / "observaciones.yaml"
     obs.write_text(
         obs.read_text(encoding="utf-8").replace(
-            "Pasa por Rivero de Posadas.", "Pasa por <Rivero> & Posadas."
+            "Pasa por Vallehondo.", "Pasa por <Rivero> & Posadas."
         ),
         encoding="utf-8",
     )
@@ -143,7 +143,7 @@ def test_cambios_con_texto_de_negocio_y_html_escapado(
         encoding="utf-8"
     )
     assert (
-        "El texto de la observación «Pasa por Rivero de Posadas.» pasa a "
+        "El texto de la observación «Pasa por Vallehondo.» pasa a "
         "«Pasa por &lt;Rivero&gt; &amp; Posadas.»." in contenido
     )
     assert "pasa_por_rivero" not in contenido.split("Cambios desde la versión")[1][:600]
@@ -255,8 +255,8 @@ def _construir_html(
     return revision.generar_html(modelo_de(resultado), None, None, None, "01/01/2026")
 
 
-ADAMUZ_LINEA_YAML = """\
-nombre: Línea Adamuz
+EJEMPLO_LINEA_YAML = """\
+nombre: Línea Ejemplo
 avisos: []
 no_circula: []
 temporadas:
@@ -282,7 +282,7 @@ pendientes: []
 
 
 def test_dos_tablas_misma_temporada_y_dias_se_pintan_por_separado(tmp_path: Path) -> None:
-    html_doc = _construir_html(tmp_path, "paradas_base.yaml", {"linea-adamuz": ADAMUZ_LINEA_YAML})
+    html_doc = _construir_html(tmp_path, "paradas_base.yaml", {"linea-ejemplo": EJEMPLO_LINEA_YAML})
     assert html_doc.count("<table class='horario corta'>") == 2
     assert "<th>Pueblo A</th><th>Pueblo B</th><th>Pueblo C</th>" in html_doc
     assert "<th>Pueblo C</th><th>Pueblo B</th><th>Pueblo A</th>" in html_doc
@@ -354,7 +354,7 @@ def test_tabla_ancha_se_traspone_y_reparte_en_bloques(tmp_path: Path) -> None:
 def test_telefono_se_sustituye_en_la_leyenda(tmp_path: Path) -> None:
     linea_yaml = """\
 nombre: Línea a demanda
-telefono_demanda: "957 42 90 30"
+telefono_demanda: "600 00 00 01"
 avisos: []
 no_circula: []
 temporadas:
@@ -373,7 +373,7 @@ horarios:
 pendientes: []
 """
     html_doc = _construir_html(tmp_path, "paradas_base.yaml", {"linea-demanda": linea_yaml})
-    assert "957 42 90 30" in html_doc
+    assert "600 00 00 01" in html_doc
     assert "{telefono}" not in html_doc
 
 
@@ -437,9 +437,9 @@ pendientes: []
     assert "En el bot: Línea de prueba con nombre largo · 3 pueblos" in seccion
     for pueblo in ("Pueblo A", "Pueblo B", "Pueblo C"):
         assert pueblo in seccion
-    # Cabeza del Buey no la usa ninguna línea: lista aparte
+    # Montelirio no la usa ninguna línea: lista aparte
     idx_aparte = seccion.index("Localidades que ninguna línea usa")
-    assert "Cabeza del Buey" in seccion[idx_aparte:]
+    assert "Montelirio" in seccion[idx_aparte:]
 
 
 def test_seccion_lineas_en_el_bot_sin_lista_aparte_si_todas_se_usan(tmp_path: Path) -> None:
@@ -447,35 +447,30 @@ def test_seccion_lineas_en_el_bot_sin_lista_aparte_si_todas_se_usan(tmp_path: Pa
     assert "Localidades que ninguna línea usa" not in html_doc
 
 
-def test_html_real_seccion_lineas_con_los_4_nombres_cortos() -> None:
-    html_doc = _html_real()
+def test_html_ficticios_seccion_lineas_con_los_3_nombres_cortos() -> None:
+    html_doc = _html_ficticios()
     assert "zona" not in html_doc.lower().replace("zona horaria", "")
     idx = html_doc.index("Así aparecen las líneas en el bot")
     seccion = html_doc[idx:]
-    for corto in (
-        "Adamuz – Córdoba",
-        "F. Carreteros – Córdoba",
-        "Estación AVE Villanueva",
-        "Santa Eufemia-Villaralto",
-    ):
+    for corto in ("Riomayor-Fuenteclara", "Villagrande Riomayor", "Villagrande Soto"):
         assert f"<h3>{corto}</h3>" in seccion
-    assert "En el bot: Fuente Carreteros – Córdoba · 7 pueblos" in seccion
-    # Cabeza del Buey solo está en Belalcázar – Córdoba
-    idx_bel = seccion.index("<h3>Belalcázar – Córdoba</h3>")
-    assert "Cabeza del Buey" in seccion[idx_bel : idx_bel + 1500]
+    assert "En el bot: Riomayor – Fuenteclara (directo) · 2 pueblos" in seccion
+    # Pinarnuevo solo está en Riomayor – Pinarnuevo
+    idx_pin = seccion.index("<h3>Riomayor – Pinarnuevo</h3>")
+    assert "Pinarnuevo" in seccion[idx_pin : idx_pin + 1500]
 
 
 # ── Sección "Calendario" y pendientes del calendario (P03e, P03g, P12b) ─────
 
 
-def _html_real() -> str:
-    resultado = validar_horarios(FIXTURES / "horarios_real")
+def _html_ficticios() -> str:
+    resultado = validar_horarios(FIXTURES / "horarios_ficticios")
     assert resultado.errores == []
     return revision.generar_html(modelo_de(resultado), None, None, None, "01/01/2026")
 
 
-def test_html_real_tiene_seccion_calendario() -> None:
-    html_doc = _html_real()
+def test_html_ficticios_tiene_seccion_calendario() -> None:
+    html_doc = _html_ficticios()
     assert "<h2>Calendario</h2>" in html_doc
     seccion = html_doc[html_doc.index("<h2>Calendario</h2>") :]
     seccion = seccion[: seccion.index("</body>")]
@@ -484,30 +479,28 @@ def test_html_real_tiene_seccion_calendario() -> None:
     # festivos generales
     assert "12/10/2026 — Fiesta Nacional" in seccion
     # festivos locales con las líneas que los aplican
-    assert "Córdoba" in seccion
-    assert "08/09/2026 — Virgen de la Fuensanta" in seccion
-    assert "24/10/2026 — San Rafael" in seccion
-    for nombre in ("Pozoblanco", "Adamuz", "Badajoz"):
-        assert nombre in seccion
+    assert "Odalla" in seccion
+    assert "14/10/2026 — Fiesta local de Odalla" in seccion
+    assert "16/10/2026 — Feria de Odalla" in seccion
     # no vendibles, con el texto propuesto del bot
     assert "Trayectos que no se venden" in seccion
     assert (
-        "Entre Alcolea y Córdoba no vendemos billetes, en ninguno de los dos "
+        "Entre Campoalto y Riomayor no vendemos billetes, en ninguno de los dos "
         "sentidos. Puedes elegir otro destino."
     ) in seccion
-    assert "Campus de Rabanales" in seccion
+    assert "Pinarnuevo" in seccion
 
 
-def test_html_real_sin_anexo_ni_pendientes_en_portada() -> None:
+def test_html_ficticios_sin_anexo_ni_pendientes_en_portada() -> None:
     # El anexo de preguntas pendientes y la línea "Pendientes abiertos" de la
     # portada se quitaron: ya no hay dudas abiertas con negocio.
-    html_doc = _html_real()
+    html_doc = _html_ficticios()
     assert "Anexo" not in html_doc
     assert "Pendientes abiertos" not in html_doc
 
 
 def test_seccion_calendario_sin_festivos_locales_ni_no_vendibles(tmp_path: Path) -> None:
-    html_doc = _construir_html(tmp_path, "paradas_base.yaml", {"linea-prueba": ADAMUZ_LINEA_YAML})
+    html_doc = _construir_html(tmp_path, "paradas_base.yaml", {"linea-prueba": EJEMPLO_LINEA_YAML})
     seccion = html_doc[html_doc.index("<h2>Calendario</h2>") :]
     assert "Días sin servicio en ninguna línea" in seccion
     assert seccion.count("<p>Ninguno.</p>") == 3  # sin servicio, locales, no vendibles
@@ -538,12 +531,12 @@ def test_celda_con_espera_y_letra_pone_la_letra_al_final() -> None:
 def test_mismo_autobus_que_nombra_la_otra_linea_dias_y_sentido() -> None:
     html_doc = _html_cicloc()
     assert (
-        "mismo autobús que: Peñarroya – Córdoba "
-        "(lunes a viernes, de Córdoba a Peñarroya)" in html_doc
+        "mismo autobús que: Peñarroja – Riomayor "
+        "(lunes a viernes, de Riomayor a Peñarroja)" in html_doc
     )
     assert (
-        "mismo autobús que: Los Blázquez – Córdoba "
-        "(lunes a viernes, de Córdoba a Los Blázquez)" in html_doc
+        "mismo autobús que: Los Álamos – Riomayor "
+        "(lunes a viernes, de Riomayor a Los Álamos)" in html_doc
     )
 
 
@@ -552,18 +545,18 @@ def test_mismo_autobus_de_la_misma_linea_cita_la_otra_tabla_no_la_propia() -> No
     frases = [f.split("</p>")[0] for f in html_doc.split("<p class='mismo-bus'>")[1:]]
     assert len(frases) == 5  # larga, corta (2 tablas) y paso (2 tablas)
     con_corta = [
-        f for f in frases if "Peñarroya – Córdoba (lunes a viernes, de Córdoba a El Porvenir)" in f
+        f for f in frases if "Peñarroja – Riomayor (lunes a viernes, de Riomayor a El Mirador)" in f
     ]
     # tabla lunes a jueves de paso: cita corta y la tabla de viernes, no la suya
-    lj = next(f for f in con_corta if "Paso – Córdoba (viernes" in f)
-    assert "Paso – Córdoba (lunes a jueves" not in lj
+    lj = next(f for f in con_corta if "Paso – Riomayor (viernes" in f)
+    assert "Paso – Riomayor (lunes a jueves" not in lj
     # tabla de viernes de paso: cita corta y la de lunes a jueves, no la suya
-    v = next(f for f in con_corta if "Paso – Córdoba (lunes a jueves" in f)
-    assert "Paso – Córdoba (viernes" not in v
+    v = next(f for f in con_corta if "Paso – Riomayor (lunes a jueves" in f)
+    assert "Paso – Riomayor (viernes" not in v
 
 
 def test_sin_bus_no_hay_frase_de_mismo_autobus(tmp_path: Path) -> None:
-    html_doc = _construir_html(tmp_path, "paradas_base.yaml", {"adamuz": ADAMUZ_LINEA_YAML})
+    html_doc = _construir_html(tmp_path, "paradas_base.yaml", {"linea-ejemplo": EJEMPLO_LINEA_YAML})
     assert "mismo-bus'>" not in html_doc
     assert "mismo autobús que" not in html_doc
 
@@ -609,42 +602,43 @@ def test_html_pendientes_sin_viajes_declarados(tmp_path: Path) -> None:
     assert html_doc.count("ningún viaje declarado") == 2
 
 
-def test_html_real_ya_no_tiene_seccion_de_localidades_sin_hora_de_paso() -> None:
-    html_doc = _html_real()
+def test_html_ficticios_ya_no_tiene_seccion_de_localidades_sin_hora_de_paso() -> None:
+    html_doc = _html_ficticios()
     assert "Localidades sin hora de paso" not in html_doc
 
 
-def test_html_real_hornachuelos_tiene_columnas_rivero_y_los_mochos() -> None:
-    html_doc = _html_real()
-    inicio = html_doc.index("<h2>Hornachuelos – Córdoba</h2>")
+def test_html_ficticios_pinarnuevo_tiene_columnas_campoalto_y_pinarnuevo() -> None:
+    html_doc = _html_ficticios()
+    inicio = html_doc.index("<h2>Riomayor – Pinarnuevo</h2>")
     seccion = html_doc[inicio : html_doc.index("<h2>", inicio + 10)]
-    assert "Rivero de Posadas" in seccion and "Los Mochos" in seccion
+    assert "Campoalto" in seccion and "Pinarnuevo" in seccion
 
 
-def test_html_real_badajoz_tiene_temporada_de_agosto() -> None:
-    html_doc = _html_real()
-    inicio = html_doc.index("<h2>Badajoz – Córdoba</h2>")
+def test_html_ficticios_montealto_tiene_temporada_de_agosto() -> None:
+    html_doc = _html_ficticios()
+    inicio = html_doc.index("<h2>Riomayor – Montealto</h2>")
     seccion = html_doc[inicio : html_doc.index("<h2>", inicio + 10)]
     assert "agosto" in seccion.lower()
 
 
-def test_html_real_pueblos_con_el_nuevo_formato() -> None:
-    html_doc = _html_real()
-    pueblos = html_doc[html_doc.index("<h2>Así aparecen las líneas en el bot</h2>") :]
+def test_html_ficticios_pueblos_con_el_nuevo_formato() -> None:
+    html_doc = _html_ficticios()
+    inicio = html_doc.index("<h2>Así aparecen las líneas en el bot</h2>")
+    pueblos = html_doc[inicio : html_doc.index("<h2>Calendario</h2>")]
     assert "Cada pueblo es lo que elige el cliente; si tiene más de una" in pueblos
-    assert "<li>Azuaga " in pueblos or "<li>Azuaga</li>" in pueblos
-    assert "Azuaga — " not in pueblos
-    assert "Villanueva del Rey — para en: Villanueva del Rey (cruce, gasolinera) o" in pueblos
-    assert "Villanueva del Rey (pueblo)" in pueblos
+    assert "<li>Riomayor</li>" in pueblos
+    assert "Riomayor — " not in pueblos
+    assert "Pozoluengo — para en: Pozoluengo o Pozoluengo (Hospital)" in pueblos
+    assert "Odalla — para en: Odalla (cruce, gasolinera)" in pueblos
 
 
-def test_html_real_tiene_15_secciones_de_linea() -> None:
-    html_doc = _html_real()
+def test_html_ficticios_tiene_8_secciones_de_linea() -> None:
+    html_doc = _html_ficticios()
     inicio = html_doc.index("<h2>Cambios desde la versión publicada</h2>")
     fin = html_doc.index("<h2>Así aparecen las líneas en el bot</h2>")
     bloque = html_doc[inicio:fin]
-    assert bloque.count("<h2>") - 1 == 15
-    for nombre in ("Peñarroya – Córdoba", "Los Blázquez", "Hornachuelos – Córdoba"):
+    assert bloque.count("<h2>") - 1 == 8
+    for nombre in ("Pozoluengo – Riomayor", "Riomayor – Odalla", "Riomayor – Pinarnuevo"):
         assert f"<h2>{nombre}</h2>" in bloque
 
 
@@ -684,12 +678,12 @@ def test_notas_de_viaje_sin_letra_se_numeran(tmp_path: Path) -> None:
     assert "<td></td></tr>" in html_  # fila sin notas
     assert "<td>[1]</td></tr>" in html_
     assert "<td>[1] [2]</td></tr>" in html_
-    assert "[1] Pasa por Rivero de Posadas." in html_
+    assert "[1] Pasa por Vallehondo." in html_
     assert "[2] Otra nota." in html_
 
 
 def test_tabla_sin_notas_no_tiene_columna_notas(tmp_path: Path) -> None:
-    html_ = _construir_html(tmp_path, "paradas_base.yaml", {"l": ADAMUZ_LINEA_YAML})
+    html_ = _construir_html(tmp_path, "paradas_base.yaml", {"l": EJEMPLO_LINEA_YAML})
     assert "<th>Notas</th>" not in html_
 
 

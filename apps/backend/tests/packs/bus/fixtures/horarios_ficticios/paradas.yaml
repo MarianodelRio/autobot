@@ -1,0 +1,60 @@
+# tests/fixtures/horarios_ficticios/paradas.yaml — red de autobuses
+# inventada (comarca ficticia de Valdehoz, sin relación con ninguna red
+# real) usada por conversation_harness.py (`datos_demo()`) y por los tests
+# que antes cargaban `horarios_real/`.
+
+localidades:
+  pozoluengo: { nombre: Pozoluengo }
+  riomayor: { nombre: Riomayor }
+  carrascal: { nombre: Carrascal }
+  montealto: { nombre: Montealto }
+  fuenteclara: { nombre: Fuenteclara }
+  odalla: { nombre: Odalla }
+  ribazo: { nombre: Ribazo }
+  campoalto: { nombre: Campoalto }
+  pinarnuevo: { nombre: Pinarnuevo }
+  valdejunco: { nombre: Valdejunco }
+  # Comparten el alias "villagrande" (ambigüedad declarada, caso
+  # villafranca): formato.py avisa, nunca falla.
+  villagrande-de-riomayor: { nombre: Villagrande de Riomayor, alias: [villagrande] }
+  villagrande-del-soto: { nombre: Villagrande del Soto, alias: [villagrande] }
+  # Localidades sin línea (test_matcher.py / formato.py avisa pero no
+  # falla): sirven solo para probar el buscador de texto libre.
+  zarfe: { nombre: Zarfe } # 5 letras, para el umbral de distancia de errata
+  la-vereda: { nombre: La Vereda } # artículo propio, para el relleno "a la"
+  riofondo: { nombre: Riofondo } # ambigüedad de prefijo "rio" con Riomayor
+  penablanca: { nombre: Peñablanca } # mayúsculas/tildes al buscar
+  cruce-del-risco: { nombre: Cruce del Risco, alias: [el cruce] }
+
+paradas:
+  POZ: { nombre: Pozoluengo, localidad: pozoluengo }
+  # Segunda parada física de Pozoluengo (como un hospital en las afueras):
+  # buscar su nombre completo entre paréntesis resuelve a la localidad.
+  POH: { nombre: Pozoluengo (Hospital), localidad: pozoluengo }
+  CRL: { nombre: Carrascal, localidad: carrascal }
+  RIO: { nombre: Riomayor, localidad: riomayor }
+  MTA: { nombre: Montealto, localidad: montealto }
+  FCL: { nombre: Fuenteclara, localidad: fuenteclara }
+  # Nombre con coma (requiere comillas en el YAML): prueba de
+  # matcher.py/formato.py con nombres de parada que llevan coma.
+  ODA: { nombre: "Odalla (cruce, gasolinera)", localidad: odalla }
+  RBZ: { nombre: Ribazo, localidad: ribazo }
+  CAM: { nombre: Campoalto, localidad: campoalto }
+  PIN: { nombre: Pinarnuevo, localidad: pinarnuevo }
+  VLJ: { nombre: Valdejunco, localidad: valdejunco }
+  VGR: { nombre: Villagrande de Riomayor, localidad: villagrande-de-riomayor }
+  VGS: { nombre: Villagrande del Soto, localidad: villagrande-del-soto }
+  ZAR: { nombre: Zarfe, localidad: zarfe }
+  LVR: { nombre: La Vereda, localidad: la-vereda }
+  RFD: { nombre: Riofondo, localidad: riofondo }
+  PBL: { nombre: Peñablanca, localidad: penablanca }
+  CDR: { nombre: Cruce del Risco, localidad: cruce-del-risco }
+
+# Riomayor, Campoalto y Pinarnuevo son paradas de paso de la misma línea
+# pero no se venden billetes entre ninguna pareja de las tres (P12b).
+no_vendibles:
+  - [riomayor, campoalto]
+  - [riomayor, pinarnuevo]
+  - [campoalto, pinarnuevo]
+
+pendientes: []

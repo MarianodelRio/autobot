@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -21,6 +22,14 @@ class Command(BaseCommand):
             if pack.template is None:
                 continue
             source = source_from_dir(pack.template)
+            if pack.name == "salon" and source.document:
+                if settings.DEMO_SALON_CALENDAR_ID:
+                    source.document["config"]["calendar_id"] = settings.DEMO_SALON_CALENDAR_ID
+                else:
+                    self.stderr.write(
+                        "DEMO_SALON_CALENDAR_ID is empty: a new salon demo keeps the "
+                        "template's placeholder calendar and cannot book."
+                    )
             try:
                 with transaction.atomic(using="owner"):
                     store._lock()
