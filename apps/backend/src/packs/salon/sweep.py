@@ -5,6 +5,7 @@ from uuid import UUID
 
 from core.actions import Action, ContactRef, SendProactive
 from core.dates import format_date_es
+from core.errors import PermanentError, TransientError
 from core.pack import PackContext
 from packs.salon import booking
 from packs.salon.messages import TEMPLATE_CONFIRMATION, TEMPLATE_REMINDER
@@ -78,5 +79,15 @@ def run(ctx: PackContext) -> list[Action]:
                 )
             )
             if parse_status(event.description) is None:
-                booking.calendar(ctx).patch_description(event.gcal_id, {"Estado": "pendiente"})
+                try:
+                    booking.calendar(ctx).patch_description(event.gcal_id, {"Estado": "pendiente"})
+                except (TransientError, PermanentError) as e:
+                    # A failed patch must not abort the rest of the sweep: the
+                    # confirmation notice is still sent (idempotent by idem_key), only
+                    # the "Estado" marker is retried on the next sweep.
+                    ctx.log.warning(
+                        "patch_description failed for a manual confirmation;"
+                        " continuing the sweep: %s",
+                        type(e).__name__,
+                    )
     return actions

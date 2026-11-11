@@ -2,7 +2,7 @@
 
 La limpieza nocturna se programa a las 03:00 UTC y permanece inerte con
 `RETENTION_CLEANUP_ENABLED=false` (valor predeterminado). Solo el operador, tras la
-aprobación humana explícita, puede establecer `true` y reiniciar el worker.
+aprobación humana explícita, puede establecer `true` y reiniciar `worker-inbound` (ejecuta la cola `periodic`).
 El permiso se comprueba al ejecutar el trabajo, incluidos los trabajos ya encolados.
 No se ha autorizado ni activado esa limpieza en producción.
 
@@ -58,7 +58,7 @@ fecha límite de borrado de como máximo 30 días en el registro operativo de la
 Ejecuta `tenant_status <slug> offboard` confirmando el slug y realiza la exportación acordada y ejecuta `tenant_purge` dentro de
 ese plazo; comprueba que el negocio ya no aparece (`GET /tenants/<slug>` o la lista
 del panel da 404) y que no quedan secretos ni datasets antes de retirar las copias
-locales y los accesos externos. No se retira la entrada del registro antes del borrado: el worker
+locales y los accesos externos. No se retira la entrada del registro antes del borrado: `worker-inbound`
 recorre ese registro. `synced_at` se actualiza al publicar configuración y nunca demuestra
 la fecha de baja. La gestión de calendarios pertenece al negocio y la retención de
 backups corresponde a restic (`deploy/scripts/backup.sh`); estos comandos no modifican ninguno de ellos.

@@ -13,7 +13,7 @@ from django.utils import timezone
 from autobot.channels.adapters import endpoint
 from autobot.channels.base import Ambiguous, Rejected, RetryLater, SendOutcome, Sent
 from autobot.ops.logging import bind, contextual
-from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE, defer_after_commit
+from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE, app
 from autobot.runtime.locks import contact_hash
 from autobot.runtime.models import Contact, InboundEvent, OutboundMessage
 from autobot.tenancy.registry import get_registry
@@ -71,22 +71,27 @@ def create_proactive(
 
 def defer_sends(tenant_id: UUID, messages: list[OutboundMessage]) -> None:
     """Queue `send_message` for each message, in order, with the contact's `out:<h>` lock:
-    a contact's messages leave one at a time and in order."""
+    a contact's messages leave one at a time and in order.
+
+    Must be called inside the same `tenant_tx` that saved `messages`: the Django connector
+    inserts the job through that same connection, so the job commits atomically with the
+    message instead of in a separate `on_commit` step. That way a failure deferring it
+    rolls the message back too, instead of leaving it saved with nothing to send it."""
     for message in messages:
         contact = message.contact
         lock = f"out:{contact_hash(tenant_id, contact.channel, contact.external_id)}"
-        defer_after_commit(
-            SEND_MESSAGE,
-            queue=OUTBOUND,
-            lock=lock,
-            tenant_id=str(tenant_id),
-            outbound_id=str(message.id),
+        app.configure_task(SEND_MESSAGE, queue=OUTBOUND, lock=lock).defer(
+            tenant_id=str(tenant_id), outbound_id=str(message.id)
         )
 
 
 # ── send_message ───────────────────────────────────────────────────
 
 MAX_SEND_ATTEMPTS = 5
+
+# One per retry (job.attempts 0..4), spaced out to survive a ~30 s outage of Meta or
+# Telegram without losing a reply or reminder; used unless the provider gives `retry_after`.
+OUTBOUND_RETRY_WAITS_S: tuple[float, ...] = (5, 30, 120, 600, 1800)
 
 
 class SendRetry(Exception):
@@ -167,6 +172,10 @@ def _record(slug: str, message: OutboundMessage, outcome: SendOutcome) -> SendRe
             message.sent_at = timezone.now()
             message.last_error = ""
             fields += ["provider_message_id", "sent_at"]
+            # A send got through: the contact is not unreachable any more (X9).
+            Contact.objects.filter(id=message.contact_id, unreachable=True).update(
+                unreachable=False
+            )
         case Rejected():
             message.status = Status.FAILED
             message.last_error = f"{outcome.kind}: {outcome.reason}"

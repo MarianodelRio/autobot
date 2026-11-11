@@ -17,7 +17,7 @@ from django.db import close_old_connections, transaction
 from django.utils import timezone
 from procrastinate import BaseRetryStrategy, JobContext, RetryDecision, RetryStrategy
 from procrastinate.contrib.django import app as app
-from procrastinate.jobs import Job
+from procrastinate.jobs import Job, Status
 from procrastinate.periodic import PeriodicRegistry
 from procrastinate.tasks import Task
 
@@ -102,15 +102,19 @@ def apply_status(tenant_id: str, event_id: str) -> None:
 
 class SendRetryStrategy(BaseRetryStrategy):
     """`send_message` is retried only when the provider asked for it (`RetryLater`, raised
-    as `SendRetry`), after its `retry_after` or 2, 4, 8, 16 s. The message itself counts
-    its attempts and becomes `failed` after the fifth."""
+    as `SendRetry`), after its `retry_after` or the `OUTBOUND_RETRY_WAITS_S` schedule
+    (spaced out to survive a ~30 s outage without losing the message). The message
+    itself counts its attempts and becomes `failed` after the fifth."""
 
     def get_retry_decision(self, *, exception: BaseException, job: Job) -> RetryDecision | None:
-        from autobot.runtime.outbound import MAX_SEND_ATTEMPTS, SendRetry
+        from autobot.runtime.outbound import MAX_SEND_ATTEMPTS, OUTBOUND_RETRY_WAITS_S, SendRetry
 
         if not isinstance(exception, SendRetry) or job.attempts >= MAX_SEND_ATTEMPTS:
             return None
-        wait = exception.after_s if exception.after_s is not None else 2 ** (job.attempts + 1)
+        if exception.after_s is not None:
+            wait = exception.after_s
+        else:
+            wait = OUTBOUND_RETRY_WAITS_S[min(job.attempts, len(OUTBOUND_RETRY_WAITS_S) - 1)]
         return RetryDecision(retry_in={"seconds": math.ceil(wait)})
 
 
@@ -196,7 +200,12 @@ async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
     """Jobs left `doing` by a worker that died (no heartbeat for 30 s) keep their lock and
     would block the contact for good: Procrastinate does not retry them by itself.
     They go back to `todo`; every job is idempotent, and a `send_message` cut while
-    `sending` ends `unknown`, never resent."""
+    `sending` ends `unknown`, never resent.
+
+    A stalled job with a `queueing_lock` can collide with another job already queued
+    under the same lock (e.g. the next `ops_check` tick): `retry_job` then fails and the
+    stalled job would keep its `lock` forever. When that happens, it is marked `failed`
+    instead, which releases the lock without retrying it."""
     manager = context.app.job_manager
     for job in await manager.get_stalled_jobs():
         log.warning("retrying stalled job %s (%s)", job.id, job.task_name)
@@ -204,6 +213,10 @@ async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
             await manager.retry_job(job)
         except Exception as e:  # it changed meanwhile (e.g. retried from the panel or `job_retry`)
             log.warning("stalled job %s not retried: %s", job.id, type(e).__name__)
+            try:
+                await manager.finish_job(job, status=Status.FAILED, delete_job=False)
+            except Exception as e2:
+                log.error("stalled job %s not failed either: %s", job.id, type(e2).__name__)
 
 
 def cron_for(every_min: int) -> str:

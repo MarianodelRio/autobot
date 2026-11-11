@@ -32,19 +32,34 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
 
-  worker:
+  # Two workers, so a Google Calendar outage cannot starve the sends (X14): Google is
+  # only called from `inbound` (the packs) and `periodic` (the salon calendar sweep),
+  # both in worker-inbound; worker-outbound only sends.
+  worker-inbound:
     <<: *app
     # Replaces the whole environment of x-app (it is not merged): repeat what it needs.
     environment:
       DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
-      SERVICE_NAME: worker
+      SERVICE_NAME: worker-inbound
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
       DB_OWNER_URL: ""  # the worker never uses fp_owner
       DB_READONLY_URL: ""  # nor fp_readonly: it never runs the SQL console
     # Graceful stop: on SIGTERM it takes no new jobs and lets running
     # ones finish for up to 50 s, within the 60 s before Docker kills it; a cut job is
     # retried (every job is idempotent).
-    command: watchfiles --filter python --sigint-timeout 55 --sigkill-timeout 3 "python manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50" /app/src
+    command: watchfiles --filter python --sigint-timeout 55 --sigkill-timeout 3 "python manage.py procrastinate worker --queues inbound,periodic --concurrency 2 --shutdown-graceful-timeout 50" /app/src
+    stop_grace_period: 60s
+    init: true
+
+  worker-outbound:
+    <<: *app
+    environment:
+      DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
+      SERVICE_NAME: worker-outbound
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
+      DB_OWNER_URL: ""
+      DB_READONLY_URL: ""
+    command: watchfiles --filter python --sigint-timeout 55 --sigkill-timeout 3 "python manage.py procrastinate worker --queues outbound --concurrency 2 --shutdown-graceful-timeout 50" /app/src
     stop_grace_period: 60s
     init: true
 

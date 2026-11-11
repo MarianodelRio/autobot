@@ -10,6 +10,7 @@ Procrastinate defers each scheduled instant only once.
 and applies its actions in one. A run later than `max_delay_min` is dropped and logged.
 """
 
+import hashlib
 import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -58,13 +59,28 @@ def is_active(tenant: LoadedTenant) -> bool:
     return tenant.document.status == "active" and not tenant.is_degraded
 
 
+def _offset_s(tenant_id: UUID, name: str, every_min: int) -> int:
+    """A stable, per-tenant offset within the period, so every active tenant's sweep
+    does not hit Calendar at the exact same instant."""
+    span_s = every_min * 60
+    if span_s <= 0:
+        return 0
+    digest = hashlib.sha256(f"{tenant_id}:{name}".encode()).digest()
+    return int.from_bytes(digest[:4], "big") % span_s
+
+
 def dispatch(pack: str, name: str, timestamp: int) -> int:
     """Queue one `run_periodic` per active tenant of `pack`; returns how many."""
     queued = 0
     for tenant in active_tenants(pack):
+        periodic = _periodic(tenant.pack, name)
+        offset_s = _offset_s(tenant.id, name, periodic.every_min) if periodic else 0
         try:
             app.configure_task(
-                RUN_PERIODIC, queue=PERIODIC, queueing_lock=f"periodic:{tenant.id}:{name}"
+                RUN_PERIODIC,
+                queue=PERIODIC,
+                queueing_lock=f"periodic:{tenant.id}:{name}",
+                schedule_in={"seconds": offset_s},
             ).defer(tenant_id=str(tenant.id), name=name, scheduled_at=timestamp)
         except AlreadyEnqueued:
             log.warning(

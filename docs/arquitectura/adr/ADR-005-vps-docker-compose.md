@@ -8,7 +8,7 @@ La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de
 
 ## Decisión
 
-- **Una VPS en la UE** (Hetzner Cloud, 2 vCPU / 4 GB) con Ubuntu 24.04 y **Docker Compose**: `caddy`, `web`, `worker`, `db` (PostgreSQL 18), `panel` y `victorialogs`. `web` y `worker` usan la misma imagen; `panel` y `victorialogs` solo son accesibles por túnel SSH.
+- **Una VPS en la UE** (Hetzner Cloud, 2 vCPU / 4 GB) con Ubuntu 24.04 y **Docker Compose**: `caddy`, `web`, `worker-inbound`, `worker-outbound` (X14, 2026-11-11: una caída de Google Calendar frenaba también los envíos y las barridas periódicas; dos workers, uno por grupo de colas, lo evitan), `db` (PostgreSQL 18), `panel` y `victorialogs`. `web` y los `worker-*` usan la misma imagen; `panel` y `victorialogs` solo son accesibles por túnel SSH.
 - **Caddy** con HTTPS automático; solo expone los webhooks de WhatsApp y Telegram (incluidos los de las dos puertas del bot de demo y el bot de avisos, `/webhooks/telegram-notify`) y `/health`.
 - **Secretos**: `.env` (plataforma) en el servidor, montado de solo lectura; los secretos de canal de cada negocio viven cifrados en PostgreSQL (`SECRETS_ENCRYPTION_KEY` en `.env`). Nunca en git ni en la imagen.
 - **Backups**: `pg_dump` cada 6 h, `.env`, `google_sa.json`, el `Caddyfile` y `.deployed-sha` (todos bajo `var/`), cifrados con restic, a almacenamiento de **otro proveedor**; simulacro de restauración trimestral. RPO ≤ 6 h, RTO ≤ 2 h.

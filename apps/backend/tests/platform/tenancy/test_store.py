@@ -199,6 +199,24 @@ def test_status_transitions_and_rollback_keep_current_state(
     assert revision() == 6
 
 
+def test_pause_is_never_blocked_by_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """X10: a tenant degraded for a reason unrelated to pausing (or even a plain
+    validation bug) must still be pausable — only "pause" skips revalidating the whole
+    configuration; the other transitions still validate as before."""
+    create()
+    monkeypatch.setattr(activation, "checklist", lambda slug: activation.Checklist([]))
+    store.change_status("tg", action="activate", confirm_slug="tg", actor="user")
+
+    def boom(*args: Any, **kwargs: Any) -> None:
+        raise store.StoreError("validation_error", "La configuración no es válida", [])
+
+    monkeypatch.setattr(store, "_validate", boom)
+    assert store.change_status("tg", action="pause", actor="user") == 3
+    assert current().document["status"] == "paused"
+    with pytest.raises(store.StoreError):
+        store.change_status("tg", action="offboard", confirm_slug="tg", actor="user")
+
+
 def test_demo_rejects_secrets_and_can_be_offboarded() -> None:
     doc = store.new_document(
         pack="toy",

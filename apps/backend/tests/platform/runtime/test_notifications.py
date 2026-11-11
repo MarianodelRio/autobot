@@ -126,17 +126,27 @@ def test_unsubscribed_only_logs(tenants: Any, telegram: Any, caplog: Any, config
     assert "only logged" in caplog.text and "private" not in caplog.text
 
 
-@pytest.mark.parametrize("code", [429, 500, 503])
-def test_safe_retry(tenants: Any, telegram: Any, code: int) -> None:
+def test_safe_retry(tenants: Any, telegram: Any) -> None:
     tenants(owner())
     link()
-    seen = telegram(httpx.Response(code, json={"parameters": {"retry_after": 7}}), ok())
+    seen = telegram(httpx.Response(429, json={"parameters": {"retry_after": 7}}), ok())
     row = notice()
     with pytest.raises(SendRetry) as caught:
         send(row)
     assert caught.value.after_s == 7 and reload(row).status == "pending"
     send(row)
     assert reload(row).status == "sent" and len(seen) == 2
+
+
+@pytest.mark.parametrize("code", [500, 503])
+def test_5xx_is_ambiguous_never_retried(tenants: Any, telegram: Any, code: int) -> None:
+    """X5: unlike 429, a 5xx is never retried blindly even if it carries `retry_after`."""
+    tenants(owner())
+    link()
+    seen = telegram(httpx.Response(code, json={"parameters": {"retry_after": 7}}))
+    row = notice()
+    send(row)
+    assert reload(row).status == "failed" and len(seen) == 1
 
 
 @pytest.mark.parametrize("answer", [httpx.ReadTimeout("secret"), httpx.Response(403)])

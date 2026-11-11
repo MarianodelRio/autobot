@@ -37,7 +37,7 @@ con tu clave en la VPS recién creada.
    repo sin tag (`ghcr.io/<owner>/autobot` y `ghcr.io/<owner>/autobot-panel`);
    `ensure-env.sh` se niega a seguir sin ellas. Crea `var/google_sa.json`, `var/backup.env` y
    `var/restic-password` como propietario `deploy`, modo 0600. El usuario no root de
-   `web` y `worker` usa ese UID para leer el fichero de cuenta de servicio montado. La cuenta de
+   `web` y los `worker-*` usan ese UID para leer el fichero de cuenta de servicio montado. La cuenta de
    servicio y los tokens reales dependen de Google Cloud, del bot de avisos y de los secretos de GitHub. En
    `DJANGO_ALLOWED_HOSTS`, incluye `api.<dominio>`, `localhost` y `127.0.0.1`:
    el panel recibe el host local al entrar por el túnel SSH.
@@ -68,7 +68,7 @@ El puerto 8000 del servidor no se expone públicamente. Para un backup manual,
 puede ejecutarlo.
 
 Los secretos de canal están cifrados en la BD; no hay YAML de secretos montado en
-`web` ni `worker`. Configura `SECRETS_ENCRYPTION_KEY` en `.env` antes del primer
+`web` ni en los `worker-*`. Configura `SECRETS_ENCRYPTION_KEY` en `.env` antes del primer
 despliegue y conserva su copia con los backups. `deploy/scripts/manage.sh` usa el SHA de
 `.deployed-sha` para los comandos de operación; desde local se invoca mediante
 `make prod-manage HOST=<servidor> CMD="..."` (`TTY=1` si pide una confirmación).
@@ -79,10 +79,10 @@ despliegue y conserva su copia con los backups. `deploy/scripts/manage.sh` usa e
 (`{finished_at, ok, dump_bytes}`) y `deploy/scripts/deploy.sh` añade una línea a
 `var/state/ops/deploys.jsonl` por cada intento (`deployed`, `already`, `aborted`,
 `rolled_back` o `rollback_failed`). `web` monta `var/state/ops` en solo lectura en
-`/run/ops`; `worker` no la necesita.
+`/run/ops`; los `worker-*` no la necesitan.
 
 **Logs técnicos:** el servicio `victorialogs` (imagen fijada, sin
-publicar puertos) recibe los logs de `web` y `worker` por `VICTORIALOGS_URL`; los
+publicar puertos) recibe los logs de `web` y los `worker-*` por `VICTORIALOGS_URL`; los
 guarda 31 días. `deploy/scripts/deploy.sh` lo actualiza en cada despliegue, pero su
 caída nunca aborta ni hace retroceder uno: el `VictoriaLogsHandler` descarta en
 silencio lo que no puede enviar. Para consultarlo, usa la pantalla Logs del panel

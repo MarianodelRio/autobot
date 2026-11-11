@@ -65,18 +65,25 @@ def kinds(alerts: list[tuple[Any, ...]]) -> set[str]:
 
 
 @pytest.mark.parametrize(
-    ("status", "age", "expected"),
-    [("failed", 0, True), ("unknown", 11, True), ("unknown", 10, False), ("sent", 60, False)],
+    ("status", "age_min", "expected"),
+    [
+        ("failed", 0, True),
+        ("failed", 25 * 60, False),  # X8: an old failure must not alert forever
+        ("unknown", 11, True),
+        ("unknown", 10, False),
+        ("unknown", 25 * 60, False),  # same 24 h cutoff as a failed message
+        ("sent", 60, False),
+    ],
 )
 def test_outbound_row(
-    tenants: Any, alerts: Any, monkeypatch: Any, status: str, age: int, expected: bool
+    tenants: Any, alerts: Any, monkeypatch: Any, status: str, age_min: int, expected: bool
 ) -> None:
     tenants(wa_tenant())
     now = timezone.now()
     monkeypatch.setattr(timezone, "now", lambda: now)
-    row = message(status=status, unknown_at=now - timedelta(minutes=age))
+    row = message(status=status, unknown_at=now - timedelta(minutes=age_min))
     OutboundMessage.objects.using("owner").filter(id=row.id).update(
-        created_at=now - timedelta(days=2)
+        created_at=now - timedelta(minutes=age_min)
     )
     check.run()
     assert ("outbound_failed" in kinds(alerts)) == expected
@@ -179,9 +186,11 @@ def test_queue_rows(tenants: Any, alerts: Any) -> None:
     assert {"inbound_delay", "failed_jobs"} <= kinds(alerts)
 
 
-def test_daily_health_row_caches_failures_and_refreshes(
+def test_daily_health_row_retries_a_failure_at_15_min(
     tenants: Any, alerts: Any, monkeypatch: Any
 ) -> None:
+    """X13: a one-off health failure must not stay cached a full day; it is rechecked
+    at ~15 min, so it clears once the service is back."""
     tenants(wa_tenant())
     calls = []
 
@@ -196,6 +205,31 @@ def test_daily_health_row_caches_failures_and_refreshes(
     check.run()
     assert len(calls) == 1
     assert "health:main:calendar_unavailable" in kinds(alerts)
+    monkeypatch.setattr(timezone, "now", lambda: now + timedelta(minutes=14))
+    check.run()
+    assert len(calls) == 1
+    monkeypatch.setattr(timezone, "now", lambda: now + timedelta(minutes=16))
+    check.run()
+    assert len(calls) == 2
+
+
+def test_daily_health_row_caches_a_success_for_a_day(
+    tenants: Any, alerts: Any, monkeypatch: Any
+) -> None:
+    tenants(wa_tenant())
+    calls = []
+
+    def ok_health(tenant: Any) -> list[health.Issue]:
+        calls.append(tenant.id)
+        return []
+
+    monkeypatch.setattr(health, "tenant_health", ok_health)
+    now = timezone.now()
+    monkeypatch.setattr(timezone, "now", lambda: now)
+    check.run()
+    monkeypatch.setattr(timezone, "now", lambda: now + timedelta(minutes=16))
+    check.run()
+    assert len(calls) == 1
     monkeypatch.setattr(timezone, "now", lambda: now + timedelta(days=1))
     check.run()
     assert len(calls) == 2
@@ -382,3 +416,32 @@ def test_calendar_denial_is_detected_even_after_healthy_daily_check(
     alerts.clear()
     check.run()
     assert "calendar:main" not in kinds(alerts)
+
+
+def test_record_calendar_skips_the_write_when_nothing_changed(
+    tenants: Any, monkeypatch: Any
+) -> None:
+    """Writing (and its advisory lock) is only worth it when the state actually
+    changes: repeated "ok" observations (the overwhelming majority) must not write
+    to the cache again and again."""
+    tenants(wa_tenant())
+    tenant_id = get_registry().by_slug["wa"].id
+    writes: list[Any] = []
+    original_set = cache.set
+
+    def tracked(*args: Any, **kwargs: Any) -> None:
+        writes.append(args[0])
+        return original_set(*args, **kwargs)
+
+    monkeypatch.setattr(cache, "set", tracked)
+    state.record_calendar(tenant_id, "main", "ok")
+    assert len(writes) == 1  # first observation: establishes the baseline
+    state.record_calendar(tenant_id, "main", "ok")
+    state.record_calendar(tenant_id, "main", "ok")
+    assert len(writes) == 1  # no change: no further writes
+    state.record_calendar(tenant_id, "main", "denied")
+    assert len(writes) == 2  # a real change: written
+    state.record_calendar(tenant_id, "main", "ok")
+    assert len(writes) == 3  # recovered: written
+    state.record_calendar(tenant_id, "main", "ok")
+    assert len(writes) == 3  # already recovered: no change, no write

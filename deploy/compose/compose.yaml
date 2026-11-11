@@ -9,7 +9,14 @@ services:
       db:
         condition: service_healthy
 
-  worker:
+  worker-inbound:
+    environment:
+      VICTORIALOGS_URL: http://victorialogs:9428
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker-outbound:
     environment:
       VICTORIALOGS_URL: http://victorialogs:9428
     depends_on:

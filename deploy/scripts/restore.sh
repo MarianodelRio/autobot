@@ -53,7 +53,7 @@ if [[ -f var/.restore-incomplete ]]; then
   fi
   # A failed start can leave services running. Never run pg_restore --clean
   # while web or worker might still be using the database.
-  for service in web worker caddy; do
+  for service in web worker-inbound worker-outbound caddy; do
     containers=$(docker ps -q --filter "label=com.docker.compose.project=$project" \
       --filter "label=com.docker.compose.service=$service") || {
         echo 'Could not enumerate running services; refusing restore' >&2
@@ -79,7 +79,7 @@ docker compose --project-name "$project" -f "$compose_base" -f "$compose_overrid
 docker compose --project-name "$project" -f "$compose_base" -f "$compose_override" run --rm web \
   python manage.py apply_grants
 if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
-  docker compose --project-name "$project" -f "$compose_base" -f "$compose_override" up -d web worker caddy
+  docker compose --project-name "$project" -f "$compose_base" -f "$compose_override" up -d web worker-inbound worker-outbound caddy
 fi
 printf '%s\n' "$SHA" >var/.deployed-sha
 rm -f var/.restore-incomplete

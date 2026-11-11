@@ -3,6 +3,7 @@
 
 import asyncio
 import time
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -95,6 +96,23 @@ def test_dispatch_queues_one_run_per_active_tenant(tenants: Any) -> None:
     }
 
 
+def test_dispatch_staggers_tenants_within_the_period(tenants: Any) -> None:
+    """A burst of every active tenant's sweep at the exact same instant hits Calendar
+    all at once; a per-tenant offset within the period spreads them out instead."""
+    tenants(wa_tenant("a"), wa_tenant("b"), secrets={"a": WA_SECRETS, "b": WA_SECRETS})
+    assert periodic.dispatch("toy", "daily_summary", 1791194400) == 2
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "SELECT scheduled_at FROM procrastinate_jobs WHERE task_name = 'run_periodic'"
+            " ORDER BY id"
+        )
+        scheduled = [row[0] for row in cursor.fetchall()]
+    assert all(s is not None for s in scheduled)
+    assert scheduled[0] != scheduled[1]
+    earliest = min(scheduled)
+    assert all(s <= earliest + timedelta(minutes=1440) for s in scheduled)
+
+
 def test_a_pending_run_is_not_queued_twice(tenants: Any) -> None:
     tenants(wa_tenant())
     assert periodic.dispatch("toy", "daily_summary", 1791194400) == 1
@@ -152,8 +170,9 @@ def test_a_run_for_a_tenant_that_stopped_being_active_is_skipped(tenants: Any) -
     assert not Notification.objects.using("owner").exists()
 
 
-def test_dispatch_and_run_through_the_worker(tenants: Any) -> None:
+def test_dispatch_and_run_through_the_worker(tenants: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     tenants(wa_tenant(owner=OWNER))
+    monkeypatch.setattr(periodic, "_offset_s", lambda *a: 0)  # the stagger has its own test
     app.configure_task(DISPATCH_PERIODIC, queue=PERIODIC).defer(
         timestamp=int(time.time()), pack="toy", name="daily_summary"
     )

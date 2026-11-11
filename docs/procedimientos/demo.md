@@ -12,7 +12,7 @@ ese negocio. Solo una lista cerrada de personas puede usar cada puerta (ver ADR-
 
 | Qué | Cómo |
 |---|---|
-| La puerta Telegram | `DEMO_TELEGRAM_TOKEN`, `DEMO_TELEGRAM_WEBHOOK_SECRET` en `.env` del servidor (vacíos = apagada) y reiniciar `web`/`worker` |
+| La puerta Telegram | `DEMO_TELEGRAM_TOKEN`, `DEMO_TELEGRAM_WEBHOOK_SECRET` en `.env` del servidor (vacíos = apagada) y reiniciar `web`, `worker-inbound` y `worker-outbound` |
 | La puerta WhatsApp | `DEMO_WHATSAPP_PHONE_NUMBER_ID`, `_WABA_ID`, `_APP_SECRET`, `_ACCESS_TOKEN`, `_VERIFY_TOKEN` en `.env` del servidor (los cinco, o apagada) y reiniciar |
 | Un negocio de demo | `tenant_status <slug> pause` o `resume`, sobre el demo ya sembrado en BD |
 | Quién entra en Telegram | `DEMO_TELEGRAM_USERS` (ids de Telegram separados por comas) y reiniciar |
@@ -31,7 +31,7 @@ de demo de la plataforma, no de ningún cliente:
    y aprobadas en el número de demo.
 4. Webhook de la app: `https://api.<dominio>/webhooks/whatsapp-demo`, con
    `DEMO_WHATSAPP_VERIFY_TOKEN` como `verify_token` de la suscripción.
-5. Variables `DEMO_WHATSAPP_*` en el `.env` del servidor; reiniciar `web`/`worker`.
+5. Variables `DEMO_WHATSAPP_*` en el `.env` del servidor; reiniciar `web`, `worker-inbound` y `worker-outbound`.
 6. Cambio de infraestructura (ruta nueva en `Caddyfile` y verificación de firma del
    webhook): requiere aprobación humana explícita antes de desplegar, como cualquier
    cambio de este tipo.
@@ -54,7 +54,7 @@ Mismo mecanismo que el servidor (webhook), sobre un túnel de
 2. En `.env`: `PUBLIC_URL=<la URL https de ngrok>`, `DEMO_TELEGRAM_TOKEN` (bot de
    desarrollo propio, distinto del de producción), `DEMO_TELEGRAM_USERS` y
    `DEMO_TELEGRAM_WEBHOOK_SECRET` (aleatorio, p. ej. `openssl rand -hex 32`).
-3. `docker compose restart web worker` y después `docker compose exec web python
+3. `docker compose restart web worker-inbound worker-outbound` y después `docker compose exec web python
    manage.py telegram_set_webhook demo`.
 4. Si la URL de ngrok cambia (reinicio sin dominio reservado), repetir los pasos 2-3
    con la URL nueva.
@@ -77,13 +77,13 @@ vez del dominio propio:
 3. En `.env`: `PUBLIC_URL=<la URL https de ngrok>` y las cinco `DEMO_WHATSAPP_*`
    (`_PHONE_NUMBER_ID`, `_WABA_ID`, `_APP_SECRET`, `_ACCESS_TOKEN`, `_VERIFY_TOKEN`) de
    la app de desarrollo.
-4. `docker compose restart web worker`.
+4. `docker compose restart web worker-inbound worker-outbound`.
 5. Si la URL de ngrok cambia, repetir los pasos 2-3 con la URL nueva.
 
 ## Añadir o quitar personas
 
 Edita `DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS` en el `.env` del servidor y reinicia
-`web` y `worker`.
+`web`, `worker-inbound` y `worker-outbound`.
 
 ## Renovación anual del calendario de `demo-autobuses`
 

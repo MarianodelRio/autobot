@@ -202,6 +202,18 @@ def test_villagrande_siempre_pregunta(canal: ChannelType, texto: str) -> None:
     chat.press("loc:villagrande-de-riomayor").expect(text_contains="¿A dónde vas?")
 
 
+def test_parada_homonima_en_dos_localidades_pregunta(canal: ChannelType) -> None:
+    """ "Cruce Sur" es el nombre exacto de una parada en Corralejo y otra en Fontanar
+    (X6): no debe resolver en silencio a una de las dos, debe preguntar cuál."""
+    chat = charla(canal)
+    chat.send("hola")
+    chat.press("menu_horarios")
+    turn = chat.send("Cruce Sur").expect(buttons=["Corralejo", "Fontanar"])
+    botones = turn.replies[-1]
+    assert isinstance(botones, Buttons)
+    assert {b.id for b in botones.buttons} == {"loc:corralejo", "loc:fontanar"}
+
+
 def test_errata_confirmada(canal: ChannelType) -> None:
     chat = charla(canal)
     chat.send("hola")
@@ -219,6 +231,35 @@ def test_errata_rechazada(canal: ChannelType) -> None:
     chat.send("pozolengo")
     chat.press("no").expect(text="Vale, escríbelo de otra forma.")
     assert chat.state["step"] == "ESCRIBIR_ORIGEN"
+    chat.send("Pozoluengo").expect(text_contains="¿A dónde vas?")
+
+
+def test_otro_nombre_ambiguo_en_vez_de_si_no_cambia_de_paso(canal: ChannelType) -> None:
+    """X7: en vez de Sí/No se escribe otro nombre con varias coincidencias
+    ("villagrande"): debe pasar a elegir de la lista, no quedarse atascado en
+    CONFIRMAR_PUEBLO buscando cada botón pulsado como si fuera texto."""
+    chat = charla(canal)
+    chat.send("hola")
+    chat.press("menu_horarios")
+    chat.send("pozolengo")
+    turn = chat.send("villagrande").expect(list_includes="Villagrande de Riomayor")
+    lista = turn.replies[-1]
+    assert isinstance(lista, List)
+    ids = {r.id for s in lista.sections for r in s.rows}
+    assert {"loc:villagrande-de-riomayor", "loc:villagrande-del-soto"} <= ids
+    assert chat.state["step"] == "SEL_ORIGEN"
+    chat.press("loc:villagrande-de-riomayor").expect(text_contains="¿A dónde vas?")
+
+
+def test_otro_nombre_desconocido_en_vez_de_si_no_cambia_de_paso(canal: ChannelType) -> None:
+    """X7: en vez de Sí/No se escribe un nombre sin ninguna coincidencia: debe
+    volver a pedir el pueblo, no quedarse atascado respondiendo siempre lo mismo."""
+    chat = charla(canal)
+    chat.send("hola")
+    chat.press("menu_horarios")
+    chat.send("pozolengo")
+    chat.send("zzzz")
+    assert chat.state["step"] == "SEL_ORIGEN"
     chat.send("Pozoluengo").expect(text_contains="¿A dónde vas?")
 
 

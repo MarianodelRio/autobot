@@ -10,7 +10,7 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `COMPOSE_PROJECT_NAME` | Nombre del proyecto Compose (nombres de contenedor y volumen) | sí | `autobot` | fija en `.env.example`; `ensure-env.sh` la fuerza en el servidor |
 | `PUBLIC_HOST` | Dominio público que atiende Caddy | sí (prod) | vacío | la persona |
 | `SHA` | SHA completo de la imagen a desplegar | sí (prod) | vacío | `make deploy`/CI |
-| `AUTOBOT_IMAGE` | Imagen de `web`/`worker`, sin tag (p.ej. `ghcr.io/<owner>/autobot`) | sí (prod) | vacío | la persona |
+| `AUTOBOT_IMAGE` | Imagen de `web`/`worker-inbound`/`worker-outbound`, sin tag (p.ej. `ghcr.io/<owner>/autobot`) | sí (prod) | vacío | la persona |
 | `AUTOBOT_PANEL_IMAGE` | Imagen del panel, sin tag | sí (prod) | vacío | la persona |
 | `DEPLOY_UID` | `id -u deploy` en la VPS; dueño de los ficheros montados en modo 0600 | sí (prod) | vacío | la persona |
 | `ENVIRONMENT` | `local` o `prod`; cambia los valores por defecto exigidos | sí | `local` | fija en `.env.example` |
@@ -47,7 +47,7 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `SENTRY_DSN` | DSN del proyecto de Sentry; vacío desactiva la integración | no | vacío | la persona |
 | `HEALTHCHECKS_PING_URL` | URL de latido del check "worker" de healthchecks.io | no | vacío | la persona |
 | `RELEASE_SHA` | SHA desplegado, expuesto a la app para los logs | sí (prod) | vacío | `deploy/scripts/deploy.sh` (= `SHA`) |
-| `SERVICE_NAME` | Nombre del servicio en los logs estructurados (`web`/`worker`) | no | `web` | fija por cada servicio en el compose |
+| `SERVICE_NAME` | Nombre del servicio en los logs estructurados (`web`/`worker-inbound`/`worker-outbound`) | no | `web` | fija por cada servicio en el compose |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Ruta de la clave de la cuenta de servicio de Google Calendar; vacío monta `/dev/null` | no | vacío | la persona |
 | `RETENTION_CLEANUP_ENABLED` | Permiso explícito para el borrado nocturno de retención RGPD | sí (para activarlo) | `false` | la persona (aprobación humana) |
 

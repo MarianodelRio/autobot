@@ -70,7 +70,7 @@ class Matcher:
 
     def __init__(self, horarios: Horarios) -> None:
         self.completas: dict[str, set[str]] = {}
-        self.solo_exactas: dict[str, str] = {}
+        self.solo_exactas: dict[str, set[str]] = {}
         self._localidades = horarios.modelo.localidades
 
         for lid, loc in horarios.modelo.localidades.items():
@@ -85,7 +85,7 @@ class Matcher:
             clave = formato.normalizar(parada.nombre)
             if clave == "":
                 continue
-            self.solo_exactas[clave] = parada.localidad
+            self.solo_exactas.setdefault(clave, set()).add(parada.localidad)
 
     def buscar(self, texto: str) -> Coincidencia:
         q = _quitar_relleno_inicial(formato.normalizar(texto))
@@ -99,7 +99,7 @@ class Matcher:
         if q in self.completas:
             candidatas = set(self.completas[q])
         elif q in self.solo_exactas:
-            candidatas = {self.solo_exactas[q]}
+            candidatas = set(self.solo_exactas[q])
         elif len(q) >= MIN_LETRAS:
             for clave, ids in self.completas.items():
                 if clave.startswith(q):
@@ -107,6 +107,11 @@ class Matcher:
             if not candidatas:
                 for clave, ids in self.completas.items():
                     umbral = 1 if len(clave) <= LETRAS_ERRATA_CORTA else 2
+                    # The edit distance can never be smaller than the length
+                    # difference: skip computing it for a name too far in length to
+                    # ever pass the threshold anyway.
+                    if abs(len(clave) - len(q)) > umbral:
+                        continue
                     if damerau(q, clave) <= umbral:
                         candidatas |= ids
                 if candidatas:

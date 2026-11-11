@@ -172,6 +172,43 @@ def test_purge_platform_history_runs_as_fp_app(tenants: Any, settings: Settings)
     assert not AuditEvent.objects.using("owner").filter(id=old_audit.id).exists()
 
 
+def test_old_finished_procrastinate_jobs_are_purged(tenants: Any, settings: Settings) -> None:
+    """X15: `procrastinate_jobs`/`_events` must not grow without bound; a finished job
+    older than 30 days (by its last event, Procrastinate's own criterion) is deleted,
+    cascading to its events, while a recent one is kept."""
+    loaded(tenants)
+    settings.RETENTION_CLEANUP_ENABLED = True
+
+    def finished_job(days_ago: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO procrastinate_jobs (queue_name, task_name, status)"
+                " VALUES ('periodic', 'x', 'succeeded') RETURNING id"
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            job_id: int = row[0]
+            cursor.execute(
+                "INSERT INTO procrastinate_events (job_id, type, at)"
+                " VALUES (%s, 'succeeded', now() - %s * interval '1 day')",
+                [job_id, days_ago],
+            )
+        return job_id
+
+    old_id = finished_job(31)
+    recent_id = finished_job(1)
+    retention.cleanup(now=NOW)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT id FROM procrastinate_jobs WHERE id IN (%s, %s)", [old_id, recent_id]
+        )
+        remaining = {row[0] for row in cursor.fetchall()}
+        cursor.execute("SELECT count(*) FROM procrastinate_events WHERE job_id = %s", [old_id])
+        (old_events,) = cursor.fetchone()
+    assert remaining == {recent_id}
+    assert old_events == 0  # cascaded
+
+
 def test_selector_and_expired_conversations(tenants: Any, settings: Settings) -> None:
     a = loaded(tenants)
     settings.RETENTION_CLEANUP_ENABLED = True

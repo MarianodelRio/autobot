@@ -26,6 +26,8 @@ from autobot.ops.models import SystemSample
 from autobot.runtime.models import Channel, InboundEvent, OutboundMessage
 from autobot.tenancy.registry import get_registry
 
+EXPECTED_WORKERS = 2  # worker-inbound and worker-outbound (compose)
+
 
 class SystemOut(Schema):
     machine: dict[str, float | None]
@@ -268,10 +270,13 @@ def build_system() -> SystemOut:
         .values("taken_at", "cpu_pct", "mem_used_pct", "load1", "disk_used_pct", "db_bytes")
     )
     database = database_info()
+    # worker-inbound and worker-outbound (X14): green only while both beat, so one
+    # dead worker is not hidden by the other.
     worker = (
         ProcrastinateWorker.objects.using("owner")
         .filter(last_heartbeat__gt=now - timedelta(seconds=60))
-        .exists()
+        .count()
+        >= EXPECTED_WORKERS
     )
     logs_ok = False
     if settings.VICTORIALOGS_URL:

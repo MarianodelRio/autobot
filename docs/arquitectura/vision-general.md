@@ -17,10 +17,13 @@ flowchart LR
     SM -->|adaptador de canal| ENV[Envío al proveedor]
 ```
 
-El webhook guarda primero y contesta 200 después; el procesamiento ocurre en el
+El webhook guarda primero y contesta 200 después; el procesamiento ocurre en un
 worker, fuera de la petición HTTP ([ADR-004](adr/ADR-004-entrada-idempotente.md)).
-Las tres colas (`inbound`, `outbound`, `periodic`) corren en un único worker sobre
-PostgreSQL/Procrastinate ([ADR-001](adr/ADR-001-monolito-modular.md)).
+Las tres colas corren sobre PostgreSQL/Procrastinate
+([ADR-001](adr/ADR-001-monolito-modular.md)) en dos workers: `worker-inbound`
+(`inbound` y `periodic`) y `worker-outbound` (`outbound`), para que una caída de
+Google Calendar (la llaman los packs desde `inbound` y la barrida de `salon` desde
+`periodic`) no frene los envíos.
 
 ## Capas y sus reglas
 
@@ -44,7 +47,8 @@ PostgreSQL/Procrastinate ([ADR-001](adr/ADR-001-monolito-modular.md)).
 |---|---|
 | `caddy` | HTTPS automático; expone solo los webhooks de WhatsApp/Telegram (negocio, demo y bot de avisos) y `/health` |
 | `web` | Sirve los webhooks (verifica, guarda, encola) y la API del panel (`/api/panel/`, solo por túnel SSH) |
-| `worker` | Procrastinate: las tres colas, en un solo proceso |
+| `worker-inbound` | Procrastinate: las colas `inbound` (webhooks) y `periodic` (barridas) |
+| `worker-outbound` | Procrastinate: la cola `outbound` (envíos) |
 | `db` | PostgreSQL 18, con Row-Level Security forzada ([ADR-002](adr/ADR-002-multitenancy-rls.md)) |
 | `panel` | SPA estática (Vite) con su propia Caddy interna; proxy de `/api/` hacia `web`; solo por túnel SSH ([ADR-008](adr/ADR-008-panel.md)) |
 | `victorialogs` | Almacén de logs técnicos, 31 días, sin puerto publicado; se consulta desde la pantalla Logs del panel |

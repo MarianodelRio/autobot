@@ -4,6 +4,7 @@ import calendar
 from datetime import datetime, timedelta
 from typing import Any
 
+from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.db import connection
 from django.db.models import Q, QuerySet
@@ -24,6 +25,7 @@ from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
 
 BATCH_SIZE = 1000
+PROCRASTINATE_RETENTION_DAYS = 30
 
 
 def year_before(now: datetime) -> datetime:
@@ -105,3 +107,13 @@ def cleanup(*, now: datetime | None = None) -> None:
     # SECURITY DEFINER (autobot/db/grants.py): fp_app has no DELETE on ops_alert or audit_event.
     with connection.cursor() as cursor:
         cursor.execute("SELECT purge_platform_history(%s)", [annual])
+    # procrastinate_jobs/_events grow without bound otherwise (X15); a job's events
+    # cascade with it. Procrastinate has no sync variant of this manager method.
+    from autobot.runtime.jobs import app
+
+    async_to_sync(app.job_manager.delete_old_jobs)(
+        nb_hours=PROCRASTINATE_RETENTION_DAYS * 24,
+        include_failed=True,
+        include_cancelled=True,
+        include_aborted=True,
+    )

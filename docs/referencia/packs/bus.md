@@ -23,6 +23,10 @@ lo saca a un directorio con esta estructura:
 | `calendario.yaml` | `vigencia: DD/MM/AAAA - DD/MM/AAAA`; `festivos` es fecha → nombre y `festivos_locales` es localidad → (fecha → nombre); `curso` declara `inicio_clases`, `fin_clases`, `vacaciones` (`DD/MM/AAAA - DD/MM/AAAA`) y `no_lectivos`; `sin_servicio_todas_las_lineas` usa `DD/MM`; `pendientes` es opcional. |
 | `lineas/<id>.yaml` | Una línea por fichero con id `a-z0-9-`: `nombre`, `nombre_corto?` (≤24), `telefono_demanda?`, `avisos?`, `no_circula?`, `temporadas`, `dias`, `horarios` y `pendientes?`. |
 
+El id de una localidad (`loc:<id>`) y el de una línea (`linea:<id>:<página>`) se
+muestran como id de botón o de fila: la validación los rechaza si, con su
+prefijo, superarían los 64 bytes del límite común de canal.
+
 Una línea declara `temporadas` como `invierno: 01/09 - 22/06` o `anual: todo
 el año`; entre todas cubren el año sin huecos ni solapes. En `dias`, cada
 temporada asigna cada clase (lunes a domingo y festivos) a `horario`,

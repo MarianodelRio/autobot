@@ -397,7 +397,12 @@ def change_status(
             raise StoreError("invalid_status", "El estado no permite esta acción")
         doc = _document({**current.document, "status": status})
         candidate = replace(current, document=doc)
-        _validate(candidate, sources)
+        if action != "pause":
+            # Pausing must always be possible, even for a tenant degraded for a reason
+            # unrelated to this change (X10): it changes nothing else, so there is
+            # nothing new to validate, and it is precisely the way to take a broken
+            # tenant out of service.
+            _validate(candidate, sources)
         return _write(
             candidate,
             revision,

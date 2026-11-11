@@ -4,7 +4,7 @@ Requisitos: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta)
 
 ```bash
 cd apps/backend && uv sync && cd -
-make dev-bootstrap     # db, roles, migraciones, permisos, demos, web y worker
+make dev-bootstrap     # db, roles, migraciones, permisos, demos, web y los workers
 make check             # ruff, mypy, import-linter y tests contra la BD local
 ```
 
@@ -21,8 +21,8 @@ panel con datos; `--days` y `--reset` se pasan con
 niega fuera de `local`.
 
 La imagen local instala las dependencias de desarrollo (`INSTALL_DEV=true`); la de
-producción mantiene `--no-dev`. El worker usa `watchfiles` y reinicia su proceso al
-cambiar Python en `apps/backend/src/`, respetando el cierre del worker antes de
+producción mantiene `--no-dev`. Cada worker usa `watchfiles` y reinicia su proceso al
+cambiar Python en `apps/backend/src/`, respetando su cierre antes de
 sustituirlo. En local, `.env` es opcional. Si se necesita Calendar,
 `GOOGLE_SERVICE_ACCOUNT_FILE` apunta al fichero local de la cuenta de servicio (ruta
 relativa a `deploy/compose/`, por convención `../../var/google_sa.json`); vacío monta
@@ -33,7 +33,7 @@ Para importar un negocio: `make tenant-import DIR=<directorio> SECRETS=<yaml-pri
 (`SECRETS` es opcional). `HOST` usa por defecto el alias SSH `autobot` de
 `~/.ssh/config`; se puede cambiar con `HOST=<servidor>`.
 
-`make status` muestra los servicios locales y `make logs SERVICE=worker` sigue sus logs
+`make status` muestra los servicios locales y `make logs SERVICE=worker-inbound` (o `worker-outbound`) sigue sus logs
 (sin `SERVICE`, los de todos los servicios). `make tenant-health SLUG=<slug>` comprueba
 el negocio desde `web`; este último necesita las credenciales de los servicios que usa.
 

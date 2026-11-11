@@ -241,38 +241,210 @@ Lo más urgente es S1 y S2 antes de desplegar, y S3 antes de abrir la demo a nad
 
 ### X. Errores de funcionamiento
 
+Soluciones acordadas el 2026-11-11. Cada una con su test que reproduzca el fallo antes de
+corregirlo; las de conversación, además, con su escenario.
+
 **Graves:**
 
-| Id | Esf. | Problema | Dónde |
-|---|---|---|---|
-| X1 | S | Si muere el worker durante `ops_check`, se atasca para siempre y no hay más alertas | `jobs.py:251` |
-| X2 | S | Un corte de ~30 s de Meta o Telegram pierde respuestas y recordatorios: solo reintenta 2+4+8+16 s | `outbound.py:89`, `jobs.py:113` |
-| X3 | M | Si falla algo entre el commit y encolar, la respuesta se pierde. Falta un reconciliador | `jobs.py:62`, `process.py:160` |
-| X4 | S | `[CFG] HORARIO 25:00-26:00` en el calendario tumba «Pedir cita» | `parser.py:115`, `slots.py:27` |
-| X5 | S | Un 502 de Telegram se reintenta a ciegas y puede duplicar. Debe tratarse como ambiguo | `telegram/adapter.py:216` |
-| X6 | S | `bus` elige pueblo en silencio si dos paradas se llaman igual | `bus/matcher.py:88` |
-| X7 | S | `bus` se queda atascado en `CONFIRMAR_PUEBLO` | `bus/conversation.py:613` |
+- [x] **X1 (S)** Si muere el worker durante `ops_check`, se atasca para siempre y no hay
+  más alertas (`jobs.py:251`): el `ops_check` colgado retiene el candado, el siguiente
+  espera en cola y `retry_stalled_jobs` no puede reponer el colgado porque choca con el
+  `queueing_lock` del que espera. Solución: si una tarea colgada no se puede reponer, se
+  marca como fallida para liberar el candado. Test que simule el worker muerto.
+  Hecho: `retry_stalled_jobs` (`autobot/runtime/jobs.py`) marca `failed` (libera lock y
+  queueing_lock) la tarea colgada cuando `retry_job` choca con otra ya `todo` bajo el
+  mismo `queueing_lock`. Test:
+  `test_a_stalled_ops_check_colliding_with_a_queued_one_is_failed_not_stuck`.
+- [x] **X2 (S)** Un corte de ~30 s de Meta o Telegram pierde respuestas y recordatorios:
+  solo reintenta 2+4+8+16 s (`outbound.py:89`, `jobs.py:113`). Solución: espaciar los
+  reintentos hasta ~30 min (p. ej. 5 s, 30 s, 2 min, 10 min, 30 min), respetando
+  `retry_after` si el proveedor lo da. Solo se reintenta cuando es seguro que no se envió
+  (ver X5).
+  Hecho: `OUTBOUND_RETRY_WAITS_S = (5, 30, 120, 600, 1800)` en `runtime/outbound.py`;
+  `SendRetryStrategy` (`runtime/jobs.py`) la usa salvo que el proveedor dé `retry_after`.
+  Test: `test_retry_strategy` (`tests/platform/channels/test_send.py`).
+- [x] **X3 (M)** Si falla algo entre el commit y encolar, la respuesta se pierde
+  (`jobs.py:62`, `process.py:160`). Solución: encolar dentro de la misma transacción que
+  guarda la respuesta (el conector Django de Procrastinate usa la conexión de Django;
+  comprobarlo primero). Si no fuera posible, un reconciliador cada 5 min que encole los
+  envíos `pending` sin tarea.
+  Hecho: comprobado que `DjangoConnector` (`procrastinate/contrib/django/django_connector.py`)
+  usa `connections[alias]`, la misma conexión de Django; `defer_sends`
+  (`runtime/outbound.py`) ya no usa `defer_after_commit`, encola con
+  `app.configure_task(...).defer(...)` dentro de la misma `tenant_tx` que guarda la
+  respuesta (tanto en `process_event` como en `run_periodic`), así que un fallo al
+  encolar revierte también el mensaje. No hizo falta reconciliador. Test:
+  `test_a_failed_defer_rolls_back_the_reply_instead_of_losing_it`
+  (`tests/platform/runtime/test_process.py`).
+- ~~**X4 (S)** `[CFG] HORARIO 25:00-26:00` en el calendario tumba «Pedir cita».~~
+  **Descartada (2026-11-11):** el peluquero solo crea eventos con sus horas; no se da.
+- [x] **X5 (S)** Un 502 de Telegram se reintenta a ciegas y puede duplicar
+  (`telegram/adapter.py:216`). Solución: 429 → reintentar; 5xx → ambiguo (`unknown`),
+  nunca reenviado; fallo de conexión antes de enviar → reintentar.
+  Hecho: `classify` (`channels/telegram/adapter.py`) separa 429 (`RetryLater`) de 5xx
+  (`Ambiguous`, nunca reenviado); los fallos de conexión antes de enviar ya devolvían
+  `RetryLater` (sin cambios). Test: `test_send_outcome_table` (`tests/contract/test_telegram.py`).
+- [x] **X6 (S)** `bus` elige pueblo en silencio si dos paradas se llaman igual
+  (`bus/matcher.py:88`, `solo_exactas` sobrescribe). Solución: guardar todos los pueblos
+  de cada nombre de parada y, si hay más de uno, preguntar. Escenario.
+  Hecho: `solo_exactas` guarda ahora `dict[str, set[str]]` (todas las localidades de cada
+  nombre de parada) en `packs/bus/matcher.py`. Fixture `horarios_ficticios/paradas.yaml`
+  con dos paradas "Cruce Sur" (Corralejo y Fontanar). Tests:
+  `test_parada_homonima_en_dos_localidades_pregunta` en `test_matcher.py` y, como
+  escenario, en `test_escenarios.py`.
+- [x] **X7 (S)** `bus` se queda atascado en `CONFIRMAR_PUEBLO`
+  (`bus/conversation.py:613`): si en vez de Sí/No se escribe otro nombre con varias o
+  ninguna coincidencia, se muestra la lista sin cambiar de paso y la opción pulsada se
+  busca como texto, en bucle. Solución: pasar al paso que corresponde (elegir de la lista
+  o escribir de nuevo). Escenario.
+  Hecho: `_handle_confirmar_pueblo` (`packs/bus/conversation.py`) pasa a `SEL_ORIGEN` o
+  `SEL_DESTINO` antes de llamar a `_buscar`, igual que la búsqueda de texto libre, en vez
+  de quedarse en `CONFIRMAR_PUEBLO`. Escenarios:
+  `test_otro_nombre_ambiguo_en_vez_de_si_no_cambia_de_paso` y
+  `test_otro_nombre_desconocido_en_vez_de_si_no_cambia_de_paso`
+  (`tests/packs/bus/test_escenarios.py`).
 
 **Medios:**
 
-| Id | Esf. | Problema | Dónde |
-|---|---|---|---|
-| X8 | S | Alertas que no se cierran nunca por un fallo antiguo | `ops/check.py:82,93` |
-| X9 | S | `unreachable` no vuelve a false al desbloquear el bot | `outbound.py:174` |
-| X10 | M | Un negocio degradado bloquea todos los despliegues; ni siquiera se puede pausar | `deploy.sh:29,118`, `store.py:400` |
-| X11 | S | Datasets o enlaces válidos que rompen al usarse (límites) | `bus/interactive.py:66,221` |
-| X12 | S | Errores de red no considerados transitorios: pueden quedar dos citas | `google_calendar/client.py:132` |
-| X13 | S | Un fallo puntual de salud queda cacheado 24 h | `ops/health.py:178` |
-| X14 | M | Una caída de Google frena a todos: 4 hilos para las tres colas | `compose.prod.yaml:98` |
-| X15 | S | `procrastinate_jobs` y `_events` crecen sin límite | `retention.py:47` |
+- [x] **X8 (S)** Alertas que no se cierran nunca por un fallo antiguo
+  (`ops/check.py:82,93`). Solución: contar solo envíos fallidos o ambiguos de las últimas
+  24 h.
+  Hecho: la consulta de `outbound_failed` en `ops/check.py` añade `created_at__gte` (para
+  `failed`) y `unknown_at__gte` (para `unknown`) con el mismo corte de 24 h. Test:
+  `test_outbound_row` (`tests/platform/ops/test_ops.py`).
+- [x] **X9 (S)** `unreachable` no vuelve a false al desbloquear el bot (`outbound.py:174`).
+  Solución: quitarlo cuando el contacto escribe o un envío sale bien.
+  Hecho: `_upsert_contact` (`runtime/process.py`) lo pone a `False` cuando el contacto
+  escribe, y `_record` (`runtime/outbound.py`) cuando un envío sale bien (`Sent`). Tests:
+  `test_a_send_that_succeeds_clears_unreachable` (`tests/platform/channels/test_send.py`),
+  escenario ajustado en `test_a_contact_that_cannot_receive_becomes_unreachable`
+  (`tests/platform/runtime/test_end_to_end.py`) y `test_no_proactive_to_an_opted_out_or_unreachable_contact`
+  reescrito para no mezclarse con el nuevo comportamiento (`tests/platform/runtime/test_process.py`).
+- [x] **X10 (M)** Un negocio degradado bloquea todos los despliegues; ni siquiera se puede
+  pausar (`deploy.sh:29,118`, `store.py:400`). Solución: el despliegue solo falla por
+  negocios degradados nuevos respecto a antes de desplegar; «pausar» se permite siempre,
+  sin revalidar el resto de la configuración.
+  Hecho: `deploy.sh` mide `baseline_degraded` con `/health/internal` antes de tocar nada
+  y `wait_health` solo falla si `degraded` supera esa base; `change_status` (`store.py`)
+  ya no llama a `_validate` para `action == "pause"`. Tests:
+  `test_a_tenant_degraded_before_the_deploy_does_not_block_it`,
+  `test_a_new_degraded_tenant_still_rolls_back` (`tests/tools/test_deploy.py`) y
+  `test_pause_is_never_blocked_by_validation` (`tests/platform/tenancy/test_store.py`).
+- [x] **X11 (S)** Datasets válidos que rompen al usarse por los límites de canal
+  (`bus/interactive.py:66,221`): ids de más de 64 bytes, títulos largos. Solución:
+  comprobar esos límites al validar el dataset (`bus-subir`, `tenant_dataset`) y
+  rechazarlo con un mensaje claro.
+  Hecho: `formato.py` comprueba, al validar el dataset, que `loc:<id>` y
+  `linea:<id>:<página>` no superen los 64 bytes de `MAX_ID_BYTES` (los títulos ya se
+  truncaban o se validaban: `MAX_TITULO_LINEA` para línea, descripción de respaldo para
+  localidad). Documentado en `docs/referencia/packs/bus.md`. Tests:
+  `test_localidad_id_demasiado_largo_para_un_id_de_canal_es_error` y
+  `test_linea_id_demasiado_largo_para_un_id_de_canal_es_error`
+  (`tests/packs/bus/test_formato.py`).
+- [x] **X12 (S)** Errores de red no considerados transitorios: pueden quedar dos citas
+  (`google_calendar/client.py:132`), p. ej. los de `httplib2`. Solución: tratar todo error
+  de red como transitorio y, al reintentar un `insert` con el mismo id, tomar el 409
+  («ya existe») como reserva hecha.
+  Hecho: `_call` (`integrations/google_calendar/client.py`) también captura
+  `httplib2.error.HttpLib2Error` (no hereda de `OSError`) como transitorio; el 409 de
+  `insert_event` que toma la reserva como hecha ya existía. Test:
+  `test_transient_failures_retry_twice[httplib2.ServerNotFoundError]`
+  (`tests/contract/test_google_calendar.py`).
+- [x] **X13 (S)** Un fallo puntual de salud queda cacheado 24 h (`ops/health.py:178`).
+  Solución: si la comprobación falla, repetirla a los ~15 min; los aciertos siguen 24 h.
+  Hecho: `daily` (`ops/health.py`) usa `RETRY_FAILED_S` (15 min) como TTL cuando el
+  resultado cacheado tiene `issues`, y `DAY_S` cuando no. Tests:
+  `test_daily_health_row_retries_a_failure_at_15_min`,
+  `test_daily_health_row_caches_a_success_for_a_day` (`tests/platform/ops/test_ops.py`).
+- [x] **X14 (M)** Una caída de Google frena a todos: 4 hilos para las tres colas
+  (`compose.prod.yaml:98`). Solución: un worker para `inbound` y otro para `outbound` y
+  `periodic`, y timeout corto en las llamadas a Google. Medir memoria en A16.
+  Hecho (la persona eligió dos servicios de compose, no un solo proceso con
+  supervisor): `worker-inbound` (`inbound` y `periodic`, las dos que llaman a Google)
+  y `worker-outbound` (solo `outbound`), concurrencia 2 cada uno, `--remove-orphans`
+  para retirar el `worker` antiguo, el panel exige latido de los dos, en `compose.yaml`, `compose.local.yaml` y
+  `compose.prod.yaml`; actualizados `deploy.sh` (`wait_worker` comprueba los dos),
+  `restore.sh`, `Makefile`, `check_prod_config.py` y los docs que nombraban el
+  servicio `worker` (ADR-005, vision-general, procedimientos, incidencias). Timeout de
+  Calendar bajado de 10 a `TIMEOUT_S = 5` s. Medir memoria en A16 sigue pendiente.
+  Tests: `test_a_tenant_degraded_before_the_deploy_does_not_block_it` y el resto de
+  `test_deploy.py` (siguen en verde con los dos workers),
+  `test_service_uses_a_short_timeout` (`tests/contract/test_google_calendar.py`).
+- [x] **X15 (S)** `procrastinate_jobs` y `_events` crecen sin límite (`retention.py:47`).
+  Solución: la limpieza diaria borra las tareas terminadas de más de 30 días.
+  Hecho: `cleanup()` (`runtime/retention.py`) llama a `app.job_manager.delete_old_jobs`
+  (vía `async_to_sync`, Procrastinate no tiene variante síncrona) tras lo demás, dentro
+  de `RETENTION_CLEANUP_ENABLED` como el resto de la limpieza. Las filas de
+  `procrastinate_events` de una tarea borrada caen con ella (`ON DELETE CASCADE`). Test:
+  `test_old_finished_procrastinate_jobs_are_purged` (`tests/platform/runtime/test_retention.py`).
 
-**Leves (S, juntos):** foto en cualquier paso de `salon`; mover una cita manual sin nombre la
-llama «Cliente»; un `patch` fallido aborta todo el barrido; lista de días tras la
-medianoche; coste sin poda en el matcher; la `baja` no se registra en un negocio degradado.
+**Leves (S, juntos):**
 
-**Rendimiento (S, juntos):** cachear `Credentials` por proceso; `fields=` en las lecturas
-de Calendar; escribir `record_calendar` solo al cambiar de estado; repartir los barridos
-en el tiempo; índices parciales en `outbound_message`.
+- [x] Mover una cita manual sin nombre la titula «Cliente»: conservar el título original
+  (con teléfono se encuentra bien; es solo estético).
+  Hecho: `move_name` en `packs/salon/conversation.py` cae a `source.summary` antes de
+  `"Cliente"`. Test: `test_move_preserves_the_original_title_when_no_name_parses`
+  (`tests/packs/salon/test_management.py`).
+- [x] Foto o audio en cualquier paso de `salon`: responder que solo entiende texto y
+  botones y repetir el paso.
+  Hecho: `handle()` (`packs/salon/conversation.py`) llama a `_redisplay()`, que repite
+  el paso actual (antes solo ofrecía «Volver al menú», perdiendo el progreso). Test:
+  `test_unsupported_message_repeats_the_step_instead_of_resetting`
+  (`tests/packs/salon/test_booking.py`).
+- [x] Un `patch` fallido aborta todo el barrido: saltar la cita que falla y seguir.
+  Hecho: `sweep.run` (`packs/salon/sweep.py`) captura `TransientError`/`PermanentError` de
+  `patch_description` y sigue con la siguiente cita (el aviso ya encolado se mantiene;
+  solo se reintenta la marca «Estado» en el siguiente barrido). Test:
+  `test_a_failed_patch_skips_that_appointment_not_the_whole_sweep`
+  (`tests/packs/salon/test_sweep.py`).
+- [x] Lista de días tras la medianoche: comprobar el día al elegirlo y, si ya pasó,
+  mostrar la lista nueva.
+  Al mirarlo: `hours()` ya cae a `self.days(refresh=True)` cuando el día elegido no
+  tiene ningún hueco (`compute_slots` descarta todo lo anterior a `now`), así que el
+  resultado para el contacto ya era correcto. Hecho de todos modos: comprobar el día
+  al elegirlo evita la llamada a Calendar de más (`availability()` para un día que ya
+  sabemos pasado) antes de refrescar. Test:
+  `test_a_day_that_already_passed_is_refreshed_without_querying_calendar`
+  (`tests/packs/salon/test_booking.py`).
+- [x] Coste sin poda en el matcher: descartar antes los nombres de longitud muy distinta.
+  Hecho: en `Matcher.buscar` (`packs/bus/matcher.py`), el bucle de erratas descarta una
+  clave antes de llamar a `damerau` si su diferencia de longitud con la consulta ya
+  supera el umbral (la distancia de edición nunca es menor que esa diferencia). Test:
+  `test_errata_descarta_por_longitud_antes_de_calcular_damerau` (`tests/packs/bus/test_matcher.py`).
+- [x] La `baja` no se registra en un negocio degradado: registrarla antes de mirar el
+  estado del negocio (RGPD).
+  Hecho: en `process_event` (`runtime/process.py`) la rama `opt_out`/`opt_in` se
+  comprueba antes que la del tenant degradado o sin pack; si no hay pack, deja la
+  conversación intacta (`keep_conversation`) para no tocar su estado. Test:
+  `test_opt_out_is_registered_even_on_a_degraded_tenant` (`tests/platform/runtime/test_process.py`).
+
+**Rendimiento (S, juntos):**
+
+- [x] Cachear `Credentials` de Google por proceso.
+  Hecho: `_credentials()` (`integrations/google_calendar/client.py`) cachea por
+  `credentials_file` (un solo fichero de cuenta de servicio en toda la plataforma),
+  protegido con un lock; `service()` ya no recarga ni reparsea el fichero y su clave
+  RSA en cada `CalendarClient` (uno por contexto de pack construido). Test:
+  `test_service_caches_credentials_per_file` (`tests/contract/test_google_calendar.py`).
+- [x] `fields=` en las lecturas de Calendar.
+  Hecho: `_EVENT_FIELDS` (`integrations/google_calendar/client.py`) limita `list`,
+  `get`, `insert` y `patch` a los campos que `_event()` lee, en vez de la respuesta
+  completa (`attendees`, `conferenceData`, `reminders`...). Test:
+  `test_reads_and_writes_request_only_the_fields_used` (`tests/contract/test_google_calendar.py`).
+- [x] Escribir `record_calendar` solo al cambiar de estado.
+  Hecho: `record_calendar` (`ops/state.py`) compara el estado calculado con el actual
+  antes de pedir el candado consultivo y escribir; la observación "ok" repetida (el
+  caso normal) ya no escribe. Test: `test_record_calendar_skips_the_write_when_nothing_changed`
+  (`tests/platform/ops/test_ops.py`).
+- [x] Repartir los barridos en el tiempo con un desfase por negocio.
+  Hecho: `dispatch` (`runtime/periodic.py`) difiere cada `run_periodic` con
+  `schedule_in` según `_offset_s` (hash estable de tenant+nombre, dentro del periodo),
+  en vez de encolar todos los negocios activos en el mismo instante. Test:
+  `test_dispatch_staggers_tenants_within_the_period` (`tests/platform/runtime/test_periodic.py`).
+- [x] Índices parciales en `outbound_message` para los estados `pending` y `unknown`.
+  Al mirarlo: `unknown` ya tenía su índice parcial (`0007_retention_indexes`). Hecho:
+  añadido `outbound_pending_idx` (migración `0024_outbound_pending_idx`). Test:
+  `test_outbound_pending_index_is_partial` (`tests/platform/test_models.py`).
 
 ### A. Infraestructura e instalación
 
@@ -636,7 +808,7 @@ Se da por terminado cuando todo esto se cumple:
 
 - [ ] Ningún término real aparece en la versión final del repo ni en las imágenes nuevas.
   El repo no nombra ningún cliente, dominio o servidor concreto.
-- [ ] S1–S3 y X1–X7 corregidos, con tests. Resto de S y X resueltos o aplazados por escrito.
+- [ ] S1–S3 y X1–X7 (salvo X4, descartada) corregidos, con tests. Resto de S y X resueltos o aplazados por escrito.
 - [ ] `make server-init` deja una VM limpia funcionando, y repetirlo no cambia nada.
 - [ ] Vuelta atrás probada con un SHA roto.
 - [ ] Backup automático en restic y restauración ensayada, con su tiempo anotado.

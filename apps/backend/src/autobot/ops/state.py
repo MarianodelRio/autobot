@@ -47,17 +47,31 @@ def sweep_baseline(tenant_id: UUID, channel: str, now: datetime) -> datetime:
     return datetime.fromisoformat(data.get("last_sweep") or data["observed_at"])
 
 
+def _calendar_state(data: dict[str, Any], status: str) -> tuple[int, bool]:
+    errors = int(data.get("calendar_errors", 0)) + 1 if status != "ok" else 0
+    unavailable = bool(data.get("calendar_unavailable", False))
+    if status == "denied":
+        unavailable = True
+    elif status == "ok":
+        unavailable = False
+    return errors, unavailable
+
+
 def record_calendar(tenant_id: UUID, channel: str, status: str) -> None:
+    """Most calls observe "ok" with nothing new to say: skip the advisory lock and the
+    write (one per Calendar call otherwise) unless the state actually changes."""
     name = key(tenant_id, channel)
+    data = read(tenant_id, channel)
+    if "observed_at" in data and _calendar_state(data, status) == (
+        int(data.get("calendar_errors", 0)),
+        bool(data.get("calendar_unavailable", False)),
+    ):
+        return
     lock = int.from_bytes(hashlib.sha256(name.encode()).digest()[:8], signed=True)
     with transaction.atomic():
         with connection.cursor() as cursor:
             cursor.execute("SELECT pg_advisory_xact_lock(%s)", [lock])
         data = read(tenant_id, channel)
         data.setdefault("observed_at", timezone.now().isoformat())
-        data["calendar_errors"] = int(data.get("calendar_errors", 0)) + 1 if status != "ok" else 0
-        if status == "denied":
-            data["calendar_unavailable"] = True
-        elif status == "ok":
-            data["calendar_unavailable"] = False
+        data["calendar_errors"], data["calendar_unavailable"] = _calendar_state(data, status)
         cache.set(name, data, timeout=None)

@@ -180,6 +180,20 @@ def test_rejected_recipient_marks_the_contact_unreachable(tenants: Any, meta: An
     assert Contact.objects.using("owner").get(id=message.contact_id).unreachable
 
 
+def test_a_send_that_succeeds_clears_unreachable(tenants: Any, meta: Any) -> None:
+    """X9: `unreachable` must not stay stuck once a send to that contact gets through."""
+    tenants(wa_tenant())
+    meta(error(400, 131026))
+    first = a_reply()
+    send(first)
+    Contact.objects.using("owner").filter(id=first.contact_id).update(unreachable=True)
+
+    meta(ok())
+    second = a_reply()
+    send(second)
+    assert not Contact.objects.using("owner").get(id=first.contact_id).unreachable
+
+
 def test_rejected_auth_fails_and_prepares_the_alert(
     tenants: Any, meta: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -237,7 +251,7 @@ def test_retry_strategy() -> None:
         retry_at = decision(exception, attempts).retry_at
         return float(round((retry_at - before).total_seconds()))
 
-    assert [wait_s(SendRetry(None), n) for n in range(4)] == [2, 4, 8, 16]
+    assert [wait_s(SendRetry(None), n) for n in range(5)] == [5, 30, 120, 600, 1800]
     assert wait_s(SendRetry(6.2), 0) == 7  # retry_after, rounded up
     assert decision(SendRetry(None), 5) is None  # the message is failed by then
     assert decision(RuntimeError("bug"), 0) is None

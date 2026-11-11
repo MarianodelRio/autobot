@@ -213,10 +213,14 @@ def classify(response: httpx.Response) -> SendOutcome:
         return Rejected(reason, "auth")
     if status == 403:  # the user blocked the bot
         return Rejected(reason, "recipient")
-    if status == 429 or status >= 500:
+    if status == 429:
         parameters = data.get("parameters")
         after = parameters.get("retry_after") if isinstance(parameters, dict) else None
         return RetryLater(_seconds(after))
+    if status >= 500:
+        # The request may have reached Telegram and been acted on despite the error
+        # answer: never retried blindly, only left `unknown`.
+        return Ambiguous(reason)
     if 400 <= status < 500:
         return Rejected(reason, "other")
     return Ambiguous(reason)

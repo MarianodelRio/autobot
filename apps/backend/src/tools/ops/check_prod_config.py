@@ -68,15 +68,17 @@ def main() -> None:
     web_mounts = {mount["target"]: mount for mount in services["web"]["volumes"]}
     assert web_mounts["/run/secrets/google_sa.json"]["read_only"]
     assert web_mounts["/run/ops"]["read_only"]
-    assert services["web"]["read_only"] and services["worker"]["read_only"]
+    assert services["web"]["read_only"]
     assert services["web"]["user"] == "10001"
     assert services["caddy"]["user"] == "10001"
     assert services["panel"]["ports"][0]["host_ip"] == "127.0.0.1"
     assert services["panel"]["read_only"]
     assert services["panel"]["user"] == "10001"
-    assert not services["worker"]["environment"].get("DB_OWNER_URL")
-    assert not services["worker"]["environment"].get("DB_READONLY_URL")
-    assert not services["worker"]["environment"].get("FP_OWNER_PASSWORD")
+    for worker in ("worker-inbound", "worker-outbound"):
+        assert services[worker]["read_only"]
+        assert not services[worker]["environment"].get("DB_OWNER_URL")
+        assert not services[worker]["environment"].get("DB_READONLY_URL")
+        assert not services[worker]["environment"].get("FP_OWNER_PASSWORD")
     assert not services["db"]["environment"].get("DJANGO_SECRET_KEY")
     assert not services["caddy"]["environment"].get("DB_APP_URL")
 

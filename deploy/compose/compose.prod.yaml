@@ -92,14 +92,28 @@ services:
       timeout: 5s
       retries: 6
 
-  worker:
+  # Two workers, so a Google Calendar outage cannot starve the sends (X14): Google is
+  # only called from `inbound` (the packs) and `periodic` (the salon calendar sweep),
+  # both in worker-inbound; worker-outbound only sends.
+  worker-inbound:
     <<: *app
     environment:
       <<: *app-env
       DB_OWNER_URL: ""
       DB_READONLY_URL: ""
-      SERVICE_NAME: worker
-    command: python manage.py procrastinate worker --concurrency 4 --shutdown-graceful-timeout 50
+      SERVICE_NAME: worker-inbound
+    command: python manage.py procrastinate worker --queues inbound,periodic --concurrency 2 --shutdown-graceful-timeout 50
+    stop_grace_period: 60s
+    init: true
+
+  worker-outbound:
+    <<: *app
+    environment:
+      <<: *app-env
+      DB_OWNER_URL: ""
+      DB_READONLY_URL: ""
+      SERVICE_NAME: worker-outbound
+    command: python manage.py procrastinate worker --queues outbound --concurrency 2 --shutdown-graceful-timeout 50
     stop_grace_period: 60s
     init: true
 

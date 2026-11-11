@@ -1,9 +1,9 @@
 # Volver atrás un despliegue
 
 **Síntoma:** un SHA nuevo rompe `/health` o el flujo tras desplegar. **Diagnóstico:**
-consulta `var/.deployed-sha`, logs de `web`/`worker` y el resultado de `deploy.yml`.
-El script revierte automáticamente si `/health` no queda sano en 60 s o si el
-`worker` se para o se reinicia en sus primeros ~10 s. Si falla antes de cambiar la
+consulta `var/.deployed-sha`, logs de `web`/`worker-inbound`/`worker-outbound` y el
+resultado de `deploy.yml`. El script revierte automáticamente si `/health` no queda
+sano en 60 s o si alguno de los dos workers se para o se reinicia en sus primeros ~10 s. Si falla antes de cambiar la
 imagen (pull, migración o la validación de configuración), mantiene la imagen anterior, devuelve el
 repositorio al SHA anterior y avisa con `deploy_aborted`. Comprueba si el aviso a
 ops llegó.

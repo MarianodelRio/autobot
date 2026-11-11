@@ -227,6 +227,46 @@ def test_the_worker_dies_in_the_middle_of_an_event(tenants: Any, meta: Meta) -> 
     assert {e.status for e in events()} == {"done"}
 
 
+def test_a_stalled_ops_check_colliding_with_a_queued_one_is_failed_not_stuck() -> None:
+    """A dead worker leaves `ops_check` `doing`, holding its `lock` and `queueing_lock`.
+    The next tick queues behind the `queueing_lock` as `todo`. retry_stalled_jobs cannot
+    put the stalled one back to `todo` (it would collide with the one already `todo`
+    under the same `queueing_lock`): it must fail it instead, so the lock is freed and
+    the queued one can run."""
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO procrastinate_workers (last_heartbeat) VALUES (now() - interval '1 hour')"
+            " RETURNING id"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        cursor.execute(
+            "INSERT INTO procrastinate_jobs"
+            " (queue_name, task_name, lock, queueing_lock, status, worker_id)"
+            " VALUES (%s, 'ops_check', 'ops_check', 'ops_check', 'doing', %s) RETURNING id",
+            [PERIODIC, row[0]],
+        )
+        (stalled_id,) = cursor.fetchone() or (None,)
+        cursor.execute(
+            "INSERT INTO procrastinate_jobs"
+            " (queue_name, task_name, lock, queueing_lock, args, status) VALUES (%s,"
+            " 'ops_check', 'ops_check', 'ops_check', '{\"timestamp\": 0}', 'todo') RETURNING id",
+            [PERIODIC],
+        )
+        (queued_id,) = cursor.fetchone() or (None,)
+    defer_retry_stalled_jobs()
+    run_worker()
+    assert set(job_statuses("retry_stalled_jobs")) == {"succeeded"}
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "SELECT id, status FROM procrastinate_jobs WHERE id IN (%s, %s)",
+            [stalled_id, queued_id],
+        )
+        statuses = dict(cursor.fetchall())
+    assert statuses[stalled_id] == "failed"
+    assert statuses[queued_id] == "succeeded"
+
+
 def test_a_send_cut_while_sending_ends_unknown_and_frees_the_contact(
     tenants: Any, meta: Meta
 ) -> None:
@@ -326,10 +366,11 @@ def test_a_contact_that_cannot_receive_becomes_unreachable(tenants: Any, meta: M
     for body in (wa_press("color"), wa_press("pick_0")):
         assert post_wa(body) == 200
     run_worker()
-    # Replies still go out (the contact wrote): the color was picked, so the pack did
-    # ask for its proactive notice, which was dropped.
+    # The contact wrote again: `unreachable` is cleared (X9), so its proactive notice
+    # (from picking a color) goes out too, not just the replies.
     assert "Elige un color" in meta.bodies() and "Has elegido Rojo." in meta.bodies()
-    assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
+    assert not Contact.objects.using("owner").get().unreachable
+    assert OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
 
 
 def test_a_degraded_tenant_does_not_affect_another(tenants: Any, meta: Meta) -> None:

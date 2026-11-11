@@ -254,6 +254,16 @@ def test_defaults_exist_in_the_database() -> None:
         assert cursor.fetchone() == (False, False, "")
 
 
+def test_outbound_pending_index_is_partial() -> None:
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "SELECT indexdef FROM pg_indexes"
+            " WHERE tablename = 'outbound_message' AND indexname = 'outbound_pending_idx'"
+        )
+        (indexdef,) = cursor.fetchone()
+    assert "WHERE" in indexdef and "pending" in indexdef
+
+
 def test_no_redundant_tenant_index() -> None:
     with connections["owner"].cursor() as cursor:
         cursor.execute(

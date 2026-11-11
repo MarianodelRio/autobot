@@ -79,8 +79,14 @@ def collect() -> list[Finding]:
             # Messages already unknown before this version have no transition time.
             # First observation establishes a conservative lower bound, never creation.
             messages.filter(status="unknown", unknown_at__isnull=True).update(unknown_at=now)
+            day_ago = now - timedelta(hours=24)
             if messages.filter(
-                Q(status="failed") | Q(status="unknown", unknown_at__lt=now - timedelta(minutes=10))
+                Q(status="failed", created_at__gte=day_ago)
+                | Q(
+                    status="unknown",
+                    unknown_at__lt=now - timedelta(minutes=10),
+                    unknown_at__gte=day_ago,
+                )
             ).exists():
                 pending.append(
                     (

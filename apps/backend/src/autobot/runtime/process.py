@@ -122,11 +122,16 @@ def process_event(
     if over_limit:
         log.warning("contact over its message limit: event %s saved, not answered", event.id)
         result, notices, keep_conversation = PackResult(), [], True
+    elif command == "opt_out" or command == "opt_in":
+        # An RGPD-protected request: always honoured and recorded, even for a
+        # degraded tenant (checked next) that would otherwise only get the generic
+        # unavailable text, with no UpdateContact action to register it.
+        result = opt_result(command)
+        if tenant.pack is None:
+            keep_conversation = True  # tx2 needs a pack to touch conversation.state
     elif tenant.pack is None or tenant.is_degraded:
         # Its conversation is left untouched, to go on once the tenant is fixed.
         result, notices, keep_conversation = PackResult([Text(UNAVAILABLE_TEXT)]), [], True
-    elif command == "opt_out" or command == "opt_in":
-        result = opt_result(command)
     else:
         if command == "menu":
             state, message = {}, menu_message(message.received_at)
@@ -445,7 +450,10 @@ def _upsert_contact(tenant: LoadedTenant, channel: str, item: InboundItem, now: 
         if item.display_name and not contact.display_name:
             contact.display_name = item.display_name
         contact.last_activity_at = now
-        contact.save(update_fields=["phone_e164", "display_name", "last_activity_at"])
+        contact.unreachable = False  # the contact just wrote: reachable again (X9)
+        contact.save(
+            update_fields=["phone_e164", "display_name", "last_activity_at", "unreachable"]
+        )
     return contact
 
 

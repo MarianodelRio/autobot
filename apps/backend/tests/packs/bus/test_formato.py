@@ -360,6 +360,35 @@ paradas:
     assert any("tienen el mismo nombre normalizado" in e for e in resultado.errores)
 
 
+def test_localidad_id_demasiado_largo_para_un_id_de_canal_es_error(tmp_path: Path) -> None:
+    # X11: "loc:<id>" (4 bytes de prefijo) no puede superar los 64 bytes del id de
+    # botón/fila de WhatsApp o Telegram (bus/interactive.py).
+    horarios_dir = _build(tmp_path, BASE_VALIDA.format(fila="08:00  08:10  08:20"))
+    largo = "x" * 61
+    paradas = f"""\
+localidades:
+  {largo}: {{ nombre: Pueblo A }}
+  pueblo-b: {{ nombre: Pueblo B }}
+  pueblo-c: {{ nombre: Pueblo C }}
+paradas:
+  AAA: {{ nombre: Pueblo A, localidad: {largo} }}
+  BBB: {{ nombre: Pueblo B, localidad: pueblo-b }}
+  CCC: {{ nombre: Pueblo C, localidad: pueblo-c }}
+"""
+    (horarios_dir / "paradas.yaml").write_text(paradas, encoding="utf-8")
+    resultado = formato.validar(horarios_dir)
+    assert any("bytes" in e and largo in e for e in resultado.errores)
+
+
+def test_linea_id_demasiado_largo_para_un_id_de_canal_es_error(tmp_path: Path) -> None:
+    # X11: "linea:<id>:<página>" tampoco puede superar los 64 bytes.
+    horarios_dir = _build(
+        tmp_path, BASE_VALIDA.format(fila="08:00  08:10  08:20"), linea_nombre="x" * 60
+    )
+    resultado = formato.validar(horarios_dir)
+    assert any("bytes" in e and "x" * 60 in e for e in resultado.errores)
+
+
 def test_parada_coincide_con_nombre_de_otra_localidad_es_error(tmp_path: Path) -> None:
     horarios_dir = _build(tmp_path, BASE_VALIDA.format(fila="08:00  08:10  08:20"))
     paradas = """\

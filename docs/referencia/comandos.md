@@ -9,7 +9,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 |---|---|
 | `make help` | Lista los objetivos por sección (Desarrollo, Calidad, Panel, Negocios, Bus, Producción); objetivo por defecto |
 | `make up` | Tras el bootstrap, levanta los contenedores (`docker compose up -d --build`) |
-| `make dev-bootstrap` | Prepara db y roles, construye la imagen local con herramientas dev, migra, reaplica permisos, siembra demos y levanta web/worker; se puede repetir |
+| `make dev-bootstrap` | Prepara db y roles, construye la imagen local con herramientas dev, migra, reaplica permisos, siembra demos y levanta web/workers; se puede repetir |
 | `make dev-reset` | Exige escribir `RESET`, elimina el volumen local y repite el bootstrap |
 | `make tenant-import DIR=<dir> [SECRETS=<yaml>]` | Importa un directorio contra la BD local desde el host; acepta rutas con espacios |
 | `make dev-activity` | `manage.py seed_dev_activity`: actividad falsa y realista (mensajes, respuestas, avisos, alertas abiertas y resueltas, un `unknown`, un trabajo fallido y muestras de sistema) para ver el panel con datos; se niega fuera de `local` |

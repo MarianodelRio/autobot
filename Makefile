@@ -47,7 +47,7 @@ telegram-poll: ## Long polling del bot de Telegram de un tenant (SLUG=<slug>)
 
 export DIR
 
-dev-bootstrap: ## Prepara BD, roles, migra, siembra demos y levanta web/worker
+dev-bootstrap: ## Prepara BD, roles, migra, siembra demos y levanta web/workers
 	docker compose up -d --wait db
 	$(MAKE) db-roles
 	docker compose build web
@@ -56,7 +56,7 @@ dev-bootstrap: ## Prepara BD, roles, migra, siembra demos y levanta web/worker
 	docker compose run --rm -T web python manage.py seed_demos
 	docker compose run --rm -T web python manage.py panel_user exists panel \
 		|| docker compose run --rm web python manage.py panel_user create panel
-	docker compose up -d --no-build web worker victorialogs
+	docker compose up -d --no-build --remove-orphans web worker-inbound worker-outbound victorialogs
 
 dev-reset: ## Exige escribir RESET, borra el volumen local y repite el bootstrap
 	@read -r -p "Borrar la BD local y reiniciar (escribe RESET): " answer; test "$$answer" = RESET

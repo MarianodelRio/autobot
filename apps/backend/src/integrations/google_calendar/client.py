@@ -1,6 +1,7 @@
 """Google Calendar client; no cache, globals or personal-data logs."""
 
 import re
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -15,9 +16,15 @@ from google.auth.exceptions import RefreshError, TransportError
 from google.oauth2 import service_account
 from googleapiclient.discovery import build  # type: ignore[import-untyped]
 from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
+from httplib2.error import HttpLib2Error  # type: ignore[import-untyped]
 
 from core.errors import PermanentError, TransientError
 from core.text import fold, strip_html
+
+# Short, so an outage blocks an `inbound` thread for as little time as possible
+# (X14: `inbound` has its own worker, but a long wait here still delays that
+# contact's retries and the alert from catching on).
+TIMEOUT_S = 5
 
 
 class CalendarTransientError(TransientError):
@@ -26,6 +33,11 @@ class CalendarTransientError(TransientError):
 
 class CalendarPermanentError(PermanentError):
     pass
+
+
+# Partial response (`fields=`): only what `_event()` reads, instead of the full
+# resource (attendees, conferenceData, reminders...) on every read or write.
+_EVENT_FIELDS = "id,summary,description,start,end,created,status,extendedProperties/private"
 
 
 @dataclass(frozen=True)
@@ -41,14 +53,32 @@ class Event:
     private: dict[str, str] = field(default_factory=dict)
 
 
+_credentials_cache: dict[str, Any] = {}
+_credentials_lock = threading.Lock()
+
+
+def _credentials(credentials_file: str) -> Any:
+    """Loading and parsing the service account file (and its RSA key) is expensive:
+    cached per process instead of redone for every `CalendarClient` (one per pack
+    context built)."""
+    with _credentials_lock:
+        cached = _credentials_cache.get(credentials_file)
+        if cached is None:
+            cached = service_account.Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
+                credentials_file, scopes=["https://www.googleapis.com/auth/calendar.events"]
+            )
+            _credentials_cache[credentials_file] = cached
+        return cached
+
+
 def service(credentials_file: str) -> Any:
-    credentials = service_account.Credentials.from_service_account_file(  # type: ignore[no-untyped-call]
-        credentials_file, scopes=["https://www.googleapis.com/auth/calendar.events"]
-    )
+    credentials = _credentials(credentials_file)
     return build(
         "calendar",
         "v3",
-        http=google_auth_httplib2.AuthorizedHttp(credentials, http=httplib2.Http(timeout=10)),
+        http=google_auth_httplib2.AuthorizedHttp(
+            credentials, http=httplib2.Http(timeout=TIMEOUT_S)
+        ),
         cache_discovery=False,
     )
 
@@ -129,7 +159,11 @@ class CalendarClient:
             except CalendarPermanentError:
                 self._observe("denied")
                 raise
-            except OSError, TimeoutError, TransportError:
+            except OSError, TimeoutError, TransportError, HttpLib2Error:
+                # Any network error (httplib2's own, a DNS failure, a reset
+                # connection...) may mean the request reached Google: treated as
+                # transient so the job retries, and `insert_event`'s 409 handling
+                # finds the reservation already made instead of duplicating it.
                 pass
             if attempt < 2:
                 self._sleep(0.2 * (2**attempt))
@@ -186,7 +220,12 @@ class CalendarClient:
             if end is not None:
                 bounds["timeMax"] = end.isoformat()
             raw = self._request(
-                "list", **bounds, singleEvents=True, orderBy="startTime", pageToken=token
+                "list",
+                **bounds,
+                singleEvents=True,
+                orderBy="startTime",
+                pageToken=token,
+                fields=f"nextPageToken,items({_EVENT_FIELDS})",
             )
             events.extend(
                 self._event(e) for e in raw.get("items", []) if e.get("status") != "cancelled"
@@ -198,7 +237,7 @@ class CalendarClient:
 
     def get_event(self, gcal_id: str) -> Event | None:
         try:
-            raw = self._call("get", eventId=gcal_id)
+            raw = self._call("get", eventId=gcal_id, fields=_EVENT_FIELDS)
         except HttpError as exc:
             if exc.resp.status in (404, 410):
                 return None
@@ -209,7 +248,7 @@ class CalendarClient:
 
     def insert_event(self, event: Mapping[str, Any], gcal_id: str) -> Event:
         try:
-            raw = self._call("insert", body=dict(event) | {"id": gcal_id})
+            raw = self._call("insert", body=dict(event) | {"id": gcal_id}, fields=_EVENT_FIELDS)
         except HttpError as exc:
             if exc.resp.status == 409:
                 existing = self.get_event(gcal_id)
@@ -231,7 +270,12 @@ class CalendarClient:
         ]
         description = "\n".join([*lines, *(f"{k}: {v}" for k, v in fields.items())])
         result = self._event(
-            self._request("patch", eventId=gcal_id, body={"description": description})
+            self._request(
+                "patch",
+                eventId=gcal_id,
+                body={"description": description},
+                fields=_EVENT_FIELDS,
+            )
         )
         if result.description != description:
             raise CalendarPermanentError("Calendar did not confirm description")
@@ -244,7 +288,10 @@ class CalendarClient:
         private = event.private | fields
         result = self._event(
             self._request(
-                "patch", eventId=gcal_id, body={"extendedProperties": {"private": private}}
+                "patch",
+                eventId=gcal_id,
+                body={"extendedProperties": {"private": private}},
+                fields=_EVENT_FIELDS,
             )
         )
         if any(result.private.get(key) != value for key, value in private.items()):

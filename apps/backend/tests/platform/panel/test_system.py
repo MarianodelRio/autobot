@@ -77,10 +77,11 @@ def test_system_endpoint(
             "UPDATE procrastinate_events SET at=%s WHERE job_id=%s AND type='deferred'",
             [NOW - timedelta(minutes=3), job],
         )
-        db.execute(
-            "INSERT INTO procrastinate_workers(last_heartbeat) VALUES (%s)",
-            [NOW - timedelta(seconds=61)],
-        )
+        for _ in range(2):  # worker-inbound and worker-outbound
+            db.execute(
+                "INSERT INTO procrastinate_workers(last_heartbeat) VALUES (%s)",
+                [NOW - timedelta(seconds=61)],
+            )
     with patch("autobot.panel.services.system.timezone.now", return_value=NOW):
         response = get(authed_client, "system")
     assert response.status_code == 200, response.content
@@ -105,6 +106,15 @@ def test_system_endpoint(
     assert [row["sha"] for row in data["deploys"]] == ["new", "old"]
     assert data["release"] == "abc123"
     assert seen == [("http://logs.test/health", {"timeout": 5})]
+    # One worker alive and the other dead is still not green (X14).
+    with connections["owner"].cursor() as db:
+        db.execute(
+            "UPDATE procrastinate_workers SET last_heartbeat=%s"
+            " WHERE id = (SELECT min(id) FROM procrastinate_workers)",
+            [NOW - timedelta(seconds=59)],
+        )
+    with patch("autobot.panel.services.system.timezone.now", return_value=NOW):
+        assert not get(authed_client, "system").json()["services"]["worker"]
     with connections["owner"].cursor() as db:
         db.execute(
             "UPDATE procrastinate_workers SET last_heartbeat=%s", [NOW - timedelta(seconds=59)]

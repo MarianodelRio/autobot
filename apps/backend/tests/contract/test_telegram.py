@@ -318,8 +318,13 @@ def test_send_posts_sendmessage_with_the_chat_id() -> None:
         ),
         (httpx.Response(429, json=load("error_429.json")), RetryLater(17.0)),
         (httpx.Response(429), RetryLater(None)),
-        (httpx.Response(502), RetryLater(None)),
-        (httpx.Response(500, json={"ok": False, "error_code": 500}), RetryLater(None)),
+        # 5xx: the request may have reached Telegram and been acted on despite the error
+        # answer, so it is never retried blindly, only left `unknown` (ambiguous).
+        (httpx.Response(502), Ambiguous("HTTP 502")),
+        (
+            httpx.Response(500, json={"ok": False, "error_code": 500}),
+            Ambiguous("HTTP 500, error 500"),
+        ),
     ],
 )
 def test_send_outcome_table(answer: httpx.Response, outcome: object) -> None:

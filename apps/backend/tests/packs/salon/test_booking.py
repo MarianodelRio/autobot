@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 
 from core.errors import TransientError
+from core.replies import List
 from core.testing.harness import Conversation
 from packs.salon.models import CalendarEvent
 from tests.packs.salon.test_config import configuration
@@ -107,6 +108,47 @@ def test_no_free_day(salon: Conversation) -> None:
     salon.press("menu_book")
     salon.press("service_corte").expect(text_contains="No hay horarios")
     assert salon.state == {}
+
+
+def test_a_day_that_already_passed_is_refreshed_without_querying_calendar(
+    salon: Conversation,
+) -> None:
+    """The days list may have been shown before midnight; by the time the contact
+    picks a day from it, that day is already gone (simulated here directly on the
+    state, to avoid the session timeout a real multi-hour wait would also trigger).
+    `hours()` would itself notice no slot is left and refresh, but checking the day
+    first avoids that wasted Calendar round-trip."""
+    salon.config = configuration(opening_hours={"martes": ["10:00-10:30"]}, booking_window_days=1)
+    salon.send("hola")
+    salon.press("menu_book")
+    salon.press("service_corte")
+    assert salon.state["days"] == ["2026-03-24"]
+    salon.state["days"] = ["2026-03-20"]  # a stale, already-elapsed day
+    before = salon.calendar.calls.count("list_events")
+    salon.press("day_2026-03-20", check=False).expect(list_includes="Martes 24 de marzo")
+    # Without the early check, `hours()` queries availability for the elapsed day
+    # first, finds nothing, and only then refreshes the list: two calls instead of one.
+    assert salon.calendar.calls.count("list_events") == before + 1
+    assert salon.state["step"] == "BOOK_DAY" and salon.state["days"] == ["2026-03-24"]
+
+
+def test_unsupported_message_repeats_the_step_instead_of_resetting(
+    salon: Conversation,
+) -> None:
+    """A photo or audio message, at any step, must repeat that step's own prompt
+    (the days list here) instead of dropping the contact's progress to the menu."""
+    salon.config = configuration(opening_hours={"martes": ["10:00-10:30"]}, booking_window_days=1)
+    salon.send("hola")
+    salon.press("menu_book")
+    salon.press("service_corte")
+    assert salon.state["step"] == "BOOK_DAY"
+    turn = salon.unsupported().expect(text_contains="mensaje de texto")
+    assert salon.state["step"] == "BOOK_DAY"
+    assert any(
+        isinstance(r, List) and any("Martes" in row.title for s in r.sections for row in s.rows)
+        for r in turn.replies
+    )
+    salon.press("day_2026-03-24").expect(text_contains="Selecciona la hora")
 
 
 def test_known_name_audio_and_validation(salon: Conversation) -> None:

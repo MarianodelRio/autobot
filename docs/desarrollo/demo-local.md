@@ -11,7 +11,7 @@ completo, incluida la puerta WhatsApp, en [procedimientos/demo.md](../procedimie
 make ngrok                                                  # dominio reservado
 # en .env: PUBLIC_URL=<esa URL>, DEMO_TELEGRAM_TOKEN, DEMO_TELEGRAM_USERS,
 # DEMO_TELEGRAM_WEBHOOK_SECRET (p. ej. `openssl rand -hex 32`)
-make up && docker compose restart web worker
+make up && docker compose restart web worker-inbound worker-outbound
 docker compose exec web python manage.py telegram_set_webhook demo
 ```
 

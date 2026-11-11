@@ -23,6 +23,7 @@ from typing import Any
 
 import yaml
 
+from core.limits import MAX_ID_BYTES
 from core.text import normalize
 from packs.bus.modelo import (
     Calendario,
@@ -107,6 +108,26 @@ CAMPOS_OBSERVACION = {"letra", "tipo", "ambitos", "texto"}
 # Título de fila de una lista interactiva de WhatsApp.
 MAX_TITULO_LINEA = 24
 LINEA_ID_RE = re.compile(r"^[a-z0-9-]+$")
+
+# packs/bus/interactive.py construye los ids de botón/fila con estos prefijos
+# ("loc:<id de localidad>", "linea:<id de línea>:<página>"); el límite común de
+# canal (MAX_ID_BYTES) se comprueba aquí, no al usarse, para rechazar el
+# dataset con un mensaje claro en vez de que la conversación falle (X11).
+_PREFIJO_LOC = "loc:"
+_PREFIJO_LINEA = "linea:"
+_SUFIJO_LINEA_MARGEN = ":999"  # página con hasta 3 cifras, de sobra
+
+
+def _validar_id_de_canal(
+    errores: list[str], path: Path, que: str, valor: str, overhead: int
+) -> None:
+    size = len(valor.encode()) + overhead
+    if size > MAX_ID_BYTES:
+        errores.append(
+            f"{path}: {que} '{valor}' sería un id de {size} bytes al mostrarse en una "
+            f"fila o botón (máximo {MAX_ID_BYTES})"
+        )
+
 
 # ── calendario.yaml ──────────────────────────────────────────────────────────────────
 # Fechas con año real (a diferencia de las temporadas de línea, que no lo
@@ -325,6 +346,7 @@ def _validar_localidades_paradas(
                 f"{path}: localidad '{lid}': campo obsoleto 'zona' (P18: los "
                 "pueblos se agrupan por línea)"
             )
+        _validar_id_de_canal(errores, path, "localidad", lid, len(_PREFIJO_LOC))
 
         nombre_norm = normalizar(str(campos["nombre"]))
         alias_raw = campos.get("alias", []) or []
@@ -1616,6 +1638,13 @@ def validar(directorio: Path | str) -> Resultado:
                     "fichero solo puede tener minúsculas sin tilde, dígitos "
                     "y guiones)"
                 )
+            _validar_id_de_canal(
+                errores,
+                path,
+                "línea",
+                lid,
+                len(_PREFIJO_LINEA) + len(_SUFIJO_LINEA_MARGEN),
+            )
             datos_linea = _cargar_yaml(path, errores)
             if datos_linea is None:
                 continue

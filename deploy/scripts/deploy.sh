@@ -22,11 +22,22 @@ fi
 export SHA="$target"
 compose=(docker compose --project-name autobot -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml)
 
+# A tenant already degraded before this deploy must never block it, including pausing
+# it (X10): only a tenant that becomes degraded *because of this deploy* does. Best
+# effort: unreachable (e.g. the first deployment) counts as no pre-existing ones.
+baseline_degraded=0
+if response=$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:8000/health/internal 2>/dev/null); then
+  baseline_degraded=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tenants"]["degraded"])' \
+    <<<"$response" 2>/dev/null) || baseline_degraded=0
+fi
+
 wait_health() {
   local deadline=$((SECONDS + 60)) response attempt
   for ((attempt=0; attempt<30 && SECONDS<deadline; attempt++)); do
     if response=$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:8000/health/internal 2>/dev/null) && \
-      python3 -c 'import json,sys; r=json.load(sys.stdin); t=r["tenants"]; assert r["status"] == "ok" and t["degraded"] == 0 and t["unreadable"] == 0' <<<"$response" 2>/dev/null; then
+      python3 -c 'import json,sys; r=json.load(sys.stdin); t=r["tenants"]
+assert r["status"] == "ok" and t["degraded"] <= int(sys.argv[1]) and t["unreadable"] == 0' \
+        "$baseline_degraded" <<<"$response" 2>/dev/null; then
       return 0
     fi
     sleep 2
@@ -43,15 +54,18 @@ wait_panel() {
   return 1
 }
 
-# The worker has no HTTP endpoint: a crash at start shows as a stopped container or a
-# restart under `restart: unless-stopped`, so it must stay up and unrestarted for ~10 s.
+# Neither worker has an HTTP endpoint: a crash at start shows as a stopped container or
+# a restart under `restart: unless-stopped`, so each must stay up and unrestarted for
+# ~10 s (X14: inbound and outbound/periodic are now two separate workers).
 wait_worker() {
-  local id sample
-  id=$("${compose[@]}" ps -q worker) || return 1
-  [[ -n $id ]] || return 1
-  for sample in 1 2 3 4 5; do
-    [[ $(docker inspect -f '{{.State.Running}} {{.RestartCount}}' "$id") == 'true 0' ]] || return 1
-    [[ $sample == 5 ]] || sleep 2
+  local service id sample
+  for service in worker-inbound worker-outbound; do
+    id=$("${compose[@]}" ps -q "$service") || return 1
+    [[ -n $id ]] || return 1
+    for sample in 1 2 3 4 5; do
+      [[ $(docker inspect -f '{{.State.Running}} {{.RestartCount}}' "$id") == 'true 0' ]] || return 1
+      [[ $sample == 5 ]] || sleep 2
+    done
   done
 }
 
@@ -84,7 +98,7 @@ if [[ $previous == "$target" ]]; then
     exit 0
   fi
   echo 'Recorded image is unhealthy; restarting services' >&2
-  "${compose[@]}" up --no-deps -d web worker panel
+  "${compose[@]}" up --no-deps -d web worker-inbound worker-outbound panel
   if wait_health && wait_panel; then
     record_deploy already
     exit 0
@@ -113,7 +127,7 @@ abort() {
 # The first deployment needs PostgreSQL before a one-shot migration container.
 "${compose[@]}" up -d --wait db || abort
 "${compose[@]}" exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh || abort
-"${compose[@]}" pull web worker panel || abort
+"${compose[@]}" pull web worker-inbound worker-outbound panel || abort
 # Logs are not critical: victorialogs never aborts or rolls back a deployment.
 "${compose[@]}" pull victorialogs || echo 'Could not pull victorialogs; logs will be unavailable' >&2
 "${compose[@]}" up -d victorialogs || echo 'Could not start victorialogs; logs will be unavailable' >&2
@@ -129,7 +143,7 @@ rollback() {
     export SHA="$previous"
     restore_checkout
     local failed=0
-    if ! "${compose[@]}" up --no-deps -d web worker panel; then
+    if ! "${compose[@]}" up --no-deps -d web worker-inbound worker-outbound panel; then
       echo 'Could not restart previous image; operator action required' >&2
       failed=1
     fi
@@ -158,7 +172,9 @@ rollback() {
   exit 1
 }
 
-"${compose[@]}" up --no-deps -d web worker panel || rollback
+# --remove-orphans: drops containers of services no longer defined (the single
+# `worker` from before X14), which would otherwise keep running the old image.
+"${compose[@]}" up --no-deps --remove-orphans -d web worker-inbound worker-outbound panel || rollback
 wait_health || rollback
 wait_worker || rollback
 wait_panel || rollback

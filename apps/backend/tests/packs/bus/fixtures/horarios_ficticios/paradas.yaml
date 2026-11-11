@@ -25,6 +25,11 @@ localidades:
   riofondo: { nombre: Riofondo } # ambigüedad de prefijo "rio" con Riomayor
   penablanca: { nombre: Peñablanca } # mayúsculas/tildes al buscar
   cruce-del-risco: { nombre: Cruce del Risco, alias: [el cruce] }
+  # Dos localidades con una parada del mismo nombre (test_matcher.py): el
+  # texto exacto de esa parada no debe resolver en silencio a una de las
+  # dos, debe preguntar cuál.
+  corralejo: { nombre: Corralejo }
+  fontanar: { nombre: Fontanar }
 
 paradas:
   POZ: { nombre: Pozoluengo, localidad: pozoluengo }
@@ -49,6 +54,8 @@ paradas:
   RFD: { nombre: Riofondo, localidad: riofondo }
   PBL: { nombre: Peñablanca, localidad: penablanca }
   CDR: { nombre: Cruce del Risco, localidad: cruce-del-risco }
+  CRA: { nombre: Cruce Sur, localidad: corralejo }
+  CRF: { nombre: Cruce Sur, localidad: fontanar }
 
 # Riomayor, Campoalto y Pinarnuevo son paradas de paso de la misma línea
 # pero no se venden billetes entre ninguna pareja de las tres (P12b).

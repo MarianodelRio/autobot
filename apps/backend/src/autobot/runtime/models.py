@@ -168,6 +168,11 @@ class OutboundMessage(TenantScoped):
                 condition=models.Q(status="unknown"),
                 name="outbound_unknown_idx",
             ),
+            models.Index(
+                fields=["tenant", "created_at"],
+                condition=models.Q(status="pending"),
+                name="outbound_pending_idx",
+            ),
             # apply_status looks a message up by the provider id
             models.Index(fields=["tenant", "provider_message_id"], name="outbound_provider_id_idx"),
         ]

@@ -1,7 +1,7 @@
 from dataclasses import replace
 from datetime import timedelta
 
-from core.errors import PermanentError
+from core.errors import PermanentError, TransientError
 from core.idem import IdemKeys
 from core.testing.harness import Conversation
 from packs.salon.models import CalendarEvent
@@ -59,6 +59,24 @@ def test_manual_confirmation_cutoff_and_status(salon: Conversation) -> None:
     assert "Estado: pendiente" in salon.calendar.events[recent.gcal_id].description
     assert "Estado:" not in salon.calendar.events["old"].description
     assert salon.run_periodic("calendar_sweep") == actions
+
+
+def test_a_failed_patch_skips_that_appointment_not_the_whole_sweep(
+    salon: Conversation,
+) -> None:
+    salon.config = configuration(
+        manual_confirmations_enabled=True,
+        manual_confirmations_since=salon.clock.now() - timedelta(hours=2),
+    )
+    if salon.channel == "telegram":
+        return  # manual confirmations are phone-only (WhatsApp)
+    upcoming(salon, manual=True, gcal_id="fails")
+    upcoming(salon, manual=True, gcal_id="ok")
+    salon.calendar.fail("patch_description", TransientError("offline"))
+    salon.run_periodic("calendar_sweep")
+    assert {a.idem_key for a in salon.proactive} == {"confirm:fails", "confirm:ok"}
+    assert "Estado:" not in salon.calendar.events["fails"].description
+    assert "Estado: pendiente" in salon.calendar.events["ok"].description
 
 
 def test_confirmed_manual_status_is_preserved(salon: Conversation) -> None:

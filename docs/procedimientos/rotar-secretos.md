@@ -17,14 +17,14 @@ terminal: exporta el documento con `tenant_config export <slug> <dir>` y vuelve 
 importarlo con `tenant_config import <dir> --secrets <yaml> --comment "Rotación de
 canal"`. Ese YAML privado solo es una entrada de importación (slug → campos); se
 cifra al escribirlo en BD y no se monta en el servidor.
-Los secretos de plataforma se cambian en `.env` (0600), recreando `web` y `worker`.
+Los secretos de plataforma se cambian en `.env` (0600), recreando `web`, `worker-inbound` y `worker-outbound`.
 Coordina el cambio
 de webhook y ventana de solape; prueba primero con `testers.main`. Nunca incluyas
 valores en Git, argumentos de jobs, logs ni mensajes de revisión.
 
 **Bot de avisos (dueños):** `NOTIFY_BOT_TOKEN` y `NOTIFY_BOT_WEBHOOK_SECRET` (32
 caracteres o más) van en el `.env` de la VPS. Tras cambiar cualquiera de los dos,
-reinicia `web` y `worker` y vuelve a registrar el webhook con
+reinicia `web`, `worker-inbound` y `worker-outbound` y vuelve a registrar el webhook con
 `manage.py telegram_set_webhook notify`, que envía el secreto nuevo a Telegram. Hasta
 entonces, las actualizaciones con el secreto antiguo se rechazan con 401 y Telegram las
 reintenta. Comprueba que un "hola" al bot recibe el menú. Los vínculos de los dueños
@@ -41,13 +41,13 @@ todas pueden descifrar. La clave fija de desarrollo nunca se usa en producción.
 1. Genera una clave con `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
    y guárdala en el gestor de contraseñas, sin enviarla a logs ni a git.
 2. En el `.env` del servidor, pon `SECRETS_ENCRYPTION_KEY=<nueva>,<anterior>`.
-   La persona recrea `web` y `worker` para que reciban el nuevo entorno.
+   La persona recrea `web`, `worker-inbound` y `worker-outbound` para que reciban el nuevo entorno.
 3. La persona ejecuta `docker compose exec -T web python manage.py tenant_secrets_reencrypt`.
    Recifra todas las filas de `tenant_secret` con la primera clave, en una transacción
    `owner`; cada cambio deja una auditoría `tenant.secrets` con `reencrypted: true`.
    Si alguna fila es ilegible, revierte toda la operación. Revisa las claves y repite.
-4. Cuando termine correctamente, deja solo la nueva clave en `.env` y recrea ambos
-   servicios. Comprueba la salud de los canales.
+4. Cuando termine correctamente, deja solo la nueva clave en `.env` y recrea `web`,
+   `worker-inbound` y `worker-outbound`. Comprueba la salud de los canales.
 5. Guarda la clave anterior cifrada fuera del servidor mientras existan backups que la
    necesiten (retención de restic: seis meses). Los backups antiguos no se recifran;
    restaurarlos requiere las claves con las que se generaron.

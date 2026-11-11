@@ -19,6 +19,7 @@ from autobot.tenancy.registry import LoadedTenant
 from autobot.tenancy.schema import TelegramSecrets, WhatsAppChannel, WhatsAppSecrets
 
 DAY_S = 86400
+RETRY_FAILED_S = 15 * 60  # a one-off failure is rechecked sooner than a success (X13)
 
 
 @dataclass(frozen=True)
@@ -167,7 +168,8 @@ def tenant_health(
 
 
 def daily(name: UUID | str, check: Any, *, force: bool = False) -> list[Issue]:
-    """Cache results, including failures, for 24 h; results outlive their check deadline.
+    """Cache a success for 24 h; a failure only for `RETRY_FAILED_S` (~15 min), so a
+    one-off failure does not stay cached a full day once the service is back.
 
     A separate checked_at controls refresh, so a stale failure remains observable if
     a checker is interrupted. Calls are serialized by ops_check's queueing lock.
@@ -175,7 +177,11 @@ def daily(name: UUID | str, check: Any, *, force: bool = False) -> list[Issue]:
     key = f"health:{name}"
     result = cache.get(key)
     now = timezone.now().timestamp()
-    if force or not isinstance(result, dict) or now - result["checked_at"] >= DAY_S:
+    stale = not isinstance(result, dict)
+    if not stale:
+        ttl = RETRY_FAILED_S if result["issues"] else DAY_S
+        stale = now - result["checked_at"] >= ttl
+    if force or stale:
         issues = check()
         result = {"checked_at": now, "issues": issues}
         cache.set(key, result, timeout=None)

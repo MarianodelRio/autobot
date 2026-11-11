@@ -7,6 +7,8 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
+import pytest
+
 from packs.bus import formato, loader, matcher
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -209,6 +211,33 @@ def test_sin_coincidencia() -> None:
     for texto in ("pozoluengo riomayor", "xyz", "la", ""):
         r = m.buscar(texto)
         assert r.tipo == "sin_coincidencia"
+
+
+def test_parada_homonima_en_dos_localidades_pregunta() -> None:
+    # "Cruce Sur" es el nombre exacto de una parada en Corralejo y otra en
+    # Fontanar: no debe resolver en silencio a una de las dos.
+    h = _horarios()
+    m = matcher.Matcher(h)
+    r = m.buscar("Cruce Sur")
+    assert r.tipo == "elegir"
+    assert set(_nombres(h, r)) == {"Corralejo", "Fontanar"}
+
+
+def test_errata_descarta_por_longitud_antes_de_calcular_damerau(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _horarios()
+    m = matcher.Matcher(h)
+    llamadas = []
+    original = matcher.damerau
+
+    def contado(a: str, b: str) -> int:
+        llamadas.append((a, b))
+        return original(a, b)
+
+    monkeypatch.setattr(matcher, "damerau", contado)
+    m.buscar("zorfa")  # 5 letras, muy lejos de nombres largos como "villagrande..."
+    assert all(abs(len(a) - len(b)) <= 2 for a, b in llamadas)
 
 
 def test_sin_alias_no_reconocido() -> None:

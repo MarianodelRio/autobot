@@ -208,6 +208,36 @@ def test_an_unexpected_pack_error_gives_the_recovery_text(
     assert bodies(event) == [RECOVERY_TEXT]
 
 
+def test_a_failed_defer_rolls_back_the_reply_instead_of_losing_it(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If queueing `send_message` fails, tx2 must not have already committed the reply
+    with no job to send it: `defer_sends` runs inside tx2, so the failure rolls back the
+    reply along with it, and the event is left `pending` to retry."""
+    from procrastinate.jobs import JobDeferrer
+
+    tenants(wa_tenant())
+    before = {e.id for e in events()}
+    assert post_wa(wa_text("hola")) == 200
+    (event,) = [e for e in events() if e.id not in before]
+
+    real_defer = JobDeferrer.defer
+
+    def boom(self: JobDeferrer, **kwargs: Any) -> int:
+        if self.job.task_name == "send_message":
+            raise RuntimeError("connection dropped")
+        return real_defer(self, **kwargs)
+
+    monkeypatch.setattr(JobDeferrer, "defer", boom)
+
+    with pytest.raises(RuntimeError):
+        process.process_event(tenant().id, event.id, last_attempt=False)
+
+    assert outbound() == []
+    assert [j for j in jobs() if j[0] == "send_message"] == []
+    assert InboundEvent.objects.using("owner").get(id=event.id).status == "pending"
+
+
 # ── Conversation rules ────────────────────────────────────────────────────
 
 
@@ -327,6 +357,17 @@ def test_a_pack_mutating_ctx_state_does_not_change_the_saved_state(
     assert conversation().state == {"step": 1}
 
 
+def test_opt_out_is_registered_even_on_a_degraded_tenant(tenants: Any) -> None:
+    """A "baja" is an RGPD-protected request: it must always be honoured and recorded,
+    even while the tenant's own config is degraded (and would otherwise only get the
+    generic unavailable text, with no action to register it)."""
+    tenants(wa_tenant(config={"colors": "not a list"}))
+    assert tenant().is_degraded
+    event = receive(wa_text("baja"))
+    assert bodies(event) == [OPT_OUT_TEXT]
+    assert contact().opt_out and contact().opt_out_at is not None
+
+
 def test_a_degraded_tenant_answers_with_the_generic_text(tenants: Any) -> None:
     tenants(wa_tenant(config={"colors": "not a list"}))
     assert tenant().is_degraded
@@ -351,18 +392,33 @@ def test_send_proactive_creates_a_proactive_message(tenants: Any) -> None:
     assert sum(j[0] == "send_message" for j in jobs()) == len(outbound())
 
 
-def test_no_proactive_to_an_opted_out_or_unreachable_contact(tenants: Any) -> None:
+def test_no_proactive_to_an_opted_out_or_unreachable_contact(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The target is a separate contact from the one writing: it must not write back in
+    # between (that would clear `unreachable`, X9) to keep testing the block itself.
     tenants(wa_tenant())
+    other = Contact.objects.using("owner").create(
+        tenant_id=tenant().id, channel="test", external_id="100000001", opt_out=True
+    )
+
+    def notice(ctx: PackContext, msg: IncomingMessage) -> PackResult:
+        action = SendProactive(
+            to=ContactRef(contact_id=other.id),
+            template=toy.TEMPLATE_THANKS,
+            params=["Rojo"],
+            button_payloads=["thanks_yes"],
+            idem_key=ctx.idem.event("thanks"),
+        )
+        return PackResult(replies=[Text("ok")], actions=[action])
+
+    use_pack(monkeypatch, handle_message=notice)
+    reset_registry()
     receive(wa_text("hola"))
-    receive(wa_text("baja"))
-    receive(wa_press("color"))
-    receive(wa_press("pick_0"))
     assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
 
-    receive(wa_text("alta"))
-    Contact.objects.using("owner").update(unreachable=True)
-    receive(wa_press("color"))
-    receive(wa_press("pick_0"))
+    Contact.objects.using("owner").filter(id=other.id).update(opt_out=False, unreachable=True)
+    receive(wa_text("hola de nuevo"))
     assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
 
 

@@ -9,12 +9,16 @@ from unittest.mock import MagicMock
 
 import httplib2  # type: ignore[import-untyped]
 import pytest
+from google.oauth2 import service_account
 from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
 
+from integrations.google_calendar.client import _EVENT_FIELDS as FIELDS
 from integrations.google_calendar.client import (
+    TIMEOUT_S,
     CalendarClient,
     CalendarPermanentError,
     CalendarTransientError,
+    service,
 )
 
 START = datetime.fromisoformat("2026-10-05T10:00:00+02:00")
@@ -50,6 +54,37 @@ def test_pagination_and_html() -> None:
     assert api.events().list.call_args.kwargs["calendarId"] == "test-calendar"
 
 
+def test_reads_and_writes_request_only_the_fields_used() -> None:
+    """`fields=` (partial response) keeps every Calendar call from returning the full
+    resource (attendees, conferenceData, reminders...) when `_event()` only reads a
+    handful of fields."""
+    cal, api = client({"items": [EVENT]})
+    cal.list_events(START, END)
+    assert api.events().list.call_args.kwargs["fields"] == f"nextPageToken,items({FIELDS})"
+
+    api.events.return_value.get.return_value.execute.side_effect = [EVENT]
+    cal.get_event("abc123")
+    assert api.events().get.call_args.kwargs["fields"] == FIELDS
+
+    api.events.return_value.insert.return_value.execute.side_effect = [EVENT]
+    cal.insert_event(EVENT, "abc123")
+    assert api.events().insert.call_args.kwargs["fields"] == FIELDS
+
+    # Both raise afterward (the fixed EVENT response doesn't reflect the patch), but
+    # the request itself, with `fields=`, already happened by then.
+    api.events.return_value.get.return_value.execute.side_effect = [EVENT]
+    api.events.return_value.patch.return_value.execute.side_effect = [EVENT]
+    with contextlib.suppress(CalendarPermanentError):
+        cal.patch_description("abc123", {"Estado": "pendiente"})
+    assert api.events().patch.call_args.kwargs["fields"] == FIELDS
+
+    api.events.return_value.get.return_value.execute.side_effect = [EVENT]
+    api.events.return_value.patch.return_value.execute.side_effect = [EVENT]
+    with contextlib.suppress(CalendarPermanentError):
+        cal.patch_private("abc123", {"k": "v"})
+    assert api.events().patch.call_args.kwargs["fields"] == FIELDS
+
+
 def test_all_day_end_is_exclusive() -> None:
     raw = deepcopy(EVENT)
     raw.update(start={"date": "2026-10-05"}, end={"date": "2026-10-07"})
@@ -66,7 +101,15 @@ def test_permanent_errors(status: int) -> None:
     assert api.events().list.call_count == 1
 
 
-@pytest.mark.parametrize("failure", [error(429), error(503), TimeoutError()])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        error(429),
+        error(503),
+        TimeoutError(),
+        httplib2.ServerNotFoundError("no DNS"),  # X12: any httplib2 error is transient
+    ],
+)
 def test_transient_failures_retry_twice(failure: Exception) -> None:
     cal, api = client(failure, failure, failure)
     with pytest.raises(CalendarTransientError):
@@ -130,6 +173,46 @@ def test_description_and_metadata_patches_preserve_other_fields() -> None:
         "fp_contact": "contact",
         "fp_key": "key",
     }
+
+
+def test_service_caches_credentials_per_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Loading and parsing the service account file (and its RSA key) is expensive:
+    reused across calls for the same file within the process, instead of redone for
+    every `CalendarClient` (one per pack context built)."""
+    import integrations.google_calendar.client as client_module
+
+    calls: list[str] = []
+
+    def fake_from_file(path: str, **_: Any) -> MagicMock:
+        calls.append(path)
+        return MagicMock()
+
+    monkeypatch.setattr(service_account.Credentials, "from_service_account_file", fake_from_file)
+    monkeypatch.setattr(client_module, "build", lambda *a, **k: None)
+    service("a.json")
+    service("a.json")
+    service("b.json")
+    assert calls == ["a.json", "b.json"]
+
+
+def test_service_uses_a_short_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """X14: a short timeout per Calendar call, so an outage blocks an `inbound` thread
+    for as little time as possible (it also has its own worker, so it never blocks
+    `outbound`/`periodic` either)."""
+    import integrations.google_calendar.client as client_module
+
+    monkeypatch.setattr(
+        service_account.Credentials, "from_service_account_file", lambda *a, **k: MagicMock()
+    )
+    seen = {}
+
+    def fake_build(*args: Any, **kwargs: Any) -> None:
+        seen["http"] = kwargs["http"]
+
+    monkeypatch.setattr(client_module, "build", fake_build)
+    service("creds.json")
+    assert seen["http"].timeout == TIMEOUT_S
+    assert TIMEOUT_S <= 5
 
 
 def test_the_real_client_satisfies_the_pack_protocol() -> None:

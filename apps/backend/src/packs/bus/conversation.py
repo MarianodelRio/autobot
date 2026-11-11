@@ -610,7 +610,14 @@ def _handle_confirmar_pueblo(t: _Turno, value: str) -> None:
         t.step = ESCRIBIR_ORIGEN if campo == "origen" else ESCRIBIR_DESTINO
         t.responder(build_escribir(t.cfg, campo, msg.msg_escribelo_de_otra_forma()))
     else:
-        _buscar(t, campo or "origen", value)
+        # Ni Sí ni No: otro nombre, o el botón de una de las candidatas que
+        # `_buscar` va a mostrar. Sale de CONFIRMAR_PUEBLO antes de buscar, al
+        # paso correspondiente (el mismo que la búsqueda de texto libre), para
+        # que un `loc:` de la lista o un nuevo texto no se vuelvan a leer aquí.
+        t.set("pendiente", None)
+        campo = campo or "origen"
+        t.step = SEL_ORIGEN if campo == "origen" else SEL_DESTINO
+        _buscar(t, campo, value)
 
 
 def _fecha_de(value: str) -> date | None:

@@ -59,6 +59,34 @@ def test_move_creates_then_cancels_and_replays(salon: Conversation) -> None:
     assert salon.calendar.cancelled == [old]
 
 
+def test_move_preserves_the_original_title_when_no_name_parses(salon: Conversation) -> None:
+    """A manual appointment whose title isn't "<Servicio> - <Nombre>" and whose
+    description has no "Nombre:" field (found by phone instead) must keep its
+    original title when moved, not become "<Servicio> - Cliente" (only cosmetic:
+    it is still found by phone either way)."""
+    if salon.contact.phone is None:
+        return
+    start = datetime.fromisoformat("2026-03-25T10:00:00+01:00")
+    salon.calendar.add(
+        CalendarEvent(
+            "manual-no-name",
+            "Pedro Gómez (cliente antiguo)",
+            "Teléfono: +34 600 000 001",
+            start,
+            start + timedelta(minutes=30),
+        )
+    )
+    salon.send("hola")
+    salon.press("menu_move")
+    salon.press("move_appt:0")
+    salon.press("service_corte")
+    salon.press("day_2026-03-24")
+    if salon.state["step"] == "BOOK_PERIOD":
+        salon.press("period_morning")
+    salon.press("hour_11:00")
+    assert salon.calendar.created[-1].summary == "Corte de pelo - Pedro Gómez (cliente antiguo)"
+
+
 def test_move_failed_cancellation_preserves_new_booking_and_notifies(salon: Conversation) -> None:
     old = book(salon)
     salon.calendar.fail("cancel_event", TransientError("offline"))

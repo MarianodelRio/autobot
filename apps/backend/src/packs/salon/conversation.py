@@ -246,7 +246,9 @@ class Turn:
         value = message.payload or ""
         step = self.state.get("step", "MENU")
         if message.type == "unsupported":
-            return self.result(ui.back(self.cfg.texts.name_text_only))
+            result = self._redisplay()
+            result.replies.insert(0, Text(self.cfg.texts.name_text_only))
+            return result
         if value == "back_to_menu":
             return self.menu()
         if step == "BOOK_NAME":
@@ -319,7 +321,14 @@ class Turn:
                 and self.cfg.special_event.active
                 else "move",
                 "move_source": gcal_id,
-                "move_name": parse_name(source.description) or title_name or "Cliente",
+                # A manual appointment whose title isn't "<Servicio> - <Nombre>" keeps
+                # its original title instead of becoming "<Servicio> - Cliente": it is
+                # found the same way either way (fp_contact, waid or phone), and the
+                # title change is otherwise only cosmetic.
+                "move_name": parse_name(source.description)
+                or title_name
+                or source.summary
+                or "Cliente",
             }
             return self.result(ui.services(self.cfg))
         if step == "BOOK_SERVICE" and value.startswith("service_"):
@@ -334,6 +343,11 @@ class Turn:
             day = value.removeprefix("day_")
             if day not in self.state.get("days", []):
                 return self.menu()
+            # The list may have been shown before midnight: a day already gone has no
+            # slot left (`compute_slots` filters by `now`) and `hours()` would notice
+            # and refresh anyway, but checking first skips that Calendar round-trip.
+            if date.fromisoformat(day) < self.ctx.clock.now().date():
+                return self.days(refresh=True)
             self.state["day"] = day
             return self.hours(refresh=True)
         if value == "back_to_day" and step in ("BOOK_HOUR", "BOOK_PERIOD"):
@@ -349,15 +363,38 @@ class Turn:
             self.state.update(step="BOOK_NAME", slot=slot)
             if self.state.get("move_source"):
                 return self.create(self.state.get("move_name", "Cliente"))
-            if self.ctx.contact.display_name and 2 <= len(self.ctx.contact.display_name) <= 100:
-                return self.result(
-                    buttons_msg(
-                        self.cfg.texts.name_prompt,
-                        [button("use_name", f"Usar {self.ctx.contact.display_name}")],
-                        footer=ui.FOOTER,
-                    )
+            return self._name_prompt()
+        return self.menu()
+
+    def _name_prompt(self) -> PackResult:
+        assert self.ctx.contact is not None
+        if self.ctx.contact.display_name and 2 <= len(self.ctx.contact.display_name) <= 100:
+            return self.result(
+                buttons_msg(
+                    self.cfg.texts.name_prompt,
+                    [button("use_name", f"Usar {self.ctx.contact.display_name}")],
+                    footer=ui.FOOTER,
                 )
-            return self.result(ui.back(self.cfg.texts.name_prompt))
+            )
+        return self.result(ui.back(self.cfg.texts.name_prompt))
+
+    def _redisplay(self) -> PackResult:
+        """Re-show the current step's own prompt, instead of dropping the contact's
+        progress back to the menu, when the message itself could not be understood
+        (a photo or audio: `message.type == "unsupported"`)."""
+        step = self.state.get("step", "MENU")
+        if step == "BOOK_SERVICE":
+            return self.result(ui.services(self.cfg))
+        if step == "BOOK_DAY":
+            return self.days()
+        if step == "BOOK_PERIOD":
+            return self.hours()
+        if step == "BOOK_HOUR":
+            return self.hours(period=self.state.get("period"))
+        if step == "BOOK_NAME":
+            return self._name_prompt()
+        if step in ("MOVE_SELECT", "CANCEL_SELECT"):
+            return self.appointments(step.removesuffix("_SELECT").lower(), refresh=False)
         return self.menu()
 
 
