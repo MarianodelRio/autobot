@@ -202,7 +202,9 @@ Lo más urgente es S1 y S2 antes de desplegar, y S3 antes de abrir la demo a nad
 - [x] **S9 (M)** `contact_forget` no borra los avisos al dueño, que guardan el nombre del
   cliente (`privacy.py:180`).
   Hecho: `Notification.contact` (FK nula, `on_delete=CASCADE`, igual que
-  `OutboundMessage.contact`) en la migración `0022_notification_contact.py`; se rellena
+  `OutboundMessage.contact`) en la migración `0022_notification_contact.py`, y en la
+  `0023_notification_contact_fk.py` la FK compuesta `(tenant_id, contact_id)` que impide en
+  la base de datos que un aviso apunte a un contacto de otro negocio; se rellena
   en `process._notify_owner` (nulo para el resumen mensual, que no es de un contacto).
   `forget()` no necesitó cambios: el `.delete()` de `Contact` ya hace cascada. Test en
   `test_retention.py` (`test_forget_erases_the_owner_notifications_naming_the_contact`).
