@@ -60,8 +60,11 @@ def deploy_results(tmp_path: Path) -> list[str]:
 def invoke(
     script: Path, binaries: Path, *, sha: str = NEW, **environment: str
 ) -> subprocess.CompletedProcess[str]:
+    # CI exports local DB_*_URL (localhost) for the test suite; ensure-env.sh would
+    # rightly reject them as a production .env, so the deploy never inherits them.
+    inherited = {k: v for k, v in os.environ.items() if not k.startswith("DB_")}
     env = {
-        **os.environ,
+        **inherited,
         "PATH": f"{binaries}:{os.environ['PATH']}",
         "TEST_LOG": str(script.parents[2] / "docker.log"),
         "PUBLIC_HOST": "api.example.com",
