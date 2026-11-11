@@ -21,6 +21,7 @@ from procrastinate.contrib.django.models import (
 )
 
 from autobot.channels.demo.doors import door
+from autobot.ops import containers
 from autobot.ops import system as host
 from autobot.ops.models import SystemSample
 from autobot.runtime.models import Channel, InboundEvent, OutboundMessage
@@ -41,6 +42,29 @@ class SystemOut(Schema):
     tls: dict[str, int | None]
     flow: FlowOut
     integrations: list[IntegrationOut]
+    containers: ContainersOut
+
+
+class ContainerOut(Schema):
+    service: str
+    name: str | None
+    status: str
+    health: str
+    restart_count: int
+    oom_killed: bool
+    started_at: datetime | None
+    image_tag: str | None
+    image_matches: bool | None
+    level: str
+    reason: str | None
+
+
+class ContainersOut(Schema):
+    available: bool
+    generated_at: datetime | None
+    stale: bool
+    maintenance: str | None
+    items: list[ContainerOut]
 
 
 class FlowOut(Schema):
@@ -301,7 +325,7 @@ def build_system() -> SystemOut:
             disk_used_pct=host.disk(),
         ),
         samples=[dict(row) for row in samples],
-        services=dict(web=True, worker=worker, db=database["ok"], victorialogs=logs_ok),
+        services=dict(worker=worker, db=database["ok"], victorialogs=logs_ok),
         database=database,
         queues=queues,
         backup={**backup, "stale": stale},
@@ -314,4 +338,33 @@ def build_system() -> SystemOut:
         tls={"days_left": tls_days_left()},
         flow=flow(now, queues),
         integrations=integrations(),
+        containers=build_containers(now),
+    )
+
+
+def build_containers(now: datetime) -> ContainersOut:
+    assessment = containers.assess(
+        containers.read_snapshot(settings.OPS_STATE_DIR), now=now, release_sha=settings.RELEASE_SHA
+    )
+    return ContainersOut(
+        available=assessment.available,
+        generated_at=assessment.generated_at,
+        stale=assessment.stale,
+        maintenance=assessment.maintenance,
+        items=[
+            ContainerOut(
+                service=row.service,
+                name=row.name,
+                status=row.status,
+                health=row.health,
+                restart_count=row.restart_count,
+                oom_killed=row.oom_killed,
+                started_at=row.started_at,
+                image_tag=row.image_tag,
+                image_matches=row.image_matches,
+                level=row.level,
+                reason=row.reason,
+            )
+            for row in assessment.services
+        ],
     )

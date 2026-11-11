@@ -29,6 +29,7 @@ x-app-env: &app-env
   RELEASE_SHA: ${SHA:?Set the published image SHA}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   RETENTION_CLEANUP_ENABLED: ${RETENTION_CLEANUP_ENABLED:-false}
+  OPS_STATE_DIR: /run/ops
 
 x-app: &app
   image: ${AUTOBOT_IMAGE:?Set AUTOBOT_IMAGE}:${SHA:?Set the published image SHA}
@@ -40,6 +41,7 @@ x-app: &app
     - /tmp
   volumes:
     - ../../var/google_sa.json:/run/secrets/google_sa.json:ro
+    - ../../var/state/ops:/run/ops:ro
   restart: unless-stopped
   logging: &logging
     driver: json-file
@@ -77,12 +79,6 @@ services:
       DB_OWNER_URL: ${DB_OWNER_URL:?Set DB_OWNER_URL}
       DB_READONLY_URL: ${DB_READONLY_URL:?Set DB_READONLY_URL}
       SERVICE_NAME: web
-      OPS_STATE_DIR: /run/ops
-    # Overriding the anchor's volumes replaces the whole list (YAML does not merge
-    # sequences): google_sa.json must be repeated here alongside the new mount.
-    volumes:
-      - ../../var/google_sa.json:/run/secrets/google_sa.json:ro
-      - ../../var/state/ops:/run/ops:ro
     command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4 --no-control-socket
     ports:
       - "127.0.0.1:8000:8000"

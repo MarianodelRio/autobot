@@ -5,7 +5,9 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 mkdir -p var/state/ops
 exec 9>var/.deploy.lock
-flock -n 9 || { echo 'Another deployment is running' >&2; exit 1; }
+# containers.sh only probes this lock in shared mode for microseconds; wait instead
+# of failing instantly so it can never collide with a real deployment.
+flock -w 10 9 || { echo 'Another deployment is running' >&2; exit 1; }
 
 if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Usage: deploy/scripts/deploy.sh <full-40-character-sha>' >&2

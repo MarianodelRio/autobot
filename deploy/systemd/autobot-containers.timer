@@ -1,0 +1,10 @@
+[Unit]
+Description=Snapshot Autobot containers every minute
+
+[Timer]
+OnCalendar=minutely
+AccuracySec=5s
+Unit=autobot-containers.service
+
+[Install]
+WantedBy=timers.target

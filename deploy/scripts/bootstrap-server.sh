@@ -43,6 +43,7 @@ if [[ -f $marker && $(cat "$marker") == "$fingerprint" ]] && \
    systemctl is-active --quiet fail2ban && \
    systemctl is-active --quiet ssh && \
    systemctl is-enabled --quiet autobot-backup.timer && \
+   systemctl is-enabled --quiet autobot-containers.timer && \
    [[ $(ufw status | head -n 1) == 'Status: active' ]] && \
    ufw_rules_complete && \
    grep -q '^DEFAULT_INPUT_POLICY="DROP"$' /etc/default/ufw && \
@@ -50,6 +51,8 @@ if [[ -f $marker && $(cat "$marker") == "$fingerprint" ]] && \
      <(printf '%s\n%s\n' "$operator_line" "$ci_line") && \
    cmp -s /srv/autobot/deploy/systemd/autobot-backup.timer /etc/systemd/system/autobot-backup.timer && \
    cmp -s /srv/autobot/deploy/systemd/autobot-backup.service /etc/systemd/system/autobot-backup.service && \
+   cmp -s /srv/autobot/deploy/systemd/autobot-containers.timer /etc/systemd/system/autobot-containers.timer && \
+   cmp -s /srv/autobot/deploy/systemd/autobot-containers.service /etc/systemd/system/autobot-containers.service && \
    [[ $(stat -c '%u:%g:%a' /srv/autobot/var/state/caddy-data) == "$(id -u deploy):$(id -g deploy):700" ]] && \
    [[ $(stat -c '%u:%g:%a' /srv/autobot/var/state/caddy-config) == "$(id -u deploy):$(id -g deploy):700" ]] && \
    [[ $(stat -c '%u:%g:%a' /srv/autobot/var/state/ops) == "$(id -u deploy):$(id -g deploy):700" ]] && \
@@ -144,8 +147,12 @@ ufw --force enable
 
 install -m 0644 /srv/autobot/deploy/systemd/autobot-backup.service /etc/systemd/system/
 install -m 0644 /srv/autobot/deploy/systemd/autobot-backup.timer /etc/systemd/system/
+install -m 0644 /srv/autobot/deploy/systemd/autobot-containers.service /etc/systemd/system/
+install -m 0644 /srv/autobot/deploy/systemd/autobot-containers.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable autobot-backup.timer
+# Read-only snapshot: safe to enable and start immediately, unlike the backup timer.
+systemctl enable --now autobot-containers.timer
 install -d -m 0755 /var/lib/autobot
 printf '%s\n' "$fingerprint" >"$marker"
 echo 'Bootstrap completed; configure secrets and GHCR read access before deploy'

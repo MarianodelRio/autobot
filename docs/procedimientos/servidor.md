@@ -23,8 +23,9 @@ con tu clave en la VPS recién creada.
    mantenimiento y el túnel del panel. La clave de lectura del repositorio permite
    `git fetch` del código que corresponde al SHA de despliegue.
 3. Abre **otra sesión** con la clave de operación: `ssh deploy@<host>`. Comprueba
-   `docker compose version` y
-   `systemctl is-enabled autobot-backup.timer`. Si la sesión falla, conserva la
+   `docker compose version`,
+   `systemctl is-enabled autobot-backup.timer` y
+   `systemctl is-enabled autobot-containers.timer`. Si la sesión falla, conserva la
    consola del proveedor para corregir `authorized_keys` antes de cerrarla.
 4. Ejecuta el mismo bootstrap de nuevo desde la consola del proveedor; verifica que
    no añade usuarios, claves, reglas de firewall ni unidades duplicadas. Comprueba
@@ -78,8 +79,21 @@ despliegue y conserva su copia con los backups. `deploy/scripts/manage.sh` usa e
 62 días. `deploy/scripts/backup.sh` escribe `var/state/ops/backup.json` de forma atómica
 (`{finished_at, ok, dump_bytes}`) y `deploy/scripts/deploy.sh` añade una línea a
 `var/state/ops/deploys.jsonl` por cada intento (`deployed`, `already`, `aborted`,
-`rolled_back` o `rollback_failed`). `web` monta `var/state/ops` en solo lectura en
-`/run/ops`; los `worker-*` no la necesitan.
+`rolled_back` o `rollback_failed`). `web`, `worker-inbound` y `worker-outbound` montan
+`var/state/ops` en solo lectura en `/run/ops`.
+
+**Vigilancia de contenedores:** el timer `autobot-containers.timer` (instalado y
+arrancado por `bootstrap-server.sh`, de solo lectura) ejecuta cada minuto
+`deploy/scripts/containers.sh`, que hace `docker inspect` de los contenedores del
+proyecto compose y escribe una instantánea en lista blanca en
+`var/state/ops/containers.json`; ningún contenedor accede a `docker.sock`.
+`ops_check` la evalúa y el panel la muestra en la tarjeta Contenedores de Sistema
+(`docs/procedimientos/panel.md`). Para comprobar que funciona:
+`systemctl is-enabled autobot-containers.timer` y que
+`var/state/ops/containers.json` se actualiza cada minuto
+(`stat -c %Y var/state/ops/containers.json` cambia entre comprobaciones, o
+`journalctl -u autobot-containers.service --since -2min`). Si deja de actualizarse,
+ver `docs/incidencias/contenedor-caido.md`.
 
 **Logs técnicos:** el servicio `victorialogs` (imagen fijada, sin
 publicar puertos) recibe los logs de `web` y los `worker-*` por `VICTORIALOGS_URL`; los

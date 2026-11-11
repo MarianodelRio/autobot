@@ -98,15 +98,27 @@ cliente o «Todos»; recuerda la última consulta en el navegador.
 
 Arriba, dos tarjetas: Flujo de mensajes (estado `ok`/`idle`/`critical` según haya
 tráfico, trabajos de entrada retrasados más de 2 min o fallos en la última hora;
-recibidos, respondidos y fallos de esa hora) y Estado (los servicios `web`,
-`worker`, `db` y VictoriaLogs, y las integraciones: bot de avisos, demo Telegram,
+recibidos, respondidos y fallos de esa hora) y Estado (los servicios `worker`, `db`
+y VictoriaLogs, y las integraciones: bot de avisos, demo Telegram,
 demo WhatsApp —apagada si no hay puerta configurada— y Calendar —«N de M
-accesibles», solo cuenta clientes con `calendar_sweep`—). Debajo, CPU, RAM, disco
-y carga actuales con la gráfica del mes, tamaño de la base de datos y sus tablas
-más grandes, y trabajos pendientes por cola. El backup se marca en rojo si
-`ok=false` o lleva más de 8 h; el TLS, en ámbar con menos de 20 días y en rojo con
-menos de 7. Abajo, la versión desplegada y el historial de despliegues, con el SHA
-enlazado al commit en GitHub.
+accesibles», solo cuenta clientes con `calendar_sweep`—). `web` ya no está en esta
+tarjeta: lo cubre la de Contenedores.
+
+Debajo, la tarjeta Contenedores: una fila por contenedor de producción (`caddy`,
+`web`, `worker-inbound`, `worker-outbound`, `panel`, `db`, `victorialogs`), con su
+estado, salud, reinicios, desde cuándo está en marcha y la etiqueta de su imagen
+(en ámbar si no coincide con el SHA desplegado). «Sin datos de contenedores» significa
+que `autobot-containers.timer` no ha escrito nunca la instantánea; «Datos
+desactualizados», que lleva más de 3 minutos sin actualizarse (revisa el timer,
+`docs/incidencias/contenedor-caido.md`). Durante un despliegue, la tarjeta muestra un
+aviso de «Despliegue en curso» y no genera alertas nuevas; igual con una
+restauración a medias.
+
+Debajo, CPU, RAM, disco y carga actuales con la gráfica del mes, tamaño de la base
+de datos y sus tablas más grandes, y trabajos pendientes por cola. El backup se
+marca en rojo si `ok=false` o lleva más de 8 h; el TLS, en ámbar con menos de 20
+días y en rojo con menos de 7. Abajo, la versión desplegada y el historial de
+despliegues, con el SHA enlazado al commit en GitHub.
 
 ## Alta del operador
 

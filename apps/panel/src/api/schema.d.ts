@@ -944,6 +944,44 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** ContainerOut */
+        ContainerOut: {
+            /** Health */
+            health: string;
+            /** Image Matches */
+            image_matches: boolean | null;
+            /** Image Tag */
+            image_tag: string | null;
+            /** Level */
+            level: string;
+            /** Name */
+            name: string | null;
+            /** Oom Killed */
+            oom_killed: boolean;
+            /** Reason */
+            reason: string | null;
+            /** Restart Count */
+            restart_count: number;
+            /** Service */
+            service: string;
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+        };
+        /** ContainersOut */
+        ContainersOut: {
+            /** Available */
+            available: boolean;
+            /** Generated At */
+            generated_at: string | null;
+            /** Items */
+            items: components["schemas"]["ContainerOut"][];
+            /** Maintenance */
+            maintenance: string | null;
+            /** Stale */
+            stale: boolean;
+        };
         /** CreateTenantIn */
         CreateTenantIn: {
             /** Channel Type */
@@ -1505,6 +1543,7 @@ export interface components {
             backup: {
                 [key: string]: unknown;
             };
+            containers: components["schemas"]["ContainersOut"];
             /** Database */
             database: {
                 [key: string]: unknown;

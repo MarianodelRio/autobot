@@ -21,7 +21,9 @@ métricas antes de cambiar concurrencia o número de workers.
 disminuyen sin duplicados.
 
 **Alertas persistidas:** cada cinco minutos `ops.check.collect()` evalúa la cola, los
-tenants y los bots sin enviar nada; `sync_alerts()` guarda cada hallazgo en `ops_alert`
+tenants, los bots y, en producción, la instantánea de contenedores
+(`autobot/ops/containers.py`, [contenedor caído](contenedor-caido.md)) sin enviar nada;
+`sync_alerts()` guarda cada hallazgo en `ops_alert`
 (con reintentos, severidad y enfriamiento de 30 min) y resuelve sola
 (`resolved_by="auto"`) cualquier alerta abierta que ya no aparezca entre los hallazgos,
 salvo `deploy_aborted` y `deploy_rollback`, que solo se resuelven a mano desde el panel.

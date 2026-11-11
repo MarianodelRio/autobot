@@ -14,7 +14,7 @@ const BASE: Record<string, unknown> = {
     uptime_s: null,
   },
   samples: [],
-  services: { web: true, worker: true, db: true, victorialogs: true },
+  services: { worker: true, db: true, victorialogs: true },
   database: { ok: true, bytes: 1024, tables: [] },
   queues: [],
   backup: {
@@ -65,6 +65,27 @@ const BASE: Record<string, unknown> = {
       checked_at: null,
     },
   ],
+  containers: {
+    available: true,
+    generated_at: "2026-11-04T09:59:00Z",
+    stale: false,
+    maintenance: null,
+    items: [
+      {
+        service: "web",
+        name: "autobot-web-1",
+        status: "running",
+        health: "healthy",
+        restart_count: 0,
+        oom_killed: false,
+        started_at: "2026-11-04T09:00:00Z",
+        image_tag: "abc123def456",
+        image_matches: true,
+        level: "ok",
+        reason: null,
+      },
+    ],
+  },
 };
 
 function renderWith(overrides: Record<string, unknown>) {
@@ -181,4 +202,97 @@ test("shows an off integration as apagada and a calendar detail", async () => {
   expect(await screen.findByText("Demo WhatsApp")).toBeInTheDocument();
   expect(screen.getByText("apagada")).toBeInTheDocument();
   expect(screen.getByText("3 de 3 accesibles")).toBeInTheDocument();
+});
+
+async function containersCard() {
+  const title = await screen.findByText("Contenedores");
+  const card = title.closest('[data-slot="card"]');
+  if (!card) throw new Error("containers card not found");
+  return within(card as HTMLElement);
+}
+
+test("shows the containers table with a row per service", async () => {
+  renderWith({});
+  const card = await containersCard();
+  expect(card.getByText("web")).toBeInTheDocument();
+  expect(card.getByText("En marcha")).toBeInTheDocument();
+  expect(card.getByText("Bien")).toBeInTheDocument();
+  expect(card.getByText("abc123def456")).toBeInTheDocument();
+});
+
+test("shows an empty state when there is no container snapshot", async () => {
+  renderWith({
+    containers: {
+      available: false,
+      generated_at: null,
+      stale: false,
+      maintenance: null,
+      items: [],
+    },
+  });
+  const card = await containersCard();
+  expect(
+    card.getByText(/Sin datos de contenedores\. En producción, revisa/),
+  ).toBeInTheDocument();
+});
+
+test("warns when the container snapshot is stale", async () => {
+  renderWith({
+    containers: {
+      available: true,
+      generated_at: "2026-11-04T09:00:00Z",
+      stale: true,
+      maintenance: null,
+      items: [],
+    },
+  });
+  const card = await containersCard();
+  const warning = card.getByText(/Datos desactualizados/);
+  expect(warning.className).toContain("text-status-warning");
+});
+
+test("shows a deploy-in-progress notice and suppresses no alert styling", async () => {
+  renderWith({
+    containers: {
+      available: true,
+      generated_at: "2026-11-04T09:59:00Z",
+      stale: false,
+      maintenance: "deploy",
+      items: [],
+    },
+  });
+  const card = await containersCard();
+  expect(card.getByText("Despliegue en curso.")).toBeInTheDocument();
+});
+
+test("colors a mismatched image tag as a warning", async () => {
+  renderWith({
+    containers: {
+      available: true,
+      generated_at: "2026-11-04T09:59:00Z",
+      stale: false,
+      maintenance: null,
+      items: [
+        {
+          service: "web",
+          name: "autobot-web-1",
+          status: "running",
+          health: "healthy",
+          restart_count: 1,
+          oom_killed: false,
+          started_at: "2026-11-04T09:00:00Z",
+          image_tag: "old1234567",
+          image_matches: false,
+          level: "warning",
+          reason: "Imagen old1234567 distinta de la desplegada abc123def456",
+        },
+      ],
+    },
+  });
+  const card = await containersCard();
+  const tag = card.getByText("old1234567");
+  expect(tag.className).toContain("text-status-warning");
+  expect(
+    card.getByText("Imagen old1234567 distinta de la desplegada abc123def456"),
+  ).toBeInTheDocument();
 });

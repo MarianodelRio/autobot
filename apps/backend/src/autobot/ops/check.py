@@ -13,7 +13,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from autobot.channels.demo.doors import door
-from autobot.ops import health, state, system
+from autobot.ops import containers, health, state, system
 from autobot.ops.models import OpsAlert, SystemSample
 from autobot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
 from autobot.runtime.notifications import resolve_alert, send_ops_alert
@@ -221,6 +221,15 @@ def collect() -> list[Finding]:
     disk_used_pct = system.disk()
     if disk_used_pct is not None and disk_used_pct > 85:
         findings.append(Finding("disk", None, "🟠 Disco por encima del 85 %."))
+    # In local there is no containers.sh timer: without this guard every check
+    # would report containers_stale.
+    if not settings.IS_LOCAL:
+        assessment = containers.assess(
+            containers.read_snapshot(settings.OPS_STATE_DIR),
+            now=now,
+            release_sha=settings.RELEASE_SHA,
+        )
+        findings.extend(Finding(kind, None, text) for kind, text in assessment.findings)
     return findings
 
 

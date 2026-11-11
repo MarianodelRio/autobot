@@ -7,6 +7,7 @@ import itertools
 import json
 import random
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 from uuid import uuid7
 
@@ -15,6 +16,7 @@ from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django.db import connections
 from django.utils import timezone
 
+from autobot.ops.containers import EXPECTED_SERVICES
 from autobot.ops.models import OpsAlert, SystemSample
 from autobot.runtime.models import (
     Channel,
@@ -385,3 +387,37 @@ class Command(BaseCommand):
             for offset, result in enumerate(results)
         ]
         (state_dir / "deploys.jsonl").write_text("\n".join(lines) + "\n")
+        self._seed_containers(state_dir, now)
+
+    def _seed_containers(self, state_dir: Path, now: datetime) -> None:
+        release_sha = settings.RELEASE_SHA or "local"
+        rows = []
+        for service in EXPECTED_SERVICES:
+            restart_count = 2 if service == "worker-outbound" else 0
+            started_at = now - (
+                timedelta(minutes=10) if service == "worker-outbound" else timedelta(days=1)
+            )
+            rows.append(
+                {
+                    "name": f"autobot-{service}-1",
+                    "service": service,
+                    "status": "running",
+                    "health": "none" if service in ("db", "caddy") else "healthy",
+                    "restart_count": restart_count,
+                    "oom_killed": False,
+                    "exit_code": 0,
+                    "started_at": started_at.isoformat(),
+                    "finished_at": None,
+                    "image": f"ghcr.io/autobot/{service}:{release_sha}",
+                }
+            )
+        doc = {
+            "version": 1,
+            "generated_at": now.isoformat(),
+            "project": "autobot",
+            "maintenance": None,
+            "containers": rows,
+        }
+        tmp = state_dir / ".containers.json.tmp"
+        tmp.write_text(json.dumps(doc))
+        tmp.replace(state_dir / "containers.json")

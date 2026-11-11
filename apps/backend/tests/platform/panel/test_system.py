@@ -93,7 +93,7 @@ def test_system_endpoint(
     assert data["machine"]["disk_used_pct"] == 42
     assert len(data["samples"]) == 1
     assert data["backup"]["stale"]
-    assert data["services"] == dict(web=True, worker=False, db=True, victorialogs=True)
+    assert data["services"] == dict(worker=False, db=True, victorialogs=True)
     assert data["database"]["bytes"] > 0 and len(data["database"]["tables"]) == 5
     assert data["queues"] == [
         {
@@ -176,6 +176,59 @@ def test_missing_host_state_and_unreachable_logs(
     assert data["deploys"] == [] and data["queues"] == []
     assert not data["services"]["worker"] and not data["services"]["victorialogs"]
     assert data["tls"]["days_left"] is None
+    assert data["containers"] == dict(
+        available=False, generated_at=None, stale=False, maintenance=None, items=[]
+    )
+
+
+def test_build_containers_reports_an_available_snapshot(settings: Any, tmp_path: Path) -> None:
+    settings.OPS_STATE_DIR = tmp_path
+    settings.RELEASE_SHA = "abc123"
+    (tmp_path / "containers.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "generated_at": NOW.isoformat(),
+                "project": "autobot",
+                "maintenance": None,
+                "containers": [
+                    {
+                        "name": "autobot-web-1",
+                        "service": "web",
+                        "status": "running",
+                        "health": "healthy",
+                        "restart_count": 0,
+                        "oom_killed": False,
+                        "exit_code": 0,
+                        "started_at": "2026-11-04T11:00:00Z",
+                        "finished_at": None,
+                        "image": "ghcr.io/owner/autobot:abc123",
+                    }
+                ],
+            }
+        )
+    )
+    result = system.build_containers(NOW)
+    assert result.available is True and result.stale is False
+    web = next(item for item in result.items if item.service == "web")
+    assert web.level == "ok" and web.image_matches is True
+
+
+def test_build_containers_reports_a_stale_snapshot(settings: Any, tmp_path: Path) -> None:
+    settings.OPS_STATE_DIR = tmp_path
+    (tmp_path / "containers.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "generated_at": (NOW - timedelta(minutes=10)).isoformat(),
+                "project": "autobot",
+                "maintenance": None,
+                "containers": [],
+            }
+        )
+    )
+    result = system.build_containers(NOW)
+    assert result.available is True and result.stale is True
 
 
 def test_overview_uses_shared_tls_check(monkeypatch: pytest.MonkeyPatch) -> None:

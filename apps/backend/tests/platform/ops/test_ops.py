@@ -1,9 +1,11 @@
 """Every operation row uses PostgreSQL, simulated services and safe alert identities."""
 
+import json
 import shutil
 from dataclasses import replace
 from datetime import timedelta
 from io import StringIO
+from pathlib import Path
 from typing import Any
 from uuid import uuid7
 
@@ -416,6 +418,70 @@ def test_calendar_denial_is_detected_even_after_healthy_daily_check(
     alerts.clear()
     check.run()
     assert "calendar:main" not in kinds(alerts)
+
+
+def _write_containers_snapshot(state_dir: Path, *, missing_service: str | None = None) -> None:
+    from autobot.ops.containers import EXPECTED_SERVICES
+
+    state_dir.mkdir(parents=True, exist_ok=True)
+    containers = [
+        {
+            "name": f"autobot-{service}-1",
+            "service": service,
+            "status": "running",
+            "health": "healthy" if service != "db" else "none",
+            "restart_count": 0,
+            "oom_killed": False,
+            "exit_code": 0,
+            "started_at": "2026-11-11T09:00:00Z",
+            "finished_at": None,
+            "image": "ghcr.io/owner/autobot:abc123",
+        }
+        for service in EXPECTED_SERVICES
+        if service != missing_service
+    ]
+    (state_dir / "containers.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "generated_at": timezone.now().isoformat(),
+                "project": "autobot",
+                "maintenance": None,
+                "containers": containers,
+            }
+        )
+    )
+
+
+def test_container_findings_are_platform_wide_and_only_checked_off_local(
+    tenants: Any, alerts: Any, settings: Any, tmp_path: Path
+) -> None:
+    tenants()
+    settings.OPS_STATE_DIR = tmp_path
+    settings.IS_LOCAL = True
+    _write_containers_snapshot(tmp_path, missing_service="caddy")
+    check.run()
+    assert "container_down:caddy" not in kinds(alerts)  # skipped entirely in local
+
+    alerts.clear()
+    settings.IS_LOCAL = False
+    check.run()
+    assert ("container_down:caddy", None) in [(a[0], a[1]) for a in alerts]
+
+
+def test_sync_alerts_resolves_a_container_finding_once_the_service_is_back(
+    settings: Any,
+) -> None:
+    settings.OPS_TELEGRAM_CHAT_ID = ""
+    settings.NOTIFY_BOT_TOKEN = ""
+    check.sync_alerts(
+        [check.Finding("container_down:caddy", None, "🔴 Contenedor caddy: no existe.")]
+    )
+    row = OpsAlert.objects.using("owner").get(kind="container_down:caddy", tenant_id=None)
+    assert row.resolved_at is None
+    check.sync_alerts([])
+    row.refresh_from_db(using="owner")
+    assert row.resolved_at is not None and row.resolved_by == "auto"
 
 
 def test_record_calendar_skips_the_write_when_nothing_changed(

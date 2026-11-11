@@ -14,6 +14,7 @@ La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de
 - **Backups**: `pg_dump` cada 6 h, `.env`, `google_sa.json`, el `Caddyfile` y `.deployed-sha` (todos bajo `var/`), cifrados con restic, a almacenamiento de **otro proveedor**; simulacro de restauración trimestral. RPO ≤ 6 h, RTO ≤ 2 h.
 - **Despliegue**: imagen en GHCR desde GitHub Actions; despliegue manual por SSH con migraciones primero, comprobación de salud y vuelta atrás automática.
 - **Vigilancia que no depende de la VPS**: latido a healthchecks.io y uptime externo.
+- **Vigilancia de contenedores**: un timer del host escribe cada minuto una instantánea en lista blanca (`var/state/ops/containers.json`) que leen `ops_check` y el panel; ningún contenedor accede al socket de Docker.
 
 ## Alternativas consideradas
 

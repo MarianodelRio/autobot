@@ -90,6 +90,20 @@ def test_creates_rows_across_every_timeline_source(
         "rollback_failed",
     }
 
+    containers_doc = json.loads((tmp_path / "containers.json").read_text())
+    assert containers_doc["version"] == 1
+    rows = {row["service"]: row for row in containers_doc["containers"]}
+    assert {
+        "caddy",
+        "web",
+        "worker-inbound",
+        "worker-outbound",
+        "panel",
+        "db",
+        "victorialogs",
+    } == set(rows)
+    assert rows["worker-outbound"]["restart_count"] == 2
+
     # A row of each outbound status variety exists somewhere in the data.
     statuses = set(
         OutboundMessage.objects.using("owner")

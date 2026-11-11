@@ -29,3 +29,10 @@ def test_caddy_and_db_drop_capabilities_and_cannot_gain_new_ones() -> None:
         service = PROD["services"][name]
         assert service["cap_drop"] == ["ALL"]
         assert "no-new-privileges:true" in service["security_opt"]
+
+
+def test_app_services_mount_the_container_snapshot_read_only() -> None:
+    for name in ("web", "worker-inbound", "worker-outbound"):
+        service = PROD["services"][name]
+        assert "../../var/state/ops:/run/ops:ro" in service["volumes"]
+        assert service["environment"]["OPS_STATE_DIR"] == "/run/ops"

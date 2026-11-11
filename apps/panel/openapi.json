@@ -653,6 +653,156 @@
         "title": "ContactPage",
         "type": "object"
       },
+      "ContainerOut": {
+        "properties": {
+          "health": {
+            "title": "Health",
+            "type": "string"
+          },
+          "image_matches": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Matches"
+          },
+          "image_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Tag"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "oom_killed": {
+            "title": "Oom Killed",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "restart_count": {
+            "title": "Restart Count",
+            "type": "integer"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "name",
+          "status",
+          "health",
+          "restart_count",
+          "oom_killed",
+          "started_at",
+          "image_tag",
+          "image_matches",
+          "level",
+          "reason"
+        ],
+        "title": "ContainerOut",
+        "type": "object"
+      },
+      "ContainersOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContainerOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "maintenance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintenance"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available",
+          "generated_at",
+          "stale",
+          "maintenance",
+          "items"
+        ],
+        "title": "ContainersOut",
+        "type": "object"
+      },
       "CreateTenantIn": {
         "properties": {
           "channel_type": {
@@ -2214,6 +2364,9 @@
             "title": "Backup",
             "type": "object"
           },
+          "containers": {
+            "$ref": "#/components/schemas/ContainersOut"
+          },
           "database": {
             "additionalProperties": true,
             "title": "Database",
@@ -2304,7 +2457,8 @@
           "release",
           "tls",
           "flow",
-          "integrations"
+          "integrations",
+          "containers"
         ],
         "title": "SystemOut",
         "type": "object"
