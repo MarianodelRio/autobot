@@ -68,6 +68,27 @@ ensure_fixed() {
 ensure_fixed COMPOSE_FILE 'deploy/compose/compose.yaml:deploy/compose/compose.prod.yaml'
 ensure_fixed COMPOSE_PROJECT_NAME autobot
 
+# Catch a .env.example value copied as-is into a server .env: generation above only
+# fills in what's missing, so an example value that's already "set" would pass through.
+reject_example_value() {
+  local name=$1 example=$2
+  [[ ${!name:-} == "$example" ]] || return 0
+  echo "$name is still the .env.example value; set a real one" >&2
+  exit 1
+}
+reject_example_value DJANGO_SECRET_KEY change-me
+reject_example_value SECRETS_ENCRYPTION_KEY 'UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w='
+
+reject_localhost_url() {
+  local name=$1
+  [[ ${!name:-} == *localhost* ]] || return 0
+  echo "$name must not point to localhost in production" >&2
+  exit 1
+}
+reject_localhost_url DB_APP_URL
+reject_localhost_url DB_OWNER_URL
+reject_localhost_url DB_READONLY_URL
+
 if ((${#generated_lines[@]})); then
   {
     printf '\n# ensure-env.sh generated these on %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

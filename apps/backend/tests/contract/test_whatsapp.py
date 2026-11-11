@@ -38,7 +38,11 @@ CHANNEL = WhatsAppChannel(
     phone_number_id="1122334455",
 )
 SECRETS = WhatsAppSecrets.model_validate(
-    {"app_secret": "app-secret", "access_token": "token-123", "verify_token": "verify-me"}
+    {
+        "app_secret": "app-secret-012345678901234567890",
+        "access_token": "token-123",
+        "verify_token": "verify-me",
+    }
 )
 OUTBOUND_ID = UUID("01920000-0000-7000-8000-0000000000b1")
 BSUID = "ES.13491208655302741918"
@@ -60,7 +64,7 @@ def only(name: str) -> InboundItem:
 # ── verify ────────────────────────────────────────────────────────────────
 
 
-def signed(body: bytes, secret: str = "app-secret") -> str:
+def signed(body: bytes, secret: str = "app-secret-012345678901234567890") -> str:
     return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
 

@@ -31,14 +31,20 @@ def env(name: str, local_default: str | None = None) -> str:
     raise ImproperlyConfigured(f"Missing environment variable {name}")
 
 
+# Values published as examples in .env.example: a prod .env that still has them is
+# unconfigured, not merely insecure by the human's own choice.
+_EXAMPLE_SECRET_KEY = "change-me"
+_EXAMPLE_ENCRYPTION_KEY = "UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w="
+
 SECRET_KEY = env("DJANGO_SECRET_KEY", "local-insecure-secret-key")
 SECRETS_ENCRYPTION_KEYS: list[str] = [
-    key.strip()
-    for key in env("SECRETS_ENCRYPTION_KEY", "UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=").split(
-        ","
-    )
+    key.strip() for key in env("SECRETS_ENCRYPTION_KEY", _EXAMPLE_ENCRYPTION_KEY).split(",")
 ]
 if not IS_LOCAL:
+    if SECRET_KEY == _EXAMPLE_SECRET_KEY:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must not be the .env.example value")
+    if _EXAMPLE_ENCRYPTION_KEY in SECRETS_ENCRYPTION_KEYS:
+        raise ImproperlyConfigured("SECRETS_ENCRYPTION_KEY must not be the .env.example value")
     try:
         for key in SECRETS_ENCRYPTION_KEYS:
             Fernet(key)
@@ -100,20 +106,29 @@ def _database(url: str, conn_max_age: int = 60) -> dict[str, Any]:
     return dict(dj_database_url.parse(url, conn_max_age=conn_max_age, conn_health_checks=True))
 
 
+def _reject_example_db_url(name: str, url: str) -> None:
+    if not IS_LOCAL and "localhost" in url:
+        raise ImproperlyConfigured(f"{name} must not point to localhost in prod")
+
+
+_app_url = env("DB_APP_URL", "postgres://fp_app:fp_app@localhost:5433/autobot")
+_reject_example_db_url("DB_APP_URL", _app_url)
 DATABASES = {
-    "default": _database(env("DB_APP_URL", "postgres://fp_app:fp_app@localhost:5433/autobot")),
+    "default": _database(_app_url),
 }
 # Unset → local default; set but empty (the worker) → no `owner`/`readonly` alias.
 _owner_url = os.environ.get(
     "DB_OWNER_URL", "postgres://fp_owner:fp_owner@localhost:5433/autobot" if IS_LOCAL else ""
 )
 if _owner_url:
+    _reject_example_db_url("DB_OWNER_URL", _owner_url)
     DATABASES["owner"] = _database(_owner_url)
 _readonly_url = os.environ.get(
     "DB_READONLY_URL",
     "postgres://fp_readonly:fp_readonly@localhost:5433/autobot" if IS_LOCAL else "",
 )
 if _readonly_url:
+    _reject_example_db_url("DB_READONLY_URL", _readonly_url)
     DATABASES["readonly"] = _database(_readonly_url, conn_max_age=0)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

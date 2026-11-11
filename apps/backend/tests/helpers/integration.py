@@ -91,12 +91,18 @@ def post_wa(body: bytes, secret: str = WA_SECRETS["app_secret"], ip: str = "203.
     return response.status_code
 
 
-def post_tg(body: bytes, secret: str = TG_SECRETS["webhook_secret"], url: str = TG_URL) -> int:
+def post_tg(
+    body: bytes,
+    secret: str = TG_SECRETS["webhook_secret"],
+    url: str = TG_URL,
+    ip: str = "203.0.113.1",
+) -> int:
     response = Client().post(
         url,
         data=body,
         content_type="application/json",
         headers={"X-Telegram-Bot-Api-Secret-Token": secret},
+        REMOTE_ADDR=ip,
     )
     return response.status_code
 

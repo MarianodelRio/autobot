@@ -3,6 +3,9 @@
         max_size 64KB
     }
 
+    # /health/internal (the tenant/database detail deploy.sh needs) is deliberately
+    # not listed here: it falls through to the 404 below for anyone outside the
+    # docker network or 127.0.0.1.
     @public path /webhooks/whatsapp/* /webhooks/telegram/* /webhooks/telegram-demo /webhooks/whatsapp-demo /webhooks/telegram-notify /health
     handle @public {
         reverse_proxy web:8000 {

@@ -6,6 +6,8 @@ import pytest
 from django.core.cache import cache
 from django.db import connections
 
+from autobot.ops.models import AuditEvent
+from autobot.panel.errors import ApiError
 from autobot.panel.services import catalog
 from autobot.runtime.models import OwnerLink
 from autobot.tenancy.models import Tenant
@@ -38,7 +40,7 @@ def test_permissions_are_reapplied() -> None:
         assert cursor.fetchone() == (True,)
 
 
-def test_catalog_and_six_hidden_columns(authed_client: Any, tenants: Any) -> None:
+def test_catalog_and_seven_hidden_columns(authed_client: Any, tenants: Any) -> None:
     doc = tg_tenant()
     tenants(doc)
     tenant = Tenant.objects.using("owner").get(pk=doc["id"])
@@ -100,6 +102,32 @@ def test_unknown_table_and_binary_preview(
             cursor.execute("DROP TABLE catalog_test_preview")
 
 
+def test_table_detail_is_audited_even_on_error(
+    authed_client: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A query that errors (a CAST that leaks a value through the driver's message,
+    for instance) must still leave a trace: the audit is recorded before running it."""
+    monkeypatch.setattr(
+        catalog,
+        "_columns",
+        lambda name: [
+            {
+                "name": "does_not_exist",
+                "type": "text",
+                "nullable": True,
+                "primary_key": False,
+                "description": "",
+                "hidden": False,
+            }
+        ],
+    )
+    with pytest.raises(ApiError):
+        catalog.table_detail("tenant", actor="operator")
+    event = AuditEvent.objects.using("owner").filter(action="data.table").latest("at")
+    assert event.actor == "operator"
+    assert event.details["table"] == "tenant"
+
+
 def test_uncatalogued_name_with_quote(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     with connections["owner"].cursor() as cursor:
         cursor.execute('CREATE TABLE "catalog_""quoted" (id integer)')
@@ -116,7 +144,7 @@ def test_uncatalogued_name_with_quote(authed_client: Any, monkeypatch: pytest.Mo
                 'catalog_"quoted',
                 catalog.TableDoc("Prueba", "Prueba", "Prueba", "Prueba", False),
             )
-            detail = catalog.table_detail('catalog_"quoted')
+            detail = catalog.table_detail('catalog_"quoted', actor="panel")
             assert [row[0] for row in detail["rows"]] == [3, 2, 1]
             assert detail["row_count"] == 3 and not detail["approx"]
             estimated = catalog._stats('catalog_"quoted', {"estimate": 100000, "bytes": 1}, [], {})

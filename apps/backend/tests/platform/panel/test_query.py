@@ -123,6 +123,18 @@ def test_audits_the_query() -> None:
     assert event.details["sql"] == "SELECT 1"
 
 
+def test_audits_a_query_even_when_it_fails() -> None:
+    """A query that errors (a CAST that leaks a value through the driver's message,
+    for instance) must still leave a trace: the audit is recorded before running it,
+    not after it succeeds."""
+    sql = "SELECT * FROM tenant_secret"
+    with pytest.raises(ApiError):
+        query.run(sql, tenant_id=None, actor="operator")
+    event = AuditEvent.objects.using("owner").filter(action="data.query").latest("at")
+    assert event.actor == "operator"
+    assert event.details["sql"] == sql
+
+
 def test_no_setting_or_transaction_remains_after_the_query() -> None:
     query.run("SELECT 1", tenant_id=None, actor="operator")
     assert not connections["readonly"].in_atomic_block

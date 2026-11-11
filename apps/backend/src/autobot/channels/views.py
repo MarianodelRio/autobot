@@ -37,10 +37,14 @@ MAX_BODY = 64 * 1024
 limiter = WindowLimiter()  # invalid signatures per IP
 
 
+def _limiter_key(request: HttpRequest, route: str) -> str:
+    return f"{client_ip(request)}:{route}"
+
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
-    if limiter.blocked(client_ip(request)):
+    if limiter.blocked(_limiter_key(request, "whatsapp")):
         return HttpResponse(status=429)
     try:
         tenant = main_channel_tenant("whatsapp", public_id)
@@ -55,13 +59,14 @@ def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
     if request.method == "GET":  # Meta's subscription handshake
         challenge = WHATSAPP.verify_subscription(request.GET.dict(), secrets)
         if challenge is None:
-            limiter.record(client_ip(request))
+            limiter.record(_limiter_key(request, "whatsapp"))
             log.warning("WhatsApp verification refused for tenant %s", tenant.slug)
             return HttpResponse(status=403)
         return HttpResponse(challenge, content_type="text/plain")
     return _receive(
         request,
         tenant,
+        route="whatsapp",
         verify=lambda: WHATSAPP.verify(request, channel, secrets),
         parse=lambda body: WHATSAPP.parse(body, channel),
     )
@@ -70,7 +75,7 @@ def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
 @csrf_exempt
 @require_POST
 def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
-    if limiter.blocked(client_ip(request)):
+    if limiter.blocked(_limiter_key(request, "telegram")):
         return HttpResponse(status=429)
     try:
         tenant = main_channel_tenant("telegram", public_id)
@@ -85,6 +90,7 @@ def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
     return _receive(
         request,
         tenant,
+        route="telegram",
         verify=lambda: TELEGRAM.verify(request, channel, secrets),
         parse=lambda body: TELEGRAM.parse(body, channel),
     )
@@ -103,6 +109,7 @@ def _receive(
     request: HttpRequest,
     tenant: LoadedTenant,
     *,
+    route: str,
     verify: Callable[[], bool],
     parse: Callable[[dict[str, Any]], list[ParsedItem]],
 ) -> HttpResponse:
@@ -113,7 +120,7 @@ def _receive(
     if declared > MAX_BODY or len(request.body) > MAX_BODY:
         return HttpResponse(status=400)
     if not verify():
-        limiter.record(client_ip(request))
+        limiter.record(_limiter_key(request, route))
         log.warning("Invalid webhook signature for tenant %s", tenant.slug)
         return HttpResponse(status=401)
     try:

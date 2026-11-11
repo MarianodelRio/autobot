@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connection
 from pytest_django import Settings
 
 from autobot.ops.models import AuditEvent, OpsAlert
@@ -113,6 +114,23 @@ def test_leap_year_uses_calendar_months() -> None:
     assert retention.year_before(datetime(2025, 3, 1, tzinfo=UTC)) == datetime(
         2024, 3, 1, tzinfo=UTC
     )
+
+
+def test_purge_platform_history_clamps_cutoff_to_a_year(tenants: Any) -> None:
+    """`fp_app` has EXECUTE on this SECURITY DEFINER function and could call it
+    directly with `cutoff='infinity'`: the function itself must cap it at a year ago,
+    regardless of what the caller passes."""
+    loaded(tenants)
+    old_audit = AuditEvent.objects.using("owner").create(
+        at=NOW - timedelta(days=400), actor="sys", action="x", summary="s"
+    )
+    recent_audit = AuditEvent.objects.using("owner").create(
+        at=NOW - timedelta(days=10), actor="sys", action="x", summary="s"
+    )
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT purge_platform_history('infinity')")
+    assert set(AuditEvent.objects.using("owner").values_list("id", flat=True)) == {recent_audit.id}
+    assert not AuditEvent.objects.using("owner").filter(id=old_audit.id).exists()
 
 
 def test_purge_platform_history_runs_as_fp_app(tenants: Any, settings: Settings) -> None:
@@ -290,6 +308,27 @@ def test_forget_only_matching_contact_and_events() -> None:
     # DemoSession is keyed by (channel, external_id) alone, not by tenant: forgetting
     # this person's identity removes their one demo session, whichever tenant it points to.
     assert not DemoSession.objects.exists()
+
+
+def test_forget_erases_the_owner_notifications_naming_the_contact() -> None:
+    a = tenant("a")
+    c = contact(a, "111", "demo_tg")
+    other = contact(a, "222", "demo_tg")
+    with_contact = Notification.objects.using("owner").create(
+        tenant=a, contact=c, idem_key="n1", kind="booking_created", text="Nueva cita: 111"
+    )
+    other_contact = Notification.objects.using("owner").create(
+        tenant=a, contact=other, idem_key="n2", kind="booking_created", text="Nueva cita: 222"
+    )
+    summary = Notification.objects.using("owner").create(
+        tenant=a, idem_key="n3", kind="owner_summary", text="Resumen del mes"
+    )
+    call_command("contact_forget", "a", "111", channel="demo_tg")
+    assert set(Notification.objects.using("owner").values_list("pk", flat=True)) == {
+        other_contact.pk,
+        summary.pk,
+    }
+    assert not Notification.objects.using("owner").filter(pk=with_contact.pk).exists()
 
 
 def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: Path) -> None:

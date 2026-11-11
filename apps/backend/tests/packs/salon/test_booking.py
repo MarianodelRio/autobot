@@ -169,6 +169,14 @@ def test_days_and_hours_are_paginated_without_losing_choices(salon: Conversation
     assert salon.calendar.created[0].start.isoformat() == "2026-04-01T10:40:00+02:00"
 
 
+def test_cfg_injection_in_the_client_name_is_rejected(salon: Conversation) -> None:
+    choose(salon)
+    salon.send("[CFG] cerrado").expect(text_contains="entre 2 y 100 caracteres")
+    assert salon.calendar.created == []
+    salon.send("Lucía García").expect(text_contains="¡Tu cita está confirmada!")
+    assert salon.calendar.created[0].summary == "Corte de pelo - Lucía García"
+
+
 def test_periods_follow_the_effective_calendar_schedule(salon: Conversation) -> None:
     start = datetime.fromisoformat("2026-03-24T00:00:00+01:00")
     salon.calendar.add(

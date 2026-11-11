@@ -150,39 +150,92 @@ devuelve nada. El historial y las imágenes antiguas quedan fuera por decisión 
 
 Lo más urgente es S1 y S2 antes de desplegar, y S3 antes de abrir la demo a nadie.
 
-- [ ] **S1 (S) [Aprobación]** Producción acepta valores publicados en el repo:
+- [x] **S1 (S) [Aprobación]** Producción acepta valores publicados en el repo:
   `DJANGO_SECRET_KEY=change-me` y la clave de cifrado de `.env.example` y `settings.py:37`,
   y `ensure-env.sh` no corrige los valores de ejemplo (también `DB_*_URL=...localhost`).
   Rechazarlos en `settings.py` y en `ensure-env.sh`.
-- [ ] **S2 (S) [Aprobación]** `WhatsAppSecrets` admite vacíos (`schema.py:164`): con
+  Hecho: `settings.py` rechaza `DJANGO_SECRET_KEY=change-me`, la clave de cifrado de
+  ejemplo y cualquier `DB_*_URL` con `localhost` cuando `ENVIRONMENT=prod`; `ensure-env.sh`
+  rechaza los mismos valores si ya están puestos en el `.env` del servidor (no solo si
+  faltan). Tests en `tests/repo/test_settings.py` y `tests/tools/test_ensure_env.py`.
+- [x] **S2 (S) [Aprobación]** `WhatsAppSecrets` admite vacíos (`schema.py:164`): con
   `app_secret` vacío cualquiera firma webhooks válidos. Exigir longitud mínima.
-- [ ] **S3 (S)** **Inyección `[CFG]`.** Quien reserve con el nombre `[CFG] cerrado` cierra
+  Hecho: `app_secret` exige `min_length=32` (mismo patrón que `TelegramSecrets.webhook_secret`).
+  Tests en `tests/platform/tenancy/test_registry.py`.
+- [x] **S3 (S)** **Inyección `[CFG]`.** Quien reserve con el nombre `[CFG] cerrado` cierra
   ese día para todos (`booking.py:137`, `parser.py:106`, `slots.py:75`); `[CFG] HORARIO`
   recorta el horario. Ignorar `parse_cfg` si el evento tiene `fp_key`, rechazar `[cfg]`
   en el nombre y añadir escenario.
-- [ ] **S4 (S) [Aprobación]** El bloqueo por IP es común a todos los webhooks
+  Hecho: `conversation.py` rechaza nombres con `[cfg]` antes de reservar; `slots.py` y
+  `booking.py` ignoran `parse_cfg` en cualquier evento con `fp_key` (defensa en
+  profundidad). Escenario en `tests/packs/salon/test_booking.py`
+  (`test_cfg_injection_in_the_client_name_is_rejected`).
+- [x] **S4 (S) [Aprobación]** El bloqueo por IP es común a todos los webhooks
   (`channels/views.py:37`): un bot atacante podría bloquear la IP de Telegram para todos.
   Usar `(ip, ruta)` como clave.
-- [ ] **S5 (S) [Aprobación]** `init-roles.sh:59` devuelve permisos amplios a `fp_app` y, si
+  Hecho: clave `f"{ip}:{route}"` en `channels/views.py`. Test en
+  `tests/platform/channels/test_webhooks.py`
+  (`test_blocking_an_ip_on_whatsapp_does_not_block_it_on_telegram`).
+- [x] **S5 (S) [Aprobación]** `init-roles.sh:59` devuelve permisos amplios a `fp_app` y, si
   el despliegue aborta, no se reaplica `apply_grants` (`deploy.sh:111-117`).
-- [ ] **S6 (S) [Aprobación]** `fp_app` puede vaciar la auditoría con
+  Hecho: `abort()` en `deploy.sh` reaplica `apply_grants` (best effort, como `alert_ops`)
+  antes de salir. Tests en `tests/tools/test_deploy.py`.
+- [x] **S6 (S) [Aprobación]** `fp_app` puede vaciar la auditoría con
   `purge_platform_history('infinity')`. Forzar un mínimo de un año dentro de la función.
-- [ ] **S7 (S)** El panel muestra `session_key` en la vista de tablas (`catalog.py:236`).
+  Hecho: migración `0021_purge_platform_history_min_cutoff.py` redefine la función SQL
+  con `least(cutoff, now() - interval '1 year')`. Test en `test_retention.py`
+  (`test_purge_platform_history_clamps_cutoff_to_a_year`).
+- [x] **S7 (S)** El panel muestra `session_key` en la vista de tablas (`catalog.py:236`).
   Añadir `owner_link.invite_hash` y `platform_cache.value` a `SENSITIVE_TABLES`.
-- [ ] **S8 (S)** Auditar la consola SQL antes de ejecutar y también la vista de tablas: hoy
+  Hecho: `django_session.session_key` añadido a `HIDDEN_COLUMNS` (catalog.py);
+  `owner_link` y `platform_cache` añadidos a `SENSITIVE_TABLES` (grants.py), reaplicado
+  por `apply_grants` como siempre (sin migración nueva, ya es la fuente de verdad según
+  CLAUDE.md). Tests en `test_data.py` y `test_db_roles.py` (genéricos, ya cubrían ambas
+  listas).
+- [x] **S8 (S)** Auditar la consola SQL antes de ejecutar y también la vista de tablas: hoy
   un error de `CAST` saca el dato sin dejar rastro.
-- [ ] **S9 (M)** `contact_forget` no borra los avisos al dueño, que guardan el nombre del
+  Hecho: `query.run()` y `catalog.table_detail()` registran la auditoría antes de
+  ejecutar la consulta (no después de que tenga éxito), así un fallo nunca queda sin
+  rastro; `table_detail()` también envuelve el `cursor.execute` para no propagar un 500
+  sin control. Tests: `test_audits_a_query_even_when_it_fails`,
+  `test_table_detail_is_audited_even_on_error`.
+- [x] **S9 (M)** `contact_forget` no borra los avisos al dueño, que guardan el nombre del
   cliente (`privacy.py:180`).
-- [ ] **S10 (S)** Evitar que el log de consultas lentas escriba parámetros (`compose.prod.yaml:127`).
-- [ ] **S11 (S) [Aprobación]** Fijar `caddy` y `postgres` por versión o digest, y añadir
+  Hecho: `Notification.contact` (FK nula, `on_delete=CASCADE`, igual que
+  `OutboundMessage.contact`) en la migración `0022_notification_contact.py`; se rellena
+  en `process._notify_owner` (nulo para el resumen mensual, que no es de un contacto).
+  `forget()` no necesitó cambios: el `.delete()` de `Contact` ya hace cascada. Test en
+  `test_retention.py` (`test_forget_erases_the_owner_notifications_naming_the_contact`).
+- [x] **S10 (S)** Evitar que el log de consultas lentas escriba parámetros (`compose.prod.yaml:127`).
+  Hecho: `log_parameter_max_length=0` y `log_parameter_max_length_on_error=0` en el
+  `command` de `db`. Test en `test_compose_prod.py`.
+- [x] **S11 (S) [Aprobación]** Fijar `caddy` y `postgres` por versión o digest, y añadir
   `cap_drop: [ALL]` y `no-new-privileges`.
-- [ ] **S12 (S)** `/health` público solo con `status`; `deploy.sh:29` necesita un detalle
+  Hecho: `postgres:18` y `caddy:2` fijados por digest (comprobado localmente con
+  `docker pull`). `cap_drop: [ALL]` + `no-new-privileges:true` en ambos; `caddy` recupera
+  solo `NET_BIND_SERVICE` (para los puertos 80/443 como no-root) y `db` solo
+  `CHOWN, FOWNER, DAC_OVERRIDE, SETUID, SETGID` (lo mínimo para que el entrypoint de
+  postgres pueda arrancar como no-root luego; verificado arrancando ambos contenedores
+  en local con esas capacidades exactas, sin más). Tests en `test_compose_prod.py`.
+- [x] **S12 (S)** `/health` público solo con `status`; `deploy.sh:29` necesita un detalle
   interno, por ejemplo una ruta solo en 127.0.0.1.
-- [ ] **S13 (S) [Tú]** GitHub: `GITHUB_TOKEN` en `read`, entorno `production` con revisor y
-  solo desde `main`, protección de `main`, aprobación de PR de forks, Dependabot, y actions
-  de `deploy.yml` fijadas por SHA.
-- [ ] **S14 (S)** Limitar ngrok a `/webhooks/*` o rechazar el panel fuera de localhost: con
-  `DEBUG=True` puede quedar accesible.
+  Hecho: `/health` público devuelve solo `status`; el detalle de tenants/BD se movió a
+  `/health/internal`, que Caddy nunca reenvía (fuera de su matcher `@public`); `deploy.sh`
+  usa esa ruta. Tests en `test_webhooks.py`, `test_registry_database.py`.
+- [x] **S13 (S)** GitHub, solo lo imprescindible (decidido el 2026-11-11):
+  - Fijar por SHA las actions de `deploy.yml` (`actions/checkout`, `docker/login-action`),
+    el único workflow que tiene la clave SSH del servidor.
+  - Quitar Dependabot: borrar `.github/dependabot.yml` y cerrar sus PR abiertos (#10–#15)
+    con sus ramas. Las dependencias se actualizan a mano.
+  - Descartado: permisos por defecto de `GITHUB_TOKEN`, revisor en `production`, protección
+    de `main` y aprobación de PR de forks. Solo tú tienes acceso de escritura y los PR de
+    forks no reciben los secretos.
+  Hecho: `actions/checkout@v7` y `docker/login-action@v4` fijados por el SHA exacto de
+  esos tags (consultado con `gh api`). `.github/dependabot.yml` borrado; PR #10–#15
+  cerrados y sus ramas remotas borradas (`gh pr close --delete-branch`). Test en
+  `test_deploy_workflow.py`.
+- ~~**S14 (S)** Limitar ngrok a `/webhooks/*` o rechazar el panel fuera de localhost.~~
+  **Descartada (2026-11-11):** ngrok solo se usa para probar en local, nunca en producción.
 
 ### X. Errores de funcionamiento
 

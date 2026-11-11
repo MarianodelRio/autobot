@@ -80,7 +80,7 @@ def tables(request: HttpRequest) -> list[dict[str, Any]]:
 
 @router.get("/data/tables/{name}", response=TableDetailOut)
 def table(request: HttpRequest, name: str) -> dict[str, Any]:
-    return catalog.table_detail(name)
+    return catalog.table_detail(name, actor=request.user.username)
 
 
 @router.post("/data/query", response=QueryOut)

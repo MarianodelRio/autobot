@@ -49,8 +49,12 @@ x-app: &app
 
 services:
   caddy:
-    image: caddy:2
+    image: caddy:2@sha256:ce773ec7a742ce15ee6bf2bb5f65882b9e2a4487b10733e6f1484f86e6b5d8bc
     user: ${DEPLOY_UID:?Set the numeric uid of the deploy user}
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]  # binds 80/443; everything else it needs stays dropped
+    security_opt:
+      - no-new-privileges:true
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?Set the API hostname}
     ports:
@@ -119,12 +123,31 @@ services:
       retries: 6
 
   db:
+    cap_drop: [ALL]
+    # The entrypoint starts as root to fix ownership/permissions on the data
+    # directory, then su's to postgres: verified locally that cap-dropping to just
+    # these five still lets it init and start (anything less and chmod/chown/the
+    # su to postgres fails).
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       FP_OWNER_PASSWORD: ${FP_OWNER_PASSWORD:?Set FP_OWNER_PASSWORD}
       FP_APP_PASSWORD: ${FP_APP_PASSWORD:?Set FP_APP_PASSWORD}
       FP_READONLY_PASSWORD: ${FP_READONLY_PASSWORD:?Set FP_READONLY_PASSWORD}
-    command: ["postgres", "-c", "shared_buffers=512MB", "-c", "max_connections=100", "-c", "log_min_duration_statement=1000"]
+    # log_parameter_max_length=0 keeps a slow query's bound values (which can hold a
+    # secret or personal data) out of the log, even on the statement logged by
+    # log_min_duration_statement; *_on_error covers the same values on a failed query.
+    command:
+      [
+        "postgres",
+        "-c", "shared_buffers=512MB",
+        "-c", "max_connections=100",
+        "-c", "log_min_duration_statement=1000",
+        "-c", "log_parameter_max_length=0",
+        "-c", "log_parameter_max_length_on_error=0",
+      ]
     restart: unless-stopped
     logging: *logging
 

@@ -65,6 +65,14 @@ def _cell(value: Any) -> Any:
 
 def run(sql: str, *, tenant_id: UUID | None, actor: str) -> QueryResult:
     sql = _clean(sql)
+    # Recorded before running, not after: a failure (e.g. a CAST error that leaks a
+    # value through the driver's message) must never leave a query without a trace.
+    record(
+        actor=actor,
+        action="data.query",
+        summary="Consulta SQL ejecutada.",
+        details={"sql": sql},
+    )
     started = time.monotonic()
     connection = connections["readonly"]
     try:
@@ -88,10 +96,4 @@ def run(sql: str, *, tenant_id: UUID | None, actor: str) -> QueryResult:
     truncated = len(fetched) > MAX_ROWS
     rows = [[_cell(v) for v in row] for row in fetched[:MAX_ROWS]]
     duration_ms = int((time.monotonic() - started) * 1000)
-    record(
-        actor=actor,
-        action="data.query",
-        summary="Consulta SQL ejecutada.",
-        details={"sql": sql},
-    )
     return QueryResult(columns, rows, truncated, duration_ms)

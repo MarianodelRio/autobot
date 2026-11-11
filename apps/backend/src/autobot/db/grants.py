@@ -10,6 +10,8 @@ SENSITIVE_TABLES: tuple[str, ...] = (
     "django_session",
     "otp_totp_totpdevice",
     "tenant_secret",
+    "owner_link",
+    "platform_cache",
 )
 # Config tables (ADR-009): fp_app keeps SELECT, but only fp_owner (the panel, the
 # commands) writes.

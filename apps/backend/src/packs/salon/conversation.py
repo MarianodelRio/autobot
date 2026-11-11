@@ -9,6 +9,7 @@ from core.errors import PermanentError, TransientError
 from core.messages import IncomingMessage
 from core.pack import PackContext, PackResult
 from core.replies import Reply, Text
+from core.text import fold
 from core.ui import button, buttons_msg, row
 from packs.salon import booking
 from packs.salon import interactive as ui
@@ -257,6 +258,8 @@ class Turn:
                 return self.result(ui.back(self.cfg.texts.name_text_only))
             name = name.strip().replace("\n", " ").replace("\r", "")
             if not 2 <= len(name) <= 100:
+                return self.result(ui.back("Escribe un nombre de entre 2 y 100 caracteres."))
+            if "[cfg]" in fold(name):
                 return self.result(ui.back("Escribe un nombre de entre 2 y 100 caracteres."))
             return self.create(name)
         if message.type == "text":

@@ -109,7 +109,7 @@ def test_no_secrets_file_disables_every_main_channel(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("secrets", "problem"),
     [
-        ({"app_secret": "x", "access_token": "y"}, "verify_token"),
+        ({"app_secret": "x" * 32, "access_token": "y"}, "verify_token"),
         ({**WA_SECRETS, "extra": "z"}, "extra"),
     ],
 )
@@ -119,6 +119,16 @@ def test_incomplete_secrets_disable_the_main_channel(
     (t,) = load(tmp_path, tenant_yaml("a"), secrets={"a": secrets}).tenants
     assert not t.main_enabled
     assert problem in t.main_disabled[0]
+
+
+def test_whatsapp_app_secret_needs_32_characters(tmp_path: Path) -> None:
+    secrets = {"a": {**WA_SECRETS, "app_secret": "short"}}
+    assert not load(tmp_path, tenant_yaml("a"), secrets=secrets).tenants[0].main_enabled
+
+
+def test_whatsapp_app_secret_rejects_empty(tmp_path: Path) -> None:
+    secrets = {"a": {**WA_SECRETS, "app_secret": ""}}
+    assert not load(tmp_path, tenant_yaml("a"), secrets=secrets).tenants[0].main_enabled
 
 
 def test_telegram_webhook_secret_needs_32_characters(tmp_path: Path) -> None:

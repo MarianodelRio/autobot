@@ -74,8 +74,13 @@ def test_health_catches_initial_registry_failure(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr("autobot.tenancy.registry.sources_from_database", fail)
     response = Client().get("/health")
     assert response.status_code == 503
-    assert response.json()["database"] is False
+    assert response.json() == {"status": "error"}  # public: no detail
     assert b"private database failure" not in response.content
+
+    internal = Client().get("/health/internal")
+    assert internal.status_code == 503
+    assert internal.json()["database"] is False
+    assert b"private database failure" not in internal.content
 
 
 @pytest.mark.parametrize("kind", ["whatsapp", "telegram"])

@@ -132,6 +132,11 @@ def test_migration_failure_never_switches_web(tmp_path: Path) -> None:
     assert "up --no-deps -d web worker" not in log
     assert any(line.startswith(OLD) and "deploy_aborted" in line for line in log.splitlines())
     assert deploy_results(tmp_path) == ["aborted"]
+    # init-roles.sh already ran and gave fp_app its broad grants: the abort must reapply
+    # the real ones so they don't linger.
+    assert any(
+        line.startswith(OLD) and "manage.py apply_grants" in line for line in log.splitlines()
+    )
 
 
 def test_failure_before_switch_restores_previous_checkout(tmp_path: Path) -> None:
@@ -147,6 +152,9 @@ def test_failure_before_switch_restores_previous_checkout(tmp_path: Path) -> Non
     assert f"git checkout --quiet --detach {OLD}" in log
     assert "migrate" not in log
     assert "up --no-deps -d web worker" not in log
+    assert any(
+        line.startswith(OLD) and "manage.py apply_grants" in line for line in log.splitlines()
+    )
 
 
 @pytest.mark.parametrize("argument", ["short", "; rm -rf /", "A" * 40])

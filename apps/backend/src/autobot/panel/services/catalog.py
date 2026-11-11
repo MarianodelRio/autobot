@@ -3,9 +3,12 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from django.db import connections
+import psycopg
+from django.db import DatabaseError, connections
 from django.http import Http404
 
+from autobot.ops.audit import record
+from autobot.panel.errors import ApiError
 from autobot.tenancy.models import Tenant
 
 
@@ -221,7 +224,10 @@ CATALOG: dict[str, TableDoc] = {
         "Django",
         "Hasta caducidad y limpieza",
         False,
-        {"session_data": "Contenido de sesión, oculto."},
+        {
+            "session_data": "Contenido de sesión, oculto.",
+            "session_key": "Clave de sesión, oculta (permitiría secuestrar la sesión).",
+        },
     ),
     "otp_totp_totpdevice": TableDoc(
         DJANGO,
@@ -238,6 +244,7 @@ HIDDEN_COLUMNS = frozenset(
         ("tenant_secret", "ciphertext"),
         ("auth_user", "password"),
         ("django_session", "session_data"),
+        ("django_session", "session_key"),
         ("otp_totp_totpdevice", "key"),
         ("owner_link", "invite_hash"),
         ("platform_cache", "value"),
@@ -379,7 +386,7 @@ def table_list() -> list[dict[str, Any]]:
     return result
 
 
-def table_detail(name: str) -> dict[str, Any]:
+def table_detail(name: str, *, actor: str) -> dict[str, Any]:
     metadata = _catalog_metadata()
     if name not in CATALOG or name not in metadata:
         raise Http404
@@ -402,17 +409,28 @@ def table_detail(name: str) -> dict[str, Any]:
     if order:
         query += f" ORDER BY {quote(order)} DESC NULLS LAST"
     query += " LIMIT 20"
-    with connections["owner"].cursor() as cursor:
-        cursor.execute(query)
-        rows = [
-            [
-                f"<{len(value)} bytes>"
-                if isinstance(value, (bytes, bytearray, memoryview))
-                else value
-                for value in row
+    # Recorded before running, not after: a failure (e.g. a CAST error that leaks a
+    # value through the driver's message) must never leave a view without a trace.
+    record(
+        actor=actor,
+        action="data.table",
+        summary="Vista de tabla consultada.",
+        details={"table": name},
+    )
+    try:
+        with connections["owner"].cursor() as cursor:
+            cursor.execute(query)
+            rows = [
+                [
+                    f"<{len(value)} bytes>"
+                    if isinstance(value, (bytes, bytearray, memoryview))
+                    else value
+                    for value in row
+                ]
+                for row in cursor.fetchall()
             ]
-            for row in cursor.fetchall()
-        ]
+    except (DatabaseError, psycopg.Error) as exc:
+        raise ApiError("bad_request", str(exc).strip()[:500], 400) from None
     relations = _relations()
     return dict(
         name=name,

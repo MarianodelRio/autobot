@@ -103,6 +103,29 @@ def test_rejects_allowed_hosts_missing_the_tunnel_hosts(script: Path) -> None:
     assert "DJANGO_ALLOWED_HOSTS" in result.stderr
 
 
+def test_rejects_example_secret_key_already_in_env(script: Path, tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("DJANGO_SECRET_KEY=change-me\n")
+    result = run(script, **EXTERNALS)
+    assert result.returncode == 1
+    assert "DJANGO_SECRET_KEY" in result.stderr
+
+
+def test_rejects_example_encryption_key_already_in_env(script: Path, tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(
+        "SECRETS_ENCRYPTION_KEY=UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=\n"
+    )
+    result = run(script, **EXTERNALS)
+    assert result.returncode == 1
+    assert "SECRETS_ENCRYPTION_KEY" in result.stderr
+
+
+def test_rejects_db_url_pointing_at_localhost(script: Path, tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("DB_APP_URL=postgres://fp_app:fp_app@localhost:5433/autobot\n")
+    result = run(script, **EXTERNALS)
+    assert result.returncode == 1
+    assert "DB_APP_URL" in result.stderr
+
+
 def test_never_overwrites_an_existing_external_value(script: Path, tmp_path: Path) -> None:
     (tmp_path / ".env").write_text(
         "PUBLIC_HOST=already.example.com\n"

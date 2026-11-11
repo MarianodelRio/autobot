@@ -25,7 +25,7 @@ compose=(docker compose --project-name autobot -f deploy/compose/compose.yaml -f
 wait_health() {
   local deadline=$((SECONDS + 60)) response attempt
   for ((attempt=0; attempt<30 && SECONDS<deadline; attempt++)); do
-    if response=$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:8000/health 2>/dev/null) && \
+    if response=$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:8000/health/internal 2>/dev/null) && \
       python3 -c 'import json,sys; r=json.load(sys.stdin); t=r["tenants"]; assert r["status"] == "ok" and t["degraded"] == 0 and t["unreadable"] == 0' <<<"$response" 2>/dev/null; then
       return 0
     fi
@@ -101,6 +101,10 @@ abort() {
   if [[ -n $previous ]]; then
     export SHA="$previous"  # the new image may not even have been pulled
   fi
+  # init-roles.sh (just run, or mid-way through) may have left fp_app with the broad
+  # grants it starts with; reapply the real ones so an aborted deploy never leaves them.
+  "${compose[@]}" run --rm web python manage.py apply_grants \
+    || echo 'Could not reapply grants after aborting; fp_app may still have broad permissions' >&2
   alert_ops deploy_aborted '🔴 Despliegue abortado antes de cambiar la imagen: revisar logs'
   record_deploy aborted
   exit 1

@@ -141,3 +141,14 @@ def test_event_classification() -> None:
     assert classify(event("[CFG] CERRADO")) == "config"
     assert classify(replace(base, description="Telefono: +34600000001")) == "manual"
     assert classify(replace(base, private={"fp_key": "booking"})) == "bot"
+    # A booking title can't be injected with "[cfg]" (conversation.py rejects it before
+    # creating the event), but defend here too: fp_key always wins over the title.
+    injected = replace(event("[CFG] CERRADO"), private={"fp_key": "booking"})
+    assert classify(injected) == "bot"
+
+
+def test_cfg_injection_in_a_booking_title_does_not_close_the_day() -> None:
+    from dataclasses import replace
+
+    injected = replace(event("[CFG] CERRADO"), private={"fp_key": "booking"})
+    assert compute_slots(DAY, Service(), [("09:00", "12:00")], [injected], NOW, Rules()) != []

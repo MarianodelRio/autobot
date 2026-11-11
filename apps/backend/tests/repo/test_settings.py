@@ -73,10 +73,51 @@ def test_prod_with_all_variables_passes_check() -> None:
         DJANGO_SECRET_KEY="k",
         DJANGO_ALLOWED_HOSTS="api.x,",
         DB_APP_URL="postgres://u:p@127.0.0.1:1/none",
-        SECRETS_ENCRYPTION_KEY="UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=",
+        SECRETS_ENCRYPTION_KEY="r9QT0J-HCiYMurCE7CqrNd-Cxb8WIxoYsw3XekIvUoU=",
         WHATSAPP_GRAPH_VERSION="v23.0",
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_prod_rejects_example_secret_key() -> None:
+    result = run(
+        "manage.py",
+        "check",
+        ENVIRONMENT="prod",
+        DJANGO_SECRET_KEY="change-me",
+        SECRETS_ENCRYPTION_KEY="UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=",
+        DB_APP_URL="postgres://u:p@127.0.0.1:1/none",
+    )
+    assert result.returncode != 0
+    assert "DJANGO_SECRET_KEY" in result.stderr
+
+
+def test_prod_rejects_example_encryption_key() -> None:
+    result = run(
+        "manage.py",
+        "check",
+        ENVIRONMENT="prod",
+        DJANGO_SECRET_KEY="a-real-key",
+        SECRETS_ENCRYPTION_KEY="UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=",
+        DB_APP_URL="postgres://u:p@127.0.0.1:1/none",
+    )
+    assert result.returncode != 0
+    assert "SECRETS_ENCRYPTION_KEY" in result.stderr
+
+
+def test_prod_rejects_db_urls_pointing_at_localhost() -> None:
+    for name in ("DB_APP_URL", "DB_OWNER_URL", "DB_READONLY_URL"):
+        env_vars = {
+            "ENVIRONMENT": "prod",
+            "DJANGO_SECRET_KEY": "a-real-key",
+            "DJANGO_ALLOWED_HOSTS": "api.x",
+            "SECRETS_ENCRYPTION_KEY": "r9QT0J-HCiYMurCE7CqrNd-Cxb8WIxoYsw3XekIvUoU=",
+            "DB_APP_URL": "postgres://u:p@db.internal:5432/none",
+            name: "postgres://u:p@localhost:5433/autobot",
+        }
+        result = run("manage.py", "check", **env_vars)
+        assert result.returncode != 0, name
+        assert name in result.stderr, name
 
 
 def test_unknown_environment_is_rejected() -> None:
@@ -105,7 +146,7 @@ def test_owner_and_readonly_alias_only_when_configured() -> None:
 
 
 def test_prod_rejects_invalid_encryption_key_without_disclosing_it() -> None:
-    for key in ("invalid-private-key", "UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=,bad-key", ","):
+    for key in ("invalid-private-key", "r9QT0J-HCiYMurCE7CqrNd-Cxb8WIxoYsw3XekIvUoU=,bad-key", ","):
         result = run(
             "-c",
             "import sys; sys.path.insert(0, 'src'); import config.settings",

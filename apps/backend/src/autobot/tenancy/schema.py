@@ -162,7 +162,7 @@ class TenantDocument(Strict):
 
 
 class WhatsAppSecrets(Strict):
-    app_secret: SecretStr
+    app_secret: SecretStr = Field(min_length=32)
     access_token: SecretStr
     verify_token: SecretStr
 

@@ -235,7 +235,7 @@ def apply_actions(
                 if row is not None:
                     messages.append(row)
             case NotifyOwner():
-                _notify_owner(tenant, channel, action)
+                _notify_owner(tenant, channel, action, contact)
             case RecordMetric():
                 _record_metric(tenant, action)
     return messages
@@ -314,7 +314,9 @@ def _contact_by_phone(tenant: LoadedTenant, channel: str, phone: str) -> Contact
     return contact
 
 
-def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> None:
+def _notify_owner(
+    tenant: LoadedTenant, channel: str, action: NotifyOwner, contact: Contact | None = None
+) -> None:
     """Queue the notice if the owner wants this kind; `send_notification` is what
     actually checks whether a chat is connected, and only logs it if not. A demo
     tenant's owner receives it the same way as a real one. Delivery is
@@ -328,6 +330,7 @@ def _notify_owner(tenant: LoadedTenant, channel: str, action: NotifyOwner) -> No
         idem_key=action.idem_key,
         audience=Notification.Audience.OWNER,
         kind=action.kind[:64],
+        contact=contact,
         text=action.text,
     )
     Notification.objects.bulk_create([row], ignore_conflicts=True)

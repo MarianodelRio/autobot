@@ -1,14 +1,17 @@
 """Root URLs.
 
-Public routes are the only ones Caddy forwards: the webhooks and /health. The panel's
-API is mounted apart (`PanelGateMiddleware`), reached only through the SSH tunnel.
+Public routes are the only ones Caddy forwards: the webhooks and /health (its
+`@public` matcher in deploy/caddy/Caddyfile is the actual enforcement). /health/internal
+is deliberately not in that matcher nor in `public` below: it only answers on the
+docker network or 127.0.0.1, which is all `deploy.sh` needs. The panel's API is mounted
+apart (`PanelGateMiddleware`), reached only through the SSH tunnel.
 """
 
 from django.urls import URLPattern, URLResolver, path
 
 from autobot.channels import views as webhooks
 from autobot.channels.demo.views import telegram_demo, whatsapp_demo
-from autobot.ops.views import health
+from autobot.ops.views import health, health_internal
 from autobot.owner.views import telegram_notify
 from autobot.panel.api import api
 
@@ -21,4 +24,8 @@ public: list[URLPattern | URLResolver] = [
     path("health", health, name="health"),
 ]
 
-urlpatterns = public + [path("api/panel/", api.urls)]
+urlpatterns = (
+    public
+    + [path("health/internal", health_internal, name="health-internal")]
+    + [path("api/panel/", api.urls)]
+)

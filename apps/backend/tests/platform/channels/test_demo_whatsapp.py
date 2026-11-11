@@ -32,7 +32,7 @@ pytestmark = [
 
 PHONE_NUMBER_ID = "5566778899"  # the demo door's own number, never a tenant's
 OTHER_PHONE_NUMBER_ID = "1122334455"  # a foreign number: dropped by WHATSAPP.parse
-APP_SECRET = "demo-wa-app-secret"
+APP_SECRET = "demo-wa-app-secret-0123456789012"
 VERIFY_TOKEN = "demo-wa-verify"
 USER = "34600000099"  # in DEMO_WHATSAPP_USERS
 STRANGER = "34600000098"

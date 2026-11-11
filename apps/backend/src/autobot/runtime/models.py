@@ -187,6 +187,16 @@ class Notification(TenantScoped):
         max_length=8, choices=Audience, default=Audience.OWNER, db_default=Audience.OWNER
     )
     kind = models.CharField(max_length=64)
+    # Null for a notification not about one contact (the monthly owner summary);
+    # `privacy.forget` relies on this cascade to erase a contact's name from `text`.
+    contact = models.ForeignKey(
+        Contact,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name="+",
+    )
     text = models.TextField()
     status = models.CharField(
         max_length=8, choices=Status, default=Status.PENDING, db_default=Status.PENDING

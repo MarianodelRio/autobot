@@ -48,10 +48,10 @@ def overlaps(start: datetime, end: datetime, slot_start: datetime, slot_end: dat
 def classify(event: CalEvent) -> str:
     from packs.salon.parser import parse_phone
 
-    if parse_cfg(event.summary):
-        return "config"
     if event.private.get("fp_key"):
         return "bot"
+    if parse_cfg(event.summary):
+        return "config"
     return "manual" if parse_phone(event.description) else "block"
 
 
@@ -71,6 +71,9 @@ def compute_slots(
     special: list[tuple[str, str]] | None = None
     blocking: list[CalEvent] = []
     for event in events:
+        if event.private.get("fp_key"):
+            blocking.append(event)
+            continue
         cfg = parse_cfg(event.summary)
         if cfg and cfg["type"] in ("cerrado", "vacaciones"):
             return []

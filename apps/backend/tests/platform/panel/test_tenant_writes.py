@@ -97,7 +97,7 @@ def test_secrets_partial_update_keeps_the_rest(authed_client: Any, tenants: Any)
     status = get(authed_client, "tenants/a/secrets").json()
     assert all(field["set"] for field in status["fields"])
 
-    changed = {**WA_SECRETS, "app_secret": "new-app-secret"}
+    changed = {**WA_SECRETS, "app_secret": "new-app-secret-" + "y" * 17}
     only_app_secret = {**{k: "" for k in WA_SECRETS}, "app_secret": changed["app_secret"]}
     assert put(authed_client, "tenants/a/secrets", {"secrets": only_app_secret}).status_code == 204
     from autobot.tenancy.crypto import decrypt
@@ -105,7 +105,7 @@ def test_secrets_partial_update_keeps_the_rest(authed_client: Any, tenants: Any)
 
     row = TenantSecret.objects.using("owner").get(tenant__slug="a")
     decrypted = decrypt(bytes(row.ciphertext))
-    assert decrypted["app_secret"] == "new-app-secret"
+    assert decrypted["app_secret"] == changed["app_secret"]
     assert decrypted["access_token"] == WA_SECRETS["access_token"]
     assert decrypted["verify_token"] == WA_SECRETS["verify_token"]
 

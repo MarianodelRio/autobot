@@ -102,6 +102,16 @@ def test_invalid_signatures_are_401_and_limited_per_ip(tenants: Any) -> None:
     assert blocked.status_code == 429  # before looking up the tenant
 
 
+def test_blocking_an_ip_on_whatsapp_does_not_block_it_on_telegram(tenants: Any) -> None:
+    tenants(wa_tenant())
+    tenants(tg_tenant())
+    body = fixture("whatsapp/text.json")
+    for _ in range(20):
+        assert post_wa(body, secret="wrong", ip="198.51.100.9") == 401
+    assert post_wa(body, ip="198.51.100.9") == 429
+    assert post_tg(fixture("telegram/message.json"), ip="198.51.100.9") == 200
+
+
 def test_telegram_secret_token(tenants: Any) -> None:
     tenants(tg_tenant())
     assert post_tg(fixture("telegram/message.json"), secret="w" * 31 + "x") == 401
@@ -257,10 +267,17 @@ def test_database_errors_are_503(tenants: Any, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_health(tenants: Any) -> None:
+    # Public: only `status`, nothing a probe on the internet should learn (ADR-less
+    # finding S12 of docs/plan-lanzamiento.md). The tenant detail is on /health/internal,
+    # which Caddy never forwards.
     tenants(wa_tenant(), wa_tenant("bad", config={"colors": 1}))
     response = Client().get("/health")
     assert response.status_code == 200
-    assert response.json() == {
+    assert response.json() == {"status": "ok"}
+
+    internal = Client().get("/health/internal")
+    assert internal.status_code == 200
+    assert internal.json() == {
         "status": "ok",
         "database": True,
         "tenants": {"loaded": 2, "degraded": 1, "unreadable": 0},
@@ -275,9 +292,8 @@ def test_health_without_database_is_503(tenants: Any, monkeypatch: pytest.Monkey
             raise OperationalError("down")
 
     monkeypatch.setattr("autobot.ops.views.connections", {"default": Broken()})
-    response = Client().get("/health")
-    assert response.status_code == 503
-    assert response.json()["database"] is False
+    assert Client().get("/health").status_code == 503
+    assert Client().get("/health/internal").status_code == 503
 
 
 def test_only_webhooks_and_health_are_public() -> None:
@@ -293,6 +309,8 @@ def test_only_webhooks_and_health_are_public() -> None:
     ]
     # The panel API is mounted apart from `public`: Caddy's allowlist never reaches it
     # (PanelGateMiddleware gates it instead, by the X-Autobot-Edge header it adds).
+    # /health/internal is also apart: Caddy's own `@public` matcher (deploy/caddy/
+    # Caddyfile), separate from this list, never forwards it either.
     extra = [p for p in urls.urlpatterns if p not in urls.public]
-    assert [str(p.pattern) for p in extra] == ["api/panel/"]
+    assert [str(p.pattern) for p in extra] == ["health/internal", "api/panel/"]
     assert Client().get("/admin/").status_code == 404

@@ -10,7 +10,7 @@ from tests.fixtures.toy_pack import pack as toy
 
 PACKS = {"toy": toy.pack}
 WA_SECRETS = {
-    "app_secret": "S3CR3T-APP",
+    "app_secret": "S3CR3T-APP-" + "x" * 21,
     "access_token": "EAAB-T0KEN",
     "verify_token": "V3RIFY-T0KEN",
 }

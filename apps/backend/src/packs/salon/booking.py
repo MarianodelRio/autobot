@@ -46,6 +46,8 @@ def availability(
     for item in events:
         if item.status == "cancelled" or item.start >= end or item.end <= start:
             continue
+        if item.private.get("fp_key"):
+            continue
         schedule = parse_cfg(item.summary)
         if schedule and schedule["type"] == "horario":
             ranges = [(schedule["start"], schedule["end"])]
