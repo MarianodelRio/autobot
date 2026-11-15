@@ -76,8 +76,11 @@ def backup_config(tmp_path: Path) -> Path:
 def invoke(
     script: Path, binaries: Path, tmp_path: Path, **environment: str
 ) -> subprocess.CompletedProcess[str]:
+    # CI exports local DB_*_URL (localhost) for the test suite; ensure-env.sh would
+    # rightly reject them as a production .env, so the restore never inherits them.
+    inherited = {k: v for k, v in os.environ.items() if not k.startswith("DB_")}
     env = {
-        **os.environ,
+        **inherited,
         "PATH": f"{binaries}:{os.environ['PATH']}",
         "TEST_LOG": str(tmp_path / "docker.log"),
         "RESTIC_FAKE_SNAPSHOT_DIR": str(tmp_path / "snapshot"),
