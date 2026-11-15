@@ -472,8 +472,13 @@ healthchecks.io y backups.
   `deploy/scripts/compose.sh` y `make prod-compose ARGS="..."` cubren lo que
   `manage.sh` no (p. ej. `exec`, `logs`).
 - [x] **A3** `restic init` no lo hace nadie: el primer backup falla. **Bloqueante.**
-  Hecho: `backup.sh` comprueba con `restic cat config` y llama a `restic init` si el
-  repositorio no está inicializado, antes del primer `backup`.
+  Hecho, revisado el 2026-11-15: `backup.sh` ya no inicializa el repositorio en
+  automático (hacerlo podía crear uno vacío por un `RESTIC_REPOSITORY` mal escrito
+  y ocultar así la pérdida del bueno); exige que exista y compara su id contra
+  `var/.restic-repo-id`, que escribe la primera vez que corre. `restic init` se
+  ejecuta una vez a mano, como parte de `server-init` (A15). De paso, `--prune`
+  (que reescribe todo el repositorio) solo se ejecuta una vez al día, no en cada
+  backup horario (T5).
 - [x] **A4** Exigir `google_sa.json` como fichero regular: si falta, Docker crea un directorio.
   Hecho: `ensure-env.sh` se niega a seguir si `var/google_sa.json` no es un fichero
   regular.
@@ -501,9 +506,22 @@ healthchecks.io y backups.
 - [x] **A11** Disco: `docker image prune` periódico y límite de tamaño para VictoriaLogs.
   Hecho: `deploy/scripts/prune.sh` + `autobot-prune.timer`/`.service` (diario, instalado
   y arrancado por `bootstrap-server.sh`); `compose.yaml` añade
-  `-retention.maxDiskSpaceUsageBytes=5GiB` a `victorialogs`.
-- [ ] **A12** `bootstrap-server.sh`: admitir `root` o usuario con `sudo`, cerrar SSH al
-  final y dar a `deploy` un `sudoers` limitado a ese script.
+  `-retention.maxDiskSpaceUsageBytes=5GiB` a `victorialogs`. Revisado el 2026-11-15:
+  `prune.sh` toma el candado de `deploy.sh` en modo compartido (nunca borra una
+  imagen que un despliegue en marcha acaba de descargar) y, de paso, borra
+  `var/backups/pre-migrate.dump` (A8) con más de 7 días, porque es una copia en
+  claro de todos los clientes que no entra en el backup de restic a propósito.
+- [x] **A12** `bootstrap-server.sh`: admitir `root` o usuario con `sudo`, cerrar SSH al
+  final y dar a `deploy` un `sudoers` limitado a ese script. Hecho, con un diseño
+  algo distinto al propuesto (`deploy` ya equivale a root por estar en el grupo
+  `docker`, así que limitarle el `sudo` no es una barrera real): el script se
+  reinvoca con `sudo` si no es ya root, y queda partido en dos fases, `--base`
+  (paquetes, Docker, swap de 2 GB, cuentas `deploy` y la nueva `admin` —con `sudo`
+  sin contraseña—, clon del repo por HTTPS —ya no hace falta deploy key, el repo es
+  público— y timers; nunca toca `sshd`, así que repetirla desde la misma sesión es
+  segura) y `--harden-ssh` (cierra `root`/contraseña y activa `ufw`; solo tiene
+  sentido ejecutarla tras verificar, desde una sesión nueva, que `deploy@` y
+  `admin@` aceptan la clave). Diseño completo en ADR-012.
 - [x] **A13** Documentar la subida de versión mayor de PostgreSQL. Hecho: nueva sección
   en `docs/procedimientos/mantenimiento.md` (simulacro de restauración con la versión
   nueva, comparar conteos, luego el corte real).
@@ -514,23 +532,35 @@ healthchecks.io y backups.
 
 **Comando de instalación:**
 
-- [ ] **A15 (M) [Tú lo ejecutas]** `make server-init HOST=<ip> [SSH_USER=root|ubuntu]`, con
-  `var/server.env` (dominio, repo, imagen y credenciales externas). Idempotente:
-  1. Valida en local que no falte nada y que el DNS apunte a la IP.
-  2. Genera claves y crea la deploy key con `gh`.
-  3. Ejecuta el bootstrap.
-  4. Sube `.env`, `google_sa.json`, `backup.env` y la contraseña de restic.
-  5. `restic init` y activa el timer.
+- [x] **A15 (M) [Tú lo ejecutas]** `make server-init [CHECK=1] [ONLY=paso]`, con
+  `var/server.env` (dominio, repo, imagen y credenciales externas;
+  `deploy/env/server.env.example`). Idempotente, cada paso comprueba antes de
+  actuar y los que tocan `gh`, restic o despliegan de verdad piden confirmación:
+  1. Valida en local que no falte nada y que el DNS apunte a la IP (`CHECK=1` para
+     por aquí). No hace falta deploy key: el repo es público.
+  2. Genera la clave de CI y ejecuta `bootstrap-server.sh --base` por SSH.
+  3. Pide verificar `deploy@`/`admin@` desde una sesión nueva y, confirmado,
+     ejecuta `--harden-ssh`.
+  4. Sube `.env` (fusionado, nunca sustituido), `google_sa.json`, `backup.env` y la
+     contraseña de restic.
+  5. `restic init` a mano, con confirmación (A3), y activa el timer.
   6. Crea el entorno `production` y sus secretos con `gh`.
-  7. Lanza el despliegue y comprueba HTTPS.
-  8. Crea el usuario del panel, registra los webhooks de `demo` y `notify` y hace el
-     primer backup.
+  7. Lanza el primer despliegue directamente por SSH (no por el workflow: en un
+     repo público, el primer despliegue es el que más conviene ver entero, no en
+     un log de Actions) y comprueba HTTPS.
+  8. Crea el usuario del panel; quedan por tu cuenta los webhooks de `demo` y
+     `notify` (dependen de los tokens reales) y el primer backup real.
+  Hecho: `deploy/scripts/server-init.sh`; su paso 1 (`CHECK=1`) tiene tests, el
+  resto se ensaya en A16.
 - [ ] **A16 (M)** Ensayo en VM desechable: instalar, repetir sin cambios, vuelta atrás con
   un SHA roto, backup real y restauración (T3).
 - [ ] **A17 (S) [Tú]** Crear cuentas: Sentry, dos checks de healthchecks.io, monitor externo
   de `/health` y backups en R2 o B2, en región UE y en otro proveedor. Con B2, usar su
   endpoint S3 (`backup.sh:22` solo exporta `AWS_*`).
-- [ ] **A18 (S)** Actualizar ADR-005 y `docs/procedimientos/servidor.md`.
+- [x] **A18 (S)** Actualizar ADR-005 y `docs/procedimientos/servidor.md`. Hecho:
+  `servidor.md` reescrito para el bootstrap en dos fases y las cuentas
+  `deploy`/`admin`; el diseño de instalación y traslado en sí queda en ADR-012
+  (nuevo), que ADR-005 enlaza. Falta ensayarlo en una VM real (A16).
 
 **A mano para siempre:** alquilar la VM, apuntar el DNS, crear las cuentas externas y
 aprobar el despliegue.
@@ -566,14 +596,24 @@ falta nada de esto.
   montarlo en el primer contenedor). Comprobado en local con un `restic` real: pasa.
 - [ ] **T4 (M) [Tú lo ejecutas]** `make server-migrate FROM=<a> TO=<b>`:
   1. 24 h antes, bajar el TTL del DNS a 60–300 s.
-  2. `server-init` en destino en modo restauración, sin desplegar y con el timer parado.
-  3. Ensayo en destino y comparación de conteos por negocio.
-  4. Corte: parar `caddy`, `web`, `worker` y el timer en origen, y hacer un backup final.
-  5. En destino: checkout del SHA, restaurar, `DEPLOY_UID`, roles y permisos, certificados.
-  6. Arrancar todo menos `worker` y verificar con `curl --resolve`; después, `worker`.
+  2. `server-init --mode=restore` en destino: restaura sin desplegar y con el timer parado.
+  3. Ensayo en destino (`AUTOBOT_RESTORE_DB_ONLY=true`) y comparación de conteos por
+     negocio; `down -v` antes del corte real.
+  4. Corte en origen: crea `var/.frozen` (que `deploy.sh` y `restore.sh` respetan),
+     desactiva el workflow de despliegue, para `worker-inbound`, `worker-outbound`,
+     `web`, `panel`, `caddy` y el timer de backup, y hace un backup final, anotando
+     el id del snapshot.
+  5. En destino: restaura **ese snapshot concreto** (`AUTOBOT_RESTORE_SNAPSHOT=<id>`,
+     nunca `latest`), con `DEPLOY_UID`, roles, permisos y certificados.
+  6. Arranca todo menos los workers y verifica con `curl --resolve`; comprueba que el
+     origen no tiene ningún contenedor de aplicación en marcha y arranca
+     `worker-inbound`/`worker-outbound` en destino con
+     `deploy/scripts/compose.sh up -d worker-inbound worker-outbound`.
   7. **[Tú]** Cambiar el DNS. Con el mismo dominio no hay que tocar webhooks.
-  8. Actualizar `DEPLOY_HOST` y `DEPLOY_KNOWN_HOSTS`, activar el timer y conservar el
-     origen parado 7 días.
+  8. Actualizar `DEPLOY_HOST` y `DEPLOY_KNOWN_HOSTS`, reactivar el workflow y el timer
+     del destino, y conservar el origen parado (con `var/.frozen`) 7 días.
+     `deploy/scripts/server-migrate.sh` implementa estos pasos (diseño en ADR-012);
+     falta ensayarlo en A16 entre dos VMs desechables.
 - [x] **T5 (S)** Backup cada hora en lugar de cada seis, si hay reservas reales. Hecho:
   `autobot-backup.timer` pasa a `OnCalendar=hourly` (el coste de un `pg_dump` a esta
   escala no justifica esperar a que haya reservas reales para bajarlo).
@@ -589,15 +629,42 @@ falta nada de esto.
 
 ### L. Entorno local completo
 
-Hoy en local no se pueden probar Caddy con TLS, `read_only` con UID real, gunicorn,
-`deploy.sh` ni backups.
+Antes de L1 no se podían probar en local Caddy con TLS, `read_only` con UID real,
+gunicorn, `deploy.sh` ni backups; `make localprod-up` (L1) los reproduce.
 
-- [ ] **L1 (M)** `make localprod-up`: `compose.localprod.yaml` con imágenes construidas en
-  local, puertos 8443 y 8081, `var/localprod/.env`, proyecto aparte y restic en disco,
-  ejecutando el `deploy.sh` real.
-- [ ] **L2 (S)** `make localprod-backup` y `localprod-restore`, para probar el ciclo completo.
-- [ ] **L3 (S)** Job de CI con `compose config` y `restore-test`, para que no se vuelva a romper.
-- [ ] **L4 (S)** Chat por terminal con un pack, sin canal real, sobre el arnés existente.
+- [x] **L1 (M)** `make localprod-up`: imágenes construidas en local y subidas a un
+  registro Docker local (en vez de `compose.localprod.yaml`, reutiliza
+  `compose.yaml`+`compose.prod.yaml`, los mismos que producción), puertos 8443 y
+  8081 (caddy), 18000 (web) y 18080 (panel) configurables en `compose.prod.yaml`
+  (`AUTOBOT_CADDY_HTTP_PORT` y similares), proyecto `autobot-localprod` aparte y
+  restic en `var/localprod/restic`, ejecutando el `deploy.sh` real. Hecho:
+  `deploy/scripts/localprod.sh`. Ensayado el 2026-11-15 contra Docker de verdad:
+  HTTPS con el certificado interno de Caddy, panel y los dos workers sanos.
+  Encontró y corrigió dos fallos reales:
+  - Docker crea `var/state/{caddy-data,caddy-config,ops}` como `root` si no
+    existen al primer `up` (igual que `restore-test.sh` ya evitaba para
+    `var/state/ops`); `localprod.sh` los crea antes, como `bootstrap-server.sh`.
+  - Un `docker compose down` contra `compose.prod.yaml` sin `SHA` no aborta: cae a
+    resolver el proyecto por `COMPOSE_PROJECT_NAME` del `.env` (que `ensure-env.sh`
+    fija siempre a `autobot`), ignorando `--project-name`. Sin la variable, un
+    `down -v` de `localprod` podía borrar el volumen de BD del entorno de
+    desarrollo normal. `localprod.sh` fija siempre un `SHA` real antes de
+    cualquier `down`.
+- [x] **L2 (S)** `make localprod-backup` y `localprod-restore`, para probar el ciclo completo.
+  Hecho, mismo script. Ensayado: backup real (volcado de PostgreSQL vía `pg_dump`,
+  snapshot en restic en disco) y restauración real (`down -v` del volumen,
+  `restore.sh --confirm-empty-target`, roles reaplicados, `web`/`panel`/`caddy`
+  sanos y los workers correctamente parados, T1) contra la base real de
+  `demo-autobuses`/`demo-peluqueria`.
+- [x] **L3 (S)** Job de CI con `compose config` y `restore-test`, para que no se vuelva a romper.
+  Hecho: `deploy-smoke` en `.github/workflows/ci.yml` (en paralelo a `check`/`panel`;
+  `image` espera también a este); valida `compose.yaml`+`compose.prod.yaml` y
+  `compose.yaml`+`compose.local.yaml` con `docker compose config -q`, y ejecuta
+  `make restore-test` de verdad, con `restic` real.
+- [x] **L4 (S)** Chat por terminal con un pack, sin canal real, sobre el arnés existente.
+  Hecho: `make chat PACK=salon|bus [CHANNEL=telegram]` (`manage.py chat`), sobre
+  `core.testing.Conversation` y la plantilla de demo del pack; botones y filas se
+  eligen por número. No necesita contenedores ni base de datos.
 
 El bootstrap, `ufw` y los timers solo se prueban en una VM desechable (A16).
 
@@ -880,7 +947,7 @@ Se da por terminado cuando todo esto se cumple:
 - [ ] Alta completa de `salon` y `bus` desde el panel, sin terminal salvo la carga de horarios.
 - [ ] QR del canal descargable y QR del chat de avisos funcionando.
 - [ ] Salón con dos peluqueros probado con reservas reales.
-- [ ] `make localprod-up` reproduce producción en local.
+- [x] `make localprod-up` reproduce producción en local. Verificado el 2026-11-15.
 - [ ] Documentos legales listos antes del primer cliente.
 
 ## 6. Cómo se trabajará después

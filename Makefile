@@ -16,7 +16,7 @@ help: ## Enseña esta ayuda
 
 ##@ Desarrollo
 
-.PHONY: up down status db-roles logs shell telegram-poll dev-bootstrap dev-reset dev-activity tenant-import ngrok
+.PHONY: up down status db-roles logs shell telegram-poll chat dev-bootstrap dev-reset dev-activity tenant-import ngrok
 
 up: ## Tras el bootstrap, levanta los contenedores
 	docker compose up -d --build
@@ -44,6 +44,11 @@ shell: ## Abre una shell de Django dentro de `web`
 # instead (see docs/procedimientos/demo.md), the same mechanism as production.
 telegram-poll: ## Long polling del bot de Telegram de un tenant (SLUG=<slug>)
 	docker compose exec web python manage.py telegram_poll $(SLUG)
+
+# L4: chat de prueba sobre la plantilla de demo de un pack, sin canal real ni BD
+# (core.testing.Conversation). No necesita `make up` ni ningún contenedor.
+chat: ## Chat de prueba por terminal con un pack (PACK=salon|bus [CHANNEL=telegram])
+	$(BACKEND) uv run python manage.py chat $(PACK) $(if $(CHANNEL),--channel $(CHANNEL),)
 
 export DIR
 
@@ -158,6 +163,39 @@ bus-revision: ## Genera HTML/PDF comparando con .publicado (TENANT=<slug> [ARGS=
 
 bus-publicar: ## Publica la copia local validada en BD (TENANT=<slug> COMMENT="..." [PROD=1])
 	$(BUS_TOOL).bus.data publish
+
+##@ Entorno local completo (localprod)
+
+.PHONY: localprod-up localprod-backup localprod-restore localprod-down
+
+# L1: reproduce producción en local -- Caddy con TLS, DEPLOY_UID real, gunicorn,
+# deploy.sh real, con un registro Docker local en vez de GHCR; proyecto, puertos y
+# volúmenes aparte de los de desarrollo (nunca choca con `make up`).
+localprod-up: ## Instala/actualiza el entorno localprod con el deploy.sh real
+	bash deploy/scripts/localprod.sh up
+
+localprod-backup: ## L2: backup.sh real contra un repositorio restic en disco (var/localprod/)
+	bash deploy/scripts/localprod.sh backup
+
+localprod-restore: ## L2: restore.sh real; reemplaza el volumen de BD de localprod
+	bash deploy/scripts/localprod.sh restore
+
+localprod-down: ## Para y borra los contenedores y el registro local de localprod
+	bash deploy/scripts/localprod.sh down
+
+##@ Instalación y traslado
+
+.PHONY: server-init server-migrate
+
+# A15: idempotente, ver docs/procedimientos/servidor.md y ADR-012. Lee var/server.env
+# (deploy/env/server.env.example); CHECK=1 solo valida en local, sin tocar nada remoto.
+server-init: ## Instala Autobot en una VPS nueva desde var/server.env ([CHECK=1] [ONLY=paso])
+	bash deploy/scripts/server-init.sh $(if $(CHECK),--check,) $(if $(ONLY),--only=$(ONLY),)
+
+# T4: FROM y TO son alias de ~/.ssh/config o IPs; TO ya debe tener el bootstrap
+# hecho (server-init ONLY=base/harden-ssh/secrets). Ver docs/plan-lanzamiento.md.
+server-migrate: ## Traslada el despliegue de FROM a TO (T4) (FROM= TO= [ONLY=paso])
+	bash deploy/scripts/server-migrate.sh $(FROM) $(TO) $(if $(ONLY),--only=$(ONLY),)
 
 ##@ Producción
 

@@ -23,6 +23,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make test-fast` | `pytest -m "not db"`, sin base de datos levantada |
 | `make check` | Puerta de calidad del backend: `ruff check`, `ruff format --check`, `mypy`, `import-linter`, `pytest` |
 | `make telegram-poll SLUG=<slug>` | *Long polling* del bot de Telegram de un tenant (o `notify`), para desarrollo local sin webhook |
+| `make chat PACK=salon\|bus [CHANNEL=telegram]` | Chat de prueba por terminal con la plantilla de demo de un pack (L4); sin canal real, BD ni contenedores |
 | `make bus-bajar TENANT=<slug> [PROD=1]` | Exporta el dataset vigente a `var/datos/<slug>/timetable` y `.publicado/timetable`; sustituye ambas copias locales |
 | `make bus-validar TENANT=<slug>` | Valida `var/datos/<slug>/timetable` |
 | `make bus-formatear TENANT=<slug>` | Realinea las columnas de las tablas de horarios sobre `var/datos/<slug>/timetable`, sin cambiar los datos |
@@ -36,6 +37,12 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make panel-dev` | `pnpm -C apps/panel dev`: Vite en modo desarrollo, con proxy `/api` hacia el backend local |
 | `make panel-check` | Puerta de calidad del frontend: `biome check`, `tsc -b --noEmit`, `vitest run` y el build de producción |
 | `make panel-tunnel [HOST=<servidor>]` | Túnel SSH al puerto del contenedor `panel` en producción (8080→18000 local); nunca a `web` directamente |
+| `make localprod-up` | L1: reproduce producción en local (Caddy con TLS, `deploy.sh` real, registro Docker local), proyecto `autobot-localprod` aparte de `make up` |
+| `make localprod-backup` | L2: `backup.sh` real contra un repositorio restic en `var/localprod/restic` |
+| `make localprod-restore` | L2: `restore.sh` real; reemplaza el volumen de BD de `localprod` |
+| `make localprod-down` | Para y borra los contenedores y el registro local de `localprod` |
+| `make server-init [CHECK=1] [ONLY=paso]` | Instala Autobot en una VPS nueva desde `var/server.env` (A15, ADR-012); `CHECK=1` solo valida en local |
+| `make server-migrate FROM= TO= [ONLY=paso]` | Traslada el despliegue de `FROM` a `TO` (T4, ADR-012); `TO` ya debe tener el bootstrap hecho |
 | `make deploy [SHA=]` | Sin `SHA`, usa `origin/main`; comprueba con `gh` que su CI está en verde y lanza el workflow de despliegue |
 | `make rollback` | Lee del servidor el `previous` del último despliegue correcto y, con confirmación, ejecuta `make deploy SHA=<previous>`; se niega a encadenar un segundo rollback sobre el SHA roto |
 | `make backup-now` | Ejecuta `deploy/scripts/backup.sh` en el servidor por SSH |
