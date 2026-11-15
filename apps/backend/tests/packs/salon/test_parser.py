@@ -10,9 +10,7 @@ from packs.salon.parser import (
     parse_external_id,
     parse_name,
     parse_phone,
-    parse_reminder,
     parse_status,
-    remove_field,
     set_field,
 )
 from packs.salon.parser import parse_service_title as parse_service
@@ -187,34 +185,6 @@ class TestParseStatus:
         assert parse_status("") is None
 
 
-class TestParseReminder:
-    def test_recordatorio_si(self) -> None:
-        assert parse_reminder("Recordatorio: sí") == "si"
-
-    def test_recordatorio_si_no_accent(self) -> None:
-        assert parse_reminder("Recordatorio: si") == "si"
-
-    def test_recordatorio_no(self) -> None:
-        assert parse_reminder("Recordatorio: no") == "no"
-
-    def test_uppercase(self) -> None:
-        assert parse_reminder("RECORDATORIO: SI") == "si"
-
-    def test_legacy_reminder24h(self) -> None:
-        assert parse_reminder("Reminder24h: si") == "si"
-        assert parse_reminder("Reminder24h: no") == "no"
-
-    def test_recordatorio_takes_priority_over_legacy(self) -> None:
-        desc = "Recordatorio: no\nReminder24h: si"
-        assert parse_reminder(desc) == "no"
-
-    def test_invalid_value(self) -> None:
-        assert parse_reminder("Recordatorio: quiza") is None
-
-    def test_empty(self) -> None:
-        assert parse_reminder("") is None
-
-
 class TestParseCfg:
     def test_cerrado(self) -> None:
         assert parse_cfg("[CFG] CERRADO") == {"type": "cerrado"}
@@ -347,28 +317,6 @@ class TestSetField:
         result = set_field(desc, "Estado", "confirmada")
         assert "Nombre: Juan" in result
         assert "Telefono: 34600000001" in result
-
-
-class TestRemoveField:
-    def test_removes_existing(self) -> None:
-        desc = "Estado: confirmada\nNombre: Ana"
-        result = remove_field(desc, "Estado")
-        assert "Estado" not in result
-        assert "Nombre: Ana" in result
-
-    def test_case_insensitive(self) -> None:
-        result = remove_field("ESTADO: confirmada\nNombre: Ana", "Estado")
-        assert "ESTADO" not in result
-
-    def test_noop_when_missing(self) -> None:
-        desc = "Nombre: Ana"
-        assert remove_field(desc, "Estado") == desc
-
-    def test_empty(self) -> None:
-        assert remove_field("", "Estado") == ""
-
-    def test_none(self) -> None:
-        assert remove_field(None, "Estado") == ""
 
 
 def parse_service_title(title: str | None) -> tuple[str | None, str | None]:

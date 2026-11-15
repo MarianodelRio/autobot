@@ -70,7 +70,6 @@ config:
     moved: Tu cita ha sido movida ✅
     move_cancel_failed: Tu nueva cita está reservada. No hemos podido cancelar la
       anterior; hemos avisado al negocio.
-    event_no_days: No hay fechas disponibles para el evento en este momento.
 status: active
 owner:
   notify: [booking_created, booking_cancelled, booking_moved, move_cancel_failed]

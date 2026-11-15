@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from core.dates import MONTHS_ES, weekday_es
+from core.dates import weekday_es
 from core.limits import MAX_TEXT
 from packs.bus.config import BusConfig
 from packs.bus.formato import NOMBRES_PUBLICOS_TEMPORADA
@@ -31,10 +31,6 @@ def nombre_dia_es(fecha: date) -> str:
 
 def nombre_dia_abrev_es(fecha: date) -> str:
     return _DIAS_ES_ABREV[fecha.weekday()]
-
-
-def nombre_mes_es(fecha: date) -> str:
-    return MONTHS_ES[fecha.month - 1]
 
 
 _DIAS_OFICINA = {
@@ -206,10 +202,6 @@ def msg_fecha_pasada_con_formato() -> str:
 def msg_que_mas() -> str:
     """Cuerpo de los botones cuando el resultado no cabe en ellos (nuevo)."""
     return "¿Qué quieres hacer ahora?"
-
-
-def msg_reintentar() -> str:
-    return "Ha habido un problema. Por favor, inténtalo de nuevo."
 
 
 def msg_input_no_soportado() -> str:

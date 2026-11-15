@@ -25,7 +25,6 @@ class SalonTexts(BaseModel):
         "Tu nueva cita está reservada. No hemos podido cancelar la anterior; "
         "hemos avisado al negocio."
     )
-    event_no_days: str = "No hay fechas disponibles para el evento en este momento."
 
 
 TEMPLATE_CONFIRMATION = TemplateSpec(

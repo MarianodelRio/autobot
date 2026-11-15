@@ -74,24 +74,6 @@ def parse_status(text: str | None) -> str | None:
     return None
 
 
-def parse_reminder(text: str | None) -> str | None:
-    """
-    Returns 'si', 'no', or None.
-    Checks 'Recordatorio:' field, falls back to legacy 'Reminder24h:'.
-    """
-    if not text:
-        return None
-    text = _strip_html(text)
-    match = re.search(r"recordatorio\s*:\s*(\w+)", text, re.IGNORECASE)
-    if not match:
-        match = re.search(r"reminder24h\s*:\s*(\w+)", text, re.IGNORECASE)
-    if match:
-        val = _norm(match.group(1))
-        if val in ("si", "no"):
-            return val
-    return None
-
-
 def parse_cfg(title: str | None) -> dict[str, str] | None:
     """
     Parse [CFG] event titles.
@@ -191,11 +173,3 @@ def set_field(description: str | None, key: str, value: str) -> str:
     cleaned = pattern.sub("", description).rstrip("\n")
     new_line = f"{key}: {value}"
     return (cleaned + "\n" + new_line) if cleaned else new_line
-
-
-def remove_field(description: str | None, key: str) -> str:
-    """Remove a field line from description."""
-    if not description:
-        return ""
-    pattern = re.compile(rf"^{re.escape(key)}\s*:.*\n?", re.IGNORECASE | re.MULTILINE)
-    return pattern.sub("", description)
