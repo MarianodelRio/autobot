@@ -116,3 +116,6 @@ class Pack:
     """Directory containing the initial demo document and optional datasets."""
     template_blank: tuple[str, ...] = ()
     """Config fields cleared when the template initializes a new business."""
+    test_calendar: Callable[[], object] | None = None
+    """When `needs_calendar`: builds an in-memory double for `manage.py chat` (L4).
+    Never used outside that dev tool; the real calendar is wired by the worker."""

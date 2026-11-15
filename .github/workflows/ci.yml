@@ -130,8 +130,37 @@ jobs:
       - name: Generated route tree is committed
         run: git diff --exit-code apps/panel/src/routeTree.gen.ts
 
+  deploy-smoke:
+    # L3: catches a compose file that no longer parses, or a backup/restore that no
+    # longer round-trips, before it reaches `main` instead of at the next real
+    # restore. Runs in parallel with `check`/`panel`; `image` waits for it too.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install restic
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq restic
+      - name: Production compose file is valid
+        run: |
+          env \
+            PUBLIC_HOST=ci.example.invalid SHA=$(git rev-parse HEAD) \
+            AUTOBOT_IMAGE=ghcr.io/example-owner/autobot \
+            AUTOBOT_PANEL_IMAGE=ghcr.io/example-owner/autobot-panel \
+            DEPLOY_UID=1000 DJANGO_SECRET_KEY=x DJANGO_ALLOWED_HOSTS=x \
+            DB_APP_URL=postgres://x:x@db:5432/x SECRETS_ENCRYPTION_KEY=x \
+            DB_OWNER_URL=postgres://x:x@db:5432/x DB_READONLY_URL=postgres://x:x@db:5432/x \
+            POSTGRES_PASSWORD=x FP_OWNER_PASSWORD=x FP_APP_PASSWORD=x FP_READONLY_PASSWORD=x \
+            docker compose -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml \
+            config -q
+      - name: Local compose file is valid
+        run: docker compose -f deploy/compose/compose.yaml -f deploy/compose/compose.local.yaml config -q
+      - name: Backup/restore round-trip (make restore-test)
+        # Builds its own image from apps/backend/Dockerfile; no cache from `image`
+        # (which only pushes on main) to reuse here.
+        run: bash deploy/scripts/restore-test.sh
+
   image:
-    needs: [check, panel, forbidden-terms]
+    needs: [check, panel, forbidden-terms, deploy-smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
