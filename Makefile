@@ -41,7 +41,7 @@ shell: ## Abre una shell de Django dentro de `web`
 # Long polling of a tenant's own bot (SLUG=<slug>), e.g. to record Telegram
 # fixtures. Needs the worker running (`make up`) and no webhook set on that bot.
 # Local development of the demo bot's Telegram door uses a webhook through ngrok
-# instead (see docs/runbooks/demo.md), the same mechanism as production.
+# instead (see docs/procedimientos/demo.md), the same mechanism as production.
 telegram-poll: ## Long polling del bot de Telegram de un tenant (SLUG=<slug>)
 	docker compose exec web python manage.py telegram_poll $(SLUG)
 

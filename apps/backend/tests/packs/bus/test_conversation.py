@@ -234,7 +234,7 @@ def test_unsupported_media_type_gives_fallback(
     assert mock_wa["text"].called
 
 
-# ── Casos borde de 4.8 (correcciones fase 4, docs/rds_fase4_correcciones.md) ─
+# ── Casos borde de 4.8 (correcciones fase 4) ──────────────────────────────
 
 
 def _n_calls(mock_wa: MockWA) -> int:
