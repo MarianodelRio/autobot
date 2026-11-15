@@ -71,7 +71,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck
-          shellcheck deploy/scripts/*.sh deploy/postgres/*.sh apps/backend/src/tools/*/*.sh
+          # -x -P: follow `source "$(dirname "$0")/lib.sh"` (a dynamic path, so
+          # shellcheck won't resolve it on its own) to the real deploy/scripts/lib.sh.
+          shellcheck -x -P deploy/scripts deploy/scripts/*.sh deploy/postgres/*.sh apps/backend/src/tools/*/*.sh
       - name: mypy
         working-directory: apps/backend
         run: uv run mypy

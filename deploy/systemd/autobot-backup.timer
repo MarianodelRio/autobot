@@ -1,8 +1,10 @@
 [Unit]
-Description=Run Autobot backup every six hours
+# T5: hourly once there are real bookings to lose (up to 6h of them, before this);
+# a `pg_dump` of this scale is cheap enough that there's no reason to wait to flip it.
+Description=Run Autobot backup every hour
 
 [Timer]
-OnCalendar=*-*-* 00,06,12,18:00:00 UTC
+OnCalendar=hourly
 Persistent=true
 RandomizedDelaySec=5m
 Unit=autobot-backup.service

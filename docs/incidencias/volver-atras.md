@@ -11,10 +11,19 @@ ops llegó.
 **Pasos:** si la reversión automática falló, un operador autorizado ejecuta
 `make rollback`: lee del servidor el `previous` del último despliegue correcto
 (`var/state/ops/deploys.jsonl`), pide confirmación y lo vuelve a desplegar con
-`make deploy SHA=<previous>`. Para un SHA concreto en vez del anterior automático,
-`make deploy SHA=<sha-completo>` (comprueba antes que su CI está en verde) y aprueba
-el job en el entorno `production`. No reviertas migraciones: deben ser compatibles
-hacia atrás. Si la causa fue una configuración de tenant, publica una versión anterior
+`make deploy SHA=<previous>`. Se niega a encadenar un segundo `make rollback` sobre
+ese mismo despliegue (volvería al SHA roto que el primero acaba de abandonar); para
+ir más atrás en la historia usa un SHA concreto. Para un SHA concreto en vez del
+anterior automático, `make deploy SHA=<sha-completo>` (comprueba antes que su CI
+está en verde) y aprueba el job en el entorno `production`. No reviertas migraciones:
+deben ser compatibles hacia atrás (regla de expandir y contraer: una migración que
+añade schema puede ir en el mismo despliegue que deja de usar lo viejo; una que lo
+quita o renombra espera a un despliegue posterior, cuando ya no hace falta poder
+volver atrás a código que todavía lo lee). `abort` y la reversión automática
+restauran la imagen anterior, nunca el esquema: si una migración ya aplicada hizo
+falta deshacerla a mano, `deploy.sh` deja un volcado previo en
+`var/backups/pre-migrate.dump` (se sobrescribe en cada despliegue con migraciones
+pendientes). Si la causa fue una configuración de tenant, publica una versión anterior
 con `POST /tenants/{slug}/rollback` o con `tenant_config import`; no hace falta un
 SHA nuevo. El panel ya no muestra el historial en pantalla, pero esos endpoints se
 conservan. No cambies webhooks de canales reales sin autorización.

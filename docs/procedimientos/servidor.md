@@ -24,8 +24,9 @@ con tu clave en la VPS recién creada.
    `git fetch` del código que corresponde al SHA de despliegue.
 3. Abre **otra sesión** con la clave de operación: `ssh deploy@<host>`. Comprueba
    `docker compose version`,
-   `systemctl is-enabled autobot-backup.timer` y
-   `systemctl is-enabled autobot-containers.timer`. Si la sesión falla, conserva la
+   `systemctl is-enabled autobot-backup.timer`,
+   `systemctl is-enabled autobot-containers.timer` y
+   `systemctl is-enabled autobot-prune.timer`. Si la sesión falla, conserva la
    consola del proveedor para corregir `authorized_keys` antes de cerrarla.
 4. Ejecuta el mismo bootstrap de nuevo desde la consola del proveedor; verifica que
    no añade usuarios, claves, reglas de firewall ni unidades duplicadas. Comprueba
@@ -47,7 +48,11 @@ con tu clave en la VPS recién creada.
    configurar `var/backup.env`, `var/restic-password` y el destino remoto de los backups.
    Antes del primer despliegue, comprueba que los paquetes GHCR (`autobot` y
    `autobot-panel`) son públicos o configura autenticación de lectura para `deploy`
-   en Docker. En GitHub, crea el entorno
+   en Docker. Fija también su política de retención (GitHub → paquete → *Package
+   settings*) para que cubra al menos los 6 meses que `backup.sh` conserva
+   (`--keep-monthly 6`): si GHCR borra la imagen de un SHA antes de eso, restaurar
+   ese snapshot falla al no poder descargarla (A14,
+   `docs/procedimientos/restaurar.md`). En GitHub, crea el entorno
    `production` con revisión requerida, si tu plan de GitHub lo permite, y añade
    `DEPLOY_HOST`, `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS`. Fija `known_hosts` desde
    una huella verificada fuera de la conexión inicial.
@@ -61,26 +66,33 @@ configuración. El primer despliegue y el escaneo externo son pasos del plan de 
 El Django Admin se eliminó (ADR-008); el panel (`docs/procedimientos/panel.md`) solo se
 alcanza por `make panel-tunnel` (túnel al puerto 8080 del contenedor `panel`), nunca
 por el Caddy público. La operación tras el despliegue se hace por SSH con la clave
-de operación y
-`docker compose exec web python manage.py <comando>`
+de operación y `deploy/scripts/manage.sh python manage.py <comando>`
 (`docs/referencia/comandos.md`), o con los comandos de resolución (`outbound_resolve`, `job_retry`).
-El puerto 8000 del servidor no se expone públicamente. Para un backup manual,
-`make backup-now HOST=<host>` usa esa misma clave de operación; la clave de CI no
-puede ejecutarlo.
+Un `docker compose exec web ...` a mano en el servidor falla sin exportar `SHA` y sin
+`--env-file`; usa `deploy/scripts/compose.sh <comando>` en su lugar, que (como
+`manage.sh`) toma ambos de `deploy/scripts/lib.sh`. El puerto 8000 del servidor no se
+expone públicamente. Para un backup manual, `make backup-now HOST=<host>` usa esa
+misma clave de operación; la clave de CI no puede ejecutarlo.
 
 Los secretos de canal están cifrados en la BD; no hay YAML de secretos montado en
 `web` ni en los `worker-*`. Configura `SECRETS_ENCRYPTION_KEY` en `.env` antes del primer
-despliegue y conserva su copia con los backups. `deploy/scripts/manage.sh` usa el SHA de
-`.deployed-sha` para los comandos de operación; desde local se invoca mediante
-`make prod-manage HOST=<servidor> CMD="..."` (`TTY=1` si pide una confirmación).
+despliegue y conserva su copia con los backups. `deploy/scripts/manage.sh` y
+`deploy/scripts/compose.sh` usan el SHA de `.deployed-sha` para los comandos de
+operación; desde local se invocan mediante `make prod-manage HOST=<servidor> CMD="..."`
+y `make prod-compose HOST=<servidor> ARGS="..."` (`TTY=1` si piden una confirmación).
 
 **Sistema:** cada cinco minutos `ops.check.run()` guarda una muestra
 (`system_sample`: CPU, memoria, carga, disco y tamaño de la base) y borra las de más de
 62 días. `deploy/scripts/backup.sh` escribe `var/state/ops/backup.json` de forma atómica
 (`{finished_at, ok, dump_bytes}`) y `deploy/scripts/deploy.sh` añade una línea a
 `var/state/ops/deploys.jsonl` por cada intento (`deployed`, `already`, `aborted`,
-`rolled_back` o `rollback_failed`). `web`, `worker-inbound` y `worker-outbound` montan
-`var/state/ops` en solo lectura en `/run/ops`.
+`rolled_back` o `rollback_failed`), con `via: rollback` cuando deshace exactamente el
+despliegue anterior (`make rollback` se niega a encadenar un segundo). `web`,
+`worker-inbound` y `worker-outbound` montan `var/state/ops` en solo lectura en
+`/run/ops`. Tras cada despliegue o reversión, `deploy.sh` recarga Caddy si su
+fichero cambió (`up` no lo reinicia solo porque cambie el contenido de un fichero
+montado) y comprueba `https://$PUBLIC_HOST/health`; si falla, solo avisa, nunca
+aborta (el DNS o el certificado pueden tardar en el primer despliegue).
 
 **Vigilancia de contenedores:** el timer `autobot-containers.timer` (instalado y
 arrancado por `bootstrap-server.sh`, de solo lectura) ejecuta cada minuto
@@ -95,9 +107,19 @@ proyecto compose y escribe una instantánea en lista blanca en
 `journalctl -u autobot-containers.service --since -2min`). Si deja de actualizarse,
 ver `docs/incidencias/contenedor-caido.md`.
 
+**Disco:** el timer `autobot-prune.timer` (instalado y arrancado por
+`bootstrap-server.sh`) ejecuta a diario `deploy/scripts/prune.sh`
+(`docker image prune --all --force --filter 'until=24h'`): cada despliegue deja la
+imagen anterior en disco (útil para un `rollback` instantáneo) y capas sueltas de
+`pull`s fallidos, que en 40 GB se notan. Solo borra lo que ningún contenedor usa y
+tiene más de un día; un `rollback` más allá de eso vuelve a descargar la imagen,
+igual que cualquier `pull` normal. Comprobar: `systemctl is-enabled autobot-prune.timer`.
+
 **Logs técnicos:** el servicio `victorialogs` (imagen fijada, sin
 publicar puertos) recibe los logs de `web` y los `worker-*` por `VICTORIALOGS_URL`; los
-guarda 31 días. `deploy/scripts/deploy.sh` lo actualiza en cada despliegue, pero su
+guarda 31 días, con un límite adicional de 5 GiB en disco
+(`-retention.maxDiskSpaceUsageBytes`) que descarta el día más antiguo si se alcanza
+antes. `deploy/scripts/deploy.sh` lo actualiza en cada despliegue, pero su
 caída nunca aborta ni hace retroceder uno: el `VictoriaLogsHandler` descarta en
 silencio lo que no puede enviar. Para consultarlo, usa la pantalla Logs del panel
 (ADR-008); no está expuesto fuera de la red interna.

@@ -14,6 +14,13 @@ def test_db_image_is_pinned_by_digest() -> None:
     assert "@sha256:" in BASE["services"]["db"]["image"]
 
 
+def test_victorialogs_caps_disk_usage_independently_of_time_retention() -> None:
+    """A11: a safety net against the 31d time-based retention filling the disk."""
+    command = " ".join(BASE["services"]["victorialogs"]["command"])
+    assert "-retentionPeriod=31d" in command
+    assert "-retention.maxDiskSpaceUsageBytes=" in command
+
+
 def test_caddy_image_is_pinned_by_digest() -> None:
     assert "@sha256:" in PROD["services"]["caddy"]["image"]
 

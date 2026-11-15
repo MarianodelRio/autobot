@@ -462,24 +462,56 @@ healthchecks.io y backups.
 
 **Errores que hay que corregir antes de la primera ejecución (S cada uno, salvo indicación):**
 
-- [ ] **A1** Compose no lee el `.env` de la raíz con `-f`. Crear un `lib.sh` común con
-  `--env-file "$root/.env"` y usarlo en todos los scripts. **Bloqueante.**
-- [ ] **A2** `backup.sh:46` y los `docker compose exec` de la documentación fallan sin
+- [x] **A1** Compose no lee el `.env` de la raíz con `-f`. Crear un `lib.sh` común con
+  `--env-file "$root/.env"` y usarlo en todos los scripts. **Bloqueante.** Hecho:
+  `deploy/scripts/lib.sh` define `root`, `project` y `compose=(...)`; `deploy.sh`,
+  `backup.sh`, `restore.sh`, `manage.sh` y el nuevo `compose.sh` lo usan en vez de
+  repetir la definición.
+- [x] **A2** `backup.sh:46` y los `docker compose exec` de la documentación fallan sin
   `SHA`: exportarlo desde `var/.deployed-sha` y añadir `make prod-compose`. **Bloqueante.**
-- [ ] **A3** `restic init` no lo hace nadie: el primer backup falla. **Bloqueante.**
-- [ ] **A4** Exigir `google_sa.json` como fichero regular: si falta, Docker crea un directorio.
-- [ ] **A5** Exigir o derivar `PUBLIC_URL` de `PUBLIC_HOST`.
-- [ ] **A6** Imponer `DEPLOY_UID` con `id -u`, también al restaurar.
-- [ ] **A7** Corregir `make rollback`: el segundo vuelve al SHA roto (`Makefile:179`).
-- [ ] **A8** Dump previo si hay migraciones, y regla de expandir y contraer: hoy la vuelta
-  atrás no deshace el esquema, y `abort` lo da por bueno.
-- [ ] **A9** Recargar Caddy si cambia su fichero y comprobar HTTPS tras desplegar.
-- [ ] **A10** Hacer `pull` de `db` y `caddy` con versión fijada (S11).
-- [ ] **A11** Disco: `docker image prune` periódico y límite de tamaño para VictoriaLogs.
+  Hecho: `lib.sh` exporta `SHA` desde `var/.deployed-sha` si no está ya fijada;
+  `deploy/scripts/compose.sh` y `make prod-compose ARGS="..."` cubren lo que
+  `manage.sh` no (p. ej. `exec`, `logs`).
+- [x] **A3** `restic init` no lo hace nadie: el primer backup falla. **Bloqueante.**
+  Hecho: `backup.sh` comprueba con `restic cat config` y llama a `restic init` si el
+  repositorio no está inicializado, antes del primer `backup`.
+- [x] **A4** Exigir `google_sa.json` como fichero regular: si falta, Docker crea un directorio.
+  Hecho: `ensure-env.sh` se niega a seguir si `var/google_sa.json` no es un fichero
+  regular.
+- [x] **A5** Exigir o derivar `PUBLIC_URL` de `PUBLIC_HOST`. Hecho: `ensure-env.sh` la
+  deriva como `https://$PUBLIC_HOST` si no está fijada a mano.
+- [x] **A6** Imponer `DEPLOY_UID` con `id -u`, también al restaurar. Hecho: `ensure-env.sh`
+  siempre la recalcula con `id -u` (nunca se deja a mano); `restore.sh` llama a
+  `ensure-env.sh` tras instalar el `.env` restaurado, antes de levantar nada.
+- [x] **A7** Corregir `make rollback`: el segundo vuelve al SHA roto (`Makefile:179`).
+  Hecho: `deploy.sh` marca `"via":"rollback"` en `deploys.jsonl` cuando un despliegue
+  deshace exactamente el anterior; `deploy/scripts/rollback_target.py` (nuevo,
+  con test) se niega a encadenar un segundo rollback sobre ese registro.
+- [x] **A8** Dump previo si hay migraciones, y regla de expandir y contraer: hoy la vuelta
+  atrás no deshace el esquema, y `abort` lo da por bueno. Hecho: `deploy.sh` comprueba
+  `migrate --check` y, si hay pendientes, vuelca la BD en `var/backups/pre-migrate.dump`
+  antes de migrar (aborta si el volcado falla); la regla de expandir/contraer queda
+  documentada en `docs/incidencias/volver-atras.md`.
+- [x] **A9** Recargar Caddy si cambia su fichero y comprobar HTTPS tras desplegar.
+  Hecho: `deploy.sh` compara el hash del `Caddyfile` con `var/.caddy-config-sha` y, si
+  cambió, hace `caddy reload` dentro del contenedor (también tras una reversión);
+  al final comprueba `https://$PUBLIC_HOST/health` y avisa (sin abortar) si falla.
+- [x] **A10** Hacer `pull` de `db` y `caddy` con versión fijada (S11). Hecho:
+  `deploy.sh` hace `"${compose[@]}" pull db caddy` explícitamente, antes de
+  levantar `db`, en vez de dejarlo al `pull` implícito de `up`.
+- [x] **A11** Disco: `docker image prune` periódico y límite de tamaño para VictoriaLogs.
+  Hecho: `deploy/scripts/prune.sh` + `autobot-prune.timer`/`.service` (diario, instalado
+  y arrancado por `bootstrap-server.sh`); `compose.yaml` añade
+  `-retention.maxDiskSpaceUsageBytes=5GiB` a `victorialogs`.
 - [ ] **A12** `bootstrap-server.sh`: admitir `root` o usuario con `sudo`, cerrar SSH al
   final y dar a `deploy` un `sudoers` limitado a ese script.
-- [ ] **A13** Documentar la subida de versión mayor de PostgreSQL.
-- [ ] **A14** Política de retención de imágenes en GHCR: restaurar depende de la del SHA.
+- [x] **A13** Documentar la subida de versión mayor de PostgreSQL. Hecho: nueva sección
+  en `docs/procedimientos/mantenimiento.md` (simulacro de restauración con la versión
+  nueva, comparar conteos, luego el corte real).
+- [x] **A14** Política de retención de imágenes en GHCR: restaurar depende de la del SHA.
+  Hecho: documentado en `docs/procedimientos/restaurar.md` y en el paso 6 de
+  `docs/procedimientos/servidor.md` (cubrir al menos los 6 meses que conserva
+  `backup.sh`).
 
 **Comando de instalación:**
 
@@ -516,14 +548,23 @@ restic, claves S3 y claves SSH.
 Si la VM admite ampliar recursos en el propio proveedor, basta con un reinicio y no hace
 falta nada de esto.
 
-- [ ] **T1 (S cada uno)** Corregir `restore.sh`:
+- [x] **T1 (S cada uno)** Corregir `restore.sh`:
   - Hoy arranca `worker` con los tokens reales antes de cambiar el DNS (`:82`), así que
-    enviaría mensajes reales. Debe ser `--no-start` por defecto.
-  - Levantar también `panel` y `victorialogs`.
-  - Hacer checkout del SHA del snapshot (`:71`).
-  - Exigir que el bootstrap esté hecho antes.
-- [ ] **T2 (S)** Añadir Caddy y `deploys.jsonl` a `backup.sh`.
-- [ ] **T3 (S)** Arreglar `restore-test.sh`: le falta `DB_READONLY_URL`, y hoy no pasa.
+    enviaría mensajes reales. Debe ser `--no-start` por defecto. Hecho: arranca
+    `web panel victorialogs caddy`; `worker-inbound`/`worker-outbound` solo con
+    `AUTOBOT_RESTORE_START_WORKERS=true`.
+  - Levantar también `panel` y `victorialogs`. Hecho (ver arriba).
+  - Hacer checkout del SHA del snapshot (`:71`). Hecho: `git checkout --quiet --detach
+    "$SHA"` si hay `.git`.
+  - Exigir que el bootstrap esté hecho antes. Hecho: se niega sin
+    `/var/lib/autobot/bootstrap-complete` (`AUTOBOT_BOOTSTRAP_MARKER` para pruebas).
+  - Con test nuevo (`tests/tools/test_restore.py`, restic/docker/git falsos) y el
+    simulacro real (`make restore-test`, probado en local con un restic real).
+- [x] **T2 (S)** Añadir Caddy y `deploys.jsonl` a `backup.sh`.
+- [x] **T3 (S)** Arreglar `restore-test.sh`: le falta `DB_READONLY_URL`, y hoy no pasa.
+  Hecho: añadido `DB_READONLY_URL` y `127.0.0.1` a `DJANGO_ALLOWED_HOSTS` en su `.env`
+  de prueba, y un `var/state/ops` pre-creado (si no, Docker lo crea como root al
+  montarlo en el primer contenedor). Comprobado en local con un `restic` real: pasa.
 - [ ] **T4 (M) [Tú lo ejecutas]** `make server-migrate FROM=<a> TO=<b>`:
   1. 24 h antes, bajar el TTL del DNS a 60–300 s.
   2. `server-init` en destino en modo restauración, sin desplegar y con el timer parado.
@@ -534,15 +575,18 @@ falta nada de esto.
   7. **[Tú]** Cambiar el DNS. Con el mismo dominio no hay que tocar webhooks.
   8. Actualizar `DEPLOY_HOST` y `DEPLOY_KNOWN_HOSTS`, activar el timer y conservar el
      origen parado 7 días.
-- [ ] **T5 (S)** Backup cada hora en lugar de cada seis, si hay reservas reales.
-- [ ] **T6 (S)** Procedimiento de pérdida total en `docs/incidencias/`: revisar a mano antes
+- [x] **T5 (S)** Backup cada hora en lugar de cada seis, si hay reservas reales. Hecho:
+  `autobot-backup.timer` pasa a `OnCalendar=hourly` (el coste de un `pg_dump` a esta
+  escala no justifica esperar a que haya reservas reales para bajarlo).
+- [x] **T6 (S)** Procedimiento de pérdida total en `docs/incidencias/`: revisar a mano antes
   de arrancar `worker`, porque lo posterior al snapshot puede duplicarse y las citas nuevas
-  quedan en Google sin fila.
+  quedan en Google sin fila. Hecho: `docs/incidencias/perdida-total.md`, enlazado desde
+  `docs/README.md`.
 
 | Caso | Datos que se pierden | Tiempo de corte (a medir en A16) |
 |---|---|---|
 | Traslado planificado | Ninguno (salvo logs técnicos) | 15–30 min más el TTL |
-| Pérdida de la máquina | Hasta 6 h (1 h con T5) | 1–2 h |
+| Pérdida de la máquina | Hasta 1 h (T5) | 1–2 h |
 
 ### L. Entorno local completo
 

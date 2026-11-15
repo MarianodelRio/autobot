@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Autobot's Docker image prune daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=30m
+Unit=autobot-prune.service
+
+[Install]
+WantedBy=timers.target

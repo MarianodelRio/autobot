@@ -37,10 +37,11 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make panel-check` | Puerta de calidad del frontend: `biome check`, `tsc -b --noEmit`, `vitest run` y el build de producción |
 | `make panel-tunnel [HOST=<servidor>]` | Túnel SSH al puerto del contenedor `panel` en producción (8080→18000 local); nunca a `web` directamente |
 | `make deploy [SHA=]` | Sin `SHA`, usa `origin/main`; comprueba con `gh` que su CI está en verde y lanza el workflow de despliegue |
-| `make rollback` | Lee del servidor el `previous` del último despliegue correcto y, con confirmación, ejecuta `make deploy SHA=<previous>` |
+| `make rollback` | Lee del servidor el `previous` del último despliegue correcto y, con confirmación, ejecuta `make deploy SHA=<previous>`; se niega a encadenar un segundo rollback sobre el SHA roto |
 | `make backup-now` | Ejecuta `deploy/scripts/backup.sh` en el servidor por SSH |
 | `make restore-test` | `bash deploy/scripts/restore-test.sh`: simulacro de restauración |
 | `make prod-manage CMD="..." [TTY=1]` | Ejecuta el comando con la imagen desplegada mediante SSH; `TTY=1` para comandos interactivos, sin TTY para streams binarios |
+| `make prod-compose ARGS="..." [TTY=1]` | Ejecuta un comando de `docker compose` (p. ej. `exec`, `logs`) contra el servidor por SSH, con `SHA` y `--env-file` ya puestos |
 | `make tenant-push SLUG=<slug> [SECRETS=<yaml>]` | Exporta la BD local y la importa por SSH. El YAML privado aporta solo la entrada del slug; el temporal se borra al salir |
 
 `HOST ?= autobot` usa el alias de `~/.ssh/config`; se puede sobrescribir en cada

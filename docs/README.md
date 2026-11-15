@@ -12,7 +12,7 @@
 - **Algo falla en producción** → [incidencias/](incidencias/) (por síntoma: el bot no
   responde, un negocio o canal no responde, la cola se atasca, un contenedor está
   caído o reiniciándose, Calendar sin acceso, envíos sin confirmar, volver atrás un
-  despliegue, incidente de seguridad)
+  despliegue, pérdida total de la máquina, incidente de seguridad)
 - **Desplegar o preparar el servidor** → [procedimientos/servidor.md](procedimientos/servidor.md)
 - **Restaurar un backup** → [procedimientos/restaurar.md](procedimientos/restaurar.md)
 - **Rotar un secreto de canal** → [procedimientos/rotar-secretos.md](procedimientos/rotar-secretos.md)

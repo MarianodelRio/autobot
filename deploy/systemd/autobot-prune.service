@@ -1,0 +1,10 @@
+[Unit]
+Description=Autobot disk cleanup: prune unused Docker images
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/srv/autobot
+ExecStart=/srv/autobot/deploy/scripts/prune.sh

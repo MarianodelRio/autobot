@@ -11,6 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[4]
 OLD = "a" * 40
 NEW = "b" * 40
+THIRD = "c" * 40
 
 
 def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
@@ -18,12 +19,17 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
     scripts.mkdir(parents=True)
     shutil.copy(ROOT / "deploy/scripts/deploy.sh", scripts / "deploy.sh")
     shutil.copy(ROOT / "deploy/scripts/ensure-env.sh", scripts / "ensure-env.sh")
+    shutil.copy(ROOT / "deploy/scripts/lib.sh", scripts / "lib.sh")
     (scripts / "ensure-env.sh").chmod(0o755)
     compose = tmp_path / "deploy" / "compose"
     compose.mkdir()
     (compose / "compose.yaml").write_text("services: {}\n")
     (compose / "compose.prod.yaml").write_text("services: {}\n")
+    caddy = tmp_path / "deploy" / "caddy"
+    caddy.mkdir()
+    (caddy / "Caddyfile").write_text("example.com {\n}\n")
     (tmp_path / "var").mkdir()
+    (tmp_path / "var" / "google_sa.json").write_text("{}\n")
     if previous:
         (tmp_path / "var" / ".deployed-sha").write_text(OLD + "\n")
     binaries = tmp_path / "bin"
@@ -32,8 +38,16 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
     docker.write_text(
         "#!/usr/bin/env bash\n"
         'printf \'%s %s\\n\' "$SHA" "$*" >>"$TEST_LOG"\n'
+        "if [[ $* == *'migrate --check'* ]]; then\n"
+        "  [[ ${PENDING_MIGRATIONS:-0} == 1 ]] && exit 1 || exit 0\n"
+        "fi\n"
         "[[ $* != *migrate* || ${MIGRATE_FAIL:-} != 1 ]] || exit 1\n"
         "[[ $* != *pull* || ${PULL_FAIL:-} != 1 ]] || exit 1\n"
+        "if [[ $* == *pg_dump* ]]; then\n"
+        "  [[ ${DUMP_FAIL:-} != 1 ]] || exit 1\n"
+        "  printf 'DUMPDATA'\n"
+        "fi\n"
+        "[[ $* != *'caddy reload'* || ${CADDY_RELOAD_FAIL:-} != 1 ]] || exit 1\n"
         "if [[ $* == *'ps -q worker'* ]]; then echo worker-id; fi\n"
         "if [[ $1 == inspect ]]; then\n"
         '  if [[ ${BROKEN_WORKER_SHA:-} == "$SHA" ]]; then echo "true 1"; else echo "true 0"; fi\n'
@@ -43,6 +57,7 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
     curl = binaries / "curl"
     curl.write_text(
         "#!/usr/bin/env bash\n"
+        "[[ $* != *https://* || ${BROKEN_HTTPS:-} != 1 ]] || exit 28\n"
         '[[ ${BROKEN_SHA:-} != "$SHA" ]] || exit 22\n'
         # DEGRADED_AFTER while NEW's containers are the last ones started with "up
         # --no-deps [--remove-orphans] -d web worker-inbound worker-outbound panel"
@@ -69,6 +84,11 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
 def deploy_results(tmp_path: Path) -> list[str]:
     path = tmp_path / "var" / "state" / "ops" / "deploys.jsonl"
     return [json.loads(line)["result"] for line in path.read_text().splitlines()]
+
+
+def deploy_entries(tmp_path: Path) -> list[dict[str, str]]:
+    path = tmp_path / "var" / "state" / "ops" / "deploys.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()]
 
 
 def invoke(
@@ -116,6 +136,18 @@ def test_success_records_image_after_health(tmp_path: Path) -> None:
     assert deploy_results(tmp_path) == ["deployed"]
 
 
+def test_deploying_back_to_the_previous_sha_is_tagged_as_a_rollback(tmp_path: Path) -> None:
+    """A7: deploy.sh marks a deploy that exactly undoes the last one as a rollback,
+    so rollback_target.py can refuse to chain a second one onto the broken SHA."""
+    script, binaries = setup(tmp_path)
+    assert invoke(script, binaries, sha=NEW).returncode == 0
+    result = invoke(script, binaries, sha=OLD)
+    assert result.returncode == 0, result.stderr
+    entries = deploy_entries(tmp_path)
+    assert entries[0]["via"] == "deploy"
+    assert entries[1]["via"] == "rollback"
+
+
 def test_a_tenant_degraded_before_the_deploy_does_not_block_it(tmp_path: Path) -> None:
     """X10: a tenant already degraded before this deploy (same count before and after)
     must not fail it."""
@@ -161,6 +193,94 @@ def test_worker_restarting_restores_previous_image_and_alerts(tmp_path: Path) ->
     assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
     assert not any(line.startswith(NEW) and "-d caddy" in line for line in lines)
     assert deploy_results(tmp_path) == ["rolled_back"]
+
+
+def test_db_and_caddy_are_pulled_explicitly(tmp_path: Path) -> None:
+    """A10: both are pinned by digest (S11) but nothing ever pulled them; `up`
+    would otherwise only fetch them lazily, deep inside its own error handling."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries)
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "docker.log").read_text()
+    assert "pull db caddy" in log
+
+
+def test_caddy_is_reloaded_when_its_config_changed(tmp_path: Path) -> None:
+    """A9: `up` won't recreate Caddy just because a bind-mounted file's content
+    changed, so deploy.sh must reload it by hand whenever the Caddyfile did."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries)
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "docker.log").read_text()
+    assert "exec -T caddy caddy reload" in log
+    saved_hash = (tmp_path / "var" / ".caddy-config-sha").read_text()
+
+    # Deploy again, same Caddyfile: nothing changed, no reload needed.
+    (tmp_path / "docker.log").unlink()
+    result = invoke(script, binaries, sha=THIRD)
+    assert result.returncode == 0, result.stderr
+    assert "exec -T caddy caddy reload" not in (tmp_path / "docker.log").read_text()
+    assert (tmp_path / "var" / ".caddy-config-sha").read_text() == saved_hash
+
+
+def test_a_failed_caddy_reload_is_retried_on_the_next_deploy(tmp_path: Path) -> None:
+    """A9: the Caddyfile hash is only remembered once the reload worked."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, CADDY_RELOAD_FAIL="1")
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "var" / ".caddy-config-sha").exists()
+
+    (tmp_path / "docker.log").unlink()
+    result = invoke(script, binaries, sha=THIRD)
+    assert result.returncode == 0, result.stderr
+    assert "exec -T caddy caddy reload" in (tmp_path / "docker.log").read_text()
+    assert (tmp_path / "var" / ".caddy-config-sha").exists()
+
+
+def test_https_check_failure_alerts_but_does_not_fail_the_deploy(tmp_path: Path) -> None:
+    """A9: DNS/certificate issuance can lag a first deploy; this must only warn."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, BROKEN_HTTPS="1")
+    assert result.returncode == 0, result.stderr
+    assert deploy_results(tmp_path) == ["deployed"]
+    log = (tmp_path / "docker.log").read_text().splitlines()
+    assert any("deploy_https_check" in line for line in log)
+
+
+def test_no_pending_migrations_skips_the_dump(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries)
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "docker.log").read_text()
+    assert "pg_dump" not in log
+    assert not (tmp_path / "var" / "backups" / "pre-migrate.dump").exists()
+
+
+def test_pending_migrations_are_dumped_before_migrating(tmp_path: Path) -> None:
+    """A8: a dump right before a migration that will actually change the schema, so
+    a bad one can be restored by hand (neither `abort` nor `rollback` touch it)."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, PENDING_MIGRATIONS="1")
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "var" / "backups" / "pre-migrate.dump").read_text() == "DUMPDATA"
+    # It holds every client's data: owner-only, like the other backups.
+    assert (tmp_path / "var" / "backups" / "pre-migrate.dump").stat().st_mode & 0o777 == 0o600
+    log = (tmp_path / "docker.log").read_text().splitlines()
+    dump_index = next(i for i, line in enumerate(log) if "pg_dump" in line)
+    migrate_index = next(
+        i for i, line in enumerate(log) if "migrate --noinput" in line and "--check" not in line
+    )
+    assert dump_index < migrate_index
+
+
+def test_a_failed_dump_aborts_before_migrating(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, PENDING_MIGRATIONS="1", DUMP_FAIL="1")
+    assert result.returncode == 1
+    log = (tmp_path / "docker.log").read_text()
+    assert "migrate --noinput" not in log.replace("migrate --check --noinput", "")
+    assert deploy_results(tmp_path) == ["aborted"]
+    assert not (tmp_path / "var" / "backups" / "pre-migrate.dump").exists()
 
 
 def test_migration_failure_never_switches_web(tmp_path: Path) -> None:

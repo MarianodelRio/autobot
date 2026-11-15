@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run from the host timer as deploy; backup credentials live outside this repository.
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+# shellcheck source=./lib.sh
+source "$(dirname "$0")/lib.sh"
 umask 077
 mkdir -p var
 exec 9>var/.backup.lock
@@ -40,17 +41,24 @@ write_status() {
 }
 trap write_status EXIT
 
-project=${AUTOBOT_PROJECT:-autobot}
-compose_base=${AUTOBOT_COMPOSE_BASE:-deploy/compose/compose.yaml}
-compose_override=${AUTOBOT_COMPOSE_OVERRIDE:-deploy/compose/compose.prod.yaml}
-docker compose --project-name "$project" -f "$compose_base" -f "$compose_override" exec -T db \
+# A3: nobody runs `restic init`; the very first backup would otherwise fail outright.
+# `cat config` is the cheap way to tell an initialized repository from a bare one.
+"$restic_bin" cat config >/dev/null 2>&1 || "$restic_bin" init
+
+"${compose[@]}" exec -T db \
   pg_dump -U postgres -d autobot -Fc >"$dump_tmp"
 test -s "$dump_tmp"
 mv "$dump_tmp" var/backups/autobot.dump
 dump_bytes=$(stat -c '%s' var/backups/autobot.dump)
 
-"$restic_bin" backup --tag autobot var/backups/autobot.dump .env var/.deployed-sha \
-  var/google_sa.json deploy/caddy/Caddyfile
+backup_paths=(var/backups/autobot.dump .env var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile)
+# T2: Caddy's own state (its ACME account and certificates: losing them means
+# reissuing from scratch) and the deploy log. Optional: missing on a target that
+# was bootstrapped but never deployed to yet, which must not fail the backup.
+for optional_path in var/state/caddy-data var/state/caddy-config var/state/ops/deploys.jsonl; do
+  [[ -e $optional_path ]] && backup_paths+=("$optional_path")
+done
+"$restic_bin" backup --tag autobot "${backup_paths[@]}"
 # Group by tag: the dump path stays constant and all snapshots use the same policy.
 "$restic_bin" forget --tag autobot --group-by tags --keep-daily 7 --keep-weekly 4 \
   --keep-monthly 6 --prune

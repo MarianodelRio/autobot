@@ -47,6 +47,10 @@ services:
     command:
       - "-storageDataPath=/vlogs"
       - "-retentionPeriod=31d"
+      # A11: belt-and-suspenders against the 31d time-based retention on a 40 GB
+      # disk (A on 2 vCPU/4 GB): drops the oldest day first if this is hit before
+      # time-based retention would have, instead of growing to fill the disk.
+      - "-retention.maxDiskSpaceUsageBytes=5GiB"
       - "-memory.allowedPercent=5"
       - "-httpListenAddr=:9428"
     volumes:

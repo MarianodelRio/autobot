@@ -89,16 +89,23 @@ reject_localhost_url DB_APP_URL
 reject_localhost_url DB_OWNER_URL
 reject_localhost_url DB_READONLY_URL
 
-if ((${#generated_lines[@]})); then
-  {
-    printf '\n# ensure-env.sh generated these on %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '%s\n' "${generated_lines[@]}"
-  } >>"$ENV_FILE"
-  printf 'Generated: %s\n' "${generated_names[*]}"
-fi
+# Appends whatever generate_if_missing/ensure_fixed collected so far and clears the
+# arrays; called twice, so secrets are saved even if a later check aborts the script.
+flush_generated() {
+  if ((${#generated_lines[@]})); then
+    {
+      printf '\n# ensure-env.sh generated these on %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      printf '%s\n' "${generated_lines[@]}"
+    } >>"$ENV_FILE"
+    printf 'Generated: %s\n' "${generated_names[*]}"
+  fi
+  generated_names=()
+  generated_lines=()
+}
+flush_generated
 
 missing=()
-for name in PUBLIC_HOST DJANGO_ALLOWED_HOSTS DEPLOY_UID AUTOBOT_IMAGE AUTOBOT_PANEL_IMAGE; do
+for name in PUBLIC_HOST DJANGO_ALLOWED_HOSTS AUTOBOT_IMAGE AUTOBOT_PANEL_IMAGE; do
   [[ -n ${!name:-} ]] || missing+=("$name")
 done
 if ((${#missing[@]})); then
@@ -109,5 +116,30 @@ fi
 hosts=",${DJANGO_ALLOWED_HOSTS},"
 if [[ $hosts != *",127.0.0.1,"* || $hosts != *",localhost,"* ]]; then
   echo 'DJANGO_ALLOWED_HOSTS must include both 127.0.0.1 and localhost (the panel tunnel reaches web with that host)' >&2
+  exit 1
+fi
+
+# A6: the deploy user's uid can differ between hosts, and a restored .env carries
+# the uid of whichever host it was backed up from; always derive it here instead of
+# trusting a value set by hand (ensure-env.sh runs on restore.sh's target too).
+# Never root: run by mistake as root, DEPLOY_UID=0 would run every container as root.
+if [[ $(id -u) == 0 ]]; then
+  echo 'Run this as the deploy user, never as root (DEPLOY_UID would become 0)' >&2
+  exit 1
+fi
+ensure_fixed DEPLOY_UID "$(id -u)"
+public_url() {
+  echo "https://$PUBLIC_HOST"
+}
+# A5: PUBLIC_URL is only the webhook base built from PUBLIC_HOST; derive it so
+# nobody has to keep the two in sync by hand.
+generate_if_missing PUBLIC_URL public_url
+flush_generated
+
+# A4: a missing google_sa.json would otherwise make Docker create a directory in its
+# place when it binds the volume (`../../var/google_sa.json:/run/secrets/...`),
+# which then fails much later with a confusing error.
+if [[ ! -f var/google_sa.json ]]; then
+  echo 'var/google_sa.json is missing or is not a regular file' >&2
   exit 1
 fi

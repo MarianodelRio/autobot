@@ -12,7 +12,6 @@ ROOT = Path(__file__).resolve().parents[4]
 EXTERNALS = {
     "PUBLIC_HOST": "api.example.com",
     "DJANGO_ALLOWED_HOSTS": "api.example.com,localhost,127.0.0.1",
-    "DEPLOY_UID": "10001",
     "AUTOBOT_IMAGE": "ghcr.io/example-owner/autobot",
     "AUTOBOT_PANEL_IMAGE": "ghcr.io/example-owner/autobot-panel",
 }
@@ -31,6 +30,9 @@ GENERATED_NAMES = {
     "COMPOSE_FILE",
     "COMPOSE_PROJECT_NAME",
 }
+# Generated only once the externals above are present (A5, A6): derived from them,
+# or from the host the script runs on, never required to be set by hand.
+DERIVED_NAMES = {"DEPLOY_UID", "PUBLIC_URL"}
 
 
 @pytest.fixture
@@ -40,13 +42,21 @@ def script(tmp_path: Path) -> Path:
     path = scripts / "ensure-env.sh"
     shutil.copy(ROOT / "deploy/scripts/ensure-env.sh", path)
     path.chmod(0o755)
+    # A4: a regular file is required before the script will proceed; most tests
+    # exercise other checks and don't care about its content.
+    (tmp_path / "var").mkdir()
+    (tmp_path / "var" / "google_sa.json").write_text("{}\n")
     return path
 
 
 def run(script: Path, **environment: str) -> subprocess.CompletedProcess[str]:
     # CI's own job env already sets the DB_*_URL (and FP_*_PASSWORD) that make
     # check needs; strip them so the script sees a clean slate like a real .env.
-    base = {k: v for k, v in os.environ.items() if k not in GENERATED_NAMES | set(EXTERNALS)}
+    base = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in GENERATED_NAMES | DERIVED_NAMES | set(EXTERNALS)
+    }
     return subprocess.run(
         ["bash", str(script)],
         cwd=script.parents[2],
@@ -67,13 +77,62 @@ def test_generates_missing_internals_without_the_externals(script: Path, tmp_pat
     assert result.returncode == 1, result.stderr
     assert "PUBLIC_HOST" in result.stderr
     assert "DJANGO_ALLOWED_HOSTS" in result.stderr
-    assert "DEPLOY_UID" in result.stderr
     assert "AUTOBOT_IMAGE" in result.stderr
     assert "AUTOBOT_PANEL_IMAGE" in result.stderr
     env = env_dict(tmp_path)
     assert set(env) == GENERATED_NAMES
     assert env["DB_APP_URL"] == f"postgres://fp_app:{env['FP_APP_PASSWORD']}@db:5432/autobot"
     assert (tmp_path / ".env").stat().st_mode & 0o777 == 0o600
+
+
+def test_derives_deploy_uid_and_public_url_once_externals_are_set(
+    script: Path, tmp_path: Path
+) -> None:
+    """A5, A6: neither is set by hand; both come from the host and PUBLIC_HOST."""
+    result = run(script, **EXTERNALS)
+    assert result.returncode == 0, result.stderr
+    env = env_dict(tmp_path)
+    assert env["DEPLOY_UID"] == str(os.getuid())
+    assert env["PUBLIC_URL"] == "https://api.example.com"
+
+
+def test_deploy_uid_is_rederived_even_if_already_set_to_another_host(
+    script: Path, tmp_path: Path
+) -> None:
+    (tmp_path / ".env").write_text("DEPLOY_UID=999999\n")
+    result = run(script, **EXTERNALS)
+    assert result.returncode == 0, result.stderr
+    assert env_dict(tmp_path)["DEPLOY_UID"] == str(os.getuid())
+
+
+def test_refuses_to_run_as_root(script: Path, tmp_path: Path) -> None:
+    """A6: run as root by mistake, DEPLOY_UID=0 would run every container as root."""
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    fake_id = binaries / "id"
+    fake_id.write_text("#!/usr/bin/env bash\necho 0\n")
+    fake_id.chmod(0o755)
+    result = run(script, **EXTERNALS, PATH=f"{binaries}:{os.environ['PATH']}")
+    assert result.returncode == 1
+    assert "never as root" in result.stderr
+    assert "DEPLOY_UID=0" not in (tmp_path / ".env").read_text()
+
+
+def test_rejects_missing_google_sa_json(script: Path, tmp_path: Path) -> None:
+    (tmp_path / "var" / "google_sa.json").unlink()
+    result = run(script, **EXTERNALS)
+    assert result.returncode == 1
+    assert "google_sa.json" in result.stderr
+
+
+def test_rejects_google_sa_json_as_a_directory(script: Path, tmp_path: Path) -> None:
+    """A4: Docker creates a directory in its place when the bind-mount source is
+    missing; ensure-env.sh must refuse that just as it refuses a missing file."""
+    (tmp_path / "var" / "google_sa.json").unlink()
+    (tmp_path / "var" / "google_sa.json").mkdir()
+    result = run(script, **EXTERNALS)
+    assert result.returncode == 1
+    assert "google_sa.json" in result.stderr
 
 
 def test_never_prints_a_generated_value(script: Path) -> None:

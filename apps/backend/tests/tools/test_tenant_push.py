@@ -123,6 +123,7 @@ def test_manage_wrapper_uses_deployed_sha_and_forwards_args(tmp_path: Path) -> N
     scripts = tmp_path / "deploy" / "scripts"
     scripts.mkdir(parents=True)
     shutil.copy(ROOT / "deploy/scripts/manage.sh", scripts / "manage.sh")
+    shutil.copy(ROOT / "deploy/scripts/lib.sh", scripts / "lib.sh")
     sha = "a" * 40
     (tmp_path / "var").mkdir()
     (tmp_path / "var" / ".deployed-sha").write_text(sha)
@@ -143,9 +144,11 @@ def test_manage_wrapper_uses_deployed_sha_and_forwards_args(tmp_path: Path) -> N
         "--project-name",
         "autobot",
         "-f",
-        "deploy/compose/compose.yaml",
+        str(tmp_path / "deploy/compose/compose.yaml"),
         "-f",
-        "deploy/compose/compose.prod.yaml",
+        str(tmp_path / "deploy/compose/compose.prod.yaml"),
+        "--env-file",
+        str(tmp_path / ".env"),
         "run",
         "--rm",
         "-T",

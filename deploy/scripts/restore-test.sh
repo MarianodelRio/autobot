@@ -10,6 +10,10 @@ target_dir=$test_root/target
 for dir in "$source_dir" "$target_dir"; do
   mkdir -p "$dir/deploy/compose" "$dir/deploy/postgres" "$dir/deploy/caddy" "$dir/deploy/scripts" \
     "$dir/var"
+  # Like bootstrap-server.sh on the real VPS: pre-create the bind-mount source so
+  # Docker never auto-creates it as root when a container starts before backup.sh
+  # does (`var/state/ops` is mounted read-only into web/worker).
+  mkdir -p "$dir/var/state/ops"
 done
 sha=$(python3 -c 'import secrets; print(secrets.token_hex(20))')
 source_project="fp-restore-src-${sha:0:8}"
@@ -20,9 +24,11 @@ cleanup() {
     kill "$ping_pid" >/dev/null 2>&1 || true
   fi
   (cd "$source_dir" && docker compose --project-name "$source_project" \
-    -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml down -v) >/dev/null 2>&1 || true
+    -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml --env-file .env \
+    down -v) >/dev/null 2>&1 || true
   (cd "$target_dir" && docker compose --project-name "$target_project" \
-    -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml down -v) >/dev/null 2>&1 || true
+    -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml --env-file .env \
+    down -v) >/dev/null 2>&1 || true
   docker image rm "ghcr.io/example-owner/autobot:$sha" >/dev/null 2>&1 || true
   rm -rf "$test_root"
 }
@@ -32,7 +38,8 @@ for dir in "$source_dir" "$target_dir"; do
   cp deploy/compose/compose.yaml deploy/compose/compose.prod.yaml "$dir/deploy/compose/"
   cp deploy/caddy/Caddyfile "$dir/deploy/caddy/"
   cp deploy/postgres/init-roles.sh "$dir/deploy/postgres/"
-  cp deploy/scripts/backup.sh deploy/scripts/restore.sh "$dir/deploy/scripts/"
+  cp deploy/scripts/backup.sh deploy/scripts/restore.sh deploy/scripts/lib.sh \
+    deploy/scripts/ensure-env.sh "$dir/deploy/scripts/"
 done
 cat >"$source_dir/.env" <<EOF
 ENVIRONMENT=prod
@@ -43,9 +50,10 @@ AUTOBOT_PANEL_IMAGE=ghcr.io/example-owner/autobot-panel
 DEPLOY_UID=$(id -u)
 DJANGO_SECRET_KEY=local-restore-test-only
 SECRETS_ENCRYPTION_KEY=$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
-DJANGO_ALLOWED_HOSTS=localhost
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 DB_APP_URL=postgres://fp_app:local@db:5432/autobot
 DB_OWNER_URL=postgres://fp_owner:local@db:5432/autobot
+DB_READONLY_URL=postgres://fp_readonly:local@db:5432/autobot
 POSTGRES_PASSWORD=local
 FP_OWNER_PASSWORD=local
 FP_APP_PASSWORD=local
@@ -88,11 +96,17 @@ HEALTHCHECKS_BACKUP_PING_URL=http://127.0.0.1:$ping_port/local-only
 EOF
 chmod 600 "$test_root/backup.env"
 export AUTOBOT_BACKUP_CONFIG="$test_root/backup.env"
-"$RESTIC_BIN" -r "$test_root/repository" --password-file "$test_root/restic-password" init >/dev/null
+# No `restic init` here on purpose: backup.sh must do it itself (A3).
+# T1: restore.sh refuses to run on a target that was never bootstrapped; this
+# machine wasn't (it's the developer's own), so fake the marker like a real one.
+touch "$test_root/bootstrap-complete"
+export AUTOBOT_BOOTSTRAP_MARKER="$test_root/bootstrap-complete"
 
 docker build -q -t autobot:restore-test -f apps/backend/Dockerfile apps/backend >/dev/null
 docker tag autobot:restore-test "ghcr.io/example-owner/autobot:$sha"
-compose_args=(-f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml)
+# --env-file is relative: every use below `cd`s into source_dir or target_dir first
+# (A1: compose's own .env lookup is relative to deploy/compose/, not the cwd).
+compose_args=(-f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml --env-file .env)
 (
   cd "$source_dir"
   docker compose --project-name "$source_project" "${compose_args[@]}" up -d db >/dev/null

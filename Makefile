@@ -163,7 +163,7 @@ bus-publicar: ## Publica la copia local validada en BD (TENANT=<slug> COMMENT=".
 
 SHA ?= $(shell git rev-parse origin/main)
 
-.PHONY: deploy rollback backup-now restore-test prod-manage
+.PHONY: deploy rollback backup-now restore-test prod-manage prod-compose
 
 deploy: ## Lanza el despliegue si el CI del SHA está en verde ([SHA=])
 	@conclusion=$$(gh run list --workflow ci.yml --commit $(SHA) --json conclusion -q '.[0].conclusion'); \
@@ -175,13 +175,11 @@ deploy: ## Lanza el despliegue si el CI del SHA está en verde ([SHA=])
 
 # Reads the last successful deployment's `previous` SHA from the server and redeploys
 # it, with confirmation. Needs the operation SSH key (`~/.ssh/config` alias $(HOST)).
+# rollback_target.py (A7) refuses a second rollback in a row: it would otherwise
+# redeploy the broken SHA the first rollback just moved away from.
 rollback: ## Redespliega el `previous` del último despliegue correcto, con confirmación
 	@previous=$$(ssh deploy@$(HOST) 'tail -n 50 /srv/autobot/var/state/ops/deploys.jsonl' | \
-		python3 -c "import json, sys; entries = [json.loads(line) for line in sys.stdin if line.strip()]; deployed = [e for e in entries if e['result'] == 'deployed']; print(deployed[-1]['previous'] if deployed else '')"); \
-	if [ -z "$$previous" ]; then \
-		echo 'No previous successful deployment found to roll back to' >&2; \
-		exit 1; \
-	fi; \
+		python3 deploy/scripts/rollback_target.py) || exit 1; \
 	read -r -p "Roll back to $$previous? [y/N] " confirm; \
 	[ "$$confirm" = y ] || exit 1; \
 	$(MAKE) deploy SHA=$$previous
@@ -194,3 +192,8 @@ restore-test: ## Simulacro de restauración (bash deploy/scripts/restore-test.sh
 
 prod-manage: ## Ejecuta un comando de manage.py contra la imagen desplegada (CMD="..." [TTY=1])
 	@ssh $(if $(TTY),-t,) deploy@$(HOST) /srv/autobot/deploy/scripts/manage.sh $(CMD)
+
+# For anything manage.sh doesn't cover (`exec`, `logs`...); SHA and --env-file come
+# from deploy/scripts/lib.sh, so a bare `docker compose exec web ...` never needs them.
+prod-compose: ## Ejecuta un comando de docker compose contra el servidor (ARGS="..." [TTY=1])
+	@ssh $(if $(TTY),-t,) deploy@$(HOST) /srv/autobot/deploy/scripts/compose.sh $(ARGS)

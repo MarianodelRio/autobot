@@ -14,6 +14,7 @@ def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
     scripts = tmp_path / "deploy" / "scripts"
     scripts.mkdir(parents=True)
     shutil.copy(ROOT / "deploy/scripts/backup.sh", scripts / "backup.sh")
+    shutil.copy(ROOT / "deploy/scripts/lib.sh", scripts / "lib.sh")
     compose = tmp_path / "deploy" / "compose"
     compose.mkdir()
     (compose / "compose.yaml").write_text("services: {}\n")
@@ -41,6 +42,7 @@ def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
         "#!/usr/bin/env bash\n"
         'printf \'%s\\n\' "$*" >>"$TEST_LOG"\n'
         "[[ ${RESTIC_FAIL:-} != 1 ]] || exit 1\n"
+        "[[ $1 != cat || ${RESTIC_UNINITIALIZED:-} != 1 ]] || exit 1\n"
     )
     restic.chmod(0o755)
     python3 = binaries / "python3"
@@ -85,6 +87,57 @@ def test_success_writes_backup_status_and_removes_the_dump(tmp_path: Path) -> No
     log = (tmp_path / "restic.log").read_text()
     assert "backup --tag autobot" in log
     assert "forget --tag autobot" in log
+
+
+def test_optional_caddy_state_and_deploy_log_are_backed_up_when_present(
+    tmp_path: Path,
+) -> None:
+    """T2: Caddy's certificates/account and the deploy log, so losing the server
+    doesn't mean reissuing certificates or losing the deploy history."""
+    script, binaries, config = setup(tmp_path)
+    (tmp_path / "var" / "state" / "caddy-data").mkdir(parents=True)
+    (tmp_path / "var" / "state" / "caddy-data" / "acme.json").write_text("{}\n")
+    (tmp_path / "var" / "state" / "caddy-config").mkdir()
+    (tmp_path / "var" / "state" / "ops").mkdir()
+    (tmp_path / "var" / "state" / "ops" / "deploys.jsonl").write_text('{"result":"deployed"}\n')
+    result = invoke(script, binaries, config)
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "restic.log").read_text()
+    backup_line = next(line for line in log.splitlines() if line.startswith("backup"))
+    assert "var/state/caddy-data" in backup_line
+    assert "var/state/caddy-config" in backup_line
+    assert "var/state/ops/deploys.jsonl" in backup_line
+
+
+def test_missing_optional_paths_do_not_block_the_backup(tmp_path: Path) -> None:
+    script, binaries, config = setup(tmp_path)
+    result = invoke(script, binaries, config)
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "restic.log").read_text()
+    backup_line = next(line for line in log.splitlines() if line.startswith("backup"))
+    assert "caddy-data" not in backup_line
+    assert "deploys.jsonl" not in backup_line
+
+
+def test_uninitialized_repository_is_initialized_before_the_first_backup(
+    tmp_path: Path,
+) -> None:
+    """A3: nobody runs `restic init` by hand; the script must do it itself."""
+    script, binaries, config = setup(tmp_path)
+    result = invoke(script, binaries, config, RESTIC_UNINITIALIZED="1")
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "restic.log").read_text().splitlines()
+    assert log[0] == "cat config"
+    assert "init" in log
+    assert log.index("init") < [i for i, line in enumerate(log) if line.startswith("backup")][0]
+
+
+def test_already_initialized_repository_is_not_reinitialized(tmp_path: Path) -> None:
+    script, binaries, config = setup(tmp_path)
+    result = invoke(script, binaries, config)
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "restic.log").read_text().splitlines()
+    assert "init" not in log
 
 
 def test_restic_failure_is_recorded_as_not_ok(tmp_path: Path) -> None:

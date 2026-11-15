@@ -2,7 +2,8 @@
 # Deploy a published, immutable image. Run on the VPS as the deploy user only.
 set -euo pipefail
 
-cd "$(dirname "$0")/../.."
+# shellcheck source=./lib.sh
+source "$(dirname "$0")/lib.sh"
 mkdir -p var/state/ops
 exec 9>var/.deploy.lock
 # containers.sh only probes this lock in shared mode for microseconds; wait instead
@@ -13,8 +14,13 @@ if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Usage: deploy/scripts/deploy.sh <full-40-character-sha>' >&2
   exit 2
 fi
-# .env on disk is enough: docker compose reads it itself for ${VAR:?} substitution.
+# .env on disk is enough for docker compose itself (${VAR:?} substitution); this
+# shell also needs PUBLIC_HOST, for the HTTPS check after a successful deploy (A9).
 deploy/scripts/ensure-env.sh
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
 target=$1
 previous=$(cat var/.deployed-sha 2>/dev/null || true)
 if [[ -n $previous && ! $previous =~ ^[0-9a-f]{40}$ ]]; then
@@ -22,7 +28,22 @@ if [[ -n $previous && ! $previous =~ ^[0-9a-f]{40}$ ]]; then
   exit 1
 fi
 export SHA="$target"
-compose=(docker compose --project-name autobot -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml)
+
+# A7: tag a deploy that exactly undoes the last recorded one as "rollback", so
+# `make rollback` (rollback_target.py) can refuse to chain a second one back onto
+# the broken image the first rollback just moved away from.
+via=deploy
+if [[ -f var/state/ops/deploys.jsonl ]]; then
+  last_previous=$(tail -n 1 var/state/ops/deploys.jsonl | python3 -c '
+import json, sys
+try:
+    entry = json.loads(sys.stdin.read())
+except ValueError:
+    entry = {}
+print(entry.get("previous", "") if entry.get("result") == "deployed" else "")
+' 2>/dev/null) || last_previous=
+  [[ -n $last_previous && $last_previous == "$target" ]] && via=rollback
+fi
 
 # A tenant already degraded before this deploy must never block it, including pausing
 # it (X10): only a tenant that becomes degraded *because of this deploy* does. Best
@@ -71,6 +92,23 @@ wait_worker() {
   done
 }
 
+# A9: `up` only recreates a container if its own definition changed, never because
+# the content of a bind-mounted file did; reload Caddy by hand whenever its config
+# did, instead of leaving it silently serving the previous one.
+reload_caddy_if_changed() {
+  local current previous_hash
+  current=$(sha256sum deploy/caddy/Caddyfile | cut -d' ' -f1)
+  previous_hash=$(cat var/.caddy-config-sha 2>/dev/null || true)
+  if [[ $current != "$previous_hash" ]]; then
+    # Only remembered once reloaded: a failed reload is retried on the next deploy.
+    if "${compose[@]}" exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile; then
+      printf '%s' "$current" >var/.caddy-config-sha
+    else
+      echo 'Could not reload Caddy; it may still be running the previous config' >&2
+    fi
+  fi
+}
+
 restore_checkout() {
   if [[ -n $previous && -d .git ]] && ! git checkout --quiet --detach "$previous"; then
     echo 'Could not restore previous repository configuration' >&2
@@ -89,8 +127,8 @@ alert_ops() {
 
 # One line per attempt, read by the panel; `web` mounts var/state/ops read-only.
 record_deploy() {
-  printf '{"at":"%s","sha":"%s","previous":"%s","result":"%s"}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$target" "$previous" "$1" >>var/state/ops/deploys.jsonl
+  printf '{"at":"%s","sha":"%s","previous":"%s","result":"%s","via":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$target" "$previous" "$1" "$via" >>var/state/ops/deploys.jsonl
 }
 
 if [[ $previous == "$target" ]]; then
@@ -126,6 +164,11 @@ abort() {
   exit 1
 }
 
+# A10: db and caddy are pinned by digest (S11), but nothing ever explicitly pulled
+# them; `up` would only pull on first use, deep inside its own retry/error handling.
+# Pulling them here catches a registry outage (or a cache that lost that digest)
+# the same way the other images already do, instead of surfacing mid-`up`.
+"${compose[@]}" pull db caddy || abort
 # The first deployment needs PostgreSQL before a one-shot migration container.
 "${compose[@]}" up -d --wait db || abort
 "${compose[@]}" exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh || abort
@@ -133,6 +176,24 @@ abort() {
 # Logs are not critical: victorialogs never aborts or rolls back a deployment.
 "${compose[@]}" pull victorialogs || echo 'Could not pull victorialogs; logs will be unavailable' >&2
 "${compose[@]}" up -d victorialogs || echo 'Could not start victorialogs; logs will be unavailable' >&2
+
+# A8: a dump right before a migration that will actually run something, so a bad one
+# can be restored by hand; `abort`/`rollback` put the previous *code* back but never
+# touch the schema a migration already changed. This is why migrations must only
+# expand the schema (add, never remove/rename what the previous release still reads):
+# a contract migration belongs to a later deploy, once rolling back to this one is
+# no longer a concern.
+if ! "${compose[@]}" run --rm web python manage.py migrate --check --noinput >/dev/null 2>&1; then
+  echo 'Pending migrations: dumping the database before applying them' >&2
+  mkdir -p var/backups
+  # It holds every client's data: owner-only, like the other backups (umask 077).
+  if (umask 077 && "${compose[@]}" exec -T db pg_dump -U postgres -d autobot -Fc \
+    >var/backups/pre-migrate.dump.tmp); then
+    mv var/backups/pre-migrate.dump.tmp var/backups/pre-migrate.dump || abort
+  else
+    abort
+  fi
+fi
 "${compose[@]}" run --rm web python manage.py migrate --noinput || abort
 "${compose[@]}" run --rm web python manage.py apply_grants || abort
 "${compose[@]}" run --rm web python manage.py tenant_config validate --all || abort
@@ -164,6 +225,8 @@ rollback() {
     if ! "${compose[@]}" up --no-deps -d caddy; then
       echo 'Could not restart Caddy; operator action required' >&2
       failed=1
+    else
+      reload_caddy_if_changed
     fi
     [[ $failed -eq 0 ]] && result=rolled_back
   else
@@ -181,8 +244,16 @@ wait_health || rollback
 wait_worker || rollback
 wait_panel || rollback
 "${compose[@]}" up --no-deps -d caddy || rollback
+reload_caddy_if_changed
 printf '%s\n' "$target" >var/.deployed-sha.tmp
 mv var/.deployed-sha.tmp var/.deployed-sha
 record_deploy deployed
 alert_ops deploy_ok "🟢 Desplegado ${target:0:7}" informational
+# A9: never aborts or rolls back (DNS/certificate issuance can lag a first deploy);
+# just makes sure an operator finds out if HTTPS stops answering.
+if [[ -n ${PUBLIC_HOST:-} ]] && ! curl --silent --show-error --fail --max-time 5 \
+  "https://$PUBLIC_HOST/health" >/dev/null 2>&1; then
+  echo 'HTTPS check failed after deploying; verify Caddy/TLS manually' >&2
+  alert_ops deploy_https_check '🟡 HTTPS no respondió tras desplegar: revisar Caddy/TLS' informational
+fi
 echo "Deployed $target"
