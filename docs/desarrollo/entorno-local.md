@@ -65,6 +65,28 @@ desde un YAML. `tenant_config import/export/validate`, `tenant_dataset`, `seed_d
 y `tenant_status` gestionan las versiones en PostgreSQL; ver
 [comandos](../referencia/comandos.md). La publicación no requiere commits ni reinicios.
 
+## Reproducir producción en local (L1/L2)
+
+`make up`/`dev-bootstrap` son para desarrollo: código montado, `runserver`, sin Caddy
+ni TLS. Para probar de verdad `deploy.sh`, `backup.sh` y `restore.sh` tal cual corren
+en el servidor (Caddy con TLS, `read_only` con tu UID real, gunicorn), sin tocar `make
+up`:
+
+```bash
+make localprod-up       # construye las imágenes, las sube a un registro Docker
+                         # local y despliega con el deploy.sh real
+make localprod-backup   # backup.sh real contra restic en var/localprod/restic
+make localprod-restore  # restore.sh real; pide confirmación, sustituye el volumen
+make localprod-down     # para y borra los contenedores y el registro
+```
+
+Proyecto (`autobot-localprod`), puertos (8443/8081 Caddy, 18000 web, 18080 panel) y
+volúmenes son todos distintos de `make up`: los dos pueden estar levantados a la vez.
+`var/localprod/` (la copia de este checkout que despliega, incluidos cambios sin
+commitear) está en `var/`, que git ignora. `https://localhost:8443` usa el certificado
+interno de Caddy (`curl -k`). Detalles y lo que este ensayo ya encontró en
+`docs/plan-lanzamiento.md` (bloque L).
+
 Las acciones de producción se ejecutan con `make prod-manage HOST=<servidor> CMD="..."`;
 `TTY=1` permite confirmaciones interactivas. `make tenant-push HOST=<servidor> SLUG=<slug>`
 transfiere el documento y los datasets de la BD local por SSH; `SECRETS=<yaml-privado>`

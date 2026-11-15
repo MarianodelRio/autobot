@@ -60,8 +60,10 @@ services:
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?Set the API hostname}
     ports:
-      - "80:80"
-      - "443:443"
+      # L1 (localprod): overridable so it can run beside a real dev stack on the
+      # same machine; production never sets these, so it keeps 80/443.
+      - "${AUTOBOT_CADDY_HTTP_PORT:-80}:80"
+      - "${AUTOBOT_CADDY_HTTPS_PORT:-443}:443"
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ../../var/state/caddy-data:/data
@@ -81,7 +83,7 @@ services:
       SERVICE_NAME: web
     command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4 --no-control-socket
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${AUTOBOT_WEB_HOST_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 10s
@@ -117,7 +119,7 @@ services:
     image: ${AUTOBOT_PANEL_IMAGE:?Set AUTOBOT_PANEL_IMAGE}:${SHA:?Set the published image SHA}
     user: ${DEPLOY_UID:?Set the numeric uid of the deploy user}
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${AUTOBOT_PANEL_HOST_PORT:-8080}:8080"
     read_only: true
     tmpfs:
       - /tmp
