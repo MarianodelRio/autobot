@@ -17,3 +17,4 @@ Plantilla: [`plantilla.md`](plantilla.md).
 | [009](ADR-009-config-en-bd.md) | Config y datasets de los negocios en PostgreSQL, versionados | aceptada |
 | [010](ADR-010-estructura-del-repo.md) | Estructura del repositorio: apps autocontenidas, compose por entorno y `var/` | aceptada |
 | [011](ADR-011-borrado-total-de-un-cliente.md) | Borrado total de un cliente | aceptada |
+| [012](ADR-012-instalacion-y-traslado.md) | Instalación y traslado del servidor desde la máquina del operador | aceptada |

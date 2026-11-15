@@ -32,3 +32,6 @@ La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de
 ## Cuándo revisarla
 
 - Más de 15 negocios, o un negocio que dependa del servicio en horas críticas → PostgreSQL gestionado y varias VPS de aplicación.
+
+Cómo se instala y se traslada el servidor (cuentas de acceso, `bootstrap-server.sh`,
+`server-init.sh`, `server-migrate.sh`) queda en [ADR-012](ADR-012-instalacion-y-traslado.md).
