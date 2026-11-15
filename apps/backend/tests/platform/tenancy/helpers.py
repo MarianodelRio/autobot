@@ -71,12 +71,6 @@ def write_tenants(root: Path, *docs: dict[str, Any], raw: dict[str, str] | None 
     return tenants
 
 
-def write_secrets(root: Path, secrets: dict[str, Any]) -> Path:
-    path = root / "secrets.yaml"
-    path.write_text(yaml.safe_dump(secrets))
-    return path
-
-
 def seed_db(
     *docs: dict[str, Any],
     secrets: dict[str, Any] | None = None,

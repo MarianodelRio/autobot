@@ -176,43 +176,6 @@ def source_from_dir(directory: Path, secrets: Mapping[str, Any] | None = None) -
         )
 
 
-def sources_from_directory(root: Path, secrets_file: Path | None) -> list[TenantSource]:
-    if not root.is_dir():
-        log.warning("No tenants directory at %s", root)
-        return []
-    secrets: dict[str, Any] = {}
-    secrets_error = None
-    if secrets_file is not None and secrets_file.is_file():
-        try:
-            raw = yaml.safe_load(secrets_file.read_text(encoding="utf-8")) or {}
-            if isinstance(raw, dict) and all(isinstance(key, str) for key in raw):
-                secrets = raw
-            else:
-                secrets_error = "must map each tenant slug to its secrets"
-        except READ_ERRORS as error:
-            secrets_error = f"cannot be read ({type(error).__name__})"
-    sources = []
-    known_slugs = set()
-    for path in sorted(root.iterdir()):
-        if not path.is_dir():
-            continue
-        source = source_from_dir(path)
-        slug = source.document.get("slug") if isinstance(source.document, dict) else None
-        if isinstance(slug, str):
-            known_slugs.add(slug)
-        sources.append(
-            replace(
-                source,
-                secrets=secrets.get(slug) if isinstance(slug, str) else None,
-                secrets_error=secrets_error,
-            )
-        )
-    unknown = sorted(set(secrets) - known_slugs)
-    if unknown:
-        log.warning("secrets.yaml has entries for unknown tenants: %s", ", ".join(unknown))
-    return sources
-
-
 def _load_tenant(
     source: TenantSource, packs: Mapping[str, Pack], registry: Registry
 ) -> LoadedTenant | None:

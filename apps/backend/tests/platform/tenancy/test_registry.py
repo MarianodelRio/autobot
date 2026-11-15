@@ -13,7 +13,6 @@ from autobot.tenancy.registry import (
     TenantSource,
     load_registry,
     source_from_dir,
-    sources_from_directory,
 )
 from tests.fixtures.toy_pack import pack as toy
 from tests.platform.tenancy.helpers import (
@@ -23,7 +22,6 @@ from tests.platform.tenancy.helpers import (
     demo_tenant_yaml,
     phone_number_id,
     tenant_yaml,
-    write_secrets,
     write_tenants,
 )
 
@@ -36,8 +34,14 @@ def load(
     packs: dict[str, Any] = PACKS,
 ) -> Registry:
     tenants = write_tenants(tmp_path, *docs, raw=raw)
-    secrets_file = write_secrets(tmp_path, secrets) if secrets is not None else None
-    return load_registry(sources_from_directory(tenants, secrets_file), packs)
+    sources = []
+    for path in sorted(tenants.iterdir()):
+        source = source_from_dir(path)
+        slug = source.document.get("slug") if isinstance(source.document, dict) else None
+        sources.append(
+            dataclasses.replace(source, secrets=(secrets or {}).get(slug)) if slug else source
+        )
+    return load_registry(sources, packs)
 
 
 # ── A healthy tenant ──────────────────────────────────────────────────────
@@ -248,15 +252,6 @@ def test_unreadable_yaml_is_reported(tmp_path: Path) -> None:
     assert [t.slug for t in registry.tenants] == ["good"]
 
 
-def test_invalid_secrets_file_is_reported(tmp_path: Path) -> None:
-    tenants = write_tenants(tmp_path, tenant_yaml("a"))
-    (tmp_path / "secrets.yaml").write_text("a: [unclosed")
-    registry = load_registry(sources_from_directory(tenants, tmp_path / "secrets.yaml"), PACKS)
-    assert "secrets cannot be decrypted" in registry.tenants[0].main_disabled
-    assert registry.problems == {}
-    assert not registry.tenants[0].main_enabled
-
-
 # ── Repository-wide uniqueness ───────────────────────────────────────────
 
 
@@ -334,45 +329,17 @@ def test_a_tenant_file_that_is_not_utf8_only_affects_itself(tmp_path: Path) -> N
     tenants = write_tenants(tmp_path, tenant_yaml("good"))
     (tenants / "latin1").mkdir()
     (tenants / "latin1" / "tenant.yaml").write_bytes("name: Peluquería".encode("latin-1"))
-    registry = load_registry(sources_from_directory(tenants, None), PACKS)
+    registry = load_registry([source_from_dir(p) for p in sorted(tenants.iterdir())], PACKS)
     assert registry.errors == {"latin1": ["tenant.yaml cannot be read (UnicodeDecodeError)"]}
     assert [t.slug for t in registry.tenants] == ["good"]
-
-
-def test_an_unreadable_secrets_file_does_not_stop_the_tenants(tmp_path: Path) -> None:
-    tenants = write_tenants(tmp_path, tenant_yaml("a"))
-    secrets = write_secrets(tmp_path, {"a": WA_SECRETS})
-    secrets.chmod(0)
-    try:
-        registry = load_registry(sources_from_directory(tenants, secrets), PACKS)
-    finally:
-        secrets.chmod(0o600)
-    assert "secrets cannot be decrypted" in registry.tenants[0].main_disabled
-    assert [t.slug for t in registry.tenants] == ["a"]
-    assert not registry.tenants[0].main_enabled
 
 
 def test_a_directory_without_tenant_yaml_is_reported(tmp_path: Path) -> None:
     tenants = write_tenants(tmp_path, tenant_yaml("a"))
     (tenants / "typo").mkdir()
     (tenants / "typo" / "tenant.yml").write_text("id: x")
-    assert load_registry(sources_from_directory(tenants, None), PACKS).errors == {
-        "typo": ["no document.yaml or tenant.yaml"]
-    }
-
-
-def test_a_missing_tenants_directory_gives_an_empty_registry(tmp_path: Path) -> None:
-    registry = load_registry(sources_from_directory(tmp_path / "nowhere", None), PACKS)
-    assert registry.tenants == [] and registry.problems == {}
-
-
-def test_secrets_for_unknown_tenants_are_warned_by_name_only(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    with caplog.at_level(logging.WARNING):
-        load(tmp_path, tenant_yaml("a"), secrets={"a": WA_SECRETS, "typo-slug": WA_SECRETS})
-    assert "unknown tenants: typo-slug" in caplog.text
-    assert WA_SECRETS["access_token"] not in caplog.text
+    registry = load_registry([source_from_dir(p) for p in sorted(tenants.iterdir())], PACKS)
+    assert registry.errors == {"typo": ["no document.yaml or tenant.yaml"]}
 
 
 @pytest.mark.parametrize(
@@ -384,15 +351,6 @@ def test_secrets_for_unknown_tenants_are_warned_by_name_only(
 )
 def test_channel_ids_have_a_format(tmp_path: Path, channel: dict[str, str]) -> None:
     assert "channel" in str(load(tmp_path, tenant_yaml("a", channel=channel)).errors["a"])
-
-
-@pytest.mark.parametrize("text", ["1: {}", "true: {}", "- a\n- b"])
-def test_secrets_file_must_map_slugs(tmp_path: Path, text: str) -> None:
-    tenants = write_tenants(tmp_path, tenant_yaml("a"))
-    (tmp_path / "secrets.yaml").write_text(text)
-    registry = load_registry(sources_from_directory(tenants, tmp_path / "secrets.yaml"), PACKS)
-    assert "secrets cannot be decrypted" in registry.tenants[0].main_disabled
-    assert [t.slug for t in registry.tenants] == ["a"]
 
 
 @pytest.mark.parametrize("filename", ["document.yaml", "tenant.yaml"])
