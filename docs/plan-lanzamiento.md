@@ -32,7 +32,7 @@ reserva es idempotente y las dependencias no tienen vulnerabilidades relevantes.
 | Backups | Fallarían siempre: `backup.sh` no define `SHA` (reproducido) |
 | Traslado a otra máquina | No funciona de extremo a extremo y hoy arrancaría envíos reales antes de tiempo |
 | Alta desde el panel | Imposible sin terminal: la lista de lo que falta no se muestra en ninguna pantalla |
-| Datos reales | Siguen en el repo, en el historial y en 47 de las 51 imágenes de `autobot` |
+| Datos reales | Fuera de la versión actual del repo (bloque R); quedan en el historial, un tag y las imágenes antiguas de `autobot`, por decisión tuya |
 | Robustez | 20 errores concretos, 7 graves; varios reproducidos |
 
 ## 2. Decisiones
@@ -55,7 +55,7 @@ reserva es idempotente y las dependencias no tienen vulnerabilidades relevantes.
 |---|---|---|
 | D1 | Historial de git | **Resuelta:** no se toca |
 | D2 | Tests de `bus` sin datos reales (R1) | **Resuelta:** horarios falsos pequeños |
-| D3 | ¿Migrar citas de los bots anteriores? | No: borrar la herramienta |
+| D3 | ¿Migrar citas de los bots anteriores? | **Resuelta:** se conserva la herramienta; puede hacer falta en el futuro |
 | D4 | ¿Activar el borrado automático de datos? **[Aprobación]** | Sí, antes del primer cliente |
 | D5 | ¿Cómo entran los usuarios a la demo? | Lista cerrada al principio |
 | D6 | ¿Demo también por WhatsApp? | Más adelante |
@@ -70,16 +70,15 @@ Cada fase termina con algo comprobable. Tiempos de una persona, estimados con ho
 
 | Fase | Bloques | Termina cuando | Tiempo |
 |---|---|---|---|
-| 1. Repo limpio | R, F1 | Búsqueda de términos reales en los ficheros actuales vacía y CI en verde | 6–8 días |
-| 2. Seguridad y errores | S, X | Críticos corregidos con sus tests | 5–7 días |
+| 1. Repo limpio — **hecha** | R, F1 | Búsqueda de términos reales en los ficheros actuales vacía y CI en verde | 6–8 días |
+| 2. Seguridad y errores — **hecha** | S, X | Críticos corregidos con sus tests | 5–7 días |
 | 3. Despliegue | A, T, L | Instalación y traslado ensayados en VMs desechables | 8–10 días |
 | 4. Demos en producción | B | Los dos demos funcionan por Telegram | 1–2 días |
 | 5. Alta de clientes | C, D | Alta real completa sin terminal | 10–12 días |
 | 6. Varios peluqueros | E | Demo con dos peluqueros y escenarios en verde | 8–10 días |
 | 7. Cierre | F2, F3, G | Sección 5 completa | 4–6 días + trámites externos |
 
-**Camino corto hasta tener los demos en marcha:** fases 1 a 4. Si quieres adelantarlo,
-se puede dejar R1 para después, pero entonces los horarios seguirían públicos.
+**Camino corto hasta tener los demos en marcha:** fases 1 a 4.
 
 ## 4. Lista de trabajo
 
@@ -143,8 +142,8 @@ ningún cliente: se deja así.
   las imágenes llevaban horarios. El control no tiene excepciones.
 - [x] **R7 (S) [Tú]** Confirmado: el calendario de la demo no es público.
 
-**Comprobación de R:** `git grep -iE '<términos>'` con los términos de `var/limpieza/` no
-devuelve nada. El historial y las imágenes antiguas quedan fuera por decisión tuya.
+**Comprobación de R:** `python3 deploy/scripts/check-forbidden-terms.py` (job `forbidden-terms`
+de CI) sale en verde. El historial y las imágenes antiguas quedan fuera por decisión tuya.
 
 ### S. Seguridad
 
@@ -776,14 +775,29 @@ Tareas:
 
 ### F. Simplificación y facilidad de desarrollo
 
-**F1. Limpieza inicial (S, junta con R):**
+**F1. Limpieza inicial — hecho:**
 
-- [ ] Borrar código muerto: `bus/messages.py:36,211`, `event_no_days`, `parse_reminder`,
-  `remove_field`, `next_days`, `sources_from_directory`, y compatibilidad con `tenant.yaml`
-  (`registry.py:150`, `forms.py:129`), tras renombrar el fichero local.
-- [ ] Borrar la migración del bot anterior si D3 se confirma: `salon/migration.py`,
-  `tools/salon/migrate_salon_events.py`, y `list_future_events` y `patch_private` del puerto.
-- [ ] Referencias rotas a `docs/runbooks/` y restos en la raíz (`.venv`, cachés).
+- [x] Borrado código muerto: `bus/messages.py` (`nombre_mes_es`, `msg_reintentar`),
+  `salon/messages.py` (`event_no_days`, con su línea en `template/document.yaml`),
+  `salon/parser.py` (`parse_reminder`, `remove_field`), `core/dates.py` (`next_days`), y
+  `tenancy/registry.py` (`sources_from_directory`, no llamada desde ningún sitio de
+  `src/`; su test se reescribió sobre `source_from_dir`). Con sus clases de tests.
+- [x] Referencias rotas corregidas: `Makefile` apuntaba a `docs/runbooks/demo.md`, que
+  nunca existió (ahora `docs/procedimientos/demo.md`); `test_conversation.py` citaba
+  `docs/rds_fase4_correcciones.md`, que tampoco existe (se quitó la referencia).
+- [x] `resolved_by="mariano"` en `seed_dev_activity.py` → `"operador"`: era tu nombre en
+  un dato de ejemplo del repo público, sin relación con R.
+- Restos en la raíz (`.venv`, cachés): ignorados por git, limpieza local sin commit.
+
+**Pendiente, sin decisión:**
+
+- [ ] Compatibilidad con `tenant.yaml` (`registry.py:150`, `forms.py:129`): se conserva.
+  El único fichero local que la necesita, `var/tenants/<slug>/tenant.yaml`, son datos
+  reales de un futuro cliente que aún no quieres en el repo ni dado de alta; borrar la
+  compatibilidad antes de decidir eso le rompería la importación.
+- [ ] La migración del bot anterior (`salon/migration.py`,
+  `tools/salon/migrate_salon_events.py`, `list_future_events`, `patch_private` del
+  puerto) **se conserva**: D3 pasa a «no se borra, puede hacer falta en el futuro».
 
 **F2. Comandos finales** (cuando C funcione de extremo a extremo). `make` pasa de 35 a unos 25
 objetivos, y `manage.py` de 21 a 14:

@@ -319,7 +319,7 @@ class Command(BaseCommand):
                 last_sent_at=now - timedelta(minutes=5 * (index + 1)),
                 auto_resolves=True,
                 resolved_at=now - timedelta(minutes=10 * (index + 1)) if resolved else None,
-                resolved_by=("mariano" if index == 6 else "auto") if resolved else "",
+                resolved_by=("operador" if index == 6 else "auto") if resolved else "",
             )
 
     def _seed_failed_job(self, tenant: LoadedTenant, now: datetime) -> None:
