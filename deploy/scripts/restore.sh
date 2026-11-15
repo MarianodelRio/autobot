@@ -18,6 +18,12 @@ if [[ ! -f $bootstrap_marker ]]; then
   echo "Bootstrap not done ($bootstrap_marker missing); run bootstrap-server.sh first" >&2
   exit 1
 fi
+# T4: server-migrate.sh freezes the origin before its final backup; a target that
+# is itself frozen (e.g. being migrated away from) must not be restored into either.
+if [[ -f var/.frozen ]]; then
+  echo 'var/.frozen is set (a migration is in progress); refusing to restore' >&2
+  exit 1
+fi
 if [[ -f var/.deployed-sha ]] || {
   docker volume inspect "${project}_pgdata" >/dev/null 2>&1 && [[ ! -f var/.restore-incomplete ]];
 }; then
@@ -38,7 +44,11 @@ restic_bin=${RESTIC_BIN:-restic}
 
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
-"$restic_bin" restore latest --tag autobot --target "$stage"
+# T4: server-migrate.sh always passes a specific snapshot id (never "latest"), so
+# the destination restores exactly the snapshot taken at the origin's cutover,
+# not whatever newer snapshot a still-running source (or another target) wrote
+# in the meantime.
+"$restic_bin" restore "${AUTOBOT_RESTORE_SNAPSHOT:-latest}" --tag autobot --target "$stage"
 # Restic restores paths relative to the root of the snapshot. Refuse incomplete backups.
 for file in .env var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile var/backups/autobot.dump; do
   if [[ ! -s $stage/$file ]]; then
@@ -109,14 +119,24 @@ deploy/scripts/ensure-env.sh
   python manage.py apply_grants
 if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
   # T1: web, panel and victorialogs are safe and needed to verify the restore; the
-  # workers are not started by default (--no-start), because they would start
-  # sending with the real tokens before anyone has verified the data or switched
-  # the DNS. Pass AUTOBOT_RESTORE_START_WORKERS=true once that's done.
+  # workers are not started by default, because they would start sending with the
+  # real tokens before anyone has verified the data or switched the DNS. Pass
+  # AUTOBOT_RESTORE_START_WORKERS=true only when that's not a concern (e.g.
+  # restore-test.sh): a *second* run of this script, after var/.deployed-sha is
+  # already written, is refused above ("Existing deployment"). To start the
+  # workers later, once verified, use `deploy/scripts/compose.sh up -d
+  # worker-inbound worker-outbound` instead of re-running this script.
   "${compose[@]}" up -d web panel victorialogs caddy
   if [[ ${AUTOBOT_RESTORE_START_WORKERS:-false} == true ]]; then
     "${compose[@]}" up -d worker-inbound worker-outbound
   fi
 fi
-printf '%s\n' "$SHA" >var/.deployed-sha
+if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
+  # Only a real restore (not a DB_ONLY rehearsal, used by restore-test.sh and T4's
+  # destination rehearsal) marks this target as deployed; otherwise a later, real
+  # restore to the same target would hit "Existing deployment" above because of
+  # the rehearsal alone.
+  printf '%s\n' "$SHA" >var/.deployed-sha
+fi
 rm -f var/.restore-incomplete
 echo 'Restore completed; verify /health and per-tenant counts before DNS switch'

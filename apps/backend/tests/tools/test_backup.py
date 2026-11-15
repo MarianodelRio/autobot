@@ -43,6 +43,10 @@ def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
         'printf \'%s\\n\' "$*" >>"$TEST_LOG"\n'
         "[[ ${RESTIC_FAIL:-} != 1 ]] || exit 1\n"
         "[[ $1 != cat || ${RESTIC_UNINITIALIZED:-} != 1 ]] || exit 1\n"
+        "if [[ $1 == cat ]]; then\n"
+        "  id=${RESTIC_REPO_ID:-repo-id-fixture}\n"
+        '  printf \'{\\n  "version": 2,\\n  "id": "%s"\\n}\\n\' "$id"\n'
+        "fi\n"
     )
     restic.chmod(0o755)
     python3 = binaries / "python3"
@@ -119,25 +123,47 @@ def test_missing_optional_paths_do_not_block_the_backup(tmp_path: Path) -> None:
     assert "deploys.jsonl" not in backup_line
 
 
-def test_uninitialized_repository_is_initialized_before_the_first_backup(
+def test_uninitialized_repository_fails_without_initializing_it(
     tmp_path: Path,
 ) -> None:
-    """A3: nobody runs `restic init` by hand; the script must do it itself."""
+    """A3: `restic init` is never automatic (a typo in the destination could
+    otherwise create a new, empty repository and silently hide the real one)."""
     script, binaries, config = setup(tmp_path)
     result = invoke(script, binaries, config, RESTIC_UNINITIALIZED="1")
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 1
+    assert "init" in result.stderr
     log = (tmp_path / "restic.log").read_text().splitlines()
-    assert log[0] == "cat config"
-    assert "init" in log
-    assert log.index("init") < [i for i, line in enumerate(log) if line.startswith("backup")][0]
+    assert log == ["cat config"]
+    assert not (tmp_path / "var" / ".restic-repo-id").exists()
 
 
-def test_already_initialized_repository_is_not_reinitialized(tmp_path: Path) -> None:
+def test_first_successful_backup_records_the_repository_id(tmp_path: Path) -> None:
     script, binaries, config = setup(tmp_path)
-    result = invoke(script, binaries, config)
+    result = invoke(script, binaries, config, RESTIC_REPO_ID="repo-a")
     assert result.returncode == 0, result.stderr
+    assert (tmp_path / "var" / ".restic-repo-id").read_text() == "repo-a"
+
+
+def test_a_different_repository_id_refuses_the_backup(tmp_path: Path) -> None:
+    """A3: once an id is recorded, a repository that answers with a different one
+    (e.g. RESTIC_REPOSITORY was changed to point somewhere else by mistake) must
+    not be silently backed up to."""
+    script, binaries, config = setup(tmp_path)
+    (tmp_path / "var").mkdir(exist_ok=True)
+    (tmp_path / "var" / ".restic-repo-id").write_text("repo-a")
+    result = invoke(script, binaries, config, RESTIC_REPO_ID="repo-b")
+    assert result.returncode == 1
+    assert "does not match" in result.stderr
     log = (tmp_path / "restic.log").read_text().splitlines()
-    assert "init" not in log
+    assert log == ["cat config"]
+
+
+def test_matching_repository_id_proceeds(tmp_path: Path) -> None:
+    script, binaries, config = setup(tmp_path)
+    (tmp_path / "var").mkdir(exist_ok=True)
+    (tmp_path / "var" / ".restic-repo-id").write_text("repo-a")
+    result = invoke(script, binaries, config, RESTIC_REPO_ID="repo-a")
+    assert result.returncode == 0, result.stderr
 
 
 def test_restic_failure_is_recorded_as_not_ok(tmp_path: Path) -> None:
@@ -147,6 +173,25 @@ def test_restic_failure_is_recorded_as_not_ok(tmp_path: Path) -> None:
     status = backup_status(tmp_path)
     assert status["ok"] is False
     assert not (tmp_path / "var" / "backups" / "autobot.dump").exists()
+
+
+def test_prune_runs_once_a_day(tmp_path: Path) -> None:
+    """T5: hourly backups would otherwise make `forget --prune` (which rewrites
+    the whole repository) run hourly too; once a day is enough."""
+    script, binaries, config = setup(tmp_path)
+    first = invoke(script, binaries, config)
+    assert first.returncode == 0, first.stderr
+    log = (tmp_path / "restic.log").read_text().splitlines()
+    assert any(line.startswith("forget") and "--prune" in line for line in log)
+    marker = tmp_path / "var" / ".last-prune"
+    assert marker.exists()
+
+    (tmp_path / "restic.log").unlink()
+    second = invoke(script, binaries, config)
+    assert second.returncode == 0, second.stderr
+    log = (tmp_path / "restic.log").read_text().splitlines()
+    assert not any(line.startswith("forget") and "--prune" in line for line in log)
+    assert any(line.startswith("forget") for line in log)
 
 
 def test_missing_config_fails_before_writing_status(tmp_path: Path) -> None:

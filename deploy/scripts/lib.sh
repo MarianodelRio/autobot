@@ -5,6 +5,13 @@
 # Without `--env-file`, compose looks for `.env` next to the *first* `-f` file
 # (deploy/compose/), not the caller's directory, so the root `.env` is silently
 # ignored; every script that forgot this flag read no configuration from it.
+# A6: every script that sources this file runs as the deploy user; as root,
+# DEPLOY_UID would resolve to 0 (ensure-env.sh refuses that too, but only once it
+# runs, already past lib.sh's own setup) and every container would run as root.
+if [[ $(id -u) == 0 ]]; then
+  echo 'Do not run this as root; run as the deploy user' >&2
+  exit 1
+fi
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$root" || exit
 project=${AUTOBOT_PROJECT:-autobot}

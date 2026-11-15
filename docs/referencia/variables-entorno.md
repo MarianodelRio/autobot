@@ -55,3 +55,27 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 y `HEALTHCHECKS_BACKUP_PING_URL` no van en `.env`: viven en `var/backup.env` en el
 servidor (ver [`deploy/env/backup.env.example`](../../deploy/env/backup.env.example) y
 [procedimientos/servidor.md](../procedimientos/servidor.md)).
+
+## Variables de los scripts de `deploy/scripts/`
+
+No las lee Django: solo cambian el comportamiento del script en sí (pruebas locales,
+`restore-test.sh`, `server-migrate.sh`). No van en `.env`.
+
+| Variable | Script | Qué hace | Valor por defecto |
+|---|---|---|---|
+| `AUTOBOT_PROJECT` | `lib.sh` (todos) | Nombre de proyecto de `docker compose --project-name` | `autobot` |
+| `AUTOBOT_COMPOSE_BASE` / `AUTOBOT_COMPOSE_OVERRIDE` | `lib.sh` (todos) | Ruta a los ficheros de compose, para probar contra otros (localprod, `restore-test.sh`) | `deploy/compose/compose.yaml` / `compose.prod.yaml` |
+| `AUTOBOT_BACKUP_CONFIG` | `backup.sh`, `restore.sh` | Ruta a `backup.env` | `/srv/autobot/var/backup.env` |
+| `AUTOBOT_BOOTSTRAP_MARKER` | `restore.sh` | Ruta al marcador de bootstrap (T1) | `/var/lib/autobot/bootstrap-complete` |
+| `RESTIC_BIN` | `backup.sh`, `restore.sh`, `restore-test.sh` | Binario de restic a usar | `restic` |
+| `AUTOBOT_RESTORE_DB_ONLY` | `restore.sh` | Solo restaura la base de datos; no arranca ningún servicio ni marca el destino como desplegado (T4: ensayo de traslado) | `false` |
+| `AUTOBOT_RESTORE_START_WORKERS` | `restore.sh` | Arranca también los workers en la misma ejecución (T1); para arrancarlos después de verificar, usa `compose.sh up -d worker-inbound worker-outbound` en vez de repetir `restore.sh` | `false` |
+| `AUTOBOT_RESTORE_SNAPSHOT` | `restore.sh` | Id de snapshot concreto a restaurar en vez de `latest` (T4: el destino de un traslado restaura exactamente el snapshot del corte) | `latest` |
+| `AUTOBOT_PRUNE_LOCK_WAIT` | `prune.sh` | Segundos que espera el candado compartido con `deploy.sh` antes de omitir el prune | `60` |
+| `AUTOBOT_HTTPS_CHECK_TIMEOUT` / `AUTOBOT_HTTPS_CHECK_INTERVAL` | `deploy.sh` | Reintentos de la comprobación HTTPS tras desplegar (A9) | `60` / `5` (segundos) |
+
+`var/.restic-repo-id` (no es variable de entorno, sino un fichero en el servidor) guarda
+el id del repositorio de restic contra el que se hizo el primer backup; `backup.sh` se
+niega si `restic cat config` devuelve un id distinto (A3). `var/.frozen` congela el
+origen o el destino durante un traslado (T4): `deploy.sh` y `restore.sh` se niegan a
+tocar un host con ese fichero presente.

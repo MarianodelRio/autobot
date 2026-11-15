@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Deploy a published, immutable image. Run on the VPS as the deploy user only.
 set -euo pipefail
+# deploy.yml runs this over SSH; if the connection drops mid-run, bash would
+# otherwise receive SIGHUP and die before switching images, rolling back or
+# writing deploys.jsonl. Ignore it instead: there is no sudo access on this host
+# to detach the process with systemd-run, so this is the one thing that can be
+# done locally to keep a deploy from being abandoned half-done by a dropped link.
+trap '' HUP
 
 # shellcheck source=./lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -13,6 +19,13 @@ flock -w 10 9 || { echo 'Another deployment is running' >&2; exit 1; }
 if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Usage: deploy/scripts/deploy.sh <full-40-character-sha>' >&2
   exit 2
+fi
+# T4: server-migrate.sh creates var/.frozen on the origin right before the cutover,
+# so that nothing (CI, an operator, a cron) can deploy there while the destination
+# is taking over; also checked by restore.sh.
+if [[ -f var/.frozen ]]; then
+  echo 'var/.frozen is set (a migration is in progress); refusing to deploy' >&2
+  exit 1
 fi
 # .env on disk is enough for docker compose itself (${VAR:?} substitution); this
 # shell also needs PUBLIC_HOST, for the HTTPS check after a successful deploy (A9).
@@ -31,17 +44,27 @@ export SHA="$target"
 
 # A7: tag a deploy that exactly undoes the last recorded one as "rollback", so
 # `make rollback` (rollback_target.py) can refuse to chain a second one back onto
-# the broken image the first rollback just moved away from.
+# the broken image the first rollback just moved away from. The *last successful*
+# ("deployed") entry is what matters, not the last line: an "already", "aborted"
+# or "rolled_back" attempt in between must not hide it (rollback_target.py applies
+# the same rule when computing what to roll back to).
 via=deploy
 if [[ -f var/state/ops/deploys.jsonl ]]; then
-  last_previous=$(tail -n 1 var/state/ops/deploys.jsonl | python3 -c '
+  last_previous=$(python3 -c '
 import json, sys
-try:
-    entry = json.loads(sys.stdin.read())
-except ValueError:
-    entry = {}
-print(entry.get("previous", "") if entry.get("result") == "deployed" else "")
-' 2>/dev/null) || last_previous=
+last_previous = ""
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        entry = json.loads(line)
+    except ValueError:
+        continue
+    if entry.get("result") == "deployed":
+        last_previous = entry.get("previous", "")
+print(last_previous)
+' <var/state/ops/deploys.jsonl 2>/dev/null) || last_previous=
   [[ -n $last_previous && $last_previous == "$target" ]] && via=rollback
 fi
 
@@ -49,7 +72,7 @@ fi
 # it (X10): only a tenant that becomes degraded *because of this deploy* does. Best
 # effort: unreachable (e.g. the first deployment) counts as no pre-existing ones.
 baseline_degraded=0
-if response=$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:8000/health/internal 2>/dev/null); then
+if response=$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:"${AUTOBOT_WEB_HOST_PORT:-8000}"/health/internal 2>/dev/null); then
   baseline_degraded=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["tenants"]["degraded"])' \
     <<<"$response" 2>/dev/null) || baseline_degraded=0
 fi
@@ -57,7 +80,7 @@ fi
 wait_health() {
   local deadline=$((SECONDS + 60)) response attempt
   for ((attempt=0; attempt<30 && SECONDS<deadline; attempt++)); do
-    if response=$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:8000/health/internal 2>/dev/null) && \
+    if response=$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:"${AUTOBOT_WEB_HOST_PORT:-8000}"/health/internal 2>/dev/null) && \
       python3 -c 'import json,sys; r=json.load(sys.stdin); t=r["tenants"]
 assert r["status"] == "ok" and t["degraded"] <= int(sys.argv[1]) and t["unreadable"] == 0' \
         "$baseline_degraded" <<<"$response" 2>/dev/null; then
@@ -71,7 +94,7 @@ assert r["status"] == "ok" and t["degraded"] <= int(sys.argv[1]) and t["unreadab
 wait_panel() {
   local deadline=$((SECONDS + 60))
   while ((SECONDS < deadline)); do
-    curl --silent --show-error --fail --max-time 2 http://127.0.0.1:8080/healthz >/dev/null 2>&1 && return 0
+    curl --silent --show-error --fail --max-time 2 http://127.0.0.1:"${AUTOBOT_PANEL_HOST_PORT:-8080}"/healthz >/dev/null 2>&1 && return 0
     sleep 2
   done
   return 1
@@ -249,11 +272,31 @@ printf '%s\n' "$target" >var/.deployed-sha.tmp
 mv var/.deployed-sha.tmp var/.deployed-sha
 record_deploy deployed
 alert_ops deploy_ok "🟢 Desplegado ${target:0:7}" informational
-# A9: never aborts or rolls back (DNS/certificate issuance can lag a first deploy);
-# just makes sure an operator finds out if HTTPS stops answering.
-if [[ -n ${PUBLIC_HOST:-} ]] && ! curl --silent --show-error --fail --max-time 5 \
-  "https://$PUBLIC_HOST/health" >/dev/null 2>&1; then
-  echo 'HTTPS check failed after deploying; verify Caddy/TLS manually' >&2
-  alert_ops deploy_https_check '🟡 HTTPS no respondió tras desplegar: revisar Caddy/TLS' informational
+# A9: never aborts or rolls back (DNS/certificate issuance can lag a first deploy,
+# and reverting the image would not fix either); just makes sure an operator finds
+# out if HTTPS stops answering. --resolve checks Caddy and its own certificate
+# directly over loopback, without depending on DNS (which the external monitor
+# already watches on its own); retried for up to a minute so a first deploy, where
+# Caddy may still be requesting its certificate, doesn't report a false alarm.
+if [[ -n ${PUBLIC_HOST:-} ]]; then
+  https_ok=false
+  https_deadline=$((SECONDS + ${AUTOBOT_HTTPS_CHECK_TIMEOUT:-60}))
+  # L1 (localprod): Caddy's internal CA issues a certificate for `localhost` that
+  # nothing trusts system-wide; production always keeps this unset and verifies
+  # the real one.
+  insecure=()
+  [[ ${AUTOBOT_HTTPS_INSECURE:-false} == true ]] && insecure=(--insecure)
+  while ((SECONDS < https_deadline)); do
+    if curl --silent --show-error --fail --max-time 5 "${insecure[@]}" \
+      --resolve "$PUBLIC_HOST:${AUTOBOT_CADDY_HTTPS_PORT:-443}:127.0.0.1" "https://$PUBLIC_HOST:${AUTOBOT_CADDY_HTTPS_PORT:-443}/health" >/dev/null 2>&1; then
+      https_ok=true
+      break
+    fi
+    sleep "${AUTOBOT_HTTPS_CHECK_INTERVAL:-5}"
+  done
+  if [[ $https_ok != true ]]; then
+    echo 'HTTPS check failed after deploying; verify Caddy/TLS manually' >&2
+    alert_ops deploy_https_check '🟡 HTTPS no respondió tras desplegar: revisar Caddy/TLS' informational
+  fi
 fi
 echo "Deployed $target"

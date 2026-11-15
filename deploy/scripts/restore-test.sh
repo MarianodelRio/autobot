@@ -96,7 +96,11 @@ HEALTHCHECKS_BACKUP_PING_URL=http://127.0.0.1:$ping_port/local-only
 EOF
 chmod 600 "$test_root/backup.env"
 export AUTOBOT_BACKUP_CONFIG="$test_root/backup.env"
-# No `restic init` here on purpose: backup.sh must do it itself (A3).
+# A3: backup.sh never runs `restic init` itself; do it once here, like the
+# operator does by hand on a real server, and record the repository's id the
+# same way the first real backup would (so backup.sh's id check doesn't trip).
+RESTIC_REPOSITORY="$test_root/repository" RESTIC_PASSWORD_FILE="$test_root/restic-password" \
+  "$RESTIC_BIN" init
 # T1: restore.sh refuses to run on a target that was never bootstrapped; this
 # machine wasn't (it's the developer's own), so fake the marker like a real one.
 touch "$test_root/bootstrap-complete"

@@ -167,3 +167,40 @@ def test_db_only_skips_app_services_entirely(tmp_path: Path) -> None:
     log = (tmp_path / "docker.log").read_text()
     assert "up -d web" not in log
     assert "worker" not in log
+
+
+def test_db_only_does_not_mark_the_target_as_deployed(tmp_path: Path) -> None:
+    """T4: a DB_ONLY rehearsal (restore-test.sh, or server-migrate.sh's destination
+    drill) must not block a later, real restore to the same target."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, tmp_path, AUTOBOT_RESTORE_DB_ONLY="true")
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "var" / ".deployed-sha").exists()
+
+
+def test_a_full_restore_marks_the_target_as_deployed(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == SHA
+
+
+def test_refuses_when_frozen(tmp_path: Path) -> None:
+    """T4: server-migrate.sh freezes the origin/target it is cutting over; neither
+    deploy.sh nor restore.sh must touch it while that marker is present."""
+    script, binaries = setup(tmp_path)
+    (tmp_path / "var" / ".frozen").write_text("")
+    result = invoke(script, binaries, tmp_path)
+    assert result.returncode == 1
+    assert "frozen" in result.stderr
+    assert not (tmp_path / "docker.log").exists()
+
+
+def test_restores_a_specific_snapshot_when_requested(tmp_path: Path) -> None:
+    """T4: the destination must restore the exact snapshot taken at cutover, not
+    whatever a concurrent write made "latest"."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, tmp_path, AUTOBOT_RESTORE_SNAPSHOT="abc123")
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "docker.log").read_text()
+    assert "restore abc123 --tag autobot" in log

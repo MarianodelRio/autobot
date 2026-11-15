@@ -22,9 +22,14 @@ ACME) y `deploys.jsonl` (T2; ninguno es obligatorio). Reaplica los roles de
 PostgreSQL (`init-roles.sh`) y los permisos (`manage.py apply_grants`) después de
 restaurar el volcado, porque `pg_restore --no-acl` los pierde. Levanta
 `web`, `panel`, `victorialogs` y `caddy`, pero no los workers: con los tokens reales,
-enviarían mensajes antes de verificar los datos o cambiar el DNS (T1). Arráncalos
-aparte con `AUTOBOT_RESTORE_START_WORKERS=true deploy/scripts/restore.sh
---confirm-empty-target` solo cuando ya has verificado y, si aplica, cambiado el DNS.
+enviarían mensajes antes de verificar los datos o cambiar el DNS (T1). Una vez
+restaurado, `var/.deployed-sha` ya existe, así que un segundo
+`restore.sh --confirm-empty-target` se niega («Existing deployment»); para arrancar
+los workers después de verificar, usa en su lugar
+`deploy/scripts/compose.sh up -d worker-inbound worker-outbound` (toma el `SHA` y el
+`.env` ya restaurados de `lib.sh`, igual que `manage.sh`). `AUTOBOT_RESTORE_START_WORKERS=true`
+solo sirve dentro de la misma ejecución de `restore.sh`, cuando no hace falta
+verificar antes de arrancarlos (por ejemplo, en `make restore-test`).
 Si falla tras crear el volumen, conserva `var/.restore-incomplete` y vuelve a
 ejecutar el mismo comando tras arreglar la causa; el script solo admite ese reintento
 controlado. Si el snapshot era inválido y aún no se creó volumen, corrige la fuente

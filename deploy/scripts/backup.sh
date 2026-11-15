@@ -41,9 +41,32 @@ write_status() {
 }
 trap write_status EXIT
 
-# A3: nobody runs `restic init`; the very first backup would otherwise fail outright.
-# `cat config` is the cheap way to tell an initialized repository from a bare one.
-"$restic_bin" cat config >/dev/null 2>&1 || "$restic_bin" init
+# A3: `restic init` is never automatic here. A repository created by mistake (a
+# typo in RESTIC_REPOSITORY, or credentials that happen to also reach some other,
+# empty bucket) would otherwise look like a successful backup forever, silently
+# hiding that the real repository was never written to. Init it once by hand, then
+# record its id below so every later run can tell "misconfigured, empty bucket"
+# apart from "the one true repository".
+config=$("$restic_bin" cat config) || {
+  echo 'Restic repository is not initialized (A3: this is never done automatically); run restic init once by hand' >&2
+  exit 1
+}
+repo_id=$(printf '%s' "$config" | sed -n 's/.*"id":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+if [[ -z $repo_id ]]; then
+  echo 'Could not read the restic repository id from restic cat config' >&2
+  exit 1
+fi
+repo_id_file=var/.restic-repo-id
+if [[ -f $repo_id_file ]]; then
+  expected_repo_id=$(cat "$repo_id_file")
+  if [[ $repo_id != "$expected_repo_id" ]]; then
+    echo "Restic repository id ($repo_id) does not match var/.restic-repo-id ($expected_repo_id); refusing to back up to what looks like a different repository" >&2
+    exit 1
+  fi
+else
+  # First backup against this repository from this host: remember its id.
+  printf '%s' "$repo_id" >"$repo_id_file"
+fi
 
 "${compose[@]}" exec -T db \
   pg_dump -U postgres -d autobot -Fc >"$dump_tmp"
@@ -60,7 +83,17 @@ for optional_path in var/state/caddy-data var/state/caddy-config var/state/ops/d
 done
 "$restic_bin" backup --tag autobot "${backup_paths[@]}"
 # Group by tag: the dump path stays constant and all snapshots use the same policy.
-"$restic_bin" forget --tag autobot --group-by tags --keep-daily 7 --keep-weekly 4 \
-  --keep-monthly 6 --prune
+forget_args=(--tag autobot --group-by tags --keep-daily 7 --keep-weekly 4 --keep-monthly 6)
+# T5: hourly backups make `forget` run hourly too, but `--prune` actually rewrites
+# the repository (lists every pack in it) and most providers charge for that; once
+# a day is often enough to reclaim space from expired snapshots.
+prune_marker=var/.last-prune
+today=$(date -u +%Y-%m-%d)
+if [[ ! -f $prune_marker || $(cat "$prune_marker") != "$today" ]]; then
+  "$restic_bin" forget "${forget_args[@]}" --prune
+  printf '%s' "$today" >"$prune_marker"
+else
+  "$restic_bin" forget "${forget_args[@]}"
+fi
 python3 -c 'import os, urllib.request; urllib.request.urlopen(os.environ["HEALTHCHECKS_BACKUP_PING_URL"], timeout=10).close()'
 echo 'Backup completed'

@@ -1,9 +1,12 @@
 """Deployment orchestration, exercised locally with fake Docker and health responses."""
 
+import contextlib
 import json
 import os
 import shutil
+import signal
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -106,6 +109,8 @@ def invoke(
         "DEPLOY_UID": "10001",
         "AUTOBOT_IMAGE": "ghcr.io/example-owner/autobot",
         "AUTOBOT_PANEL_IMAGE": "ghcr.io/example-owner/autobot-panel",
+        "AUTOBOT_HTTPS_CHECK_TIMEOUT": "2",
+        "AUTOBOT_HTTPS_CHECK_INTERVAL": "1",
     }
     return subprocess.run(
         ["bash", str(script), sha],
@@ -114,6 +119,25 @@ def invoke(
         text=True,
         check=False,
     )
+
+
+def invoke_env(
+    script: Path, binaries: Path, *, sha: str = NEW, **environment: str
+) -> dict[str, str]:
+    inherited = {k: v for k, v in os.environ.items() if not k.startswith("DB_")}
+    return {
+        **inherited,
+        "PATH": f"{binaries}:{os.environ['PATH']}",
+        "TEST_LOG": str(script.parents[2] / "docker.log"),
+        "PUBLIC_HOST": "api.example.com",
+        "DJANGO_ALLOWED_HOSTS": "api.example.com,localhost,127.0.0.1",
+        "DEPLOY_UID": "10001",
+        "AUTOBOT_IMAGE": "ghcr.io/example-owner/autobot",
+        "AUTOBOT_PANEL_IMAGE": "ghcr.io/example-owner/autobot-panel",
+        "AUTOBOT_HTTPS_CHECK_TIMEOUT": "2",
+        "AUTOBOT_HTTPS_CHECK_INTERVAL": "1",
+        **environment,
+    }
 
 
 def test_success_records_image_after_health(tmp_path: Path) -> None:
@@ -146,6 +170,23 @@ def test_deploying_back_to_the_previous_sha_is_tagged_as_a_rollback(tmp_path: Pa
     entries = deploy_entries(tmp_path)
     assert entries[0]["via"] == "deploy"
     assert entries[1]["via"] == "rollback"
+
+
+def test_an_already_deployed_entry_in_between_does_not_hide_the_rollback(
+    tmp_path: Path,
+) -> None:
+    """A7: deploy.sh must look at the last *successful* ("deployed") entry, not
+    simply the last line of deploys.jsonl; an "already" attempt in between (e.g. a
+    re-run of `make deploy` for the same SHA) must not make it miss that this
+    deploy exactly undoes the last one."""
+    script, binaries = setup(tmp_path)
+    assert invoke(script, binaries, sha=NEW).returncode == 0
+    assert invoke(script, binaries, sha=NEW).returncode == 0
+    assert deploy_results(tmp_path) == ["deployed", "already"]
+    result = invoke(script, binaries, sha=OLD)
+    assert result.returncode == 0, result.stderr
+    entries = deploy_entries(tmp_path)
+    assert entries[-1]["via"] == "rollback"
 
 
 def test_a_tenant_degraded_before_the_deploy_does_not_block_it(tmp_path: Path) -> None:
@@ -328,4 +369,35 @@ def test_rejects_invalid_sha(tmp_path: Path, argument: str) -> None:
         check=False,
     )
     assert result.returncode == 2
+    assert not (tmp_path / "docker.log").exists()
+
+
+def test_sighup_does_not_abort_an_in_progress_deploy(tmp_path: Path) -> None:
+    """deploy.yml runs this over SSH; a dropped connection must not abandon a
+    deploy half-done just because bash's default reaction to SIGHUP is to exit."""
+    script, binaries = setup(tmp_path)
+    env = invoke_env(script, binaries, sha=NEW)
+    process = subprocess.Popen(
+        ["bash", str(script), NEW],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    time.sleep(0.2)  # give bash time to reach the `trap '' HUP` line before signalling
+    with contextlib.suppress(ProcessLookupError):  # it had already finished; still holds below
+        process.send_signal(signal.SIGHUP)
+    stdout, stderr = process.communicate(timeout=30)
+    assert process.returncode == 0, stderr
+    assert deploy_results(tmp_path) == ["deployed"]
+
+
+def test_refuses_when_frozen(tmp_path: Path) -> None:
+    """T4: server-migrate.sh freezes the origin right before its final backup; no
+    deploy must touch it while that marker is present."""
+    script, binaries = setup(tmp_path)
+    (tmp_path / "var" / ".frozen").write_text("")
+    result = invoke(script, binaries)
+    assert result.returncode == 1
+    assert "frozen" in result.stderr
     assert not (tmp_path / "docker.log").exists()

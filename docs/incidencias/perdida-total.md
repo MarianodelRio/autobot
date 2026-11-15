@@ -24,8 +24,9 @@ y la pérdida de la máquina puede estar duplicado o ser irrecuperable:
 1. Sigue [restauración y simulacro trimestral](../procedimientos/restaurar.md) en la
    máquina nueva: bootstrap, `restore.sh --confirm-empty-target` (no arranca los
    workers por defecto) y verificación de `/health` y conteos por tenant.
-2. **Antes de arrancar los workers** (`AUTOBOT_RESTORE_START_WORKERS=true` o un
-   nuevo despliegue), revisa a mano, por negocio activo:
+2. **Antes de arrancar los workers** (`deploy/scripts/compose.sh up -d
+   worker-inbound worker-outbound`, ya que `restore.sh` se niega a repetirse sobre
+   un `var/.deployed-sha` ya restaurado), revisa a mano, por negocio activo:
    - El calendario de Google de cada tenant de `salon` contra las citas que la BD
      restaurada conoce, en la ventana entre el snapshot y la pérdida. Una cita en
      Google sin fila correspondiente necesita que alguien la dé de alta a mano
