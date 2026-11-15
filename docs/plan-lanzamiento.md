@@ -866,7 +866,11 @@ Se da por terminado cuando todo esto se cumple:
 
 - [ ] Ningún término real aparece en la versión final del repo ni en las imágenes nuevas.
   El repo no nombra ningún cliente, dominio o servidor concreto.
-- [ ] S1–S3 y X1–X7 (salvo X4, descartada) corregidos, con tests. Resto de S y X resueltos o aplazados por escrito.
+- [x] S1–S3 y X1–X7 (salvo X4, descartada) corregidos, con tests. Resto de S y X resueltos o aplazados por escrito.
+  Verificado el 2026-11-15: código y tests de S1–S13 y X1–X15 (más leves y rendimiento)
+  confirmados contra el repo actual, escenarios de `[CFG]` (S3) y de `bus` (X6, X7) en
+  verde; sin regresiones ni transacciones abiertas durante llamadas externas (X3);
+  medir memoria con dos workers (parte de X14) sigue aplazada a A16.
 - [ ] `make server-init` deja una VM limpia funcionando, y repetirlo no cambia nada.
 - [ ] Vuelta atrás probada con un SHA roto.
 - [ ] Backup automático en restic y restauración ensayada, con su tiempo anotado.
