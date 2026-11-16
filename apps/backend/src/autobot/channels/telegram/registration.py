@@ -20,6 +20,16 @@ def _url(webhook_path: str) -> str:
     return f"{base}/{webhook_path}"
 
 
+def expected_webhook_url(webhook_path: str) -> str | None:
+    """The url `health.telegram_health` (C15) compares Telegram's own
+    `getWebhookInfo` against. `None` when `PUBLIC_URL` is not set: nothing to
+    compare against yet (local development), not a health problem to report."""
+    try:
+        return _url(webhook_path)
+    except WebhookError:
+        return None
+
+
 def resolve_tenant_bot(slug: str) -> Source:
     """A tenant's own bot (never the platform's, even for the slug `notify`)."""
     try:

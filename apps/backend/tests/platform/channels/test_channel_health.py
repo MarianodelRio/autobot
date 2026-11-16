@@ -75,6 +75,28 @@ def test_telegram(responses: Any, response: Any, code: str | None) -> None:
     assert len(requests) == 1 and requests[0].url.path.endswith("/getWebhookInfo")
 
 
+def test_telegram_flags_a_webhook_registered_to_the_wrong_url(responses: Any) -> None:
+    # C15: a never-registered (or stale) webhook looked "ok" before, since only
+    # recent delivery errors were checked.
+    responses(
+        (200, {"ok": True, "result": {"url": "https://old.example/secret-path"}}),
+    )
+    issues = health.telegram_health(
+        "123456:token", expected_url="https://api.example.org/webhooks/telegram/pub0000"
+    )
+    assert [i.code for i in issues] == ["telegram_webhook_unregistered"]
+    assert "old.example" not in str(issues)
+    assert "secret-path" not in str(issues)
+
+
+def test_telegram_matching_url_is_not_an_issue(responses: Any) -> None:
+    responses((200, {"ok": True, "result": {"url": "https://api.example.org/webhooks/x"}}))
+    issues = health.telegram_health(
+        "123456:token", expected_url="https://api.example.org/webhooks/x"
+    )
+    assert issues == []
+
+
 @pytest.mark.parametrize(
     "response", [(401, {}), (400, {"error": {"code": 190, "message": "secret"}})]
 )
@@ -99,6 +121,21 @@ def with_template() -> Any:
         tenant, "pack", replace(tenant.pack, templates=[TemplateSpec("notice", "es", "Hola", [])])
     )
     return tenant
+
+
+def test_tenant_health_flags_a_telegram_tenant_whose_webhook_is_not_registered(
+    tenants: Any, responses: Any, settings: Any
+) -> None:
+    """C15: `tenant_health` must compare against this tenant's *own* expected url,
+    not just look for recent delivery errors."""
+    from tests.helpers.integration import tg_tenant
+
+    settings.PUBLIC_URL = "https://api.example.org"
+    tenants(tg_tenant())
+    responses((200, {"ok": True, "result": {"url": "https://old.example/leftover"}}))
+    tenant = get_registry().by_slug["tg"]
+    issues = health.tenant_health(tenant)
+    assert "telegram_webhook_unregistered" in [i.code for i in issues]
 
 
 @pytest.mark.parametrize(

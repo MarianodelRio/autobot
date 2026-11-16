@@ -11,6 +11,7 @@ from autobot.panel.auth import router as auth_router
 from autobot.panel.errors import CODE_STATUS, ApiError
 from autobot.panel.routers.activity import router as activity_router
 from autobot.panel.routers.audit import router as audit_router
+from autobot.panel.routers.calendar import router as calendar_router
 from autobot.panel.routers.contacts import router as contacts_router
 from autobot.panel.routers.data import router as data_router
 from autobot.panel.routers.demo_invites import router as demo_invites_router
@@ -30,6 +31,7 @@ api.add_router("", data_router)
 api.add_router("", system_router)
 api.add_router("", logs_router)
 api.add_router("", audit_router)
+api.add_router("", calendar_router)
 api.add_router("", incidents_router)
 api.add_router("", activity_router)
 api.add_router("", contacts_router)

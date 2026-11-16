@@ -101,10 +101,9 @@ def change_status(request: HttpRequest, slug: str, payload: StatusIn) -> Version
     )
 
 
-@router.put("/tenants/{slug}/secrets", response={204: None})
-def set_secrets(request: HttpRequest, slug: str, payload: SecretsIn) -> tuple[int, None]:
-    store.set_secrets(slug, secrets=payload.secrets, actor=request.user.username)
-    return 204, None
+@router.put("/tenants/{slug}/secrets", response=service.SecretsUpdateOut)
+def set_secrets(request: HttpRequest, slug: str, payload: SecretsIn) -> service.SecretsUpdateOut:
+    return service.update_secrets(slug, secrets=payload.secrets, actor=request.user.username)
 
 
 @router.get("/tenants", response=list[TenantRow])
@@ -165,6 +164,11 @@ def telegram_set_webhook(request: HttpRequest, slug: str) -> service.WebhookRegi
 @router.post("/tenants/{slug}/owner-invite", response=service.OwnerInviteOut)
 def tenant_owner_invite(request: HttpRequest, slug: str) -> service.OwnerInviteOut:
     return service.tenant_owner_invite(slug, actor=request.user.username)
+
+
+@router.post("/tenants/{slug}/owner-unlink", response=service.OwnerUnlinkOut)
+def tenant_owner_unlink(request: HttpRequest, slug: str) -> service.OwnerUnlinkOut:
+    return service.tenant_owner_unlink(slug, actor=request.user.username)
 
 
 @router.post("/tenants/{slug}/delete", response=service.DeleteTenantOut)

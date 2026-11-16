@@ -66,7 +66,10 @@ def test_writes_and_audit(authed_client: Any, tenants: Any) -> None:
         == 200
     )
     assert post(authed_client, "tenants/a/status", {"action": "pause"}).status_code == 200
-    assert put(authed_client, "tenants/a/secrets", {"secrets": WA_SECRETS}).status_code == 204
+    secrets_response = put(authed_client, "tenants/a/secrets", {"secrets": WA_SECRETS})
+    assert secrets_response.status_code == 200
+    # C10 only re-registers a Telegram webhook; a WhatsApp tenant has none.
+    assert secrets_response.json()["telegram_webhook_registered"] is None
     actions = set(
         AuditEvent.objects.using("owner").filter(actor="operator").values_list("action", flat=True)
     )
@@ -93,13 +96,13 @@ def test_empty_comment_gets_a_default_text(authed_client: Any, tenants: Any) -> 
 
 def test_secrets_partial_update_keeps_the_rest(authed_client: Any, tenants: Any) -> None:
     tenants(wa_tenant("a"))
-    assert put(authed_client, "tenants/a/secrets", {"secrets": WA_SECRETS}).status_code == 204
+    assert put(authed_client, "tenants/a/secrets", {"secrets": WA_SECRETS}).status_code == 200
     status = get(authed_client, "tenants/a/secrets").json()
     assert all(field["set"] for field in status["fields"])
 
     changed = {**WA_SECRETS, "app_secret": "new-app-secret-" + "y" * 17}
     only_app_secret = {**{k: "" for k in WA_SECRETS}, "app_secret": changed["app_secret"]}
-    assert put(authed_client, "tenants/a/secrets", {"secrets": only_app_secret}).status_code == 204
+    assert put(authed_client, "tenants/a/secrets", {"secrets": only_app_secret}).status_code == 200
     from autobot.tenancy.crypto import decrypt
     from autobot.tenancy.models import TenantSecret
 
@@ -112,7 +115,7 @@ def test_secrets_partial_update_keeps_the_rest(authed_client: Any, tenants: Any)
 
 def test_secrets_responses_never_contain_values(authed_client: Any, tenants: Any) -> None:
     tenants(wa_tenant("a"))
-    assert put(authed_client, "tenants/a/secrets", {"secrets": WA_SECRETS}).status_code == 204
+    assert put(authed_client, "tenants/a/secrets", {"secrets": WA_SECRETS}).status_code == 200
     body = get(authed_client, "tenants/a/secrets").content.decode()
     for value in WA_SECRETS.values():
         assert value not in body
@@ -131,9 +134,9 @@ def test_secrets_all_blank_with_previous_secrets_changes_nothing(
     authed_client: Any, tenants: Any
 ) -> None:
     tenants(wa_tenant("a"))
-    assert put(authed_client, "tenants/a/secrets", {"secrets": WA_SECRETS}).status_code == 204
+    assert put(authed_client, "tenants/a/secrets", {"secrets": WA_SECRETS}).status_code == 200
     empty = {k: "" for k in WA_SECRETS}
-    assert put(authed_client, "tenants/a/secrets", {"secrets": empty}).status_code == 204
+    assert put(authed_client, "tenants/a/secrets", {"secrets": empty}).status_code == 200
 
     from autobot.tenancy.crypto import decrypt
     from autobot.tenancy.models import TenantSecret
@@ -160,6 +163,47 @@ def test_telegram_webhook_registers_and_audits(
     assert response.status_code == 200, response.content
     assert response.json()["url"] == "https://api.example.org/webhooks/telegram/pubtg0000"
     assert AuditEvent.objects.using("owner").filter(action="tenant.webhook_register").exists()
+
+
+def test_changing_telegram_secrets_reregisters_the_webhook(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    # C10: the old webhook (set with the previous bot_token/webhook_secret) must not
+    # stay registered after the panel writes new secrets.
+    tenants(tg_tenant())
+    settings.PUBLIC_URL = "https://api.example.org/"
+    calls = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        assert request.url.path.endswith("/setWebhook")
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    _mock_telegram(monkeypatch, handle)
+    new_secrets = {"bot_token": "999:new-token", "webhook_secret": "z" * 32}
+    response = put(authed_client, "tenants/tg/secrets", {"secrets": new_secrets})
+    assert response.status_code == 200, response.content
+    assert response.json()["telegram_webhook_registered"] is True
+    assert calls  # setWebhook was actually called, not just assumed
+    assert AuditEvent.objects.using("owner").filter(action="tenant.webhook_register").exists()
+
+
+def test_changing_telegram_secrets_reports_a_failed_reregistration(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    tenants(tg_tenant())
+    settings.PUBLIC_URL = "https://api.example.org/"
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"ok": False, "error_code": 401})
+
+    _mock_telegram(monkeypatch, handle)
+    new_secrets = {"bot_token": "999:bad-token", "webhook_secret": "z" * 32}
+    response = put(authed_client, "tenants/tg/secrets", {"secrets": new_secrets})
+    # The secrets are still saved even though the webhook could not be re-registered.
+    assert response.status_code == 200, response.content
+    assert response.json()["telegram_webhook_registered"] is False
+    assert new_secrets["bot_token"] not in response.content.decode()
 
 
 def test_telegram_webhook_requires_a_telegram_channel(authed_client: Any, tenants: Any) -> None:
@@ -283,6 +327,57 @@ def test_owner_invite_returns_the_link_once_without_the_code_in_audit(
     code = body["url"].rsplit("=", 1)[1]
     event = AuditEvent.objects.using("owner").get(action="tenant.owner_invite")
     assert code not in json.dumps({"summary": event.summary, "details": event.details})
+
+
+def test_owner_invite_marks_the_tenant_as_pending_until_linked(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    # C14: the ficha must distinguish "no invite yet" from "invited, not yet used".
+    tenants(wa_tenant("a"))
+    settings.NOTIFY_BOT_TOKEN = "123:NOTIFY-TOKEN"
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True, "result": {"username": "AvisosBot"}})
+
+    _mock_telegram(monkeypatch, handle)
+    assert get(authed_client, "tenants/a").json()["owner_invite_pending"] is False
+    post(authed_client, "tenants/a/owner-invite", {})
+    assert get(authed_client, "tenants/a").json()["owner_invite_pending"] is True
+
+
+def test_owner_unlink_cancels_a_pending_invite_without_a_chat(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    tenants(wa_tenant("a"))
+    settings.NOTIFY_BOT_TOKEN = "123:NOTIFY-TOKEN"
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True, "result": {"username": "AvisosBot"}})
+
+    _mock_telegram(monkeypatch, handle)
+    post(authed_client, "tenants/a/owner-invite", {})
+    response = post(authed_client, "tenants/a/owner-unlink", {})
+    assert response.status_code == 200, response.content
+    assert response.json()["had_chat"] is False
+    assert get(authed_client, "tenants/a").json()["owner_invite_pending"] is False
+    assert AuditEvent.objects.using("owner").filter(action="tenant.owner_unlink").exists()
+
+
+def test_owner_unlink_disconnects_a_linked_chat(authed_client: Any, tenants: Any) -> None:
+    from autobot.owner.links import start_link
+
+    tenants(wa_tenant("a"))
+    from autobot.tenancy.registry import get_registry
+
+    tenant = get_registry().by_slug["a"]
+    from autobot.owner.links import new_invite
+
+    code = new_invite(tenant.id)
+    assert start_link(code, 999).status == "linked"
+    assert get(authed_client, "tenants/a").json()["owner_linked"] is True
+    response = post(authed_client, "tenants/a/owner-unlink", {})
+    assert response.json()["had_chat"] is True
+    assert get(authed_client, "tenants/a").json()["owner_linked"] is False
 
 
 def test_delete_rejects_wrong_slug_demo_and_active(authed_client: Any, tenants: Any) -> None:

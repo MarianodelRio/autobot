@@ -39,6 +39,11 @@ from autobot.tenancy.schema import SECRETS_SCHEMA
 def _tenant(slug: str) -> LoadedTenant:
     tenant = get_registry().by_slug.get(slug)
     if tenant is None:
+        # This process's own registry may be up to 2 s behind a write made by
+        # another gunicorn worker (just created or renamed): force a fresh check
+        # before giving up (C9).
+        tenant = get_registry(force=True).by_slug.get(slug)
+    if tenant is None:
         raise ApiError("not_found", "No se encuentra el negocio", 404)
     return tenant
 
@@ -105,6 +110,7 @@ class TenantDetail(Schema):
     webhook_url: str | None
     public_link: str | None
     owner_linked: bool
+    owner_invite_pending: bool
     month: MonthKpis
 
 
@@ -145,6 +151,7 @@ def tenant_detail(slug: str, *, now: datetime | None = None) -> TenantDetail:
         webhook_url=webhook_url,
         public_link=public_link,
         owner_linked=owner_links.owner_chat(tenant.id) is not None,
+        owner_invite_pending=owner_links.invite_pending(tenant.id),
         month=_month_kpis(tenant, now),
     )
 
@@ -246,6 +253,37 @@ def tenant_secrets(slug: str) -> SecretsStatus:
             for name in schema.model_fields
         ],
     )
+
+
+class SecretsUpdateOut(Schema):
+    telegram_webhook_registered: bool | None
+
+
+def update_secrets(slug: str, *, secrets: dict[str, str], actor: str) -> SecretsUpdateOut:
+    """Writes the secrets (`tenancy.store`, its own transaction) and, for Telegram,
+    re-registers the webhook right after (C10): a changed `bot_token` or
+    `webhook_secret` otherwise leaves the old one in place and the panel still
+    says "Registrado". Never inside `store.set_secrets`'s own transaction (no open
+    transaction during a call to Telegram, CLAUDE.md)."""
+    store.set_secrets(slug, secrets=secrets, actor=actor)
+    tenant = _tenant(slug)
+    if tenant.document.channel is None or tenant.document.channel.type != "telegram":
+        return SecretsUpdateOut(telegram_webhook_registered=None)
+    from autobot.channels.telegram.registration import WebhookError, register_webhook
+
+    try:
+        register_webhook(slug, tenant_only=True)
+    except WebhookError:
+        return SecretsUpdateOut(telegram_webhook_registered=False)
+    record(
+        actor=actor,
+        action="tenant.webhook_register",
+        tenant_id=tenant.id,
+        target_type="tenant",
+        target_id=str(tenant.id),
+        summary="Webhook de Telegram registrado tras cambiar credenciales",
+    )
+    return SecretsUpdateOut(telegram_webhook_registered=True)
 
 
 class ChecklistItemOut(Schema):
@@ -410,6 +448,28 @@ def tenant_owner_invite(slug: str, actor: str) -> OwnerInviteOut:
     return OwnerInviteOut(
         url=link.url, expires_at=link.expires_at, replaces_chat=link.replaces_chat
     )
+
+
+class OwnerUnlinkOut(Schema):
+    had_chat: bool
+
+
+def tenant_owner_unlink(slug: str, actor: str) -> OwnerUnlinkOut:
+    """Disconnect the owner's chat and clear any pending invite (C14), the panel
+    equivalent of the `owner_unlink` command."""
+    from autobot.owner.links import unlink
+
+    tenant = _tenant(slug)
+    had_chat = unlink(tenant.id)
+    record(
+        actor=actor,
+        action="tenant.owner_unlink",
+        tenant_id=tenant.id,
+        target_type="tenant",
+        target_id=str(tenant.id),
+        summary="Dueño desconectado" if had_chat else "Invitación del dueño cancelada",
+    )
+    return OwnerUnlinkOut(had_chat=had_chat)
 
 
 class DeleteTenantOut(Schema):

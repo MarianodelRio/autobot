@@ -342,6 +342,28 @@ def test_platform_bot_auth_signal(tenants: Any, alerts: Any, bot: str) -> None:
     assert (kind, None) in [(a[0], a[1]) for a in alerts]
 
 
+def test_notify_bot_webhook_unregistered_is_a_finding(
+    tenants: Any, settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # C15: a demo/notify bot whose webhook Telegram has set to something else (or
+    # nothing) must surface as a finding, not look "ok".
+    tenants()
+    settings.HEALTHCHECKS_PING_URL = ""
+    settings.DEMO_TELEGRAM_TOKEN = ""
+    settings.NOTIFY_BOT_TOKEN = "123:tok"
+    settings.PUBLIC_URL = "https://api.example.org"
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True, "result": {"url": "https://old.example/x"}})
+
+    original = httpx.Client
+    monkeypatch.setattr(
+        httpx, "Client", lambda **kwargs: original(transport=httpx.MockTransport(handle), **kwargs)
+    )
+    findings = check.collect()
+    assert any(f.kind == "bot:notify:telegram_webhook_unregistered" for f in findings)
+
+
 def test_collect_never_calls_send_ops_alert(tenants: Any, settings: Any, monkeypatch: Any) -> None:
     settings.HEALTHCHECKS_PING_URL = ""
     settings.DEMO_TELEGRAM_TOKEN = ""

@@ -31,6 +31,8 @@ POLL_TIMEOUT_S = 25  # Telegram holds the request this long when there is nothin
 CLIENT_TIMEOUT_S = 35.0  # longer than the poll
 ERROR_PAUSE_S = 3.0
 ALLOWED_UPDATES = ["message", "callback_query"]
+DEMO_WEBHOOK_PATH = "webhooks/telegram-demo"
+NOTIFY_WEBHOOK_PATH = "webhooks/telegram-notify"
 
 
 class WebhookActive(Exception):
@@ -62,7 +64,7 @@ def source(slug: str | None) -> Source:
                 if isinstance(item, InboundItem):
                     store_event(door_, item)
 
-        return Source("demo bot", door_.secrets, accept_demo, "webhooks/telegram-demo")
+        return Source("demo bot", door_.secrets, accept_demo, DEMO_WEBHOOK_PATH)
     if slug == "notify":
         from autobot.owner.inbox import store_owner_event
 
@@ -75,7 +77,7 @@ def source(slug: str | None) -> Source:
                 if isinstance(item, InboundItem):
                     store_owner_event(item)
 
-        return Source("notify bot", secrets, accept_notify, "webhooks/telegram-notify")
+        return Source("notify bot", secrets, accept_notify, NOTIFY_WEBHOOK_PATH)
     return tenant_source(slug)
 
 

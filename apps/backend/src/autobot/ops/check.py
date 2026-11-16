@@ -182,12 +182,21 @@ def collect() -> list[Finding]:
         findings.append(
             Finding("bot:notify:auth", None, "🔴 Bot de avisos: envío rechazado por autenticación.")
         )
-    for name, token in (
-        ("demo_tg", settings.DEMO_TELEGRAM_TOKEN),
-        ("notify", settings.NOTIFY_BOT_TOKEN),
+    from autobot.channels.telegram.polling import DEMO_WEBHOOK_PATH, NOTIFY_WEBHOOK_PATH
+    from autobot.channels.telegram.registration import expected_webhook_url
+
+    for name, token, webhook_path in (
+        ("demo_tg", settings.DEMO_TELEGRAM_TOKEN, DEMO_WEBHOOK_PATH),
+        ("notify", settings.NOTIFY_BOT_TOKEN, NOTIFY_WEBHOOK_PATH),
     ):
         if token:
-            issues = health.daily(f"bot:{name}", lambda token=token: health.telegram_health(token))
+            expected = expected_webhook_url(webhook_path)
+            issues = health.daily(
+                f"bot:{name}",
+                lambda token=token, expected=expected: health.telegram_health(
+                    token, expected_url=expected
+                ),
+            )
             for issue in issues:
                 findings.append(
                     Finding(

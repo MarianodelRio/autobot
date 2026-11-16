@@ -16,7 +16,12 @@ from autobot.channels.telegram.adapter import TelegramApiError, call
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
 from autobot.runtime.models import DEMO_CHANNELS, Channel
 from autobot.tenancy.registry import LoadedTenant
-from autobot.tenancy.schema import TelegramSecrets, WhatsAppChannel, WhatsAppSecrets
+from autobot.tenancy.schema import (
+    TelegramChannel,
+    TelegramSecrets,
+    WhatsAppChannel,
+    WhatsAppSecrets,
+)
 
 DAY_S = 86400
 RETRY_FAILED_S = 15 * 60  # a one-off failure is rechecked sooner than a success (X13)
@@ -29,7 +34,10 @@ class Issue:
     severity: str = "🟡"
 
 
-def telegram_health(token: str) -> list[Issue]:
+def telegram_health(token: str, *, expected_url: str | None = None) -> list[Issue]:
+    """`expected_url` (C15): also fail if Telegram's own webhook isn't set to it —
+    today's `telegram_health` only looked at recent delivery errors, so a bot that
+    was never (or no longer) registered reported "ok" and never answered."""
     secrets = TelegramSecrets(bot_token=SecretStr(token), webhook_secret=SecretStr("-" * 32))
     try:
         with httpx.Client() as client:
@@ -44,6 +52,12 @@ def telegram_health(token: str) -> list[Issue]:
         ]
     if not isinstance(info, dict):
         return [Issue("telegram_response", "Respuesta de Telegram inválida.", "🔴")]
+    issues = []
+    if expected_url is not None and info.get("url") != expected_url:
+        # Never echo what Telegram reports back (it may hold a secret url).
+        issues.append(
+            Issue("telegram_webhook_unregistered", "El webhook no está registrado.", "🔴")
+        )
     # Telegram retains the last historical error. Only errors in the last day signal
     # current health; never include last_error_message (it may contain a secret URL).
     since = timezone.now().timestamp() - DAY_S
@@ -51,8 +65,10 @@ def telegram_health(token: str) -> list[Issue]:
         isinstance(info.get(k), (int, float)) and info[k] > since
         for k in ("last_error_date", "last_synchronization_error_date")
     ):
-        return [Issue("telegram_webhook", "Telegram registra errores recientes del webhook.", "🔴")]
-    return []
+        issues.append(
+            Issue("telegram_webhook", "Telegram registra errores recientes del webhook.", "🔴")
+        )
+    return issues
 
 
 def whatsapp_health(
@@ -155,8 +171,17 @@ def tenant_health(
                     )
                 )
     if tenant.main_enabled:
-        if isinstance(tenant.secrets, TelegramSecrets):
-            issues.extend(telegram_health(tenant.secrets.bot_token.get_secret_value()))
+        if isinstance(tenant.secrets, TelegramSecrets) and isinstance(
+            tenant.document.channel, TelegramChannel
+        ):
+            from autobot.channels.telegram.registration import expected_webhook_url
+
+            expected = expected_webhook_url(
+                f"webhooks/telegram/{tenant.document.channel.public_id}"
+            )
+            issues.extend(
+                telegram_health(tenant.secrets.bot_token.get_secret_value(), expected_url=expected)
+            )
         elif isinstance(tenant.secrets, WhatsAppSecrets) and isinstance(
             tenant.document.channel, WhatsAppChannel
         ):

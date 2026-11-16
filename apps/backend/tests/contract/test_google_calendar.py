@@ -19,6 +19,7 @@ from integrations.google_calendar.client import (
     CalendarPermanentError,
     CalendarTransientError,
     service,
+    service_account_email,
 )
 
 START = datetime.fromisoformat("2026-10-05T10:00:00+02:00")
@@ -193,6 +194,22 @@ def test_service_caches_credentials_per_file(monkeypatch: pytest.MonkeyPatch) ->
     service("a.json")
     service("b.json")
     assert calls == ["a.json", "b.json"]
+
+
+def test_service_account_email_reads_the_credentials_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # D1: the panel shows this so a client knows what to share their calendar with.
+    monkeypatch.setattr(
+        service_account.Credentials,
+        "from_service_account_file",
+        lambda *a, **k: MagicMock(service_account_email="autobot@proyecto.iam.gserviceaccount.com"),
+    )
+    assert service_account_email("d1-test-sa.json") == "autobot@proyecto.iam.gserviceaccount.com"
+
+
+def test_service_account_email_is_none_without_a_valid_file() -> None:
+    assert service_account_email("/does/not/exist.json") is None
 
 
 def test_service_uses_a_short_timeout(monkeypatch: pytest.MonkeyPatch) -> None:

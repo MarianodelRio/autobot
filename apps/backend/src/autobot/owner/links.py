@@ -22,6 +22,13 @@ def owner_chat(tenant_id: UUID) -> int | None:
     return link.chat_id if link is not None else None
 
 
+def invite_pending(tenant_id: UUID) -> bool:
+    """An invite link was generated (C14) and not yet used nor expired."""
+    return OwnerLink.objects.filter(
+        tenant_id=tenant_id, chat_id__isnull=True, invite_expires_at__gt=timezone.now()
+    ).exists()
+
+
 def tenants_of_chat(chat_id: int) -> list[LoadedTenant]:
     """Tenants connected to this chat, excluding any no longer usable (offboarded or
     sharing an id with another tenant)."""

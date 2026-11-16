@@ -71,6 +71,15 @@ def _credentials(credentials_file: str) -> Any:
         return cached
 
 
+def service_account_email(credentials_file: str) -> str | None:
+    """The service account's own email (D1): what a client shares their calendar
+    with. `None` when the file is missing or invalid — never its private key."""
+    try:
+        return str(_credentials(credentials_file).service_account_email)
+    except OSError, ValueError:
+        return None
+
+
 def service(credentials_file: str) -> Any:
     credentials = _credentials(credentials_file)
     return build(
