@@ -230,11 +230,17 @@ export function DemoInvitesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              {["Nota", "Usos", "Caduca", "Estado", "Creada", "Código", "Acciones"].map(
-                (label) => (
-                  <TableHead key={label}>{label}</TableHead>
-                ),
-              )}
+              {[
+                "Nota",
+                "Usos",
+                "Caduca",
+                "Estado",
+                "Creada",
+                "Código",
+                "Acciones",
+              ].map((label) => (
+                <TableHead key={label}>{label}</TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
