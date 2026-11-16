@@ -1,7 +1,6 @@
 // The installed shadcn theme renders with the panel's existing components and styles.
 import Form from "@rjsf/shadcn";
 import DefaultObjectTemplate from "@rjsf/shadcn/lib/ObjectFieldTemplate/ObjectFieldTemplate.js";
-import validator from "@rjsf/validator-ajv8";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type ComponentProps,
@@ -28,6 +27,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { validator } from "@/lib/form-validator";
+import { CalendarSection } from "./calendar-section";
 import { ChannelSection } from "./channel-section";
 import { OwnerSection } from "./owner-section";
 
@@ -252,15 +253,44 @@ export function ConfigEditor({
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
   }, [dirty, onDirtyChange]);
+  // `detail` is refetched elsewhere too (e.g. Activar/Pausar, C9): without
+  // unsaved changes, follow its version so the next save never carries a stale
+  // `base_version` and 409s. Only ever move *forward*: `detail` is a prop that can
+  // itself be a render behind a version this component already moved to on its own
+  // (a save, or "Recargar" after a conflict).
+  useEffect(() => {
+    if (dirty || detail.version === null || detail.version <= (version ?? -1))
+      return;
+    setBaseline(detail.document);
+    setDraft(detail.document);
+    setVersion(detail.version);
+    setYaml(YAML.stringify(detail.document));
+  }, [detail, dirty, version]);
   useEffect(() => {
     if (!initialSection) return;
     document
       .getElementById(`section-${initialSection}`)
       ?.scrollIntoView({ block: "start" });
   }, [initialSection]);
+  // C6: "demo" only makes sense for the platform's own demo tenants; hiding it
+  // keeps a real client's form from offering to turn it into one.
+  const isDemo = Boolean(detail.document.demo);
   const ui = useMemo(
-    () => (schema.data ? uiSchema(schema.data.ui_schema) : {}),
-    [schema.data],
+    () =>
+      schema.data
+        ? uiSchema(
+            isDemo
+              ? schema.data.ui_schema
+              : {
+                  ...schema.data.ui_schema,
+                  hidden: [
+                    ...((schema.data.ui_schema.hidden as string[]) ?? []),
+                    "demo",
+                  ],
+                },
+          )
+        : {},
+    [schema.data, isDemo],
   );
   const resolvedSchema = useMemo(
     () =>
@@ -276,6 +306,9 @@ export function ConfigEditor({
       groupExtras: {
         channel: <ChannelSection detail={detail} />,
         people: <OwnerSection detail={detail} />,
+        ...(detail.pack === "salon"
+          ? { config: <CalendarSection detail={detail} /> }
+          : {}),
       },
     }),
     [schema.data, detail],

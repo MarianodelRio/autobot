@@ -57,11 +57,20 @@ export function SecretsForm({
         body: { secrets },
       });
       if (!result.response.ok) throw new Error();
-      toast.success("Secretos sustituidos.");
+      // C10: the backend re-registers the Telegram webhook right after a change
+      // (the old one would otherwise stay registered with the previous secret).
+      if (result.data?.telegram_webhook_registered === false) {
+        toast.warning(
+          "Secretos sustituidos, pero no se pudo volver a registrar el webhook de Telegram. Regístralo desde el canal.",
+        );
+      } else {
+        toast.success("Secretos sustituidos.");
+      }
       setOpen(false);
       reset();
       void client.invalidateQueries({ queryKey: ["tenant-secrets", slug] });
       void client.invalidateQueries({ queryKey: ["tenant", slug] });
+      void client.invalidateQueries({ queryKey: ["tenant-webhook", slug] });
     } catch {
       setError(true);
     } finally {

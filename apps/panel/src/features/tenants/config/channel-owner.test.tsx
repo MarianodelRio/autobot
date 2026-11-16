@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import type { components } from "@/api/schema";
+import { CalendarSection } from "./calendar-section";
 import { ChannelSection } from "./channel-section";
 import { OwnerSection } from "./owner-section";
 
@@ -56,6 +58,35 @@ test.each([
     url.pathname.endsWith("/telegram-webhook") ? { registered } : secrets,
   );
   expect(await screen.findByText(label)).toBeInTheDocument();
+});
+
+test("C13: a missing public link warns instead of just hiding the QR", async () => {
+  setup(<ChannelSection detail={detail} />, () => secrets);
+  expect(
+    await screen.findByText(/Falta el usuario del bot/),
+  ).toBeInTheDocument();
+});
+
+test("C13: a QR with a public link offers SVG/PNG download and a print view", async () => {
+  setup(
+    <ChannelSection
+      detail={{ ...detail, public_link: "https://t.me/mi_bot" }}
+    />,
+    (url) =>
+      url.pathname.endsWith("/telegram-webhook")
+        ? { registered: null }
+        : secrets,
+  );
+  await screen.findByText("https://t.me/mi_bot");
+  expect(
+    screen.getByRole("button", { name: "Descargar SVG" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Descargar PNG" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Ver para imprimir" }),
+  ).toBeInTheDocument();
 });
 
 test("registering the webhook refreshes its status", async () => {
@@ -133,3 +164,79 @@ test.each([
     ).not.toContain("start=abc");
   },
 );
+
+const salonDetail = {
+  ...detail,
+  pack: "salon",
+  document: { config: { calendar_id: "demo@group.calendar.google.com" } },
+} as unknown as components["schemas"]["TenantDetail"];
+
+test("D1: shows the service account email with a copy affordance", async () => {
+  setup(<CalendarSection detail={salonDetail} />, () => ({
+    configured: true,
+    email: "autobot@proyecto.iam.gserviceaccount.com",
+  }));
+  expect(
+    await screen.findByText("autobot@proyecto.iam.gserviceaccount.com"),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Gmail personal/)).not.toBeInTheDocument();
+});
+
+test("D4: warns when calendar_id is a personal Gmail account", async () => {
+  setup(
+    <CalendarSection
+      detail={{
+        ...salonDetail,
+        document: { config: { calendar_id: "peluquero@gmail.com" } },
+      }}
+    />,
+    () => ({
+      configured: true,
+      email: "autobot@proyecto.iam.gserviceaccount.com",
+    }),
+  );
+  expect(await screen.findByText(/Gmail personal/)).toBeInTheDocument();
+});
+
+test("warns when the server has no service account configured", async () => {
+  setup(<CalendarSection detail={salonDetail} />, () => ({
+    configured: false,
+    email: null,
+  }));
+  expect(
+    await screen.findByText(
+      "El servidor no tiene configurada la cuenta de servicio de Google.",
+    ),
+  ).toBeInTheDocument();
+});
+
+test("C14: shows a pending invitation and lets you disconnect it", async () => {
+  const toastSpy = vi.spyOn(toast, "success");
+  const user = userEvent.setup();
+  setup(
+    <OwnerSection detail={{ ...detail, owner_invite_pending: true }} />,
+    () => ({ had_chat: false }),
+  );
+  await screen.findByText("Invitación pendiente");
+  await user.click(screen.getByRole("button", { name: "Desconectar" }));
+  const dialog = await screen.findByRole("alertdialog");
+  await user.click(within(dialog).getByRole("button", { name: "Desconectar" }));
+  await waitFor(() =>
+    expect(toastSpy).toHaveBeenCalledWith("Invitación cancelada."),
+  );
+});
+
+test("C14: disconnecting a linked owner says so", async () => {
+  const toastSpy = vi.spyOn(toast, "success");
+  const user = userEvent.setup();
+  setup(<OwnerSection detail={{ ...detail, owner_linked: true }} />, () => ({
+    had_chat: true,
+  }));
+  await screen.findByText("Dueño enlazado");
+  await user.click(screen.getByRole("button", { name: "Desconectar" }));
+  const dialog = await screen.findByRole("alertdialog");
+  await user.click(within(dialog).getByRole("button", { name: "Desconectar" }));
+  await waitFor(() =>
+    expect(toastSpy).toHaveBeenCalledWith("Dueño desconectado."),
+  );
+});

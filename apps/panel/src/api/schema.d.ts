@@ -174,6 +174,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/calendar/service-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Service Account */
+        get: operations["autobot_panel_routers_calendar_service_account"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/contacts/{id}": {
         parameters: {
             query?: never;
@@ -629,6 +646,23 @@ export interface paths {
         put?: never;
         /** Tenant Owner Invite */
         post: operations["autobot_panel_routers_tenants_tenant_owner_invite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{slug}/owner-unlink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tenant Owner Unlink */
+        post: operations["autobot_panel_routers_tenants_tenant_owner_unlink"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1427,6 +1461,11 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** OwnerUnlinkOut */
+        OwnerUnlinkOut: {
+            /** Had Chat */
+            had_chat: boolean;
+        };
         /** PackOut */
         PackOut: {
             /** Has Datasets */
@@ -1539,6 +1578,18 @@ export interface components {
             updated_at: string | null;
             /** Updated By */
             updated_by: string | null;
+        };
+        /** SecretsUpdateOut */
+        SecretsUpdateOut: {
+            /** Telegram Webhook Registered */
+            telegram_webhook_registered: boolean | null;
+        };
+        /** ServiceAccountOut */
+        ServiceAccountOut: {
+            /** Configured */
+            configured: boolean;
+            /** Email */
+            email: string | null;
         };
         /** SlugAvailability */
         SlugAvailability: {
@@ -1783,6 +1834,8 @@ export interface components {
             name: string;
             /** Open Alerts */
             open_alerts: components["schemas"]["OpenAlert"][];
+            /** Owner Invite Pending */
+            owner_invite_pending: boolean;
             /** Owner Linked */
             owner_linked: boolean;
             /** Pack */
@@ -2099,6 +2152,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    autobot_panel_routers_calendar_service_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountOut"];
+                };
             };
         };
     };
@@ -2757,6 +2830,28 @@ export interface operations {
             };
         };
     };
+    autobot_panel_routers_tenants_tenant_owner_unlink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnerUnlinkOut"];
+                };
+            };
+        };
+    };
     autobot_panel_routers_tenants_rollback_document: {
         parameters: {
             query?: never;
@@ -2820,12 +2915,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No Content */
-            204: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SecretsUpdateOut"];
+                };
             };
         };
     };

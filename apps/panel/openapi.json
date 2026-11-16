@@ -1920,6 +1920,19 @@
         "title": "OwnerInviteOut",
         "type": "object"
       },
+      "OwnerUnlinkOut": {
+        "properties": {
+          "had_chat": {
+            "title": "Had Chat",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "had_chat"
+        ],
+        "title": "OwnerUnlinkOut",
+        "type": "object"
+      },
       "PackOut": {
         "properties": {
           "has_datasets": {
@@ -2235,6 +2248,51 @@
           "fields"
         ],
         "title": "SecretsStatus",
+        "type": "object"
+      },
+      "SecretsUpdateOut": {
+        "properties": {
+          "telegram_webhook_registered": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Webhook Registered"
+          }
+        },
+        "required": [
+          "telegram_webhook_registered"
+        ],
+        "title": "SecretsUpdateOut",
+        "type": "object"
+      },
+      "ServiceAccountOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          }
+        },
+        "required": [
+          "configured",
+          "email"
+        ],
+        "title": "ServiceAccountOut",
         "type": "object"
       },
       "SlugAvailability": {
@@ -2961,6 +3019,10 @@
             "title": "Open Alerts",
             "type": "array"
           },
+          "owner_invite_pending": {
+            "title": "Owner Invite Pending",
+            "type": "boolean"
+          },
           "owner_linked": {
             "title": "Owner Linked",
             "type": "boolean"
@@ -3034,6 +3096,7 @@
           "webhook_url",
           "public_link",
           "owner_linked",
+          "owner_invite_pending",
           "month"
         ],
         "title": "TenantDetail",
@@ -3663,6 +3726,33 @@
         "summary": "Me",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/calendar/service-account": {
+      "get": {
+        "operationId": "autobot_panel_routers_calendar_service_account",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Service Account",
+        "tags": [
+          "calendar"
         ]
       }
     },
@@ -4870,6 +4960,43 @@
         ]
       }
     },
+    "/tenants/{slug}/owner-unlink": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_tenant_owner_unlink",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerUnlinkOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Owner Unlink",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
     "/tenants/{slug}/rollback": {
       "post": {
         "operationId": "autobot_panel_routers_tenants_rollback_document",
@@ -4977,8 +5104,15 @@
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "No Content"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretsUpdateOut"
+                }
+              }
+            },
+            "description": "OK"
           }
         },
         "security": [

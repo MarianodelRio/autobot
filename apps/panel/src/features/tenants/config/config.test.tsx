@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import type { components } from "@/api/schema";
 import { ConfigEditor, errorsToSchema } from "./editor";
@@ -145,6 +146,71 @@ test("conflict offers differences and reload", async () => {
     expect(screen.getByLabelText("Nombre")).toHaveValue("Remoto"),
   );
 });
+test("a status change elsewhere (Activar/Pausar) is picked up without clobbering an in-progress edit (C9)", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json(schema)),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const { rerender } = render(
+    <QueryClientProvider client={client}>
+      <ConfigEditor detail={detail} onDirtyChange={vi.fn()} />
+    </QueryClientProvider>,
+  );
+  await screen.findByLabelText("Nombre");
+  // No unsaved changes: a newer `detail` (status action bumped the version) is
+  // followed, so the next save would carry its version, not a stale one.
+  rerender(
+    <QueryClientProvider client={client}>
+      <ConfigEditor
+        detail={{
+          ...detail,
+          version: 2,
+          document: { ...detail.document, name: "Tras pausar" },
+        }}
+        onDirtyChange={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("Nombre")).toHaveValue("Tras pausar"),
+  );
+});
+test("demo is hidden from a real client's form, shown for a demo tenant", async () => {
+  const demoSchema = {
+    document: {
+      type: "object",
+      properties: {
+        name: { type: "string", title: "Nombre" },
+        demo: {
+          type: "object",
+          title: "Demo",
+          properties: { description: { type: "string", title: "Descripción" } },
+        },
+        config: { type: "object", properties: {} },
+      },
+    },
+    ui_schema: { read_only: [], widgets: {}, groups: [], hidden: [] },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json(demoSchema)),
+  );
+  provider(
+    <ConfigEditor
+      detail={{ ...detail, document: { ...detail.document, demo: null } }}
+      onDirtyChange={vi.fn()}
+    />,
+  );
+  await screen.findByLabelText("Nombre");
+  // The field template renders a hidden field's box with Tailwind's `hidden`
+  // class (display:none in a real browser); jsdom has no stylesheet, so this
+  // checks the class rather than visibility.
+  const description = screen.getByLabelText("Descripción");
+  expect(description.closest("div.hidden")).not.toBeNull();
+});
 test("activation requires unblocked checklist and exact slug", async () => {
   let blocked = true;
   const fetcher = vi.fn(async (req: Request) =>
@@ -220,6 +286,34 @@ test("secret form shows an error on failure without caching the typed value", as
   expect(client.getMutationCache().getAll()).toHaveLength(0);
 });
 
+test("a secrets change tells when the Telegram webhook could not be re-registered (C10)", async () => {
+  const toastSpy = vi.spyOn(toast, "warning");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json({ telegram_webhook_registered: false })),
+  );
+  provider(
+    <SecretsForm
+      slug="test"
+      fields={[
+        {
+          name: "bot_token",
+          set: false,
+          label: "Token del bot",
+          help: "Lo da @BotFather",
+          generatable: false,
+        },
+      ]}
+    />,
+  );
+  const user = userEvent.setup();
+  await user.click(
+    screen.getByRole("button", { name: "Cambiar credenciales" }),
+  );
+  await user.type(screen.getByLabelText("Token del bot"), "123:abc");
+  await user.click(screen.getByRole("button", { name: "Guardar secretos" }));
+  await waitFor(() => expect(toastSpy).toHaveBeenCalled());
+});
 test("partial replacement omits blank fields and a generated value fills its field", async () => {
   let sent: unknown;
   vi.stubGlobal(

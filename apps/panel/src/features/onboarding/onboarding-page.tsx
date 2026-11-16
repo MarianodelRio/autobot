@@ -1,5 +1,4 @@
 import Form from "@rjsf/shadcn";
-import validator from "@rjsf/validator-ajv8";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ComponentProps, useEffect, useMemo, useState } from "react";
 import YAML from "yaml";
@@ -12,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { errorsToSchema } from "@/features/tenants/config/editor";
+import { validator } from "@/lib/form-validator";
 
 const STORAGE_KEY = "autobot.onboarding";
 type Draft = {

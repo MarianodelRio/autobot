@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { ErrorState } from "@/components/error-state";
+import { QrCode } from "@/components/qr-code";
 import { StatusDot } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/errors";
@@ -67,19 +67,30 @@ export function ChannelSection({ detail }: { detail: Detail }) {
   if (detail.channel_type === null) return null;
   return (
     <div className="space-y-3 border-t pt-4">
-      {detail.public_link && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Enlace público</span>
-          <a className="underline" href={detail.public_link}>
-            {detail.public_link}
-          </a>
-          <CopyButton value={detail.public_link} />
-          <div className="ml-auto w-16 bg-white p-1">
-            <QRCodeSVG
-              value={detail.public_link}
-              title="QR del canal público"
-            />
+      {detail.public_link ? (
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Enlace público</span>
+            <a className="underline" href={detail.public_link}>
+              {detail.public_link}
+            </a>
+            <CopyButton value={detail.public_link} />
           </div>
+          <QrCode
+            value={detail.public_link}
+            title="QR del canal público"
+            fileName={`canal-${detail.slug}`}
+          />
+        </div>
+      ) : (
+        // C13: shown, never hidden — there is no QR until this is fixed.
+        <div className="flex items-center gap-2 text-sm">
+          <StatusDot level="warning" />
+          <span className="text-status-warning">
+            {detail.channel_type === "telegram"
+              ? "Falta el usuario del bot (bot_username): sin él no hay enlace ni QR."
+              : "Falta el teléfono público (display_phone): sin él no hay enlace ni QR."}
+          </span>
         </div>
       )}
       {detail.channel_type === "telegram" && (
