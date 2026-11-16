@@ -405,14 +405,18 @@ def _read_revision() -> int:
     return int(row[0])
 
 
-def _cached_registry() -> Registry:
+def _cached_registry(*, force: bool = False) -> Registry:
+    """`force`: skip the 2 s window and re-check the revision now (still only a
+    cheap `SELECT`, reloading only if it changed). Used when a caller looked up a
+    tenant that should exist (just created) and did not find it: with several
+    gunicorn workers, this process's own cache may be up to 2 s behind the write."""
     global _registry, _revision, _checked_at
     now = time.monotonic()
-    if _registry is not None and now - _checked_at < 2:
+    if not force and _registry is not None and now - _checked_at < 2:
         return _registry
     with _registry_lock:
         now = time.monotonic()
-        if _registry is not None and now - _checked_at < 2:
+        if not force and _registry is not None and now - _checked_at < 2:
             return _registry
         try:
             if _registry is not None and _read_revision() == _revision:
@@ -432,11 +436,11 @@ def _cached_registry() -> Registry:
         return registry
 
 
-def get_registry() -> Registry:
+def get_registry(*, force: bool = False) -> Registry:
     scope = _scope.get()
-    if scope is not None and scope.registry is not None:
+    if scope is not None and scope.registry is not None and not force:
         return scope.registry
-    registry = _cached_registry()
+    registry = _cached_registry(force=force)
     if scope is not None:
         scope.registry = registry
     return registry

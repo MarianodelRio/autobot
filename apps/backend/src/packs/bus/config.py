@@ -30,7 +30,7 @@ class OfficeHours(BaseModel):
     @classmethod
     def _distinct_days(cls, days: list[Weekday]) -> list[Weekday]:
         if len(set(days)) != len(days):
-            raise ValueError("a day appears more than once in the block")
+            raise ValueError("un día aparece más de una vez en el bloque")
         return days
 
     @field_validator("ranges")
@@ -38,9 +38,9 @@ class OfficeHours(BaseModel):
     def _ordered_ranges(cls, ranges: list[str]) -> list[str]:
         spans = sorted(_minutes(r) for r in ranges)
         if any(start >= end for start, end in spans):
-            raise ValueError("a range must start before it ends")
+            raise ValueError("un tramo debe empezar antes de acabar")
         if any(a[1] > b[0] for a, b in zip(spans, spans[1:], strict=False)):
-            raise ValueError("ranges overlap")
+            raise ValueError("los tramos se solapan")
         return ranges
 
 
@@ -70,7 +70,7 @@ class BusConfig(BaseModel):
     def _day_in_one_block(self) -> BusConfig:
         days = [d for block in self.office_hours for d in block.days]
         if len(set(days)) != len(days):
-            raise ValueError("office_hours: a day appears in more than one block")
+            raise ValueError("office_hours: un día aparece en más de un bloque")
         return self
 
     @field_validator("start_menu_towns")
@@ -78,7 +78,7 @@ class BusConfig(BaseModel):
     def _distinct_towns(cls, towns: list[str]) -> list[str]:
         keys = [normalize(t) for t in towns]
         if "" in keys:
-            raise ValueError("empty town")
+            raise ValueError("localidad vacía")
         if len(set(keys)) != len(keys):
-            raise ValueError("duplicate town")
+            raise ValueError("localidad duplicada")
         return towns

@@ -20,6 +20,7 @@ def load_data(tenant: TenantInfo, config: BaseModel, path: Path) -> datos.Datos:
 
 pack = Pack(
     template=Path(__file__).parent / "template",
+    template_blank=("business_name", "contact_phone", "start_menu_towns"),
     name="bus",
     config_schema=BusConfig,
     state_version=1,

@@ -2,7 +2,7 @@
 
 import copy
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from ninja import Schema
@@ -77,6 +77,69 @@ def _prefix_refs(node: Any, prefix: str) -> Any:
     return node
 
 
+_NULL_SCHEMA = {"type": "null"}
+
+
+def _merge_nullable(node: Any, defs: dict[str, Any]) -> Any:
+    """rjsf only renders a nullable field's own widget directly (no branch selector)
+    when the schema uses `"type": [X, "null"]`, not `anyOf`/`oneOf` (C6: `str | None`
+    and `Owner | None` fields had no input box). Merges a plain `anyOf: [<schema>,
+    {"type": "null"}]` into one node; a discriminated union (`channel: Channel | None`)
+    is left alone, since it needs its own branch selection."""
+    if isinstance(node, dict):
+        out = {key: _merge_nullable(value, defs) for key, value in node.items()}
+        any_of = out.get("anyOf")
+        if isinstance(any_of, list) and len(any_of) == 2 and _NULL_SCHEMA in any_of:
+            other = next(branch for branch in any_of if branch != _NULL_SCHEMA)
+            if isinstance(other, dict) and not any(
+                key in other for key in ("oneOf", "anyOf", "discriminator")
+            ):
+                resolved = (
+                    copy.deepcopy(defs[other["$ref"].removeprefix("#/$defs/")])
+                    if set(other) == {"$ref"}
+                    else copy.deepcopy(other)
+                )
+                kind = resolved.get("type", "object" if "properties" in resolved else "string")
+                own = {key: value for key, value in out.items() if key != "anyOf"}
+                out = {**resolved, **own, "type": [kind, "null"]}
+        return out
+    if isinstance(node, list):
+        return [_merge_nullable(value, defs) for value in node]
+    return node
+
+
+def _fixed_items(node: Any) -> Any:
+    """rjsf only recognizes a fixed-length tuple (`isFixedItems`) as the draft-07
+    `items: [<schema>, ...]`, never 2020-12's `prefixItems` that pydantic emits for a
+    `tuple[int, int]` (C6: `reminder_window_hours` had no usable widget)."""
+    if isinstance(node, dict):
+        out = {key: _fixed_items(value) for key, value in node.items()}
+        prefix_items = out.pop("prefixItems", None)
+        if isinstance(prefix_items, list):
+            out["items"] = prefix_items
+            out.setdefault("additionalItems", False)
+        return out
+    if isinstance(node, list):
+        return [_fixed_items(value) for value in node]
+    return node
+
+
+def _owner_notice_checkboxes(document: dict[str, Any], pack: Any) -> None:
+    """C8: `owner.notify` is a plain `list[str]` in the schema (any pack's kinds fit
+    the same field); restricting its items to this pack's own declared
+    `owner_notices`, with `enumNames` for their labels, is what makes rjsf render it
+    as a list of checkboxes instead of a free-text, reorderable array."""
+    notify = document.get("$defs", {}).get("Owner", {}).get("properties", {}).get("notify")
+    if not isinstance(notify, dict) or not pack.owner_notices:
+        return
+    notify["items"] = {
+        "type": "string",
+        "enum": [notice.kind for notice in pack.owner_notices],
+        "enumNames": [notice.label for notice in pack.owner_notices],
+    }
+    notify["uniqueItems"] = True
+
+
 def document_schema(pack_name: str) -> dict[str, Any]:
     """`TenantDocument.model_json_schema()`, with `config` replaced by the pack's own
     schema; both sets of `$defs` are merged under distinct prefixes so they never
@@ -92,7 +155,8 @@ def document_schema(pack_name: str) -> dict[str, Any]:
     }
     document.setdefault("$defs", {}).update(config_defs)
     document["properties"]["config"] = config
-    return document
+    _owner_notice_checkboxes(document, pack)
+    return cast("dict[str, Any]", _fixed_items(_merge_nullable(document, document["$defs"])))
 
 
 def _textarea_fields(pack: Any) -> list[str]:

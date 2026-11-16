@@ -3,11 +3,18 @@
 from pathlib import Path
 from typing import Any
 
-from core.pack import Pack, Periodic
+from core.pack import OwnerNotice, Pack, Periodic
 from packs.salon import health, summary, sweep
 from packs.salon.config import SalonConfig
 from packs.salon.conversation import handle
 from packs.salon.messages import TEMPLATE_CONFIRMATION, TEMPLATE_REMINDER
+
+OWNER_NOTICES = (
+    OwnerNotice("booking_created", "Cita nueva"),
+    OwnerNotice("booking_cancelled", "Cita cancelada"),
+    OwnerNotice("booking_moved", "Cita movida"),
+    OwnerNotice("move_cancel_failed", "No se pudo cancelar al mover una cita"),
+)
 
 
 def _test_calendar() -> Any:
@@ -21,7 +28,7 @@ def _test_calendar() -> Any:
 
 pack = Pack(
     template=Path(__file__).parent / "template",
-    template_blank=("calendar_id", "contact_phone", "business_name"),
+    template_blank=("calendar_id", "contact_phone", "business_name", "info_text"),
     name="salon",
     config_schema=SalonConfig,
     state_version=1,
@@ -31,5 +38,6 @@ pack = Pack(
     health=health.check,
     templates=[TEMPLATE_CONFIRMATION, TEMPLATE_REMINDER],
     summary=summary.summarize,
+    owner_notices=OWNER_NOTICES,
     test_calendar=_test_calendar,
 )

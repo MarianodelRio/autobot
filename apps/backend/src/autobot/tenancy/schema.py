@@ -126,7 +126,7 @@ class TenantDocument(Strict):
     @classmethod
     def uuid_v7(cls, value: UUID) -> UUID:
         if value.version != 7:
-            raise ValueError("id must be a UUIDv7")
+            raise ValueError("el id debe ser un UUIDv7")
         return value
 
     @field_validator("timezone")
@@ -135,29 +135,32 @@ class TenantDocument(Strict):
         try:
             ZoneInfo(value)
         except ZoneInfoNotFoundError, ValueError:
-            raise ValueError(f"unknown time zone {value!r}") from None
+            # Never echo the invalid value back (it may be arbitrary input).
+            raise ValueError("zona horaria desconocida") from None
         return value
 
     @model_validator(mode="after")
     def demo_or_channel(self) -> TenantDocument:
         if self.demo is not None:
             if self.channel is not None:
-                raise ValueError("a demo tenant must not have a channel")
+                raise ValueError("un negocio de demo no puede tener canal")
             if self.testers.main:
-                raise ValueError("a demo tenant must not have testers.main")
+                raise ValueError("un negocio de demo no puede tener testers.main")
             if self.status not in ("active", "paused", "offboarded"):
-                raise ValueError("a demo tenant's status must be active, paused or offboarded")
+                raise ValueError(
+                    "el estado de un negocio de demo debe ser active, paused u offboarded"
+                )
             return self
         if self.channel is None:
-            raise ValueError("channel is required for a non-demo tenant")
+            raise ValueError("el canal es obligatorio para un negocio que no es demo")
         if self.channel.type == "whatsapp":
             wrong = [i for i in self.testers.main if not (BSUID.match(i) or PHONE.match(i))]
-            kind = "a BSUID or a phone number (digits only)"
+            kind = "un BSUID o un teléfono (solo cifras)"
         else:
             wrong = [i for i in self.testers.main if not TELEGRAM_ID.match(i)]
-            kind = "a Telegram user id"
+            kind = "un id de usuario de Telegram"
         if wrong:
-            raise ValueError(f"testers.main must hold {kind} for a {self.channel.type} channel")
+            raise ValueError(f"testers.main debe contener {kind} para un canal {self.channel.type}")
         return self
 
 

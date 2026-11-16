@@ -67,6 +67,7 @@ def test_checklist_and_activation_have_no_external_transaction(
 
 def test_whatsapp_templates_and_red_health_block(monkeypatch: pytest.MonkeyPatch) -> None:
     doc = wa_tenant()
+    doc["channel"]["display_phone"] = "+34600000000"
     create(doc, WA_SECRETS)
     inbound(doc)
     monkeypatch.setattr(
@@ -79,6 +80,41 @@ def test_whatsapp_templates_and_red_health_block(monkeypatch: pytest.MonkeyPatch
     assert activation.checklist("wa").blocking == ["health"]
     with pytest.raises(store.StoreError):
         store.change_status("wa", action="activate", actor="user", confirm_slug="wa")
+
+
+def test_wa_channel_without_display_phone_blocks_activation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # C1: `complete` alone (app/waba/phone_number_id) leaves no public link and no
+    # QR without `display_phone`; the checklist must not call that "ok".
+    doc = wa_tenant()
+    create(doc, WA_SECRETS)
+    inbound(doc)
+    monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
+    assert "channel" in activation.checklist("wa").blocking
+
+
+def test_an_ignored_message_from_a_stranger_does_not_count_as_a_tester(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # C1: during onboarding, a non-tester's message is saved as `ignored`
+    # (runtime.inbound), never answered; it must not satisfy "tester".
+    doc = tg_tenant()
+    create(doc, TG_SECRETS)
+    InboundEvent.objects.using("owner").create(
+        tenant_id=doc["id"],
+        id=uuid7(),
+        channel="main",
+        provider_event_id=str(uuid7()),
+        kind="message",
+        status=InboundEvent.Status.IGNORED,
+        payload={},
+        received_at=timezone.now(),
+    )
+    monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
+    assert "tester" in activation.checklist("tg").blocking
+    inbound(doc)
+    assert "tester" not in activation.checklist("tg").blocking
 
 
 def test_activation_rechecks_state_after_provider_call(monkeypatch: pytest.MonkeyPatch) -> None:

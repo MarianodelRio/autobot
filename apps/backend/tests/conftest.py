@@ -44,6 +44,13 @@ def django_db_setup(django_db_blocker: DjangoDbBlocker) -> Iterator[None]:
         # migrations (e.g. otp_totp's) already ran, so the final state is only correct
         # once apply_grants runs again after every migration has.
         call_command("apply_grants")
+        # No migration seeds this row (ADR-009); otherwise it only exists once some
+        # earlier transactional test's teardown creates it (`_flush_as_owner` below),
+        # which made whichever test runs first in a fresh database fail with
+        # `ConfigRevision.DoesNotExist` depending on run order.
+        from autobot.tenancy.models import ConfigRevision
+
+        ConfigRevision.objects.using("owner").get_or_create(pk=1)
     yield
 
 

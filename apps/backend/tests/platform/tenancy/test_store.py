@@ -103,6 +103,35 @@ def test_validation_errors_do_not_echo_values() -> None:
     assert revision() == 1
 
 
+def test_validation_errors_are_readable_in_spanish() -> None:
+    # C7: the pydantic error type is never shown raw.
+    create()
+    doc = current().document | {"config": {"colors": "private-value"}}
+    with pytest.raises(store.StoreError) as error:
+        store.publish("tg", document=doc, base_version=1, actor="user", comment="Bad")
+    details = error.value.details
+    assert any("debe ser una lista" in d for d in details)
+    assert not any("list_type" in d for d in details)
+
+
+def test_degraded_tenant_surfaces_its_real_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    """C5: a dataset/config mismatch (e.g. a `bus` town missing from its timetable)
+    must say why, not a generic "datos no válidos"."""
+    import dataclasses
+
+    from tests.fixtures.toy_pack import pack as toy
+
+    def boom(info: Any, config: Any, path: Any) -> None:
+        raise RuntimeError("[DATOS] start_menu_towns: 'Nowhere' no es una localidad conocida")
+
+    broken = dataclasses.replace(toy.pack, load_data=boom)
+    monkeypatch.setattr("packs.registry.PACKS", PACKS | {"toy": broken})
+    doc = tg_tenant("tg")
+    with pytest.raises(store.StoreError) as error:
+        store.create_tenant(document=doc, actor="user", comment="Create")
+    assert any("Nowhere" in detail for detail in error.value.details)
+
+
 def test_repeated_public_id_is_rejected_without_partial_rows() -> None:
     first = create()
     second = tg_tenant("second")
@@ -263,6 +292,27 @@ def test_new_documents_have_independent_ids_and_blank_channel_ids() -> None:
     assert len(first["channel"]["public_id"]) == 16
     assert first["channel"]["phone_number_id"] is None
     assert first["status"] == "onboarding"
+
+
+def test_new_document_defaults_to_every_owner_notice_of_the_pack() -> None:
+    # C8: a dueño who links their chat right after onboarding must receive
+    # something; without this, owner.notify stayed empty forever.
+    doc = store.new_document(
+        pack="salon",
+        slug="new-salon",
+        name="New",
+        timezone="Europe/Madrid",
+        channel_type="telegram",
+        demo_description=None,
+        config={},
+    )
+    assert doc["owner"]["notify"] == [
+        "booking_created",
+        "booking_cancelled",
+        "booking_moved",
+        "move_cancel_failed",
+    ]
+    assert doc["owner"]["summary_monthly"] is True
 
 
 def test_slug_conflict_and_nontext_dataset_roll_back() -> None:

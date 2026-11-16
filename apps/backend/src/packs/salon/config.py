@@ -25,9 +25,9 @@ TimeRange = Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-
 def validate_ranges(ranges: list[str]) -> list[str]:
     spans = sorted(r.split("-") for r in ranges)
     if not spans or any(a >= b for a, b in spans):
-        raise ValueError("ranges must be nonempty and ordered")
+        raise ValueError("los tramos deben ser no vacíos y estar ordenados")
     if any(a[1] > b[0] for a, b in zip(spans, spans[1:], strict=False)):
-        raise ValueError("ranges overlap")
+        raise ValueError("los tramos se solapan")
     return sorted(ranges)
 
 
@@ -40,7 +40,7 @@ class Service(BaseModel):
     @model_validator(mode="after")
     def validate_presence(self) -> Service:
         if not self.name.strip() or self.duration_min > self.client_presence_min:
-            raise ValueError("invalid service name or presence")
+            raise ValueError("nombre o tiempo de presencia del servicio no válido")
         return self
 
 
@@ -57,7 +57,7 @@ class SpecialEvent(BaseModel):
     @model_validator(mode="after")
     def validate_active(self) -> SpecialEvent:
         if self.active and (not self.name.strip() or not self.days):
-            raise ValueError("active event needs a name and days")
+            raise ValueError("un evento activo necesita nombre y días")
         return self
 
 
@@ -109,17 +109,17 @@ class SalonConfig(BaseModel):
     @classmethod
     def nonempty(cls, value: str) -> str:
         if not value.strip():
-            raise ValueError("value cannot be blank")
+            raise ValueError("el valor no puede estar en blanco")
         return value.strip()
 
     @field_validator("services")
     @classmethod
     def service_keys(cls, value: dict[str, Service]) -> dict[str, Service]:
         if any(re.fullmatch(r"[a-z0-9_]+", key) is None for key in value):
-            raise ValueError("invalid service key")
+            raise ValueError("id de servicio no válido")
         # The interactive id is service_<key> (64-byte shared channel limit).
         if any(len(f"service_{key}".encode()) > 64 for key in value):
-            raise ValueError("service key too long")
+            raise ValueError("id de servicio demasiado largo")
         return value
 
     @field_validator("opening_hours")
@@ -130,11 +130,11 @@ class SalonConfig(BaseModel):
     @model_validator(mode="after")
     def rules(self) -> SalonConfig:
         if self.manual_confirmations_enabled and self.manual_confirmations_since is None:
-            raise ValueError("manual confirmations need an explicit start date")
+            raise ValueError("la confirmación manual necesita una fecha de inicio explícita")
         if self.manual_confirmations_since and self.manual_confirmations_since.tzinfo is None:
-            raise ValueError("manual confirmation cutoff must be aware")
+            raise ValueError("la fecha de confirmación manual debe llevar zona horaria")
         if not 0 <= self.reminder_window_hours[0] < self.reminder_window_hours[1]:
-            raise ValueError("invalid reminder window")
+            raise ValueError("ventana de recordatorio no válida")
         return self
 
     def spans(self, day: date, *, event: bool = False) -> list[tuple[str, str]]:

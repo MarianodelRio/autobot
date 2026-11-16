@@ -13,6 +13,7 @@ from uuid import uuid7
 from django.db import transaction
 from django.utils import timezone
 from pydantic import ValidationError
+from pydantic_core import ErrorDetails
 
 from autobot.ops.audit import record
 from autobot.tenancy.crypto import encrypt
@@ -47,10 +48,49 @@ class StoreError(Exception):
         super().__init__(message)
 
 
+# Pydantic's own error type → a short, generic Spanish message (C7). `value_error`
+# (a pack's or the schema's own `raise ValueError(...)`, already written in Spanish)
+# keeps its message instead, since it is the only type with business meaning.
+_TYPE_MESSAGES: dict[str, str] = {
+    "missing": "falta este campo",
+    "string_type": "debe ser un texto",
+    "string_too_short": "es demasiado corto",
+    "string_too_long": "es demasiado largo",
+    "string_pattern_mismatch": "no tiene el formato esperado",
+    "int_type": "debe ser un número entero",
+    "int_parsing": "debe ser un número entero",
+    "float_type": "debe ser un número",
+    "bool_type": "debe ser verdadero o falso",
+    "list_type": "debe ser una lista",
+    "too_short": "tiene muy pocos elementos",
+    "too_long": "tiene demasiados elementos",
+    "dict_type": "debe ser un objeto",
+    "extra_forbidden": "campo no reconocido",
+    "literal_error": "valor no permitido",
+    "greater_than": "debe ser mayor que el mínimo",
+    "greater_than_equal": "debe ser mayor o igual que el mínimo",
+    "less_than": "debe ser menor que el máximo",
+    "less_than_equal": "debe ser menor o igual que el máximo",
+    "uuid_parsing": "no es un identificador válido",
+    "date_parsing": "no es una fecha válida",
+    "datetime_parsing": "no es una fecha y hora válidas",
+    "url_parsing": "no es una URL válida",
+    "union_tag_invalid": "tipo no reconocido",
+    "union_tag_not_found": "falta el campo que indica el tipo",
+}
+
+
+def _message(item: ErrorDetails) -> str:
+    if item["type"] == "value_error":
+        # "Value error, <custom message>" → "<custom message>" (the message a pack's
+        # or the schema's own validator raised, already in Spanish).
+        return str(item["msg"]).removeprefix("Value error, ")
+    return _TYPE_MESSAGES.get(item["type"], "valor no válido")
+
+
 def _validation(error: ValidationError, prefix: str = "") -> StoreError:
     details = [
-        f"{prefix}{'.'.join(str(part) for part in item['loc']) or '(root)'}: "
-        f"valor no válido ({item['type']})"
+        f"{prefix}{'.'.join(str(part) for part in item['loc']) or '(root)'}: {_message(item)}"
         for item in error.errors(include_input=False, include_context=False)
     ]
     return StoreError("validation_error", "La configuración no es válida", details)
@@ -120,9 +160,13 @@ def _validate(source: TenantSource, sources: list[TenantSource]) -> None:
             for name in ("id", "public_id", "phone_number_id")
             if f"{name} repeated" in tenant.degraded
         ]
-        details = [f"{name}: valor repetido" for name in duplicate] or [
-            "datasets: datos no válidos"
-        ]
+        # C5: surface the real reason (e.g. a bus town missing from its dataset)
+        # instead of a generic, unhelpful message.
+        details = (
+            [f"{name}: valor repetido" for name in duplicate]
+            or [f"datasets: {reason}" for reason in tenant.degraded]
+            or ["datasets: datos no válidos"]
+        )
         raise StoreError("validation_error", "La configuración no es válida", details)
 
 
@@ -189,6 +233,9 @@ def new_document(
     demo_description: str | None,
     config: dict[str, Any],
 ) -> dict[str, Any]:
+    from packs.registry import PACKS
+
+    pack_obj = PACKS.get(pack)
     doc: dict[str, Any] = {
         "id": str(uuid7()),
         "slug": slug,
@@ -197,6 +244,14 @@ def new_document(
         "pack": pack,
         "config": copy.deepcopy(config),
         "status": "paused" if demo_description is not None else "onboarding",
+        # C8: every notice the pack can emit, on by default, same as the demo;
+        # the operator unchecks what it does not want. Without this, a dueño who
+        # just linked their chat receives nothing until someone notices and edits
+        # the YAML by hand.
+        "owner": {
+            "notify": [notice.kind for notice in pack_obj.owner_notices] if pack_obj else [],
+            "summary_monthly": True,
+        },
     }
     if demo_description is not None:
         if channel_type is not None:
@@ -421,9 +476,10 @@ def set_secrets(slug: str, *, secrets: Mapping[str, str], actor: str) -> None:
     channel = _document(current.document).get("channel")
     if channel is None or current.document.get("demo") is not None:
         raise StoreError("bad_request", "Un demo no admite secretos de canal")
-    # Partial substitution: blank or absent fields keep the currently readable
-    # secrets. If a field is missing from both, validation below rejects it.
-    provided = {name: value for name, value in secrets.items() if value}
+    # Partial substitution: blank (or whitespace-only, C11) or absent fields keep
+    # the currently readable secrets. If a field is missing from both, validation
+    # below rejects it.
+    provided = {name: value.strip() for name, value in secrets.items() if value.strip()}
     existing = current.secrets or {}
     merged = {**existing, **provided}
     raw = _secrets(channel["type"], merged)

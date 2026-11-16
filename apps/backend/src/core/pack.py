@@ -92,6 +92,15 @@ class PackResult:
 
 
 @dataclass(frozen=True)
+class OwnerNotice:
+    """One kind of `NotifyOwner` a pack can emit (C8), with the label the panel
+    shows next to its checkbox in `owner.notify`."""
+
+    kind: str
+    label: str
+
+
+@dataclass(frozen=True)
 class Periodic:
     name: str
     every_min: int
@@ -112,6 +121,10 @@ class Pack:
     health: Callable[[PackContext], list[HealthIssue]] | None = None
     templates: list[TemplateSpec] = field(default_factory=list)
     summary: SummaryHook | None = None
+    owner_notices: tuple[OwnerNotice, ...] = ()
+    """Kinds of `NotifyOwner` this pack can emit (C8). A new tenant's `owner.notify`
+    starts with all of them, same as the demo; the operator unchecks what it does
+    not want."""
     template: Path | None = None
     """Directory containing the initial demo document and optional datasets."""
     template_blank: tuple[str, ...] = ()

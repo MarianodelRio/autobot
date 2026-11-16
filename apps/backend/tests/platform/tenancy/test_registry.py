@@ -229,7 +229,7 @@ def test_telegram_main_testers_must_be_user_ids(tmp_path: Path) -> None:
         channel={"type": "telegram", "public_id": "tgpublic0001"},
         testers={"main": ["34600000001", "@someone"]},
     )
-    assert "Telegram user id" in str(load(tmp_path, doc).errors["tg"])
+    assert "id de usuario de Telegram" in str(load(tmp_path, doc).errors["tg"])
 
 
 def test_whatsapp_main_testers_accept_phones_and_bsuids(tmp_path: Path) -> None:

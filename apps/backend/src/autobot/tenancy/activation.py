@@ -40,7 +40,14 @@ def checklist(slug: str) -> Checklist:
     channel_ok = secrets_ok = healthy = templates_ok = inbound = owner = False
     if tenant is not None:
         channel = tenant.document.channel
-        channel_ok = channel is not None and channel.complete
+        # C1: `complete` alone (app_id/waba_id/phone_number_id) still leaves a
+        # WhatsApp tenant without `display_phone`, so no public link and no QR
+        # (tenancy.links.channel_link); the checklist must not call that "ok".
+        channel_ok = (
+            channel is not None
+            and channel.complete
+            and (not isinstance(channel, WhatsAppChannel) or bool(channel.display_phone))
+        )
         secrets_ok = tenant.secrets is not None and not any(
             "decrypt" in issue for issue in tenant.main_disabled
         )
@@ -50,9 +57,13 @@ def checklist(slug: str) -> Checklist:
             issue.code == "templates" for issue in issues
         )
         with tenant_tx(tenant.id):
-            inbound = InboundEvent.objects.filter(
-                tenant_id=tenant.id, channel="main", kind="message"
-            ).exists()
+            # C1: a message from a stranger during onboarding is saved but ignored
+            # (runtime.inbound), not answered — it must not count as a tester.
+            inbound = (
+                InboundEvent.objects.filter(tenant_id=tenant.id, channel="main", kind="message")
+                .exclude(status=InboundEvent.Status.IGNORED)
+                .exists()
+            )
         owner = OwnerLink.objects.filter(tenant_id=tenant.id, chat_id__isnull=False).exists()
     rows = [
         ("document", "Documento válido y sin degradación", valid, True),
