@@ -13,7 +13,7 @@ from autobot.tenancy.schema import TenantDocument
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent
 
-__all__ = ["channel_link", "generate", "main", "tenant_link_from_file"]
+__all__ = ["channel_link", "generate", "main", "svg_markup", "tenant_link_from_file"]
 
 
 def _document(path: Path) -> TenantDocument:
@@ -30,13 +30,20 @@ def tenant_link_from_file(path: Path) -> str:
     return channel_link(document.channel)
 
 
+def svg_markup(link: str) -> str:
+    """The QR's SVG markup, as a string. White background and the standard quiet
+    zone (also used by `generate`) keep the printed or scanned code readable; the
+    panel's demo invites (D5) render this straight into a page, with no file."""
+    image = qrcode.make(link, image_factory=qrcode.image.svg.SvgPathFillImage, border=4)
+    markup: bytes = image.to_string()
+    return markup.decode("ascii")
+
+
 def generate(link: str, output: Path) -> None:
-    """White background and the standard quiet zone keep the printed code readable."""
     if output.suffix.lower() != ".svg":
         raise ValueError("El archivo de salida debe tener extensión .svg.")
-    image = qrcode.make(link, image_factory=qrcode.image.svg.SvgPathFillImage, border=4)
     output.parent.mkdir(parents=True, exist_ok=True)
-    image.save(str(output))
+    output.write_text(svg_markup(link), encoding="ascii")
 
 
 def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:

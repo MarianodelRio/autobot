@@ -241,7 +241,7 @@ def sync_alerts(findings: list[Finding]) -> None:
     open_alerts = OpsAlert.objects.filter(resolved_at__isnull=True, auto_resolves=True)
     for alert in open_alerts:
         if (alert.kind, alert.tenant_id) not in seen:
-            resolve_alert(alert, by="auto")
+            resolve_alert(alert, by="auto", notify=alert.severity == "critical")
 
 
 def take_sample() -> None:

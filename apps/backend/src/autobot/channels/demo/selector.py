@@ -8,8 +8,9 @@ WhatsApp are two independent sessions for the same person.
 1. `store_event` (webhook or `telegram_poll`) saves the item in `demo_event`, which has
    no RLS (the tenant is not known yet), and queues `route_demo_event` with the
    person's `demo_user_lock(channel, external_id)`.
-2. `route_demo_event` decides: no access → a refusal (Telegram) or silence (WhatsApp,
-   Meta bills every message); `/start`, `/negocio` or no business picked → the list of
+2. `route_demo_event` decides: no access and no valid invite code to redeem
+   (`channels/demo/invites.py`, D5) → a refusal (Telegram) or silence (WhatsApp, Meta
+   bills every message); `/start`, `/negocio` or no business picked → the list of
    demo businesses; `fp_select:<slug>` → picks it and sends a synthetic `menu` to that
    tenant; anything else → forwarded to the picked tenant, as an inbound_event of the
    door's channel, processed by `process_event` as any other.
@@ -31,6 +32,7 @@ from django.db import connections, transaction
 from django.utils import timezone
 
 from autobot.channels.base import InboundItem, Rejected, Sent, StatusItem
+from autobot.channels.demo import invites
 from autobot.channels.demo.doors import Door, allowed, door
 from autobot.channels.ratelimit import WindowLimiter
 from autobot.ops.logging import bind, contextual
@@ -115,7 +117,7 @@ def route_demo_event(event_id: UUID) -> None:
     if payload.startswith((SELECT, PAGE)):
         door_.adapter.acknowledge(event.payload, door_.description, door_.secrets)
 
-    if not allowed(door_, item):
+    if not allowed(door_, item) and not invites.redeem(door_, item):
         log.info("demo message from a user without access")
         if door_.channel == Channel.DEMO_TG:
             if refusals.hit(item.external_id):

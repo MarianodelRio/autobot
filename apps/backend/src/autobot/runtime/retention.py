@@ -13,7 +13,9 @@ from django.utils import timezone
 from autobot.runtime.models import (
     Contact,
     Conversation,
+    DemoAccessGrant,
     DemoEvent,
+    DemoInvite,
     DemoSession,
     InboundEvent,
     MetricEvent,
@@ -26,6 +28,14 @@ from autobot.tenancy.tx import tenant_tx
 
 BATCH_SIZE = 1000
 PROCRASTINATE_RETENTION_DAYS = 30
+# A demo tenant's contacts, conversations and owner notices outlive the selector's
+# own demo_event/demo_session (7/30 days) by this much, never a year like a real
+# client's (D4): someone who tried the demo for an afternoon should not stay on file
+# as long as an actual customer. Not active yet (RETENTION_CLEANUP_ENABLED=false).
+DEMO_RETENTION_DAYS = 30
+# How long a revoked or expired invite stays visible in the panel before it is
+# purged, so a recent "código revocado"/"caducado" is still explainable there.
+INVITE_RETENTION_DAYS = 30
 
 
 def year_before(now: datetime) -> datetime:
@@ -52,7 +62,11 @@ def cleanup(*, now: datetime | None = None) -> None:
         return
     now = now or timezone.now()
     annual = year_before(now)
+    demo_cutoff = now - timedelta(days=DEMO_RETENTION_DAYS)
     for tenant in get_registry().tenants:
+        # A demo tenant's own cutoff is much shorter than a real client's annual one
+        # (D4): nobody who only tried the demo should stay on file for a year.
+        cutoff = demo_cutoff if tenant.is_demo else annual
         operations: list[tuple[QuerySet[Any], dict[str, Any] | None]] = [
             (InboundEvent.objects.filter(received_at__lte=now - timedelta(days=90)), None),
             (
@@ -61,19 +75,19 @@ def cleanup(*, now: datetime | None = None) -> None:
                 ),
                 {"payload": None, "effect_state": {}},
             ),
-            (OutboundMessage.objects.filter(created_at__lte=annual), None),
+            (OutboundMessage.objects.filter(created_at__lte=cutoff), None),
             (
                 OutboundMessage.objects.filter(
                     created_at__lte=now - timedelta(days=30), payload__isnull=False
                 ),
                 {"payload": None},
             ),
-            (Notification.objects.filter(created_at__lte=annual), None),
-            (MetricEvent.objects.filter(created_at__lte=annual), None),
+            (Notification.objects.filter(created_at__lte=cutoff), None),
+            (MetricEvent.objects.filter(created_at__lte=cutoff), None),
             (
                 Contact.objects.filter(
-                    Q(last_activity_at__lte=annual)
-                    | Q(last_activity_at__isnull=True, created_at__lte=annual)
+                    Q(last_activity_at__lte=cutoff)
+                    | Q(last_activity_at__isnull=True, created_at__lte=cutoff)
                 ),
                 None,
             ),
@@ -101,6 +115,19 @@ def cleanup(*, now: datetime | None = None) -> None:
         DemoEvent.objects.filter(received_at__lte=now - timedelta(days=7)),
         DemoSession.objects.filter(selected_at__lte=now - timedelta(days=30)),
         OwnerEvent.objects.filter(received_at__lte=now - timedelta(days=7)),
+        # A grant with a set expiry (copied from its invite) outlives it by nothing;
+        # a grant from a never-expiring invite stays, like a closed-list entry.
+        DemoAccessGrant.objects.filter(expires_at__lte=now),
+        # Revoked or expired invites: kept a while so the panel can still explain a
+        # recent "código revocado"/"caducado". An invite that only ran out of uses
+        # (max_uses reached) is harmless and stays, same as a spent closed-list entry.
+        DemoInvite.objects.filter(
+            Q(revoked_at__lte=now - timedelta(days=INVITE_RETENTION_DAYS))
+            | Q(
+                expires_at__lte=now - timedelta(days=INVITE_RETENTION_DAYS),
+                revoked_at__isnull=True,
+            )
+        ),
     ):
         while apply_batches(query):
             pass

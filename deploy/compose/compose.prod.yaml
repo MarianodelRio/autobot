@@ -11,6 +11,7 @@ x-app-env: &app-env
   DEMO_TELEGRAM_TOKEN: ${DEMO_TELEGRAM_TOKEN:-}
   DEMO_TELEGRAM_WEBHOOK_SECRET: ${DEMO_TELEGRAM_WEBHOOK_SECRET:-}
   DEMO_TELEGRAM_USERS: ${DEMO_TELEGRAM_USERS:-}
+  DEMO_TELEGRAM_BOT_USERNAME: ${DEMO_TELEGRAM_BOT_USERNAME:-}
   DEMO_WHATSAPP_PHONE_NUMBER_ID: ${DEMO_WHATSAPP_PHONE_NUMBER_ID:-}
   DEMO_WHATSAPP_WABA_ID: ${DEMO_WHATSAPP_WABA_ID:-}
   DEMO_WHATSAPP_DISPLAY_PHONE: ${DEMO_WHATSAPP_DISPLAY_PHONE:-}
@@ -19,6 +20,9 @@ x-app-env: &app-env
   DEMO_WHATSAPP_VERIFY_TOKEN: ${DEMO_WHATSAPP_VERIFY_TOKEN:-}
   DEMO_WHATSAPP_USERS: ${DEMO_WHATSAPP_USERS:-}
   DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD: ${DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD:-300}
+  # Missing from here until 2026-11-16: a new demo salon tenant kept the template's
+  # placeholder calendar in production and could not book (plan de lanzamiento, B1).
+  DEMO_SALON_CALENDAR_ID: ${DEMO_SALON_CALENDAR_ID:-}
   PUBLIC_URL: ${PUBLIC_URL:-}
   NOTIFY_BOT_TOKEN: ${NOTIFY_BOT_TOKEN:-}
   NOTIFY_BOT_WEBHOOK_SECRET: ${NOTIFY_BOT_WEBHOOK_SECRET:-}
@@ -92,7 +96,8 @@ services:
 
   # Two workers, so a Google Calendar outage cannot starve the sends (X14): Google is
   # only called from `inbound` (the packs) and `periodic` (the salon calendar sweep),
-  # both in worker-inbound; worker-outbound only sends.
+  # both in worker-inbound; worker-outbound only sends. Both also listen to `ops`
+  # (ops_check), so one worker staying down does not also silence its own alert.
   worker-inbound:
     <<: *app
     environment:
@@ -100,7 +105,7 @@ services:
       DB_OWNER_URL: ""
       DB_READONLY_URL: ""
       SERVICE_NAME: worker-inbound
-    command: python manage.py procrastinate worker --queues inbound,periodic --concurrency 2 --shutdown-graceful-timeout 50
+    command: python manage.py procrastinate worker --queues inbound,periodic,ops --concurrency 2 --shutdown-graceful-timeout 50
     stop_grace_period: 60s
     init: true
 
@@ -111,7 +116,7 @@ services:
       DB_OWNER_URL: ""
       DB_READONLY_URL: ""
       SERVICE_NAME: worker-outbound
-    command: python manage.py procrastinate worker --queues outbound --concurrency 2 --shutdown-graceful-timeout 50
+    command: python manage.py procrastinate worker --queues outbound,ops --concurrency 2 --shutdown-graceful-timeout 50
     stop_grace_period: 60s
     init: true
 

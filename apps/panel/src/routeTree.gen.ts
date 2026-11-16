@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppDemoRouteImport } from './routes/_app/demo'
 import { Route as AppIncidenciasRouteImport } from './routes/_app/incidencias'
 import { Route as AppLogsRouteImport } from './routes/_app/logs'
 import { Route as AppSistemaRouteImport } from './routes/_app/sistema'
@@ -33,6 +34,11 @@ const LoginRoute = LoginRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDemoRoute = AppDemoRouteImport.update({
+  id: '/demo',
+  path: '/demo',
   getParentRoute: () => AppRoute,
 } as any)
 const AppIncidenciasRoute = AppIncidenciasRouteImport.update({
@@ -79,6 +85,7 @@ const AppDatosTableRoute = AppDatosTableRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/demo': typeof AppDemoRoute
   '/incidencias': typeof AppIncidenciasRoute
   '/logs': typeof AppLogsRoute
   '/sistema': typeof AppSistemaRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/demo': typeof AppDemoRoute
   '/incidencias': typeof AppIncidenciasRoute
   '/logs': typeof AppLogsRoute
   '/sistema': typeof AppSistemaRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/demo': typeof AppDemoRoute
   '/_app/incidencias': typeof AppIncidenciasRoute
   '/_app/logs': typeof AppLogsRoute
   '/_app/sistema': typeof AppSistemaRoute
@@ -119,6 +128,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/demo'
     | '/incidencias'
     | '/logs'
     | '/sistema'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/demo'
     | '/incidencias'
     | '/logs'
     | '/sistema'
@@ -143,6 +154,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/login'
+    | '/_app/demo'
     | '/_app/incidencias'
     | '/_app/logs'
     | '/_app/sistema'
@@ -180,6 +192,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/demo': {
+      id: '/_app/demo'
+      path: '/demo'
+      fullPath: '/demo'
+      preLoaderRoute: typeof AppDemoRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/incidencias': {
@@ -242,6 +261,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppDemoRoute: typeof AppDemoRoute
   AppIncidenciasRoute: typeof AppIncidenciasRoute
   AppLogsRoute: typeof AppLogsRoute
   AppSistemaRoute: typeof AppSistemaRoute
@@ -254,6 +274,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppDemoRoute: AppDemoRoute,
   AppIncidenciasRoute: AppIncidenciasRoute,
   AppLogsRoute: AppLogsRoute,
   AppSistemaRoute: AppSistemaRoute,

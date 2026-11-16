@@ -56,8 +56,8 @@ reserva es idempotente y las dependencias no tienen vulnerabilidades relevantes.
 | D1 | Historial de git | **Resuelta:** no se toca |
 | D2 | Tests de `bus` sin datos reales (R1) | **Resuelta:** horarios falsos pequeños |
 | D3 | ¿Migrar citas de los bots anteriores? | **Resuelta:** se conserva la herramienta; puede hacer falta en el futuro |
-| D4 | ¿Activar el borrado automático de datos? **[Aprobación]** | Sí, antes del primer cliente |
-| D5 | ¿Cómo entran los usuarios a la demo? | Lista cerrada al principio |
+| D4 | ¿Activar el borrado automático de datos? **[Aprobación]** | **Resuelta (2026-11-16):** no todavía (`RETENTION_CLEANUP_ENABLED` sigue en `false`); el código ya distingue el plazo corto de un tenant de demo (30 días) del anual de un cliente real, listo para cuando se active |
+| D5 | ¿Cómo entran los usuarios a la demo? | **Resuelta (2026-11-16):** código de invitación, con QR generado desde el panel (pestaña «Demo»); sustituye a la lista cerrada como forma de alta |
 | D6 | ¿Demo también por WhatsApp? | Más adelante |
 | D7 | Proveedor de la VM | OVH VPS-1 tras confirmar permanencia |
 | D8 | Varios peluqueros: las cinco preguntas de E | Las propuestas de E |
@@ -671,12 +671,36 @@ El bootstrap, `ufw` y los timers solo se prueban en una VM desechable (A16).
 ### B. Lanzar con los demos
 
 - [ ] **B1 (S) [Tú]** Bot de demo de producción en Telegram y su token, en `var/server.env`.
-- [ ] **B2 (S) [Tú]** Bot de avisos y chat de ops.
-- [ ] **B3 (S)** Decidir D5. Hoy cada alta exige editar `.env` y reiniciar; si crece, gestionar
-  la lista desde el panel.
-- [ ] **B4 (S)** Aviso breve de privacidad en la demo.
+  El mismo calendario de Google ya configurado en local sirve también para producción
+  (decidido el 2026-11-16: no se crea uno nuevo). Corregido de paso: `DEMO_SALON_CALENDAR_ID`
+  no llegaba a los contenedores de producción (faltaba en `compose.prod.yaml`, a pesar de
+  que R4 lo daba por resuelto); un demo nuevo se habría quedado con el calendario de
+  relleno de la plantilla. Añadida también `DEMO_TELEGRAM_BOT_USERNAME` (informativa, para
+  el enlace de invitación de B3).
+- [ ] **B2 (S) [Tú]** Bot de avisos y chat de ops. Hecho el código relacionado: `ops_check`
+  pasa a su propia cola (`ops`), que escuchan `worker-inbound` y `worker-outbound` a la
+  vez (antes solo `worker-inbound`, dentro de `periodic`), para que la caída de uno de los
+  dos no silencie también su propia alerta (B6). Al resolverse sola una alerta crítica, el
+  bot de avisos manda un «✅ Resuelta: …» (antes solo se veía en el panel). ADR-005 y
+  `docs/arquitectura/vision-general.md` actualizados.
+- [x] **B3 (S)** Decidido D5: código de invitación en vez de lista cerrada en `.env`.
+  Hecho: `demo_invite`/`demo_access_grant` (sin RLS, como `demo_session`), canje con
+  `/start <código>` en Telegram o el código como mensaje completo en WhatsApp
+  (`autobot/channels/demo/invites.py`), pestaña «Demo» en el panel para crear, listar,
+  ver el QR/enlace y revocar invitaciones (`autobot/panel/routers/demo_invites.py`,
+  `apps/panel/src/features/demo-invites/`). El enlace y el QR solo salen con
+  `DEMO_TELEGRAM_BOT_USERNAME` configurada; sin ella, la invitación sigue funcionando
+  por código a secas. La lista cerrada (`DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS`) se
+  conserva como vía adicional, sin editar `.env` para lo que crezca desde el panel.
+- [ ] **B4 (S)** Aviso breve de privacidad en la demo. Pospuesto (2026-11-16): se revisará
+  más adelante, junto con G2.
 - [ ] **B5 (S) [Aprobación]** `RETENTION_CLEANUP_ENABLED=true` (D4): sin esto tampoco
-  caducan los datos de la demo.
+  caducan los datos de la demo. Decidido el 2026-11-16: no se activa todavía, a mano en
+  el `.env` del servidor cuando se apruebe (nunca por `server-init`, para que sea un paso
+  consciente y no algo que un traslado copie sin querer). El código ya está listo: un
+  tenant de demo caduca a los 30 días (contactos, conversaciones y avisos al dueño), no al
+  año de un cliente real; las invitaciones y concesiones caducadas o revocadas se purgan
+  también a los 30 días (`autobot/runtime/retention.py`).
 - [ ] **B6 (S)** Recorrido real de los dos demos y comprobar que parar el worker dispara la alerta.
 - [ ] **B7 (M, opcional)** Demo por WhatsApp (D6).
 

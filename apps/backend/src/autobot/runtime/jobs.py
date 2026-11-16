@@ -27,11 +27,15 @@ from core.pack import Pack
 
 log = logging.getLogger(__name__)
 
-# One worker serves the three queues; separate queues show what gets stuck.
+# Each queue shows what gets stuck. `ops` is the one exception to "one worker per
+# queue group" (X14): both worker-inbound and worker-outbound listen to it, so
+# ops_check keeps running, and keeps able to alert, even if one of the two is the
+# one that is down (B2/B6, docs/plan-lanzamiento.md).
 INBOUND = "inbound"  # process_event, apply_status, route_demo_event
 OUTBOUND = "outbound"  # send_message, send_notification
-PERIODIC = "periodic"  # run_periodic, ops_check, retention_cleanup
-QUEUES = (INBOUND, OUTBOUND, PERIODIC)
+PERIODIC = "periodic"  # run_periodic, retention_cleanup
+OPS = "ops"  # ops_check: listened to by both workers
+QUEUES = (INBOUND, OUTBOUND, PERIODIC, OPS)
 
 # Job names: a job is deferred by name, so modules that defer it do not import its task.
 PROCESS_EVENT = "process_event"  # (tenant_id, event_id), lock conv:<h>
@@ -261,7 +265,7 @@ def is_last_attempt(context: JobContext) -> bool:
 
 
 @app.periodic(cron="*/5 * * * *", periodic_id="ops_check")
-@app.task(queue=PERIODIC, name="ops_check", queueing_lock="ops_check", lock="ops_check")
+@app.task(queue=OPS, name="ops_check", queueing_lock="ops_check", lock="ops_check")
 @contextual
 def ops_check(timestamp: int) -> None:
     from autobot.ops.check import run

@@ -307,3 +307,26 @@ def test_ops_alert_resolve_clears_cooldown_for_immediate_resend(telegram: Any) -
     assert len(seen) == 2
     open_rows = OpsAlert.objects.using("owner").filter(kind="stuck", resolved_at__isnull=True)
     assert open_rows.count() == 1
+
+
+def test_resolve_alert_with_notify_sends_a_resolved_message(telegram: Any) -> None:
+    seen = telegram(ok(), ok())
+    notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
+    notifications.resolve_alert(alert(), by="auto", notify=True)
+    assert len(seen) == 2
+    body = json.loads(seen[-1].content)
+    assert body["text"] == "✅ Resuelta: 🔴 Algo falla"
+
+
+def test_resolve_alert_without_notify_sends_nothing_extra(telegram: Any) -> None:
+    seen = telegram(ok())
+    notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
+    notifications.resolve_alert(alert(), by="auto")  # notify defaults to False
+    assert len(seen) == 1
+
+
+def test_resolve_alert_notify_is_a_noop_without_a_configured_bot(settings: Any) -> None:
+    settings.OPS_TELEGRAM_CHAT_ID = ""
+    settings.NOTIFY_BOT_TOKEN = ""
+    notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
+    notifications.resolve_alert(alert(), by="auto", notify=True)  # must not raise

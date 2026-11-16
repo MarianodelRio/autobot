@@ -213,13 +213,22 @@ def test_rls_is_enabled_and_forced_on_tenant_tables_only() -> None:
                     "metric_event",
                     "demo_event",
                     "demo_session",
+                    "demo_invite",
+                    "demo_access_grant",
                     "owner_link",
                     "owner_event",
                 ]
             ],
         )
         flags = {name: (enabled, forced) for name, enabled, forced in cursor.fetchall()}
-    platform = {"demo_event", "demo_session", "owner_link", "owner_event"}
+    platform = {
+        "demo_event",
+        "demo_session",
+        "demo_invite",
+        "demo_access_grant",
+        "owner_link",
+        "owner_event",
+    }
     assert {t for t, f in flags.items() if f == (True, True)} == set(flags) - platform
     assert all(flags[t] == (False, False) for t in platform)
 

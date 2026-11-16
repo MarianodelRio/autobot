@@ -64,8 +64,25 @@ negocio real.
 - Las dos puertas se pueden probar en local: la de Telegram con un bot de desarrollo
   propio, y la de WhatsApp con un túnel ngrok y una app de WhatsApp de desarrollo.
 
+## Modificación (2026-11-16) — código de invitación (D5)
+
+Editar `DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS` a mano y reiniciar los tres
+contenedores no servía para dar acceso a alguien delante de quien se le está
+enseñando la plataforma, y exigía conocer su id de Telegram de antemano.
+
+- Se añaden `demo_invite` (código, nota, usos y caducidad; creado desde el panel) y
+  `demo_access_grant` (identidad que canjeó un código, por puerta): ninguna de las dos
+  lleva RLS, igual que `demo_session` — son configuración de la plataforma, no datos
+  de un negocio. `doors.allowed()` comprueba ahora la lista cerrada **o** una
+  concesión vigente; el canje ocurre al recibir `/start <código>` en Telegram o el
+  código como mensaje completo en WhatsApp (`channels/demo/invites.py`).
+- El acceso **sigue cerrado**: nadie entra sin lista ni código, y un código tiene
+  usos y caducidad limitados, nunca abre la demo a cualquiera sin invitación.
+- La lista cerrada no desaparece: sigue siendo la vía para un acceso permanente (p. ej.
+  el tuyo propio), y el código, la vía para una invitación puntual.
+
 ## Cuándo revisarla
 
-- Si se necesitara enseñar la plataforma a muchas personas a la vez sin lista cerrada,
-  esta decisión (acceso siempre cerrado) habría que revisarla junto con el coste de
+- Si se necesitara enseñar la plataforma a muchas personas a la vez sin ningún tipo de
+  control de acceso, esta decisión habría que revisarla junto con el coste de
   WhatsApp.

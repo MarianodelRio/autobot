@@ -9,7 +9,7 @@ from django.db import connections
 from autobot.ops.models import AuditEvent
 from autobot.panel.errors import ApiError
 from autobot.panel.services import catalog
-from autobot.runtime.models import OwnerLink
+from autobot.runtime.models import DemoInvite, OwnerLink
 from autobot.tenancy.models import Tenant
 from tests.helpers.integration import tg_tenant
 from tests.platform.panel.conftest import get
@@ -45,6 +45,7 @@ def test_catalog_and_seven_hidden_columns(authed_client: Any, tenants: Any) -> N
     tenants(doc)
     tenant = Tenant.objects.using("owner").get(pk=doc["id"])
     OwnerLink.objects.using("owner").create(tenant=tenant, invite_hash="hidden-hash")
+    DemoInvite.objects.using("owner").create(code="HIDDEN-CODE", created_by="tester")
     cache.set("test-catalog", "hidden-cache", 60)
     response = get(authed_client, "data/tables")
     assert response.status_code == 200, response.content

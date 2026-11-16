@@ -128,6 +128,21 @@ CATALOG: dict[str, TableDoc] = {
         "30 días",
         False,
     ),
+    "demo_invite": TableDoc(
+        DEMO,
+        "Código de invitación a una puerta de demo (D5).",
+        "Panel",
+        "30 días tras caducar, agotarse o revocarse",
+        False,
+        {"code": "Código de invitación, oculto."},
+    ),
+    "demo_access_grant": TableDoc(
+        DEMO,
+        "Identidad que canjeó un código de invitación a una puerta de demo.",
+        "Selector de demo",
+        "Según la caducidad de su invitación",
+        False,
+    ),
     "owner_event": TableDoc(
         DEMO,
         "Eventos recibidos por el bot del dueño.",
@@ -248,6 +263,7 @@ HIDDEN_COLUMNS = frozenset(
         ("otp_totp_totpdevice", "key"),
         ("owner_link", "invite_hash"),
         ("platform_cache", "value"),
+        ("demo_invite", "code"),
     }
 )
 UNKNOWN = TableDoc("Sin catalogar", "Tabla sin documentar.", "Desconocido", "Desconocida", False)

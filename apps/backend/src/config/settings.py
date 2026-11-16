@@ -176,6 +176,10 @@ DEMO_TELEGRAM_WEBHOOK_SECRET = os.environ.get("DEMO_TELEGRAM_WEBHOOK_SECRET", ""
 if DEMO_TELEGRAM_WEBHOOK_SECRET and len(DEMO_TELEGRAM_WEBHOOK_SECRET) < 32:
     raise ImproperlyConfigured("DEMO_TELEGRAM_WEBHOOK_SECRET must have 32 characters or more")
 DEMO_TELEGRAM_USERS = _ids("DEMO_TELEGRAM_USERS")  # closed list of this door
+# Informational, like DEMO_WHATSAPP_DISPLAY_PHONE: lets the panel build a
+# `t.me/<username>?start=<code>` invite link (D5) for this door's QR. Without it, an
+# invite still works, but the panel can only show its bare code.
+DEMO_TELEGRAM_BOT_USERNAME = os.environ.get("DEMO_TELEGRAM_BOT_USERNAME", "")
 
 
 def _strings(name: str) -> frozenset[str]:

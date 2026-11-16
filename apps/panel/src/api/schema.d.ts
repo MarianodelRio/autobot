@@ -242,6 +242,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/demo/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Invites */
+        get: operations["autobot_panel_routers_demo_invites_list_invites"];
+        put?: never;
+        /** Create */
+        post: operations["autobot_panel_routers_demo_invites_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/demo/invites/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke */
+        post: operations["autobot_panel_routers_demo_invites_revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/incidents": {
         parameters: {
             query?: never;
@@ -1027,6 +1062,54 @@ export interface components {
         DeleteTenantOut: {
             /** Telegram Webhook Removed */
             telegram_webhook_removed: boolean | null;
+        };
+        /** DemoInviteCreate */
+        DemoInviteCreate: {
+            /** Expires In Days */
+            expires_in_days: number | null;
+            /**
+             * Max Uses
+             * @default 1
+             */
+            max_uses: number;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** DemoInviteOut */
+        DemoInviteOut: {
+            /** Code */
+            code: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Grants */
+            grants: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Max Uses */
+            max_uses: number;
+            /** Note */
+            note: string;
+            /** Qr Svg */
+            qr_svg: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Telegram Link */
+            telegram_link: string | null;
+            /** Uses */
+            uses: number;
         };
         /** DocumentIn */
         DocumentIn: {
@@ -2103,6 +2186,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TableDetailOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_demo_invites_list_invites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoInviteOut"][];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_demo_invites_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemoInviteCreate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoInviteOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_demo_invites_revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoInviteOut"];
                 };
             };
         };

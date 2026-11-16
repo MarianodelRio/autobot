@@ -96,4 +96,9 @@ def allowed_identity(door: Door, external_id: str, phone: str | None) -> bool:
 
 
 def allowed(door: Door, item: InboundItem) -> bool:
-    return allowed_identity(door, item.external_id, item.phone)
+    if allowed_identity(door, item.external_id, item.phone):
+        return True
+    # Local import: invites.py imports Door from this module.
+    from autobot.channels.demo import invites
+
+    return invites.has_grant(door, item)

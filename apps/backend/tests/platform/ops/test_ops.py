@@ -368,6 +368,26 @@ def test_sync_alerts_auto_resolves_a_disappeared_finding(settings: Any) -> None:
     assert row.resolved_at is not None and row.resolved_by == "auto"
 
 
+def test_sync_alerts_notifies_only_a_disappeared_critical_finding(
+    settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from autobot.runtime.notifications import resolve_alert as original_resolve_alert
+
+    settings.OPS_TELEGRAM_CHAT_ID = ""
+    settings.NOTIFY_BOT_TOKEN = ""
+    notified: list[bool] = []
+
+    def spy(alert: Any, *, by: str, notify: bool = False) -> None:
+        notified.append(notify)
+        original_resolve_alert(alert, by=by, notify=notify)
+
+    monkeypatch.setattr(check, "resolve_alert", spy)
+    check.sync_alerts([check.Finding("stuck", None, "🔴 Algo falla")])
+    check.sync_alerts([check.Finding("billing", None, "🟡 Algo menor")])
+    check.sync_alerts([])
+    assert notified == [True, False]  # the critical one notifies, the minor one does not
+
+
 def test_sync_alerts_never_auto_resolves_a_manual_kind(settings: Any) -> None:
     settings.OPS_TELEGRAM_CHAT_ID = ""
     settings.NOTIFY_BOT_TOKEN = ""

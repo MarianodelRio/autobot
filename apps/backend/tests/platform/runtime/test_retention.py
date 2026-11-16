@@ -42,6 +42,11 @@ def loaded(tenants: Any) -> Tenant:
     return Tenant.objects.using("owner").get(slug="a")
 
 
+def loaded_demo(tenants: Any) -> Tenant:
+    tenants(demo_tenant("a"))
+    return Tenant.objects.using("owner").get(slug="a")
+
+
 @pytest.mark.parametrize("days", [29, 30, 89, 90])
 def test_inbound_boundaries(tenants: Any, settings: Settings, days: int) -> None:
     a = loaded(tenants)
@@ -105,6 +110,76 @@ def test_inactive_contact_cascades(
     assert Contact.objects.using("owner").exists() == survives
     assert OutboundMessage.objects.using("owner").exists() == survives
     assert Conversation.objects.using("owner").exists() == survives
+
+
+@pytest.mark.parametrize(
+    "last_activity", [None, timedelta(days=366), timedelta(days=31), timedelta(days=29)]
+)
+def test_a_demo_tenants_contact_uses_the_short_cutoff_not_the_annual_one(
+    tenants: Any, settings: Settings, last_activity: timedelta | None
+) -> None:
+    """D4/B5: a demo tenant's own contacts are not kept for a year like a real
+    client's, only DEMO_RETENTION_DAYS (not active yet: RETENTION_CLEANUP_ENABLED
+    stays false until approved, but the shorter demo cutoff is already implemented)."""
+    a = loaded_demo(tenants)
+    settings.RETENTION_CLEANUP_ENABLED = True
+    c = contact(a, channel="demo_tg")
+    Contact.objects.using("owner").filter(pk=c.pk).update(
+        created_at=NOW - timedelta(days=366),
+        last_activity_at=(NOW - last_activity) if last_activity else None,
+    )
+    retention.cleanup(now=NOW)
+    survives = last_activity is not None and last_activity < timedelta(
+        days=retention.DEMO_RETENTION_DAYS
+    )
+    assert Contact.objects.using("owner").exists() == survives
+
+
+def test_a_demo_tenant_contact_a_year_old_is_gone_while_cleanup_stays_disabled(
+    tenants: Any, settings: Settings
+) -> None:
+    """Confirms D4/B5's point: without the flag, not even the short demo cutoff
+    applies — nothing is purged at all."""
+    a = loaded_demo(tenants)
+    settings.RETENTION_CLEANUP_ENABLED = False
+    c = contact(a, channel="demo_tg")
+    Contact.objects.using("owner").filter(pk=c.pk).update(
+        created_at=NOW - timedelta(days=366), last_activity_at=NOW - timedelta(days=366)
+    )
+    retention.cleanup(now=NOW)
+    assert Contact.objects.using("owner").filter(pk=c.pk).exists()
+
+
+def test_expired_grants_and_old_revoked_or_expired_invites_are_purged(
+    tenants: Any, settings: Settings
+) -> None:
+    from autobot.runtime.models import DemoAccessGrant, DemoInvite
+
+    tenants()  # no tenant needed, but seeds the registry's ConfigRevision row
+    settings.RETENTION_CLEANUP_ENABLED = True
+    DemoInvite.objects.using("owner").create(
+        code="OLD1", created_by="t", revoked_at=NOW - timedelta(days=31)
+    )
+    recent_revoked = DemoInvite.objects.using("owner").create(
+        code="OLD2", created_by="t", revoked_at=NOW - timedelta(days=1)
+    )
+    DemoInvite.objects.using("owner").create(
+        code="OLD3", created_by="t", expires_at=NOW - timedelta(days=31)
+    )
+    active = DemoInvite.objects.using("owner").create(code="OLD4", created_by="t")
+    DemoAccessGrant.objects.using("owner").create(
+        channel="demo_tg", external_id="1", granted_at=NOW, expires_at=NOW - timedelta(minutes=1)
+    )
+    permanent_grant = DemoAccessGrant.objects.using("owner").create(
+        channel="demo_tg", external_id="2", granted_at=NOW, expires_at=None
+    )
+    retention.cleanup(now=NOW)
+    remaining_codes = set(DemoInvite.objects.using("owner").values_list("code", flat=True))
+    assert remaining_codes == {recent_revoked.code, active.code}
+    remaining_grants = set(
+        DemoAccessGrant.objects.using("owner").values_list("external_id", flat=True)
+    )
+    assert remaining_grants == {permanent_grant.external_id}
 
 
 def test_leap_year_uses_calendar_months() -> None:

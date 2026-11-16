@@ -12,6 +12,7 @@ SENSITIVE_TABLES: tuple[str, ...] = (
     "tenant_secret",
     "owner_link",
     "platform_cache",
+    "demo_invite",
 )
 # Config tables (ADR-009): fp_app keeps SELECT, but only fp_owner (the panel, the
 # commands) writes.

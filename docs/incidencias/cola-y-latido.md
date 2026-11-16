@@ -27,6 +27,12 @@ tenants, los bots y, en producción, la instantánea de contenedores
 (con reintentos, severidad y enfriamiento de 30 min) y resuelve sola
 (`resolved_by="auto"`) cualquier alerta abierta que ya no aparezca entre los hallazgos,
 salvo `deploy_aborted` y `deploy_rollback`, que solo se resuelven a mano desde el panel.
-El historial resuelto se purga junto con `audit_event` a los 12 meses, con
-`purge_platform_history` (función `SECURITY DEFINER`, ya que `fp_app` no tiene `DELETE`
-sobre ninguna de las dos tablas).
+Al resolverse sola una alerta crítica (🔴), el bot de avisos manda además un
+«✅ Resuelta: …» al chat de ops, para cerrar el aviso original sin tener que mirar el
+panel; las que no son críticas, o las que resuelve una persona desde el panel, no
+mandan ese segundo mensaje. `ops_check` corre en su propia cola (`ops`), que escuchan
+los dos workers (`worker-inbound` y `worker-outbound`): si uno de los dos se cae, el
+otro sigue vigilando y avisa también de esa caída. El historial resuelto se purga
+junto con `audit_event` a los 12 meses, con `purge_platform_history` (función
+`SECURITY DEFINER`, ya que `fp_app` no tiene `DELETE` sobre ninguna de las dos
+tablas).

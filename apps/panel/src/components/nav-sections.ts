@@ -1,6 +1,7 @@
 import {
   Database,
   LayoutDashboard,
+  QrCode,
   ScrollText,
   Server,
   TriangleAlert,
@@ -13,11 +14,12 @@ export interface NavSection {
   icon: typeof LayoutDashboard;
 }
 
-// Order: Resumen · Clientes · Incidencias (n) · Logs · Datos · Sistema · usuario · Salir.
+// Order: Resumen · Clientes · Incidencias (n) · Demo · Logs · Datos · Sistema · usuario · Salir.
 export const NAV_SECTIONS: NavSection[] = [
   { title: "Resumen", to: "/", icon: LayoutDashboard },
   { title: "Clientes", to: "/clientes", icon: Users },
   { title: "Incidencias", to: "/incidencias", icon: TriangleAlert },
+  { title: "Demo", to: "/demo", icon: QrCode },
   { title: "Logs", to: "/logs", icon: ScrollText },
   { title: "Datos", to: "/datos", icon: Database },
   { title: "Sistema", to: "/sistema", icon: Server },

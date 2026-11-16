@@ -180,9 +180,17 @@ def send_ops_alert(
     return sent
 
 
-def resolve_alert(alert: OpsAlert, *, by: str) -> None:
-    """Resolve and clear the cooldown, so a problem that returns is reported at once."""
+def resolve_alert(alert: OpsAlert, *, by: str, notify: bool = False) -> None:
+    """Resolve and clear the cooldown, so a problem that returns is reported at once.
+
+    `notify`: also tell the ops chat it is over (B2/B6: closes the loop on "parar el
+    worker dispara la alerta y arrancarlo la recupera"). Used only for alerts that
+    resolved themselves, and only the critical ones, to avoid a message for every
+    minor flap; a person who resolves one from the panel already knows it is done.
+    """
     OpsAlert.objects.using(alert._state.db or "default").filter(id=alert.id).update(
         resolved_at=timezone.now(), resolved_by=by
     )
     cache.delete(_cooldown_key(alert.kind, alert.tenant_id))
+    if notify and settings.OPS_TELEGRAM_CHAT_ID and bot_secrets() is not None:
+        deliver(Text(f"✅ Resuelta: {alert.text}"), str(settings.OPS_TELEGRAM_CHAT_ID), uuid4())

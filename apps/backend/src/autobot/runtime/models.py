@@ -298,6 +298,61 @@ class DemoSession(models.Model):
         return f"demo_session {self.id}"  # never the external id
 
 
+class DemoInvite(models.Model):
+    """A capped, expiring invitation to a demo door (D5, ADR-006 amendment): redeeming
+    its code grants access without editing DEMO_TELEGRAM_USERS/DEMO_WHATSAPP_USERS by
+    hand. Created from the panel (`autobot.panel.services.demo_invites`), always with
+    `.using("owner")`. No RLS: belongs to the platform, like DemoSession. The code is a
+    bearer credential (SENSITIVE_TABLES, autobot/db/grants.py)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
+    code = models.CharField(max_length=24, unique=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+    max_uses = models.PositiveIntegerField(default=1)
+    uses = models.PositiveIntegerField(default=0, db_default=0)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.CharField(max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "demo_invite"
+
+    def __str__(self) -> str:
+        return f"demo_invite {self.id}"  # never the code
+
+
+class DemoAccessGrant(models.Model):
+    """An identity that redeemed a `DemoInvite`, per door: `doors.allowed()` checks
+    this in addition to the closed list in settings. No RLS: platform-owned, like
+    DemoSession. Not sensitive on its own (an external id, like demo_session)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
+    channel = models.CharField(max_length=8, choices=Channel)
+    external_id = models.CharField(max_length=160)  # id de Telegram, BSUID o teléfono
+    invite = models.ForeignKey(
+        DemoInvite,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name="+",
+    )
+    granted_at = models.DateTimeField()
+    expires_at = models.DateTimeField(null=True, blank=True)  # copied from the invite
+
+    class Meta:
+        db_table = "demo_access_grant"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["channel", "external_id"], name="demo_access_grant_channel_external_uniq"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"demo_access_grant {self.id}"  # never the external id
+
+
 class OwnerLink(models.Model):
     """The owner's Telegram chat for a tenant, and its pending invite. No RLS: the
     notify bot must find the tenant *from* the chat (like DemoSession, ADR-006/007)."""

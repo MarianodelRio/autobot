@@ -28,7 +28,8 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `WHATSAPP_GRAPH_VERSION` | Versión de la Graph API de Meta usada por los adaptadores | no | `v23.0` | fija en `.env.example` |
 | `DEMO_TELEGRAM_TOKEN` | Token del bot de Telegram de la puerta de demo | no (apaga la puerta) | vacío | la persona (@BotFather) |
 | `DEMO_TELEGRAM_WEBHOOK_SECRET` | Secreto del webhook de la puerta de demo (Telegram) | no (local no lo necesita) | vacío | `ensure-env.sh` en el servidor |
-| `DEMO_TELEGRAM_USERS` | Ids de Telegram con acceso a la puerta de demo | no | vacío | la persona |
+| `DEMO_TELEGRAM_USERS` | Ids de Telegram con acceso a la puerta de demo (lista cerrada) | no | vacío | la persona |
+| `DEMO_TELEGRAM_BOT_USERNAME` | `@usuario` del bot de demo, sin el `@` (informativo: solo para el enlace de invitación del panel, D5) | no | vacío | la persona (@BotFather) |
 | `DEMO_WHATSAPP_PHONE_NUMBER_ID` | Id del número de WhatsApp de demo | no (las 5 juntas encienden la puerta) | vacío | la persona (Meta) |
 | `DEMO_WHATSAPP_WABA_ID` | Id de la cuenta de WhatsApp Business de demo | no | vacío | la persona (Meta) |
 | `DEMO_WHATSAPP_DISPLAY_PHONE` | Teléfono visible del número de demo (informativo) | no | vacío | la persona |

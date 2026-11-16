@@ -6,7 +6,8 @@ plantillas en `apps/backend/src/packs/<pack>/template/` (`demo-peluqueria`, `dem
 Los tests validan estas plantillas directamente; `manage.py seed_demos` las siembra
 en PostgreSQL solo la primera vez y conserva los cambios posteriores de cada demo. La primera respuesta de
 cualquier puerta pide elegir negocio; desde ahí la conversación es la del pack real de
-ese negocio. Solo una lista cerrada de personas puede usar cada puerta (ver ADR-006).
+ese negocio. Solo una lista cerrada de personas, o quien canjee un código de invitación
+vigente (D5), puede usar cada puerta (ver ADR-006).
 
 ## Encender y apagar
 
@@ -82,8 +83,16 @@ vez del dominio propio:
 
 ## Añadir o quitar personas
 
-Edita `DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS` en el `.env` del servidor y reinicia
-`web`, `worker-inbound` y `worker-outbound`.
+**Por invitación (D5, preferido):** desde el panel, pestaña «Demo», «Crear invitación»
+(nota, usos y caducidad). La persona entra con `/start <código>` en Telegram (el panel
+da el enlace `t.me/<bot>?start=<código>` y su QR si `DEMO_TELEGRAM_BOT_USERNAME` está
+configurada; sin ella, solo el código) o enviando el código tal cual por WhatsApp. No
+hace falta tocar el `.env` ni reiniciar nada. Revocar un código impide canjearlo de
+nuevo, pero no retira el acceso ya concedido con él; para eso, editar la lista cerrada
+(abajo) sigue siendo la única vía.
+
+**Por lista cerrada:** edita `DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS` en el `.env`
+del servidor y reinicia `web`, `worker-inbound` y `worker-outbound`.
 
 ## Renovación anual del calendario de `demo-autobuses`
 
