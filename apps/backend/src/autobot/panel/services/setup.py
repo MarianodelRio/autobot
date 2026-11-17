@@ -20,6 +20,12 @@ class SetupValue(Schema):
     copiable: bool = True
 
 
+class TesterCandidate(Schema):
+    id: str
+    display: str
+    received_at: str
+
+
 class SetupStepOut(Schema):
     key: str
     label: str
@@ -29,6 +35,7 @@ class SetupStepOut(Schema):
     detail: str
     values: list[SetupValue] = []
     checkable: bool = False
+    tester_candidates: list[TesterCandidate] = []
 
 
 def _tenant(slug: str) -> LoadedTenant:
@@ -48,15 +55,48 @@ def _channel_values(channel: Any) -> list[SetupValue]:
     if channel is None:
         return []
     if isinstance(channel, WhatsAppChannel):
+        webhook_url = f"{settings.PUBLIC_URL}/webhooks/whatsapp/{channel.public_id}"
         return [
             SetupValue(label="App de Meta", value=channel.app_id or "—"),
             SetupValue(label="WABA", value=channel.waba_id or "—"),
             SetupValue(label="Teléfono (Meta)", value=channel.phone_number_id or "—"),
             SetupValue(label="Teléfono público", value=channel.display_phone or "—"),
+            SetupValue(label="URL del webhook (para el panel de Meta)", value=webhook_url),
         ]
     if isinstance(channel, TelegramChannel):
         return [SetupValue(label="Usuario del bot", value=channel.bot_username or "—")]
     return []
+
+
+_TEMPLATE_STATUS_ES = {
+    "APPROVED": "Aprobada",
+    "PENDING": "Pendiente de Meta",
+    "REJECTED": "Rechazada",
+    "PAUSED": "Pausada",
+    "DISABLED": "Deshabilitada",
+}
+
+
+def _template_values(
+    tenant: LoadedTenant, statuses: dict[tuple[str, str], str] | None = None
+) -> list[SetupValue]:
+    if tenant.pack is None:
+        return []
+    values = []
+    for template in tenant.pack.templates:
+        key = (template.name, template.language)
+        if statuses is None:
+            status = "sin comprobar"
+        else:
+            raw = statuses.get(key)
+            status = _TEMPLATE_STATUS_ES.get(raw, raw) if raw else "no encontrada en Meta"
+        values.append(
+            SetupValue(
+                label=f"{template.name} ({template.language}) — {status}",
+                value=template.text,
+            )
+        )
+    return values
 
 
 def tenant_setup(slug: str) -> list[SetupStepOut]:
@@ -117,6 +157,8 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
                 state=_state(items["templates"].ok),
                 blocking=items["templates"].blocking,
                 detail=items["templates"].detail,
+                values=_template_values(tenant),
+                checkable=True,
             )
         )
     steps.append(
@@ -137,6 +179,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
             state=_state(items["tester"].ok),
             blocking=items["tester"].blocking,
             detail=items["tester"].detail,
+            tester_candidates=_tester_candidates(tenant),
         )
     )
     steps.append(
@@ -178,6 +221,91 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
         )
     steps.extend(_dataset_steps(slug, tenant))
     return steps
+
+
+def _tester_candidates(tenant: LoadedTenant, *, limit: int = 5) -> list[TesterCandidate]:
+    """Recent senders ignored for not being in `testers.main` (C12): re-parses each
+    event's own stored payload with the tenant's real channel, never a contact record
+    (inbound events keep no link to one — ADR-009)."""
+    if tenant.document.channel is None:
+        return []
+    from autobot.channels.adapters import endpoint
+    from autobot.channels.base import InboundItem, parse_stored
+    from autobot.runtime.models import Channel, InboundEvent
+
+    ep = endpoint(tenant, Channel.MAIN)
+    testers = set(tenant.document.testers.main)
+    events = (
+        InboundEvent.objects.using("owner")
+        .filter(
+            tenant_id=tenant.id,
+            channel=Channel.MAIN,
+            kind=InboundEvent.Kind.MESSAGE,
+            status=InboundEvent.Status.IGNORED,
+        )
+        .order_by("-received_at")[:50]
+    )
+    candidates: list[TesterCandidate] = []
+    seen: set[str] = set()
+    for event in events:
+        if not isinstance(event.payload, dict):
+            continue
+        try:
+            item = parse_stored(ep.adapter, event.payload, ep.channel)
+        except ValueError, KeyError, TypeError:
+            continue
+        if not isinstance(item, InboundItem):
+            continue
+        phone = item.phone.removeprefix("+") if item.phone else None
+        if item.external_id in testers or (phone is not None and phone in testers):
+            continue
+        tester_id = phone or item.external_id
+        if tester_id in seen:
+            continue
+        seen.add(tester_id)
+        candidates.append(
+            TesterCandidate(
+                id=tester_id,
+                display=phone or f"id {item.external_id}",
+                received_at=event.received_at.isoformat(),
+            )
+        )
+        if len(candidates) >= limit:
+            break
+    return candidates
+
+
+def tenant_setup_add_tester(slug: str, tester_id: str, *, actor: str) -> SetupStepOut:
+    from autobot.tenancy import store
+
+    tenant = _tenant(slug)
+    if tenant.version is None:
+        raise ApiError("bad_request", "El negocio está degradado.", 400)
+    doc = tenant.document.model_dump(mode="json")
+    main = doc.get("testers", {}).get("main", [])
+    if tester_id in main:
+        raise ApiError("bad_request", "Ese tester ya está añadido.", 400)
+    doc.setdefault("testers", {})["main"] = [*main, tester_id]
+    store.publish(
+        slug,
+        document=doc,
+        base_version=tenant.version,
+        actor=actor,
+        comment="Tester añadido desde la pestaña Alta",
+    )
+    record(
+        actor=actor,
+        action="tenant.setup_add_tester",
+        tenant_id=tenant.id,
+        target_type="tenant",
+        target_id=str(tenant.id),
+        summary="Tester añadido desde la pestaña Alta",
+    )
+    get_registry(force=True)
+    for step in tenant_setup(slug):
+        if step.key == "tester":
+            return step
+    raise ApiError("not_found", "No se encuentra el paso de testers", 404)  # pragma: no cover
 
 
 def _dataset_names(tenant: LoadedTenant) -> tuple[str, ...]:
@@ -247,6 +375,8 @@ def tenant_setup_check(slug: str, step: str, *, actor: str) -> SetupStepOut:
         result = current.model_copy(update={"state": state, "detail": detail})
     elif step == "calendar":
         result = _check_calendar(tenant, current)
+    elif step == "templates":
+        result = _check_templates(tenant, current)
     else:  # pragma: no cover - current.checkable already restricts this
         raise ApiError("bad_request", "Ese paso no se puede comprobar", 400)
 
@@ -287,4 +417,35 @@ def _check_calendar(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut
         )
     return current.model_copy(
         update={"state": "ok", "detail": "Escritura confirmada (evento de prueba borrado)."}
+    )
+
+
+def _check_templates(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:
+    from autobot.ops.health import Issue, whatsapp_template_statuses
+    from autobot.tenancy.schema import WhatsAppSecrets
+
+    if tenant.pack is None or not isinstance(tenant.secrets, WhatsAppSecrets):
+        return current.model_copy(
+            update={"state": "error", "detail": "Faltan secretos legibles de WhatsApp."}
+        )
+    channel = tenant.document.channel
+    if not isinstance(channel, WhatsAppChannel):
+        return current.model_copy(update={"state": "error", "detail": "Este canal no es WhatsApp."})
+    templates = {(t.name, t.language) for t in tenant.pack.templates}
+    result = whatsapp_template_statuses(channel, tenant.secrets, templates)
+    if isinstance(result, Issue):
+        return current.model_copy(update={"state": "error", "detail": result.message})
+    approved = {key for key, status in result.items() if status == "APPROVED"}
+    ok = templates <= approved
+    detail = (
+        "Todas las plantillas del pack están aprobadas."
+        if ok
+        else "Faltan plantillas por aprobar: revisa el estado de cada una."
+    )
+    return current.model_copy(
+        update={
+            "state": "ok" if ok else "error",
+            "detail": detail,
+            "values": _template_values(tenant, result),
+        }
     )

@@ -46,6 +46,10 @@ class RollbackIn(Schema):
     comment: str
 
 
+class AddTesterIn(Schema):
+    id: str
+
+
 class StatusIn(Schema):
     action: str
     confirm_slug: str | None = None
@@ -183,6 +187,13 @@ def tenant_setup(request: HttpRequest, slug: str) -> list[setup_service.SetupSte
 @router.post("/tenants/{slug}/setup/check/{step}", response=setup_service.SetupStepOut)
 def tenant_setup_check(request: HttpRequest, slug: str, step: str) -> setup_service.SetupStepOut:
     return setup_service.tenant_setup_check(slug, step, actor=request.user.username)
+
+
+@router.post("/tenants/{slug}/setup/testers", response=setup_service.SetupStepOut)
+def tenant_setup_add_tester(
+    request: HttpRequest, slug: str, payload: AddTesterIn
+) -> setup_service.SetupStepOut:
+    return setup_service.tenant_setup_add_tester(slug, payload.id, actor=request.user.username)
 
 
 @router.get("/tenants/{slug}/summary", response=service.SummaryOut)

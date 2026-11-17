@@ -71,11 +71,13 @@ def telegram_health(token: str, *, expected_url: str | None = None) -> list[Issu
     return issues
 
 
-def whatsapp_health(
+def whatsapp_template_statuses(
     channel: WhatsAppChannel, secrets: WhatsAppSecrets, templates: Collection[tuple[str, str]]
-) -> list[Issue]:
-    """Checked both for a tenant's own number (its pack's templates) and for the demo
-    door's number (the templates of every active demo tenant's pack)."""
+) -> dict[tuple[str, str], str] | Issue:
+    """The live status Meta reports for each of `templates` (`(name, language)`
+    pairs); one missing from the result means Meta has never seen it. Used both by
+    `whatsapp_health` (just whether all are `APPROVED`) and the "Alta" tab's own
+    per-template detail (C12)."""
     headers = {"Authorization": f"Bearer {secrets.access_token.get_secret_value()}"}
     base = f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}"
     try:
@@ -85,12 +87,12 @@ def whatsapp_health(
                 f"{base}/{channel.phone_number_id}", headers=headers, params={"fields": "id"}
             )
             if not response.is_success:
-                return [_graph_error(response)]
-            required = set(templates)
-            approved: set[tuple[str, str]] = set()
+                return _graph_error(response)
+            wanted = set(templates)
+            found: dict[tuple[str, str], str] = {}
             after = None
             seen: set[str] = set()
-            while required:
+            while wanted - found.keys():
                 params = {"fields": "name,language,status", "limit": "100"}
                 if after is not None:
                     params["after"] = after
@@ -98,11 +100,12 @@ def whatsapp_health(
                     f"{base}/{channel.waba_id}/message_templates", headers=headers, params=params
                 )
                 if not response.is_success:
-                    return [_graph_error(response)]
+                    return _graph_error(response)
                 data = response.json()
                 for row in data["data"]:
-                    if row.get("status") == "APPROVED":
-                        approved.add((row["name"], row["language"]))
+                    key = (row["name"], row["language"])
+                    if key in wanted:
+                        found[key] = row.get("status", "UNKNOWN")
                 paging = data.get("paging", {})
                 if not paging.get("next"):
                     break
@@ -110,14 +113,26 @@ def whatsapp_health(
                 # a response must not redirect the authenticated client to another host.
                 after = paging.get("cursors", {}).get("after")
                 if not isinstance(after, str) or after in seen:
-                    return [Issue("whatsapp_response", "Paginación de Meta inválida.", "🔴")]
+                    return Issue("whatsapp_response", "Paginación de Meta inválida.", "🔴")
                 seen.add(after)
                 if len(seen) > 100:
-                    return [Issue("whatsapp_response", "Demasiadas páginas de plantillas.", "🔴")]
-            if required - approved:
-                return [Issue("templates", "Faltan plantillas aprobadas del pack.")]
+                    return Issue("whatsapp_response", "Demasiadas páginas de plantillas.", "🔴")
     except httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError:
-        return [Issue("whatsapp_unavailable", "No se puede consultar WhatsApp.", "🔴")]
+        return Issue("whatsapp_unavailable", "No se puede consultar WhatsApp.", "🔴")
+    return found
+
+
+def whatsapp_health(
+    channel: WhatsAppChannel, secrets: WhatsAppSecrets, templates: Collection[tuple[str, str]]
+) -> list[Issue]:
+    """Checked both for a tenant's own number (its pack's templates) and for the demo
+    door's number (the templates of every active demo tenant's pack)."""
+    result = whatsapp_template_statuses(channel, secrets, templates)
+    if isinstance(result, Issue):
+        return [result]
+    approved = {key for key, status in result.items() if status == "APPROVED"}
+    if set(templates) - approved:
+        return [Issue("templates", "Faltan plantillas aprobadas del pack.")]
     return []
 
 
