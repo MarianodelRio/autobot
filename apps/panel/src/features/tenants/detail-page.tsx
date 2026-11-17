@@ -450,7 +450,11 @@ export function TenantDetailPage({
         }
         actions={
           <div className="flex items-center gap-2">
-            <StatusAction slug={slug} status={d.status} />
+            {/* C12: "Activar" moved into the Alta tab, the natural last step of
+                onboarding; pause/resume stay here for an already-active tenant. */}
+            {d.status !== "onboarding" && (
+              <StatusAction slug={slug} status={d.status} />
+            )}
             <DeleteTenantAction detail={d} />
           </div>
         }
@@ -488,7 +492,7 @@ export function TenantDetailPage({
           <Summary detail={d} />
         </TabsContent>
         <TabsContent value="alta">
-          <SetupTab slug={slug} />
+          <SetupTab slug={slug} detail={d} />
         </TabsContent>
         <TabsContent value="configuracion">
           <ConfigEditor

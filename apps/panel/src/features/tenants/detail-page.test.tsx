@@ -94,6 +94,7 @@ function setup(status = "active") {
       value = { forgotten: true };
     else if (url.pathname.endsWith("/tenants/demo/export"))
       value = { tenant: "demo", data: {} };
+    else if (url.pathname.endsWith("/setup")) value = [];
     else value = { ...tenant, status };
     return new Response(JSON.stringify(value), {
       status: 200,
@@ -115,10 +116,18 @@ afterEach(() => vi.unstubAllGlobals());
 test.each([
   ["active", "Pausar"],
   ["paused", "Reactivar"],
-  ["onboarding", "Activar"],
 ])("shows the action for %s", async (status, action) => {
   setup(status);
   expect(await screen.findByRole("button", { name: action })).toBeEnabled();
+});
+test("C12: an onboarding tenant has no header action, only Activar in Alta", async () => {
+  setup("onboarding");
+  await screen.findByRole("heading", { name: "Negocio" });
+  expect(
+    screen.queryByRole("button", { name: "Activar" }),
+  ).not.toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Alta" }));
+  expect(await screen.findByRole("button", { name: "Activar" })).toBeEnabled();
 });
 test("loads tabs and pairs conversation messages", async () => {
   const fetcher = setup();

@@ -740,7 +740,7 @@ C1–C11 hechos el 2026-11-17, con sus tests (backend y panel en verde).
 
 **Lo que tiene que estar a mano:**
 
-- [ ] **C12 (L)** **Pestaña «Alta»**, la primera en `onboarding` y destino del asistente.
+- [x] **C12 (L)** **Pestaña «Alta»**, la primera en `onboarding` y destino del asistente.
   Cada paso muestra estado, por qué importa, qué hacer, valores con botón de copiar y
   «Comprobar». Requiere ADR y `GET /tenants/{slug}/setup`, más
   `POST .../setup/check/{step}`, con los pasos de canal en sus adaptadores y un hook de pack.
@@ -760,9 +760,11 @@ C1–C11 hechos el 2026-11-17, con sus tests (backend y panel en verde).
   (lista de quién escribió sin estarlo, con «Añadir»), y del detalle de WhatsApp, la
   URL del webhook en el paso Canal y el texto de cada plantilla con su estado real en
   Meta al «Comprobar» (`whatsapp_template_statuses`, antes solo un apto/no-apto
-  agregado). Falta: `subscribed_apps` y el campo `messages` — activan de verdad la
-  recepción de mensajes de un número real, así que quedan dentro de **C18**
-  `[Aprobación]`, no de este punto — y mover aquí QR/Activar.
+  agregado). Movido también el 2026-11-17: QR del canal (C13) y «Activar» al final de
+  la pestaña (antes en la cabecera; pausar/reactivar un negocio ya activo se queda
+  ahí). Queda fuera a propósito, no de este punto: `subscribed_apps` y el campo
+  `messages`, porque activan de verdad la recepción de mensajes de un número real —
+  son de **C18** `[Aprobación]`.
 - [x] **C13 (S)** **QR de clientes:** hoy desborda y no se descarga. Tamaño y margen
   correctos, descarga en SVG/PNG, vista para imprimir y aviso si falta el dato en vez de ocultarse.
 - [x] **C14 (S)** **QR del chat de avisos del dueño:** el enlace ya existe; añadir QR, estado

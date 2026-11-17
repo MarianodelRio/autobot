@@ -4,7 +4,6 @@ import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { CopyButton } from "@/components/copy-button";
 import { ErrorState } from "@/components/error-state";
-import { QrCode } from "@/components/qr-code";
 import { StatusDot } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/errors";
@@ -64,11 +63,9 @@ export function ChannelSection({ detail }: { detail: Detail }) {
             </a>
             <CopyButton value={detail.public_link} />
           </div>
-          <QrCode
-            value={detail.public_link}
-            title="QR del canal público"
-            fileName={`canal-${detail.slug}`}
-          />
+          <p className="text-xs text-muted-foreground">
+            El QR está en la pestaña Alta.
+          </p>
         </div>
       ) : (
         // C13: shown, never hidden — there is no QR until this is fixed.

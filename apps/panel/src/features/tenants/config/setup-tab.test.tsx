@@ -169,3 +169,26 @@ test("lists recent non-tester senders and adds one as a tester", async () => {
   await screen.findByText("Tester añadido.");
   expect(screen.queryByText("id 999")).not.toBeInTheDocument();
 }, 10_000);
+
+test("C13: shows a downloadable QR for the public link", async () => {
+  const user = userEvent.setup();
+  renderAt({});
+  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
+  await user.click(screen.getByRole("tab", { name: "Alta" }));
+  await screen.findByText("QR del canal");
+  expect(
+    screen.getByRole("button", { name: "Descargar SVG" }),
+  ).toBeInTheDocument();
+}, 10_000);
+
+test("C12: Activar in the Alta tab stays disabled while a blocking step isn't ok", async () => {
+  const user = userEvent.setup();
+  renderAt({});
+  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
+  await user.click(screen.getByRole("tab", { name: "Alta" }));
+  const openButtons = await screen.findAllByRole("button", { name: "Activar" });
+  await user.click(openButtons[0]);
+  await user.type(screen.getByLabelText("Escribe demo"), "demo");
+  const confirm = screen.getAllByRole("button", { name: "Activar" }).at(-1);
+  expect(confirm).toBeDisabled(); // STEPS has blocking webhook/tester steps still pending
+}, 10_000);

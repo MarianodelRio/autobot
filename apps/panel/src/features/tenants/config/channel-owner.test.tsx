@@ -68,7 +68,7 @@ test("C13: a missing public link warns instead of just hiding the QR", async () 
   ).toBeInTheDocument();
 });
 
-test("C13: a QR with a public link offers SVG/PNG download and a print view", async () => {
+test("C12: a public link points to the QR in the Alta tab instead of showing it here", async () => {
   setup(
     <ChannelSection
       detail={{ ...detail, public_link: "https://t.me/mi_bot" }}
@@ -80,14 +80,11 @@ test("C13: a QR with a public link offers SVG/PNG download and a print view", as
   );
   await screen.findByText("https://t.me/mi_bot");
   expect(
-    screen.getByRole("button", { name: "Descargar SVG" }),
+    screen.getByText("El QR está en la pestaña Alta."),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("button", { name: "Descargar PNG" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "Ver para imprimir" }),
-  ).toBeInTheDocument();
+    screen.queryByRole("button", { name: "Descargar SVG" }),
+  ).not.toBeInTheDocument();
 });
 
 test("registering the webhook refreshes its status", async () => {

@@ -35,11 +35,15 @@ de un tester, el dueño, el webhook de Telegram, el calendario de `salon` (D1-D4
 los horarios de `bus`; los pasos marcados «Comprobar» hacen una llamada real al
 proveedor (nunca al cargar la pestaña) y quedan auditados. El paso del tester lista
 los últimos que escribieron sin estarlo, con «Añadir» para sumarlos a
-`testers.main` sin pasar por Configuración.
+`testers.main` sin pasar por Configuración. Al final de la pestaña, el QR del canal
+(C13: tamaño y margen correctos, descarga en SVG/PNG, vista para imprimir) y, mientras
+el negocio está en `onboarding`, «Activar» (exige completar los pasos bloqueantes y
+escribir el slug); pausar o reactivar un negocio ya activo sigue en la cabecera de la
+ficha.
 Configuración edita con formulario o YAML, con diff legible (campo por campo, no un
 volcado de la librería de diferencias) y comentario opcional, e incluye el canal
-(enlace, QR, webhook y «Cambiar credenciales», con «Generar» para los campos que lo
-admiten) y el dueño («Invitar al dueño», con el enlace mostrado una sola vez, su
+(enlace, webhook y «Cambiar credenciales», con «Generar» para los campos que lo
+admiten — el QR está en Alta) y el dueño («Invitar al dueño», con el enlace mostrado una sola vez, su
 caducidad y el aviso de que sustituirá al chat ya conectado). En `salon`, el horario
 de apertura tiene un editor por día (abierto/cerrado y tramos con hora) y los
 servicios una tabla con id automático (C17); la zona horaria se elige de una lista,
@@ -55,12 +59,12 @@ desde ahí también se puede «Exportar datos» (descarga un JSON) u «Olvidar c
 (borrado irreversible, con confirmación) de ese contacto; «Exportar datos del
 negocio», en el menú «⋯» de la ficha, hace lo mismo a nivel de negocio (C16; ver
 `docs/procedimientos/retencion-rgpd.md`). El panel pide confirmación para pausar o
-reactivar y exige comprobaciones y slug para activar.
+reactivar.
 
 El alta de un negocio nuevo (`/clientes/nuevo`) pasa por pack, datos básicos (nombre,
 slug derivado y comprobado, zona horaria y canal), configuración precargada con la
-plantilla del pack y revisión; crea el cliente en estado `onboarding` y abre su pestaña
-Configuración, sección Canal, con la lista de lo que falta para activarlo. El asistente
+plantilla del pack y revisión; crea el cliente en estado `onboarding` y abre su
+pestaña Alta, con la lista de lo que falta para activarlo. El asistente
 guarda su progreso en `sessionStorage` del navegador, nunca en el servidor.
 
 ## Incidencias

@@ -1,14 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { CopyButton } from "@/components/copy-button";
 import { ErrorState } from "@/components/error-state";
+import { QrCode } from "@/components/qr-code";
 import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { errorMessage } from "@/lib/errors";
 
 type SetupStep = components["schemas"]["SetupStepOut"];
+type Detail = components["schemas"]["TenantDetail"];
 
 const STEP_LEVEL: Record<SetupStep["state"], StatusDotLevel> = {
   ok: "ok",
@@ -120,7 +132,105 @@ function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
   );
 }
 
-export function SetupTab({ slug }: { slug: string }) {
+function QrCard({ detail }: { detail: Detail }) {
+  if (detail.channel_type === null) return null;
+  return (
+    <li className="space-y-2 border-b pb-3 text-sm last:border-b-0 last:pb-0">
+      <span className="font-medium">QR del canal</span>
+      {detail.public_link ? (
+        <QrCode
+          value={detail.public_link}
+          title="QR del canal público"
+          fileName={`canal-${detail.slug}`}
+        />
+      ) : (
+        <div className="flex items-center gap-2">
+          <StatusDot level="warning" />
+          <span className="text-status-warning">
+            {detail.channel_type === "telegram"
+              ? "Falta el usuario del bot (bot_username): sin él no hay enlace ni QR."
+              : "Falta el teléfono público (display_phone): sin él no hay enlace ni QR."}
+          </span>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function ActivateCard({ slug, steps }: { slug: string; steps: SetupStep[] }) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const client = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST("/tenants/{slug}/status", {
+          params: { path: { slug } },
+          body: { action: "activate", confirm_slug: typed },
+        }),
+      ),
+    onSuccess: () => {
+      setOpen(false);
+      setTyped("");
+      toast.success("Cliente activado.");
+      void client.invalidateQueries({ queryKey: ["tenant", slug] });
+      void client.invalidateQueries({ queryKey: ["tenants"] });
+      void client.invalidateQueries({ queryKey: ["overview"] });
+    },
+  });
+  const blocked = steps.some((step) => step.blocking && step.state !== "ok");
+  return (
+    <li className="space-y-2 pb-1 text-sm">
+      <span className="font-medium">Activar</span>
+      <p className="text-muted-foreground">
+        Completa los pasos bloqueantes y escribe el slug para confirmar.
+      </p>
+      <Button
+        onClick={() => {
+          mutation.reset();
+          setOpen(true);
+        }}
+      >
+        Activar
+      </Button>
+      <Dialog
+        open={open}
+        onOpenChange={(value) => {
+          setOpen(value);
+          if (!value) setTyped("");
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Activar cliente</DialogTitle>
+            <DialogDescription>
+              Escribe {slug} para confirmar.
+            </DialogDescription>
+          </DialogHeader>
+          <Label htmlFor="setup-activation-slug">Escribe {slug}</Label>
+          <Input
+            id="setup-activation-slug"
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+          />
+          <Button
+            disabled={typed !== slug || blocked || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            Activar
+          </Button>
+          {mutation.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {errorMessage(mutation.error, "No se pudo activar el cliente.")}
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
+    </li>
+  );
+}
+
+export function SetupTab({ slug, detail }: { slug: string; detail: Detail }) {
   const q = useQuery({
     queryKey: ["tenant-setup", slug],
     queryFn: () =>
@@ -140,6 +250,10 @@ export function SetupTab({ slug }: { slug: string }) {
       {q.data.map((step) => (
         <StepCard key={step.key} slug={slug} step={step} />
       ))}
+      <QrCard detail={detail} />
+      {detail.status === "onboarding" && (
+        <ActivateCard slug={slug} steps={q.data} />
+      )}
     </ul>
   );
 }
