@@ -34,25 +34,29 @@ export function ServicesField({
   disabled,
   readonly,
   errorSchema,
+  fieldPathId,
 }: FieldProps<Services>) {
   const services = formData ?? {};
   const locked = Boolean(disabled || readonly);
   const ids = Object.keys(services);
   const errors = (errorSchema as { __errors?: string[] } | undefined)?.__errors;
 
-  function update(id: string, patch: Partial<Service>) {
-    onChange({ ...services, [id]: { ...services[id], ...patch } });
+  function update(id: string, current: Service, patch: Partial<Service>) {
+    onChange({ ...services, [id]: { ...current, ...patch } }, fieldPathId.path);
   }
   function add() {
-    onChange({
-      ...services,
-      [nextId(ids)]: { name: "", duration_min: 30, client_presence_min: 30 },
-    });
+    onChange(
+      {
+        ...services,
+        [nextId(ids)]: { name: "", duration_min: 30, client_presence_min: 30 },
+      },
+      fieldPathId.path,
+    );
   }
   function remove(id: string) {
     const next = { ...services };
     delete next[id];
-    onChange(next);
+    onChange(next, fieldPathId.path);
   }
 
   return (
@@ -72,8 +76,7 @@ export function ServicesField({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {ids.map((id) => {
-            const service = services[id];
+          {Object.entries(services).map(([id, service]) => {
             return (
               <TableRow key={id}>
                 <TableCell>
@@ -81,7 +84,7 @@ export function ServicesField({
                     value={service.name}
                     disabled={locked}
                     onChange={(event) =>
-                      update(id, { name: event.target.value })
+                      update(id, service, { name: event.target.value })
                     }
                   />
                 </TableCell>
@@ -93,7 +96,7 @@ export function ServicesField({
                     disabled={locked}
                     value={service.price_eur ?? ""}
                     onChange={(event) =>
-                      update(id, {
+                      update(id, service, {
                         price_eur:
                           event.target.value === ""
                             ? null
@@ -109,7 +112,9 @@ export function ServicesField({
                     disabled={locked}
                     value={service.duration_min}
                     onChange={(event) =>
-                      update(id, { duration_min: Number(event.target.value) })
+                      update(id, service, {
+                        duration_min: Number(event.target.value),
+                      })
                     }
                   />
                 </TableCell>
@@ -120,7 +125,7 @@ export function ServicesField({
                     disabled={locked}
                     value={service.client_presence_min}
                     onChange={(event) =>
-                      update(id, {
+                      update(id, service, {
                         client_presence_min: Number(event.target.value),
                       })
                     }

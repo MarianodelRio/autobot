@@ -12,6 +12,7 @@ function props(
     schema: { title: "Horario de apertura" },
     formData,
     onChange,
+    fieldPathId: { path: [] },
   } as unknown as FieldProps<Record<string, string[]>>;
 }
 
@@ -22,7 +23,7 @@ test("a closed day has no time inputs, and opening it adds a default range", asy
   expect(screen.getAllByText("Cerrado")).toHaveLength(7);
 
   await user.click(screen.getByRole("checkbox", { name: "Lunes" }));
-  expect(onChange).toHaveBeenCalledWith({ lunes: ["09:00-18:00"] });
+  expect(onChange).toHaveBeenCalledWith({ lunes: ["09:00-18:00"] }, []);
 });
 
 test("closing an open day removes its key entirely, never an empty array", async () => {
@@ -33,7 +34,7 @@ test("closing an open day removes its key entirely, never an empty array", async
   );
 
   await user.click(screen.getByRole("checkbox", { name: "Lunes" }));
-  expect(onChange).toHaveBeenCalledWith({});
+  expect(onChange).toHaveBeenCalledWith({}, []);
 });
 
 test("adding a second range for a day appends to its list", async () => {
@@ -44,9 +45,10 @@ test("adding a second range for a day appends to its list", async () => {
   );
 
   await user.click(screen.getByRole("button", { name: "+ Añadir tramo" }));
-  expect(onChange).toHaveBeenCalledWith({
-    martes: ["09:00-13:00", "09:00-18:00"],
-  });
+  expect(onChange).toHaveBeenCalledWith(
+    { martes: ["09:00-13:00", "09:00-18:00"] },
+    [],
+  );
 });
 
 test("removing the only range for a day closes it instead of leaving []", async () => {
@@ -59,7 +61,7 @@ test("removing the only range for a day closes it instead of leaving []", async 
   await user.click(
     screen.getByRole("button", { name: "Quitar tramo de jueves" }),
   );
-  expect(onChange).toHaveBeenCalledWith({});
+  expect(onChange).toHaveBeenCalledWith({}, []);
 });
 
 test("field-level errors are shown", () => {

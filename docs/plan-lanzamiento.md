@@ -932,9 +932,9 @@ Tareas:
 
 - [x] Compatibilidad con `tenant.yaml` (`registry.py:150`, `forms.py:129`): retirada el
   2026-11-17 (decidido con la persona). `source_from_dir` y `pack_template` ya solo
-  aceptan `document.yaml`. El único fichero local que usaba el nombre antiguo,
-  `var/tenants/autocares-ss/tenant.yaml`, no se ha tocado (no está en git; se
-  rehará cuando se dé de alta ese negocio).
+  aceptan `document.yaml`. El único fichero local que usaba el nombre antiguo, en
+  `var/tenants/<slug>/`, no se ha tocado (no está en git; se rehará cuando se dé de
+  alta ese negocio).
 - [ ] La migración del bot anterior (`salon/migration.py`,
   `tools/salon/migrate_salon_events.py`, `list_future_events`, `patch_private` del
   puerto) **se conserva**: D3 pasa a «no se borra, puede hacer falta en el futuro».

@@ -33,6 +33,7 @@ const detail: components["schemas"]["TenantDetail"] = {
   webhook_url: null,
   public_link: null,
   owner_linked: false,
+  owner_invite_pending: false,
   month: { inbound: 0, outbound: 0, users: 0, cost_eur: "0" },
 };
 function provider(child: React.ReactNode) {

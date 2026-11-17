@@ -91,7 +91,7 @@ function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
   return (
     <li className="space-y-1 border-b pb-3 last:border-b-0 last:pb-0">
       <div className="flex items-center gap-2">
-        <StatusDot level={STEP_LEVEL[step.state]} />
+        <StatusDot level={STEP_LEVEL[step.state] ?? "unknown"} />
         <span className="font-medium">{step.label}</span>
         {step.blocking && (
           <span className="text-xs text-muted-foreground">(bloqueante)</span>

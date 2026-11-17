@@ -25,6 +25,7 @@ export function OpeningHoursField({
   disabled,
   readonly,
   errorSchema,
+  fieldPathId,
 }: FieldProps<Record<string, string[]>>) {
   const hours = formData ?? {};
   const locked = Boolean(disabled || readonly);
@@ -34,7 +35,7 @@ export function OpeningHoursField({
     const next = { ...hours };
     if (ranges === null || ranges.length === 0) delete next[day];
     else next[day] = ranges;
-    onChange(next);
+    onChange(next, fieldPathId.path);
   }
 
   function updateRange(day: string, index: number, part: 0 | 1, time: string) {
