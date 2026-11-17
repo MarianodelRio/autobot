@@ -252,14 +252,14 @@ def test_owner_contact_shows_the_support_email(tenants: Any, providers: Provider
     assert "soporte@autobot.invalid" in texts(providers)[-1]
 
 
-def test_without_support_email_the_menu_has_only_one_button(
+def test_without_support_email_the_menu_has_no_contact_button(
     tenants: Any, providers: Providers, settings: Settings
 ) -> None:
     settings.OWNER_SUPPORT_EMAIL = ""
     tenants(wa_tenant())
     link("wa")
     assert post(say(OWNER_CHAT, "hola")) == 200
-    assert _button_titles(providers) == ["📊 Cómo va el mes"]
+    assert _button_titles(providers) == ["📊 Cómo va el mes", "🔗 Mi enlace"]
 
 
 # ── Not linked ─────────────────────────────────────────────────────────────
@@ -321,6 +321,43 @@ def run(command: str, *args: str, monkeypatch: pytest.MonkeyPatch, answer: Any =
     out = io.StringIO()
     call_command(command, *args, stdout=out)
     return out.getvalue()
+
+
+def test_owner_reconnect_prints_a_fresh_link_per_tenant(
+    tenants: Any, providers: Providers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transport = httpx.MockTransport(lambda request: get_me())
+    monkeypatch.setattr("httpx.Client", lambda **kwargs: REAL_CLIENT(transport=transport))
+    tenants(demo_tenant("demo-a"), demo_tenant("demo-b"))
+    link("demo-a", OWNER_CHAT)
+    link("demo-b", OWNER_CHAT)
+    assert post(press(OWNER_CHAT, "owner:reconnect")) == 200
+    text = texts(providers)[-1]
+    assert text.count("https://t.me/AvisosBot?start=") == 2
+    assert "Caduca en 7 días" in text
+
+
+def test_owner_reconnect_warns_the_tenant_is_already_connected(
+    tenants: Any, providers: Providers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transport = httpx.MockTransport(lambda request: get_me())
+    monkeypatch.setattr("httpx.Client", lambda **kwargs: REAL_CLIENT(transport=transport))
+    tenants(wa_tenant())
+    link("wa")
+    assert post(press(OWNER_CHAT, "owner:reconnect")) == 200
+    assert "nuevo conectado" in texts(providers)[-1]
+
+
+def test_owner_reconnect_tells_apart_a_failed_tenant(
+    tenants: Any, providers: Providers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    refused = httpx.Response(401, json={"ok": False, "error_code": 401})
+    transport = httpx.MockTransport(lambda request: refused)
+    monkeypatch.setattr("httpx.Client", lambda **kwargs: REAL_CLIENT(transport=transport))
+    tenants(wa_tenant())
+    link("wa")
+    assert post(press(OWNER_CHAT, "owner:reconnect")) == 200
+    assert "No se pudo generar el enlace" in texts(providers)[-1]
 
 
 def test_owner_invite_prints_a_link_that_links_the_chat(

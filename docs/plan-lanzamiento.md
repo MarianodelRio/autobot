@@ -760,10 +760,12 @@ C1–C11 hechos el 2026-11-17, con sus tests (backend y panel en verde).
   WhatsApp (`subscribed_apps`, texto/estado de cada plantilla) y mover aquí QR/Activar.
 - [x] **C13 (S)** **QR de clientes:** hoy desborda y no se descarga. Tamaño y margen
   correctos, descarga en SVG/PNG, vista para imprimir y aviso si falta el dato en vez de ocultarse.
-- [ ] **C14 (S)** **QR del chat de avisos del dueño:** el enlace ya existe; añadir QR, estado
+- [x] **C14 (S)** **QR del chat de avisos del dueño:** el enlace ya existe; añadir QR, estado
   «invitación pendiente» y desconectar. Añadir «Mi QR» al menú del dueño.
-  Hecho el 2026-11-17 en el panel (QR, «Invitación pendiente» y «Desconectar»); falta
-  «Mi QR» en el menú del bot de avisos.
+  Hecho el 2026-11-17: QR, «Invitación pendiente» y «Desconectar» en el panel; «🔗 Mi
+  enlace» en el menú del bot de avisos (decidido con la persona: un enlace de texto,
+  no una imagen de QR real, porque la plataforma no sabe enviar imágenes por ningún
+  canal — eso sería un cambio de arquitectura, no este punto (S)).
 - [x] **C15 (S)** Sistema debe avisar si el webhook del bot de avisos no está registrado: hoy
   marca «ok» y el dueño no recibe respuesta (`system.py:178`).
 - [x] **C16 (M)** Historial y vuelta atrás de configuración (la API ya existe), y lo que hoy

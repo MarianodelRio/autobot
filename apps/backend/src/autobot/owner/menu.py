@@ -67,6 +67,31 @@ def _usable(tenant: LoadedTenant) -> bool:
     return tenant.document.status == "active" and not tenant.is_degraded
 
 
+def reconnect_text(chat: OwnerChat) -> str:
+    """C14: a fresh invite link per tenant of this chat, so the owner can connect
+    a replacement device themselves without asking the operator. Reuses the same
+    `create_invite_link` the panel's «Invitar al dueño» and `owner_invite` use."""
+    from autobot.owner.invites import InviteError, create_invite_link
+    from autobot.owner.links import OWNER_INVITE_DAYS
+
+    lines = []
+    for tenant in sorted(chat.tenants, key=lambda t: t.info.name):
+        try:
+            invite = create_invite_link(tenant)
+        except InviteError:
+            lines.append(texts.reconnect_failed(tenant))
+            continue
+        lines.append(
+            texts.reconnect_line(
+                tenant,
+                invite.url,
+                days=OWNER_INVITE_DAYS,
+                replaces_chat=invite.replaces_chat,
+            )
+        )
+    return "🔗 Enlace para conectar otro dispositivo:\n\n" + "\n\n".join(lines)
+
+
 MENU: list[MenuOption] = [
     MenuOption("owner:status", "📊 Cómo va el mes", status_text),
     MenuOption(
@@ -75,6 +100,7 @@ MENU: list[MenuOption] = [
         lambda chat: texts.contact(),
         available=lambda chat: bool(settings.OWNER_SUPPORT_EMAIL),
     ),
+    MenuOption("owner:reconnect", "🔗 Mi enlace", reconnect_text),
 ]
 
 

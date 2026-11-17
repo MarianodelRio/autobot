@@ -61,3 +61,12 @@ def not_active(tenant: LoadedTenant) -> str:
         f"⏸️ El bot de *{tenant.info.name}* todavía no está activo. "
         "Cuando lo esté, aquí verás tus cifras."
     )
+
+
+def reconnect_line(tenant: LoadedTenant, url: str, *, days: int, replaces_chat: bool) -> str:
+    warn = " Si lo abres desde otro chat, ese será el nuevo conectado." if replaces_chat else ""
+    return f"*{tenant.info.name}*\n{url}\nCaduca en {days} días.{warn}"
+
+
+def reconnect_failed(tenant: LoadedTenant) -> str:
+    return f"*{tenant.info.name}*\n⚠️ No se pudo generar el enlace ahora; prueba más tarde."
