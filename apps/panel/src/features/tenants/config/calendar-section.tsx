@@ -1,23 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
+import { CopyButton } from "@/components/copy-button";
 import { ErrorState } from "@/components/error-state";
 import { StatusDot } from "@/components/status-dot";
 
 type Detail = components["schemas"]["TenantDetail"];
-
-function CopyButton({ value }: { value: string }) {
-  return (
-    <button
-      type="button"
-      aria-label="Copiar"
-      className="text-muted-foreground hover:text-foreground"
-      onClick={() => void navigator.clipboard?.writeText(value)}
-    >
-      ⧉
-    </button>
-  );
-}
 
 // D4: Google does not cover a personal account with its data-processing addendum;
 // only a few domains can be told apart for sure, the rest (Workspace or not) need

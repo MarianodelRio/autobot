@@ -92,12 +92,12 @@ export function OwnerSection({ detail }: { detail: Detail }) {
         </div>
       </div>
       {invite.isError && (
-        <p role="alert">
+        <p role="alert" className="text-sm text-destructive">
           {errorMessage(invite.error, "No se pudo generar el enlace.")}
         </p>
       )}
       {unlink.isError && (
-        <p role="alert">
+        <p role="alert" className="text-sm text-destructive">
           {errorMessage(unlink.error, "No se pudo desconectar.")}
         </p>
       )}
@@ -153,9 +153,11 @@ export function OwnerSection({ detail }: { detail: Detail }) {
           <DialogFooter>
             <Button
               type="button"
-              onClick={() =>
-                link && void navigator.clipboard?.writeText(link.url)
-              }
+              onClick={() => {
+                if (!link) return;
+                void navigator.clipboard?.writeText(link.url);
+                toast.success("Copiado.");
+              }}
             >
               Copiar
             </Button>

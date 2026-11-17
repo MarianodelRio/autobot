@@ -26,6 +26,16 @@ const KIND_LABEL: Record<string, string> = {
   notification: "Aviso al dueño",
 };
 
+export const STATUS_LABEL: Record<string, string> = {
+  pending: "Pendiente",
+  sending: "Enviando",
+  sent: "Enviado",
+  done: "Hecho",
+  failed: "Fallido",
+  ignored: "Ignorado",
+  unknown: "Sin confirmar",
+};
+
 function ActivityDetailBody({ kind, id }: { kind: string; id: string }) {
   const query = useQuery({
     queryKey: ["activity-detail", kind, id],
@@ -146,7 +156,9 @@ export function Timeline({
                   <Badge variant="outline">{item.channel}</Badge>
                 )}
                 {item.status && (
-                  <Badge variant="secondary">{item.status}</Badge>
+                  <Badge variant="secondary">
+                    {STATUS_LABEL[item.status] ?? item.status}
+                  </Badge>
                 )}
                 <span className="text-sm text-muted-foreground">
                   · <TimeAgo date={item.at} />

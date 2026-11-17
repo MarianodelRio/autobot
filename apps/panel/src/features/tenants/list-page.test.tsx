@@ -46,6 +46,8 @@ test("filters clients by search, pack and status", async () => {
   );
   const user = userEvent.setup();
   await screen.findByRole("link", { name: "Ana" });
+  expect(screen.getAllByText("Activo").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Pausado").length).toBeGreaterThan(0);
   await user.selectOptions(screen.getByLabelText("Pack"), "bus");
   expect(screen.queryByRole("link", { name: "Ana" })).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Autobús" })).toHaveAttribute(

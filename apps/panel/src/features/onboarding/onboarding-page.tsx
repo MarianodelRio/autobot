@@ -137,7 +137,7 @@ function DatasetChoiceField({
     );
   if (entries.data.length === 0)
     return (
-      <p role="alert">
+      <p role="alert" className="text-sm text-destructive">
         No hay ninguna entrada subida para «{dataset}». Súbela primero con{" "}
         <code>make bus-subir</code>.
       </p>
@@ -419,7 +419,7 @@ export function OnboardingPage({
               }
             />
             {draft.slug && !validSlug(draft.slug) && (
-              <p role="alert">
+              <p role="alert" className="text-sm text-destructive">
                 Usa hasta 64 letras minúsculas, números y guiones.
               </p>
             )}
@@ -427,7 +427,9 @@ export function OnboardingPage({
               (available.isFetching ? (
                 <p>Comprobando disponibilidad…</p>
               ) : available.isError ? (
-                <p role="alert">No se pudo comprobar el slug.</p>
+                <p role="alert" className="text-sm text-destructive">
+                  No se pudo comprobar el slug.
+                </p>
               ) : (
                 available.data && (
                   <p>
@@ -527,7 +529,9 @@ export function OnboardingPage({
               }}
             />
           ) : !formSchema || !draft.config ? (
-            <p role="alert">El pack no tiene una plantilla de configuración.</p>
+            <p role="alert" className="text-sm text-destructive">
+              El pack no tiene una plantilla de configuración.
+            </p>
           ) : (
             <>
               <div className="flex gap-2">
@@ -571,7 +575,11 @@ export function OnboardingPage({
                     value={yaml}
                     onChange={(event) => changeYaml(event.target.value)}
                   />
-                  {yamlError && <p role="alert">{yamlError}</p>}
+                  {yamlError && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {yamlError}
+                    </p>
+                  )}
                 </>
               )}
               <Button variant="outline" onClick={() => setShowDiff(!showDiff)}>
@@ -633,7 +641,7 @@ export function OnboardingPage({
         </section>
       )}
       {errors.length > 0 && (
-        <ul role="alert">
+        <ul role="alert" className="text-sm text-destructive">
           {errors.map((error) => (
             <li key={error}>{error}</li>
           ))}

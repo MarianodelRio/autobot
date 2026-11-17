@@ -4,6 +4,7 @@ import { api, unwrap } from "@/api/client";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { PageHeader } from "@/components/page-header";
+import { type Status, StatusBadge } from "@/components/status-badge";
 import { TimeAgo } from "@/components/time-ago";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +17,13 @@ import {
 } from "@/components/ui/table";
 import { errorMessage } from "@/lib/errors";
 import { formatEur, formatNumber } from "@/lib/format";
+
+const STATUS_LABEL: Record<string, string> = {
+  active: "Activo",
+  paused: "Pausado",
+  onboarding: "En alta",
+  offboarded: "De baja",
+};
 
 export function TenantListPage() {
   const [search, setSearch] = useState("");
@@ -77,7 +85,7 @@ export function TenantListPage() {
           <option value="">Todos los estados</option>
           {[...new Set(rows.map((row) => row.status))].map((value) => (
             <option key={value} value={value}>
-              {value}
+              {STATUS_LABEL[value] ?? value}
             </option>
           ))}
         </select>
@@ -125,8 +133,12 @@ export function TenantListPage() {
                 </TableCell>
                 <TableCell>{row.pack}</TableCell>
                 <TableCell>{row.channel}</TableCell>
-                <TableCell>{row.status}</TableCell>
-                <TableCell>{row.health}</TableCell>
+                <TableCell>
+                  <StatusBadge status={row.status as Status} />
+                </TableCell>
+                <TableCell>
+                  <StatusBadge status={row.health as Status} />
+                </TableCell>
                 <TableCell>
                   {formatNumber(row.inbound_month)} /{" "}
                   {formatNumber(row.outbound_month)}

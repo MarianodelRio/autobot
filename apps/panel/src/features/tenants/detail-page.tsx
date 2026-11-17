@@ -127,7 +127,11 @@ function Summary({ detail }: { detail: Detail }) {
               ))}
             </ul>
           )}
-          {health.isError && <p role="alert">No se pudo comprobar la salud.</p>}
+          {health.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              No se pudo comprobar la salud.
+            </p>
+          )}
         </CardContent>
       </Card>
       <Card>
@@ -284,7 +288,9 @@ function Contacts({ slug }: { slug: string }) {
         </Button>
       )}
       {list.isFetchNextPageError && (
-        <p role="alert">No se pudieron cargar más contactos.</p>
+        <p role="alert" className="text-sm text-destructive">
+          No se pudieron cargar más contactos.
+        </p>
       )}
       <Sheet
         open={selected !== null}

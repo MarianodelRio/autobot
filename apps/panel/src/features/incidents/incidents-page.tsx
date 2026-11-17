@@ -101,7 +101,7 @@ function ResolveAction({ alert }: { alert: Alert }) {
         onConfirm={() => mutation.mutate()}
       />
       {mutation.isError && (
-        <p role="alert">
+        <p role="alert" className="text-sm text-destructive">
           {errorMessage(mutation.error, "No se pudo resolver la alerta.")}
         </p>
       )}
@@ -195,7 +195,7 @@ function ResendAction({ message }: { message: Outbound }) {
         onConfirm={() => mutation.mutate()}
       />
       {mutation.isError && (
-        <p role="alert">
+        <p role="alert" className="text-sm text-destructive">
           {errorMessage(mutation.error, "No se pudo reenviar el mensaje.")}
         </p>
       )}

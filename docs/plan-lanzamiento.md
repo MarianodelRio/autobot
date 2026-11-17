@@ -831,6 +831,14 @@ horarios directamente sobre cada cliente.
   terminal salvo para subir los horarios.
 - [ ] **C26 (S)** Pequeños arreglos de UI: errores con estilo, copiar con confirmación,
   estados en español, móvil, y el texto «comentario obligatorio», que es falso.
+  Hecho el 2026-11-17: todos los errores sin estilo ahora en rojo (`text-destructive`,
+  antes texto plano en ~15 sitios); «Copiar» unificado en un solo componente
+  (`CopyButton`) con confirmación («Copiado.») en todos los sitios que copiaban en
+  silencio; estados y salud de la lista de clientes y de Actividad traducidos (antes
+  en inglés: `active`, `ok`, `pending`...). El texto «comentario obligatorio» ya decía
+  «opcional» en todos los sitios (se corrigió en otro momento sin anotarlo aquí). Falta:
+  revisión de móvil (necesita probarse en un navegador real; la sesión del panel exige
+  TOTP y no se ha hecho un recorrido visual).
 
 ### D. Calendario
 
@@ -846,8 +854,13 @@ Workspace) y «Conectar con Google» (verificación de Google, tokens por negoci
   cuál es el permiso mínimo: «Hacer cambios en eventos» y sus variantes actuales.
   El texto está hecho (junto a D1); falta probar el permiso mínimo contra un calendario
   real (depende de D3).
-- [ ] **D3 (S)** «Comprobar acceso» con **prueba de escritura** (hoy solo lee,
+- [x] **D3 (S)** «Comprobar acceso» con **prueba de escritura** (hoy solo lee,
   `client.py:283`), fila propia en la activación y mensaje claro (`health.py:146` lo oculta).
+  Hecho el 2026-11-17, junto con C12: `check_write_access()` (inserta, confirma y borra un
+  evento de prueba), fila propia «Calendario (D1-D4)» en la pestaña Alta (no en el
+  `checklist` de activación, que sigue usando la lectura genérica de `ops/health.py` para
+  no multiplicar escrituras de prueba en cada comprobación periódica) y mensaje claro de
+  éxito o del tipo de error.
 - [x] **D4 (S)** Avisar en el alta si es un Gmail personal: Google no cubre esas cuentas con su
   contrato de tratamiento de datos.
 

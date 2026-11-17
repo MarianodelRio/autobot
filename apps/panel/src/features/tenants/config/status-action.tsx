@@ -82,7 +82,11 @@ export function StatusAction({
       >
         {label}
       </Button>
-      {mutation.isError && <p role="alert">No se pudo cambiar el estado.</p>}
+      {mutation.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          No se pudo cambiar el estado.
+        </p>
+      )}
       {action !== "activate" ? (
         <ConfirmDialog
           open={open}
@@ -141,7 +145,9 @@ export function StatusAction({
                   Activar
                 </Button>
                 {mutation.isError && (
-                  <p role="alert">No se pudo activar el cliente.</p>
+                  <p role="alert" className="text-sm text-destructive">
+                    No se pudo activar el cliente.
+                  </p>
                 )}
               </>
             )}

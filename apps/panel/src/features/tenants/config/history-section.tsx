@@ -161,7 +161,9 @@ export function HistorySection({
                         {version.isPending ? (
                           <p>Cargando cambios…</p>
                         ) : version.isError ? (
-                          <p role="alert">No se pudieron cargar los cambios.</p>
+                          <p role="alert" className="text-sm text-destructive">
+                            No se pudieron cargar los cambios.
+                          </p>
                         ) : (
                           <JsonDiff
                             before={version.data.document}

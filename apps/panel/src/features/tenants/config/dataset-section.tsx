@@ -124,7 +124,11 @@ export function DatasetSection({
           )}
         </>
       )}
-      {apply.isError && <p role="alert">No se pudo aplicar.</p>}
+      {apply.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          No se pudo aplicar.
+        </p>
+      )}
     </div>
   );
 }

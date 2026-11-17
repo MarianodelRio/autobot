@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
+import { CopyButton } from "@/components/copy-button";
 import { ErrorState } from "@/components/error-state";
 import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
@@ -13,19 +14,6 @@ const STEP_LEVEL: Record<SetupStep["state"], StatusDotLevel> = {
   error: "critical",
   "n/a": "unknown",
 };
-
-function CopyButton({ value }: { value: string }) {
-  return (
-    <button
-      type="button"
-      aria-label="Copiar"
-      className="text-muted-foreground hover:text-foreground"
-      onClick={() => void navigator.clipboard?.writeText(value)}
-    >
-      ⧉
-    </button>
-  );
-}
 
 function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
   const client = useQueryClient();

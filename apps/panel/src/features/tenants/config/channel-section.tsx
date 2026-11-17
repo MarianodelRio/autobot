@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
+import { CopyButton } from "@/components/copy-button";
 import { ErrorState } from "@/components/error-state";
 import { QrCode } from "@/components/qr-code";
 import { StatusDot } from "@/components/status-dot";
@@ -10,19 +11,6 @@ import { errorMessage } from "@/lib/errors";
 import { SecretsForm } from "./secrets-form";
 
 type Detail = components["schemas"]["TenantDetail"];
-
-function CopyButton({ value }: { value: string }) {
-  return (
-    <button
-      type="button"
-      aria-label="Copiar"
-      className="text-muted-foreground hover:text-foreground"
-      onClick={() => void navigator.clipboard?.writeText(value)}
-    >
-      ⧉
-    </button>
-  );
-}
 
 export function ChannelSection({ detail }: { detail: Detail }) {
   const client = useQueryClient();
@@ -126,7 +114,7 @@ export function ChannelSection({ detail }: { detail: Detail }) {
         </div>
       )}
       {webhook.isError && (
-        <p role="alert">
+        <p role="alert" className="text-sm text-destructive">
           {errorMessage(webhook.error, "No se pudo registrar el webhook.")}
         </p>
       )}

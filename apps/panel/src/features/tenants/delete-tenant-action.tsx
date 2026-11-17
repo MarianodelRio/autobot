@@ -144,7 +144,7 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
             />
           </div>
           {mutation.isError && (
-            <p role="alert">
+            <p role="alert" className="text-sm text-destructive">
               {errorMessage(mutation.error, "No se pudo eliminar el cliente.")}
             </p>
           )}

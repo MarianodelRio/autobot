@@ -139,7 +139,7 @@ export function SecretsForm({
             </div>
           ))}
           {error && (
-            <p role="alert">
+            <p role="alert" className="text-sm text-destructive">
               No se pudieron sustituir los secretos. Vuelve a introducirlos.
             </p>
           )}

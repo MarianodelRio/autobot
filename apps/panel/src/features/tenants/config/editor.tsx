@@ -463,11 +463,15 @@ export function ConfigEditor({
             value={yaml}
             onChange={(event) => changeYaml(event.target.value)}
           />
-          {yamlError && <p role="alert">{yamlError}</p>}
+          {yamlError && (
+            <p role="alert" className="text-sm text-destructive">
+              {yamlError}
+            </p>
+          )}
         </>
       )}
       {errors.length > 0 && (
-        <ul role="alert">
+        <ul role="alert" className="text-sm text-destructive">
           {errors.map((error) => (
             <li key={error}>{error}</li>
           ))}

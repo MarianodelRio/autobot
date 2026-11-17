@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import { CodeEditor } from "@/components/code-editor";
 import { TenantSelect } from "@/components/tenant-select";
@@ -78,15 +79,16 @@ export function QueryConsole({
             <Button
               size="sm"
               variant="outline"
-              onClick={() =>
+              onClick={() => {
                 void navigator.clipboard?.writeText(
                   toDelimited(
                     result.columns.map((c) => c.name),
                     result.rows,
                     "\t",
                   ),
-                )
-              }
+                );
+                toast.success("Copiado.");
+              }}
             >
               Copiar
             </Button>

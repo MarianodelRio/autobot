@@ -1,6 +1,9 @@
 import { TenantSelect } from "@/components/tenant-select";
 import { Button } from "@/components/ui/button";
-import { Timeline } from "@/features/activity/components/timeline";
+import {
+  STATUS_LABEL,
+  Timeline,
+} from "@/features/activity/components/timeline";
 
 export interface ConversationsFilters {
   tenant: string;
@@ -40,7 +43,7 @@ export function ConversationsTab({
           <option value="">Todos los estados</option>
           {STATUSES.map((status) => (
             <option key={status} value={status}>
-              {status}
+              {STATUS_LABEL[status] ?? status}
             </option>
           ))}
         </select>
