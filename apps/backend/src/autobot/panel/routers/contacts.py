@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
@@ -145,3 +146,53 @@ def contact_detail(request: HttpRequest, id: UUID) -> ContactDetail:
             for m in messages
         ],
     )
+
+
+class ContactExportOut(Schema):
+    tenant: str
+    data: dict[str, Any]
+
+
+@router.get("/contacts/{id}/export", response=ContactExportOut)
+def contact_export(request: HttpRequest, id: UUID) -> ContactExportOut:
+    """C16: the panel equivalent of `contact_export`, downloaded as JSON instead
+    of written to an operator-chosen local path."""
+    from autobot.runtime import privacy
+
+    contact = get_object_or_404(Contact.objects.using("owner").select_related("tenant"), pk=id)
+    with transaction.atomic(using="owner"):
+        data = privacy.export_data(contact.tenant, contact)
+    record(
+        actor=request.user.username,
+        action="contact.export",
+        summary="Exportación de datos del contacto",
+        tenant_id=contact.tenant_id,
+        target_type="contact",
+        target_id=str(contact.id),
+        details={"contact_id": str(contact.id)},
+    )
+    return ContactExportOut(**data)
+
+
+class ContactForgetOut(Schema):
+    forgotten: bool = True
+
+
+@router.post("/contacts/{id}/forget", response=ContactForgetOut)
+def contact_forget(request: HttpRequest, id: UUID) -> ContactForgetOut:
+    """C16: the panel equivalent of `contact_forget` (right to erasure)."""
+    from autobot.runtime import privacy
+
+    contact = get_object_or_404(Contact.objects.using("owner").select_related("tenant"), pk=id)
+    tenant_id, contact_id = contact.tenant_id, contact.id
+    privacy.forget(contact)
+    record(
+        actor=request.user.username,
+        action="contact.forget",
+        summary="Contacto olvidado (derecho de supresión)",
+        tenant_id=tenant_id,
+        target_type="contact",
+        target_id=str(contact_id),
+        details={"contact_id": str(contact_id)},
+    )
+    return ContactForgetOut()

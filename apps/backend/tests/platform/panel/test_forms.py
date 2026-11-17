@@ -69,7 +69,24 @@ def test_salon_texts_and_info_text_get_a_textarea_widget() -> None:
 
 
 def test_bus_has_no_textarea_widgets() -> None:
-    assert forms.ui_schema("bus")["widgets"] == {}
+    assert forms.ui_schema("bus")["widgets"] == {"timezone": "timezone"}
+
+
+def test_every_pack_gets_the_timezone_widget() -> None:
+    assert forms.ui_schema("salon")["widgets"]["timezone"] == "timezone"
+    assert forms.ui_schema("bus")["widgets"]["timezone"] == "timezone"
+
+
+def test_salon_has_custom_fields_for_hours_and_services() -> None:
+    ui = forms.ui_schema("salon")
+    assert ui["fields"] == {
+        "config.opening_hours": "OpeningHours",
+        "config.services": "Services",
+    }
+
+
+def test_bus_has_no_custom_fields() -> None:
+    assert forms.ui_schema("bus")["fields"] == {}
 
 
 def test_list_packs_reports_datasets_and_template() -> None:

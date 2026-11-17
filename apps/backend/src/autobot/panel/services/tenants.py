@@ -555,6 +555,31 @@ def tenant_owner_invite(slug: str, actor: str) -> OwnerInviteOut:
     )
 
 
+class ExportOut(Schema):
+    tenant: str
+    data: dict[str, Any]
+
+
+def tenant_export(slug: str, *, actor: str) -> ExportOut:
+    """C16: the panel equivalent of `tenant_data_export`, downloaded as JSON
+    instead of written to an operator-chosen local path."""
+    from autobot.runtime import privacy
+
+    tenant = _tenant(slug)
+    db_tenant = Tenant.objects.using("owner").get(pk=tenant.id)
+    with transaction.atomic(using="owner"):
+        data = privacy.export_data(db_tenant)
+    record(
+        actor=actor,
+        action="tenant.export",
+        tenant_id=tenant.id,
+        target_type="tenant",
+        target_id=str(tenant.id),
+        summary="Exportación de datos del negocio",
+    )
+    return ExportOut(**data)
+
+
 class OwnerUnlinkOut(Schema):
     had_chat: bool
 

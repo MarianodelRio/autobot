@@ -32,6 +32,14 @@ archivos existentes y enlaces simbólicos. El operador debe custodiar, entregar 
 retirar ese archivo según el procedimiento del negocio. El contenido no se imprime en
 el terminal ni en logs.
 
+El panel ofrece el mismo export/olvido (C16), sin necesidad de terminal: «Exportar
+datos» y «Olvidar contacto» en la conversación del contacto (pestaña «Contactos») y
+«Exportar datos del negocio» en el menú «⋯» de la ficha. El JSON se descarga en el
+navegador del operador en vez de escribirse en el servidor; las mismas reglas de
+asociación (demo, remitente, eventos del selector) y la misma auditoría
+(`contact.export`, `contact.forget`, `tenant.export`, con solo el id, nunca el
+contenido) aplican en los dos casos.
+
 El borrado de contacto incluye su conversación, mensajes y eventos identificados por
 remitente, relación con el mensaje saliente o referencia del proveedor. Los originales
 del bot de demo se exportan/borran solo cuando su `provider_event_id` está vinculado a

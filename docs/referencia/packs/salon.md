@@ -76,9 +76,12 @@ Requiere que el dueño ya esté vinculado al bot de avisos (`manage.py owner_inv
 mismo bot el día 1 de cada mes, con los datos del mes anterior ya cerrado, y también se
 puede consultar en cualquier momento escribiéndole al bot ("Cómo va el mes").
 
-Para cambiar horario o servicios, edita YAML, ejecuta `make check`, prueba una
-reserva completa y una cancelación con `FakeCalendar` o con `demo-peluqueria`,
-y publica con `tenant_config import <dir> --comment "Motivo"`. Usa `tenant_health <slug>` para comprobar acceso
+Para cambiar horario o servicios desde el panel (pestaña «Configuración»), `opening_hours`
+tiene un editor por día (abierto/cerrado y tramos con selector de hora, nunca un día con
+una lista vacía: cerrado quita la clave) y `services` una tabla con id numérico automático
+(C17); por terminal, edita YAML, ejecuta `make check`, prueba una reserva completa y una
+cancelación con `FakeCalendar` o con `demo-peluqueria`, y publica con
+`tenant_config import <dir> --comment "Motivo"`. Usa `tenant_health <slug>` para comprobar acceso
 Calendar y plantillas antes de activar el canal real. Los procedimientos de
 incidencia y de secretos están en `docs/incidencias/calendar.md` y
 `docs/procedimientos/rotar-secretos.md`.

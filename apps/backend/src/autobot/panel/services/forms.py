@@ -215,6 +215,13 @@ def _textarea_fields(pack: Any) -> list[str]:
     return widgets
 
 
+CUSTOM_FIELDS: dict[str, dict[str, str]] = {
+    # C17: a dedicated per-day editor and a table with an automatic id, instead of
+    # rjsf's generic dict/array widgets.
+    "salon": {"config.opening_hours": "OpeningHours", "config.services": "Services"},
+}
+
+
 def ui_schema(pack_name: str) -> dict[str, Any]:
     pack = _pack(pack_name)
     return {
@@ -222,7 +229,11 @@ def ui_schema(pack_name: str) -> dict[str, Any]:
         "read_only": list(READ_ONLY),
         "hidden": list(HIDDEN),
         "collapsed": list(COLLAPSED),
-        "widgets": {field: "textarea" for field in _textarea_fields(pack)},
+        "fields": CUSTOM_FIELDS.get(pack_name, {}),
+        "widgets": {
+            **{field: "textarea" for field in _textarea_fields(pack)},
+            "timezone": "timezone",
+        },
     }
 
 
