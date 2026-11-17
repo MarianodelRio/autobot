@@ -178,6 +178,57 @@ test("a status change elsewhere (Activar/Pausar) is picked up without clobbering
     expect(screen.getByLabelText("Nombre")).toHaveValue("Tras pausar"),
   );
 });
+test("C17: opening_hours and services use their own editors, timezone a dropdown", async () => {
+  const salonDetail: components["schemas"]["TenantDetail"] = {
+    ...detail,
+    pack: "salon",
+    document: {
+      name: "Peluquería",
+      timezone: "Europe/Madrid",
+      config: {
+        opening_hours: { lunes: ["09:00-13:00"] },
+        services: {
+          "1": { name: "Corte", duration_min: 30, client_presence_min: 30 },
+        },
+      },
+    },
+  };
+  const salonSchema = {
+    document: {
+      type: "object",
+      properties: {
+        name: { type: "string", title: "Nombre" },
+        timezone: { type: "string", title: "Zona horaria" },
+        config: {
+          type: "object",
+          properties: {
+            opening_hours: { type: "object", title: "Horario de apertura" },
+            services: { type: "object", title: "Servicios" },
+          },
+        },
+      },
+    },
+    ui_schema: {
+      read_only: [],
+      widgets: { timezone: "timezone" },
+      fields: {
+        "config.opening_hours": "OpeningHours",
+        "config.services": "Services",
+      },
+      groups: [],
+    },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => json(salonSchema)),
+  );
+  provider(<ConfigEditor detail={salonDetail} onDirtyChange={vi.fn()} />);
+  await screen.findByLabelText("Nombre");
+  expect(screen.getByText("Lunes")).toBeInTheDocument();
+  expect(screen.getAllByText("Cerrado")).toHaveLength(6);
+  expect(screen.getByDisplayValue("Corte")).toBeInTheDocument();
+  expect(screen.getByRole("combobox")).toHaveValue("Europe/Madrid");
+});
 test("demo is hidden from a real client's form, shown for a demo tenant", async () => {
   const demoSchema = {
     document: {

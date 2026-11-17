@@ -1,3 +1,5 @@
+import { downloadBlob } from "./download";
+
 function cell(value: unknown): string {
   if (value === null || value === undefined) return "";
   return typeof value === "string" ? value : JSON.stringify(value);
@@ -26,11 +28,8 @@ export function toDelimited(
 }
 
 export function downloadCsv(filename: string, content: string): void {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(
+    filename,
+    new Blob([content], { type: "text/csv;charset=utf-8;" }),
+  );
 }

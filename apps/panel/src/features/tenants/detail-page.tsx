@@ -5,8 +5,10 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useState } from "react";
+import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { KpiCard } from "@/components/kpi-card";
@@ -32,6 +34,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/features/activity/components/timeline";
+import { downloadJson } from "@/lib/download";
 import { errorMessage } from "@/lib/errors";
 import { formatEur, formatNumber } from "@/lib/format";
 import { ConfigEditor } from "./config/editor";
@@ -193,6 +196,25 @@ function Summary({ detail }: { detail: Detail }) {
 function Contacts({ slug }: { slug: string }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [forgetOpen, setForgetOpen] = useState(false);
+  const client = useQueryClient();
+  const exportContact = useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.GET("/contacts/{id}/export", { params: { path: { id } } })),
+    onSuccess: (result, id) => downloadJson(`contacto-${id}.json`, result),
+    onError: () => toast.error("No se pudo exportar."),
+  });
+  const forgetContact = useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.POST("/contacts/{id}/forget", { params: { path: { id } } })),
+    onSuccess: () => {
+      toast.success("Contacto olvidado.");
+      setForgetOpen(false);
+      setSelected(null);
+      void client.invalidateQueries({ queryKey: ["contacts", slug] });
+    },
+    onError: () => toast.error("No se pudo olvidar el contacto."),
+  });
   const list = useInfiniteQuery({
     queryKey: ["contacts", slug, search],
     initialPageParam: "",
@@ -289,10 +311,31 @@ function Contacts({ slug }: { slug: string }) {
             ) : (
               detail.data && (
                 <>
-                  <h3>
-                    {detail.data.contact.display_name ||
-                      detail.data.contact.external_id}
-                  </h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3>
+                      {detail.data.contact.display_name ||
+                        detail.data.contact.external_id}
+                    </h3>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={exportContact.isPending}
+                        onClick={() =>
+                          selected && exportContact.mutate(selected)
+                        }
+                      >
+                        Exportar datos
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setForgetOpen(true)}
+                      >
+                        Olvidar contacto
+                      </Button>
+                    </div>
+                  </div>
                   {detail.data.exchanges.length === 0 ? (
                     <EmptyState message="No hay intercambios." />
                   ) : (
@@ -316,6 +359,15 @@ function Contacts({ slug }: { slug: string }) {
           </div>
         </SheetContent>
       </Sheet>
+      <ConfirmDialog
+        open={forgetOpen}
+        onOpenChange={setForgetOpen}
+        title="Olvidar contacto"
+        description="Borra el contacto, sus conversaciones, mensajes y eventos de entrada. No se puede deshacer."
+        confirmLabel="Olvidar"
+        confirmText="olvidar"
+        onConfirm={() => selected && forgetContact.mutate(selected)}
+      />
     </div>
   );
 }

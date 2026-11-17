@@ -59,6 +59,8 @@ function renderAt(path: string, tenant: typeof base) {
         body.confirm_slug === tenant.slug
           ? { telegram_webhook_removed: true }
           : { code: "bad_request", message: "no" };
+    } else if (url.pathname.endsWith("/export")) {
+      value = { tenant: tenant.slug, data: { contact: [] } };
     } else if (url.pathname.endsWith("/health-check")) value = [];
     else if (url.pathname.endsWith("/secrets"))
       value = {
@@ -107,6 +109,21 @@ test("hidden for a demo tenant", async () => {
   expect(
     screen.queryByRole("button", { name: "Más acciones" }),
   ).not.toBeInTheDocument();
+}, 10_000);
+
+test("C16: exports the tenant's data as a downloaded file", async () => {
+  const user = userEvent.setup();
+  const clickSpy = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => {});
+  renderAt("/clientes/demo", { ...base, status: "active" });
+  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
+  await user.click(screen.getByRole("button", { name: "Más acciones" }));
+  await user.click(
+    screen.getByRole("menuitem", { name: "Exportar datos del negocio" }),
+  );
+  await vi.waitFor(() => expect(clickSpy).toHaveBeenCalled());
+  clickSpy.mockRestore();
 }, 10_000);
 
 test("disabled while the tenant is active, with an explanation", async () => {

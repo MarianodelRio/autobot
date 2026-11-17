@@ -579,6 +579,36 @@
         "title": "ContactDetail",
         "type": "object"
       },
+      "ContactExportOut": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "tenant": {
+            "title": "Tenant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant",
+          "data"
+        ],
+        "title": "ContactExportOut",
+        "type": "object"
+      },
+      "ContactForgetOut": {
+        "properties": {
+          "forgotten": {
+            "default": true,
+            "title": "Forgotten",
+            "type": "boolean"
+          }
+        },
+        "title": "ContactForgetOut",
+        "type": "object"
+      },
       "ContactOut": {
         "properties": {
           "channel": {
@@ -1278,6 +1308,25 @@
           "status"
         ],
         "title": "Exchange",
+        "type": "object"
+      },
+      "ExportOut": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "tenant": {
+            "title": "Tenant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant",
+          "data"
+        ],
+        "title": "ExportOut",
         "type": "object"
       },
       "FlowOut": {
@@ -4043,6 +4092,84 @@
         ]
       }
     },
+    "/contacts/{id}/export": {
+      "get": {
+        "description": "C16: the panel equivalent of `contact_export`, downloaded as JSON instead\nof written to an operator-chosen local path.",
+        "operationId": "autobot_panel_routers_contacts_contact_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactExportOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Contact Export",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
+    "/contacts/{id}/forget": {
+      "post": {
+        "description": "C16: the panel equivalent of `contact_forget` (right to erasure).",
+        "operationId": "autobot_panel_routers_contacts_contact_forget",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactForgetOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Contact Forget",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
     "/data/query": {
       "post": {
         "operationId": "autobot_panel_routers_data_run_query",
@@ -5237,6 +5364,43 @@
           }
         ],
         "summary": "Publish Document",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/export": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Export",
         "tags": [
           "tenants"
         ]

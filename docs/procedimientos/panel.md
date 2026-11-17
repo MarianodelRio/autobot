@@ -24,19 +24,34 @@ cada 30 segundos.
 ## Clientes
 
 La lista se puede filtrar por pack y estado o buscar por nombre y slug. La ficha
-tiene cinco pestañas: Resumen, Configuración, Actividad, Contactos y Avisos.
+tiene seis pestañas: Resumen, Alta, Configuración, Actividad, Contactos y Avisos.
 Resumen muestra los indicadores del mes, la salud del canal con «Comprobar
 ahora» y las alertas abiertas; el resumen del dueño se carga a petición, pues
-puede consultar Calendar. Configuración edita con formulario o YAML, con diff y
-comentario opcional, e incluye el canal (enlace, QR, webhook y «Cambiar
-credenciales», con «Generar» para los campos que lo admiten) y el dueño («Invitar
-al dueño», con el enlace mostrado una sola vez, su caducidad y el aviso de que
-sustituirá al chat ya conectado). En Telegram, el estado del webhook («Registrado»,
-«Sin registrar» o «Sin comprobar») se consulta a Telegram (`getWebhookInfo`) y se
-refresca al registrarlo; «Sin comprobar» significa que no se pudo saberlo. Actividad usa la misma lista que
-Logs → Conversaciones, limitada a este cliente. Cada consulta de una
-conversación desde Contactos queda auditada. El panel pide confirmación para
-pausar o reactivar y exige comprobaciones y slug para activar.
+puede consultar Calendar. Alta (ADR-014) reúne en un solo sitio, paso a paso, lo que
+falta para activar el negocio: documento, canal, secretos, plantillas (WhatsApp),
+salud, un mensaje real de un tester, el dueño, el webhook de Telegram, el calendario
+de `salon` (D1-D4) y los horarios de `bus`; los pasos marcados «Comprobar» hacen una
+llamada real al proveedor (nunca al cargar la pestaña) y quedan auditados.
+Configuración edita con formulario o YAML, con diff legible (campo por campo, no un
+volcado de la librería de diferencias) y comentario opcional, e incluye el canal
+(enlace, QR, webhook y «Cambiar credenciales», con «Generar» para los campos que lo
+admiten) y el dueño («Invitar al dueño», con el enlace mostrado una sola vez, su
+caducidad y el aviso de que sustituirá al chat ya conectado). En `salon`, el horario
+de apertura tiene un editor por día (abierto/cerrado y tramos con hora) y los
+servicios una tabla con id automático (C17); la zona horaria se elige de una lista,
+no se escribe a mano. En Telegram, el estado del webhook («Registrado», «Sin
+registrar» o «Sin comprobar») se consulta a Telegram (`getWebhookInfo`) y se
+refresca al registrarlo; «Sin comprobar» significa que no se pudo saberlo.
+«Historial» (junto a «Editar YAML», C16) lista las versiones guardadas con autor y
+comentario, con «Ver cambios» (el mismo diff legible contra el documento actual) y
+«Volver a esta versión», que crea una versión nueva con ese contenido tras pedir
+confirmación. Actividad usa la misma lista que Logs → Conversaciones, limitada a
+este cliente. Cada consulta de una conversación desde Contactos queda auditada, y
+desde ahí también se puede «Exportar datos» (descarga un JSON) u «Olvidar contacto»
+(borrado irreversible, con confirmación) de ese contacto; «Exportar datos del
+negocio», en el menú «⋯» de la ficha, hace lo mismo a nivel de negocio (C16; ver
+`docs/procedimientos/retencion-rgpd.md`). El panel pide confirmación para pausar o
+reactivar y exige comprobaciones y slug para activar.
 
 El alta de un negocio nuevo (`/clientes/nuevo`) pasa por pack, datos básicos (nombre,
 slug derivado y comprobado, zona horaria y canal), configuración precargada con la

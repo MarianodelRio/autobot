@@ -208,6 +208,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/contacts/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Contact Export
+         * @description C16: the panel equivalent of `contact_export`, downloaded as JSON instead
+         *     of written to an operator-chosen local path.
+         */
+        get: operations["autobot_panel_routers_contacts_contact_export"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/contacts/{id}/forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Contact Forget
+         * @description C16: the panel equivalent of `contact_forget` (right to erasure).
+         */
+        post: operations["autobot_panel_routers_contacts_contact_forget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data/query": {
         parameters: {
             query?: never;
@@ -652,6 +693,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{slug}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant Export */
+        get: operations["autobot_panel_routers_tenants_tenant_export"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{slug}/health-check": {
         parameters: {
             query?: never;
@@ -1074,6 +1132,23 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** ContactExportOut */
+        ContactExportOut: {
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /** Tenant */
+            tenant: string;
+        };
+        /** ContactForgetOut */
+        ContactForgetOut: {
+            /**
+             * Forgotten
+             * @default true
+             */
+            forgotten: boolean;
+        };
         /** ContactOut */
         ContactOut: {
             /** Channel */
@@ -1299,6 +1374,15 @@ export interface components {
             outbound_id: string;
             /** Status */
             status: string;
+        };
+        /** ExportOut */
+        ExportOut: {
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /** Tenant */
+            tenant: string;
         };
         /** FlowOut */
         FlowOut: {
@@ -2371,6 +2455,50 @@ export interface operations {
             };
         };
     };
+    autobot_panel_routers_contacts_contact_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactExportOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_contacts_contact_forget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactForgetOut"];
+                };
+            };
+        };
+    };
     autobot_panel_routers_data_run_query: {
         parameters: {
             query?: never;
@@ -3007,6 +3135,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_tenant_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportOut"];
                 };
             };
         };

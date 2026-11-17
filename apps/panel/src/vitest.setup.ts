@@ -8,6 +8,11 @@ afterEach(() => cleanup());
 // restoration calls it on every navigation.
 window.scrollTo ??= () => {};
 
+// jsdom has no Blob URL store, so it never implements these; a downloaded
+// export (CSV, JSON) needs them to build its temporary link.
+URL.createObjectURL ??= () => "blob:test";
+URL.revokeObjectURL ??= () => {};
+
 // jsdom has no layout engine, so it never implements matchMedia; shadcn's
 // sidebar (useIsMobile) needs it to exist.
 window.matchMedia ??= (query: string) =>

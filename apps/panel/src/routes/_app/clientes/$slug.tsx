@@ -2,7 +2,14 @@ import { createFileRoute, useBlocker } from "@tanstack/react-router";
 import { useState } from "react";
 import { TenantDetailPage } from "@/features/tenants/detail-page";
 
-const TABS = ["resumen", "configuracion", "actividad", "contactos", "avisos"];
+const TABS = [
+  "resumen",
+  "alta",
+  "configuracion",
+  "actividad",
+  "contactos",
+  "avisos",
+];
 
 interface TenantSearch {
   tab?: string;

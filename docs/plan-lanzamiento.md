@@ -752,6 +752,12 @@ C1–C11 hechos el 2026-11-17, con sus tests (backend y panel en verde).
   - **Telegram:** token, `getMe` rellena el usuario, secreto automático y registro del webhook.
   - **`salon`:** ver D. **`bus`:** horarios elegidos de la biblioteca, su versión, vigencia
     y pueblos (C22–C23).
+  Hecho el 2026-11-17 (ADR-014): pestaña, `GET/POST .../setup...`, pasos comunes
+  (documento, canal, secretos, plantillas, salud, tester, dueño), webhook de Telegram,
+  calendario de `salon` (D3 incluido) y horarios de `bus`; `tenant_setup` reutiliza los
+  servicios existentes en vez de un hook por pack/adaptador (alternativa que el ADR
+  descarta explícitamente). Falta: añadir testers desde la pestaña, el detalle propio de
+  WhatsApp (`subscribed_apps`, texto/estado de cada plantilla) y mover aquí QR/Activar.
 - [x] **C13 (S)** **QR de clientes:** hoy desborda y no se descarga. Tamaño y margen
   correctos, descarga en SVG/PNG, vista para imprimir y aviso si falta el dato en vez de ocultarse.
 - [ ] **C14 (S)** **QR del chat de avisos del dueño:** el enlace ya existe; añadir QR, estado
@@ -760,10 +766,18 @@ C1–C11 hechos el 2026-11-17, con sus tests (backend y panel en verde).
   «Mi QR» en el menú del bot de avisos.
 - [x] **C15 (S)** Sistema debe avisar si el webhook del bot de avisos no está registrado: hoy
   marca «ok» y el dueño no recibe respuesta (`system.py:178`).
-- [ ] **C16 (M)** Historial y vuelta atrás de configuración (la API ya existe), y lo que hoy
+- [x] **C16 (M)** Historial y vuelta atrás de configuración (la API ya existe), y lo que hoy
   solo está en terminal: `owner_unlink`, exportar y olvidar contacto, exportar negocio.
-- [ ] **C17 (M)** Editores propios: horario por día, servicios en tabla con id automático y
+  `owner_unlink` ya estaba; añadido el 2026-11-17: «Historial» (lista de versiones, diff
+  legible y «Volver a esta versión») junto a «Editar YAML», «Exportar datos»/«Olvidar
+  contacto» en Contactos y «Exportar datos del negocio» en el menú «⋯» de la ficha,
+  descargados como JSON en el navegador en vez de escritos en el servidor.
+- [x] **C17 (M)** Editores propios: horario por día, servicios en tabla con id automático y
   zona horaria en selector. Plegar textos y evento especial, y revisión final legible.
+  Hecho el 2026-11-17: editor de horario por día y tabla de servicios con id numérico
+  automático (`salon`), selector de zona horaria (todos los packs); «plegar textos y
+  evento especial» ya estaba desde C6; `JsonDiff` reescrito como una lista legible
+  campo por campo en vez de un volcado de `jsondiffpatch` (se retira esa dependencia).
 - [ ] **C18 (M) [Aprobación]** «Conectar WhatsApp» desde el panel por API: `subscribed_apps`,
   registro del número, plantillas y estado. Es lo que más ahorra sin cambiar de modelo.
 

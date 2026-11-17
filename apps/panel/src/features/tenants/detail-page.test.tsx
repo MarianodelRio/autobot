@@ -88,6 +88,12 @@ function setup(status = "active") {
           sent_at: null,
         },
       ];
+    else if (url.pathname.endsWith("/contacts/id1/export"))
+      value = { tenant: "demo", data: { contact: [{ id: "id1" }] } };
+    else if (url.pathname.endsWith("/contacts/id1/forget"))
+      value = { forgotten: true };
+    else if (url.pathname.endsWith("/tenants/demo/export"))
+      value = { tenant: "demo", data: {} };
     else value = { ...tenant, status };
     return new Response(JSON.stringify(value), {
       status: 200,
@@ -146,4 +152,30 @@ test("health check is sent from the summary tab and displays its result", async 
   expect(
     fetcher.mock.calls.some((call) => (call[0] as Request).method === "POST"),
   ).toBe(true);
+});
+test("C16: a contact's data can be exported and the contact forgotten", async () => {
+  const clickSpy = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => {});
+  const fetcher = setup();
+  const user = userEvent.setup();
+  await screen.findByRole("heading", { name: "Negocio" });
+  await user.click(screen.getByRole("tab", { name: "Contactos" }));
+  await user.click(await screen.findByRole("button", { name: "Ana" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Exportar datos" }),
+  );
+  await vi.waitFor(() => expect(clickSpy).toHaveBeenCalled());
+
+  await user.click(screen.getByRole("button", { name: "Olvidar contacto" }));
+  await user.type(await screen.findByLabelText(/olvidar/), "olvidar");
+  await user.click(screen.getByRole("button", { name: "Olvidar" }));
+  await vi.waitFor(() =>
+    expect(
+      fetcher.mock.calls.some((call) =>
+        String((call[0] as Request).url).endsWith("/contacts/id1/forget"),
+      ),
+    ).toBe(true),
+  );
+  clickSpy.mockRestore();
 });

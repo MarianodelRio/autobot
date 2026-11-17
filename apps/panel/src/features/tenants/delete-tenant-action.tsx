@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { downloadJson } from "@/lib/download";
 import { errorMessage } from "@/lib/errors";
 
 type Detail = components["schemas"]["TenantDetail"];
@@ -56,6 +57,18 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
     setTyped("");
     mutation.reset();
   }
+  const exportData = useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.GET("/tenants/{slug}/export", {
+          params: { path: { slug: detail.slug } },
+        }),
+      ),
+    onSuccess: (result) => {
+      downloadJson(`${detail.slug}-datos.json`, result);
+    },
+    onError: () => toast.error("No se pudo exportar."),
+  });
   if (detail.document.demo) return null;
   const active = detail.status === "active";
   return (
@@ -81,6 +94,15 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
               Páusalo antes de eliminarlo.
             </p>
           )}
+          <DropdownMenuItem
+            disabled={exportData.isPending}
+            onSelect={(event) => {
+              event.preventDefault();
+              exportData.mutate();
+            }}
+          >
+            Exportar datos del negocio
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <Dialog

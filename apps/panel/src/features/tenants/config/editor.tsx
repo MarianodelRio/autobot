@@ -31,7 +31,11 @@ import { validator } from "@/lib/form-validator";
 import { CalendarSection } from "./calendar-section";
 import { ChannelSection } from "./channel-section";
 import { DatasetSection } from "./dataset-section";
+import { HistorySection } from "./history-section";
+import { OpeningHoursField } from "./opening-hours-field";
 import { OwnerSection } from "./owner-section";
+import { ServicesField } from "./services-field";
+import { TimezoneWidget } from "./timezone-widget";
 
 type Detail = components["schemas"]["TenantDetail"];
 type ErrorSchema = NonNullable<ComponentProps<typeof Form>["extraErrors"]>;
@@ -153,6 +157,9 @@ function uiSchema(
   if (value.widgets && typeof value.widgets === "object")
     for (const [field, widget] of Object.entries(value.widgets))
       assign(field, "ui:widget", widget);
+  if (value.fields && typeof value.fields === "object")
+    for (const [field, name] of Object.entries(value.fields))
+      assign(field, "ui:field", name);
   if (Array.isArray(value.groups)) {
     const order = value.groups.flatMap((group: unknown) =>
       typeof group === "object" &&
@@ -408,20 +415,23 @@ export function ConfigEditor({
           <span>·</span>
           <code className="text-xs">{String(detail.document.id ?? "")}</code>
         </div>
-        {mode === "form" ? (
-          <Button variant="outline" size="sm" onClick={() => setMode("yaml")}>
-            Editar YAML
-          </Button>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!!yamlError}
-            onClick={() => setMode("form")}
-          >
-            Volver al formulario
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <HistorySection slug={detail.slug} current={draft} dirty={dirty} />
+          {mode === "form" ? (
+            <Button variant="outline" size="sm" onClick={() => setMode("yaml")}>
+              Editar YAML
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!!yamlError}
+              onClick={() => setMode("form")}
+            >
+              Volver al formulario
+            </Button>
+          )}
+        </div>
       </div>
       {mode === "form" ? (
         <Form
@@ -431,6 +441,8 @@ export function ConfigEditor({
           formData={draft}
           extraErrors={errorsToSchema(errors)}
           templates={{ ObjectFieldTemplate: GroupedObjectTemplate }}
+          widgets={{ timezone: TimezoneWidget }}
+          fields={{ OpeningHours: OpeningHoursField, Services: ServicesField }}
           formContext={formContext}
           onChange={({ formData }) => {
             if (formData && typeof formData === "object") {
