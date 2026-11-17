@@ -35,6 +35,7 @@ import { Timeline } from "@/features/activity/components/timeline";
 import { errorMessage } from "@/lib/errors";
 import { formatEur, formatNumber } from "@/lib/format";
 import { ConfigEditor } from "./config/editor";
+import { SetupTab } from "./config/setup-tab";
 import { StatusAction } from "./config/status-action";
 import { DeleteTenantAction } from "./delete-tenant-action";
 
@@ -413,6 +414,7 @@ export function TenantDetailPage({
           {(
             [
               ["resumen", "Resumen"],
+              ["alta", "Alta"],
               ["configuracion", "Configuración"],
               ["actividad", "Actividad"],
               ["contactos", "Contactos"],
@@ -426,6 +428,9 @@ export function TenantDetailPage({
         </TabsList>
         <TabsContent value="resumen">
           <Summary detail={d} />
+        </TabsContent>
+        <TabsContent value="alta">
+          <SetupTab slug={slug} />
         </TabsContent>
         <TabsContent value="configuracion">
           <ConfigEditor

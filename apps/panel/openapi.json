@@ -2470,6 +2470,80 @@
         "title": "ServiceAccountOut",
         "type": "object"
       },
+      "SetupStepOut": {
+        "properties": {
+          "blocking": {
+            "title": "Blocking",
+            "type": "boolean"
+          },
+          "checkable": {
+            "default": false,
+            "title": "Checkable",
+            "type": "boolean"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "values": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SetupValue"
+            },
+            "title": "Values",
+            "type": "array"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "why",
+          "state",
+          "blocking",
+          "detail"
+        ],
+        "title": "SetupStepOut",
+        "type": "object"
+      },
+      "SetupValue": {
+        "properties": {
+          "copiable": {
+            "default": true,
+            "title": "Copiable",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "SetupValue",
+        "type": "object"
+      },
       "SlugAvailability": {
         "properties": {
           "available": {
@@ -5448,6 +5522,93 @@
           }
         ],
         "summary": "Set Secrets",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/setup": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_setup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SetupStepOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Setup",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/setup/check/{step}": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_tenant_setup_check",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step",
+            "required": true,
+            "schema": {
+              "title": "Step",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStepOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Setup Check",
         "tags": [
           "tenants"
         ]

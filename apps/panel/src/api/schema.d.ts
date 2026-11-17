@@ -755,6 +755,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{slug}/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant Setup */
+        get: operations["autobot_panel_routers_tenants_tenant_setup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{slug}/setup/check/{step}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tenant Setup Check */
+        post: operations["autobot_panel_routers_tenants_tenant_setup_check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{slug}/status": {
         parameters: {
             query?: never;
@@ -1693,6 +1727,43 @@ export interface components {
             configured: boolean;
             /** Email */
             email: string | null;
+        };
+        /** SetupStepOut */
+        SetupStepOut: {
+            /** Blocking */
+            blocking: boolean;
+            /**
+             * Checkable
+             * @default false
+             */
+            checkable: boolean;
+            /** Detail */
+            detail: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** State */
+            state: string;
+            /**
+             * Values
+             * @default []
+             */
+            values: components["schemas"]["SetupValue"][];
+            /** Why */
+            why: string;
+        };
+        /** SetupValue */
+        SetupValue: {
+            /**
+             * Copiable
+             * @default true
+             */
+            copiable: boolean;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
         };
         /** SlugAvailability */
         SlugAvailability: {
@@ -3098,6 +3169,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SecretsUpdateOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_tenant_setup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStepOut"][];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_tenant_setup_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                step: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStepOut"];
                 };
             };
         };
