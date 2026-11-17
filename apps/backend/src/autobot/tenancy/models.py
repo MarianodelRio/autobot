@@ -49,7 +49,11 @@ class TenantDocumentVersion(models.Model):
 
 class TenantDatasetVersion(models.Model):
     """An immutable version of one of a tenant's datasets (ADR-009), e.g. `bus`'s
-    timetable. No RLS, same reasons as `TenantDocumentVersion`."""
+    timetable. No RLS, same reasons as `TenantDocumentVersion`.
+
+    `source_name`/`source_version`/`source_sha` (ADR-013) record which library entry
+    this was copied from, when it was: plain columns, no FK, since the library entry
+    may later change version or be deleted without affecting this copy."""
 
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="+")
     name = models.CharField(max_length=64)  # "timetable"
@@ -59,6 +63,9 @@ class TenantDatasetVersion(models.Model):
     comment = models.TextField(blank=True, default="")
     author = models.CharField(max_length=150)
     created_at = models.DateTimeField(auto_now_add=True)
+    source_name = models.CharField(max_length=64, null=True, blank=True)  # noqa: DJ001
+    source_version = models.IntegerField(null=True, blank=True)
+    source_sha = models.CharField(max_length=64, null=True, blank=True)  # noqa: DJ001
 
     class Meta:
         db_table = "tenant_dataset_version"
@@ -70,6 +77,37 @@ class TenantDatasetVersion(models.Model):
 
     def __str__(self) -> str:
         return f"{self.tenant_id} {self.name} v{self.version}"
+
+
+class DatasetLibraryVersion(models.Model):
+    """An immutable version of a named, reusable dataset in the operator's library
+    (ADR-013): uploaded once by terminal, independent of any tenant, and copied into
+    `TenantDatasetVersion` when a client chooses or applies it. No `tenant_id`, no RLS:
+    it is platform configuration, not customer data."""
+
+    id = models.UUIDField(primary_key=True, editable=False)
+    pack = models.CharField(max_length=32)
+    dataset = models.CharField(max_length=64)  # "timetable"
+    name = models.SlugField(max_length=64)  # chosen at upload time, e.g. "linea-cordoba"
+    version = models.IntegerField()
+    files = models.JSONField()  # {"path/within/the/dataset": "<UTF-8 text>", ...}
+    sha256 = models.CharField(max_length=64)  # of json.dumps(files, sort_keys=True)
+    summary = models.JSONField(default=dict)  # Pack.dataset_summary's own result
+    comment = models.TextField(blank=True, default="")
+    author = models.CharField(max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "dataset_library_version"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["pack", "dataset", "name", "version"],
+                name="dataset_library_version_unique",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.pack}/{self.dataset}/{self.name} v{self.version}"
 
 
 class TenantSecret(models.Model):

@@ -24,6 +24,14 @@ class CreateTenantIn(Schema):
     demo_description: str | None = None
     config: dict[str, Any]
     comment: str = ""
+    # ADR-013/C22: {dataset name -> library entry name}, always its latest version.
+    dataset_choices: dict[str, str] | None = None
+
+
+class ApplyDatasetIn(Schema):
+    name: str
+    version: int | None = None
+    comment: str = ""
 
 
 class DocumentIn(Schema):
@@ -65,10 +73,40 @@ def tenant_slug_availability(request: HttpRequest, slug: str) -> SlugAvailabilit
 
 @router.post("/tenants", response=VersionOut)
 def create_tenant(request: HttpRequest, payload: CreateTenantIn) -> VersionOut:
-    doc = store.new_document(**payload.model_dump(exclude={"comment"}))
+    doc = store.new_document(**payload.model_dump(exclude={"comment", "dataset_choices"}))
+    datasets, dataset_origins = service.resolve_dataset_choices(
+        doc["pack"], payload.dataset_choices
+    )
     return VersionOut(
         version=store.create_tenant(
-            document=doc, actor=request.user.username, comment=payload.comment
+            document=doc,
+            datasets=datasets,
+            dataset_origins=dataset_origins,
+            actor=request.user.username,
+            comment=payload.comment,
+        )
+    )
+
+
+@router.get("/tenants/{slug}/datasets/{dataset}", response=service.DatasetStatusOut)
+def tenant_dataset_status(
+    request: HttpRequest, slug: str, dataset: str
+) -> service.DatasetStatusOut:
+    return service.tenant_dataset_status(slug, dataset)
+
+
+@router.post("/tenants/{slug}/datasets/{dataset}/apply", response=VersionOut)
+def apply_dataset(
+    request: HttpRequest, slug: str, dataset: str, payload: ApplyDatasetIn
+) -> VersionOut:
+    return VersionOut(
+        version=service.tenant_apply_dataset(
+            slug,
+            dataset,
+            name=payload.name,
+            version=payload.version,
+            comment=payload.comment,
+            actor=request.user.username,
         )
     )
 

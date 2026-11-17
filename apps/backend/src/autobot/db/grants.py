@@ -70,6 +70,10 @@ def statements() -> list[str]:
         "REVOKE INSERT, UPDATE, DELETE ON tenant FROM fp_app",
         _revoke_if_exists("audit_event", "fp_app"),
         _revoke_if_exists("ops_alert", "fp_app", "DELETE"),
+        # ADR-013: the registry never reads this table (only `tenancy.store`, as
+        # `fp_owner`, copies from it into `tenant_dataset_version`), unlike the
+        # CONFIG_TABLES below that `fp_app` reloads at startup.
+        _revoke_if_exists("dataset_library_version", "fp_app"),
         *(_revoke_if_exists(table, "fp_app", "INSERT, UPDATE, DELETE") for table in CONFIG_TABLES),
         *(_revoke_if_exists(table, "fp_app") for table in AUTH_TABLES),
         "GRANT SELECT ON ALL TABLES IN SCHEMA public TO fp_readonly",

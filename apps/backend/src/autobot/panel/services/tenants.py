@@ -48,6 +48,111 @@ def _tenant(slug: str) -> LoadedTenant:
     return tenant
 
 
+def resolve_dataset_choices(
+    pack: str, choices: dict[str, str] | None
+) -> tuple[dict[str, dict[str, str]] | None, dict[str, tuple[str, int, str]] | None]:
+    """A new tenant's `dataset_choices` (C22: {dataset name -> library entry name},
+    always its latest version) resolved to the files `store.create_tenant` needs and
+    the origin it records on the resulting `TenantDatasetVersion`."""
+    if not choices:
+        return None, None
+    from autobot.tenancy import dataset_library
+
+    datasets: dict[str, dict[str, str]] = {}
+    origins: dict[str, tuple[str, int, str]] = {}
+    for dataset_name, entry_name in choices.items():
+        try:
+            entry = dataset_library.get(pack, dataset_name, entry_name)
+        except dataset_library.LibraryError as error:
+            raise store.StoreError(
+                "bad_request", error.message, [f"datasets.{dataset_name}: {error.message}"]
+            ) from None
+        datasets[dataset_name] = entry.files
+        origins[dataset_name] = dataset_library.origin(entry)
+    return datasets, origins
+
+
+def tenant_apply_dataset(
+    slug: str, dataset: str, *, name: str, version: int | None, comment: str, actor: str
+) -> int:
+    """Copies a library entry into an existing tenant's dataset (C23's "Aplicar"),
+    returning its resulting version — the dataset's current one when the content was
+    already identical, since `import_dataset` then creates nothing."""
+    from autobot.tenancy import dataset_library
+    from autobot.tenancy.models import TenantDatasetVersion
+
+    tenant = _tenant(slug)
+    try:
+        result = dataset_library.apply_to_tenant(
+            slug,
+            dataset,
+            pack=tenant.document.pack,
+            name=name,
+            version=version,
+            actor=actor,
+            comment=comment,
+        )
+    except dataset_library.LibraryError as error:
+        raise ApiError("bad_request", error.message, 400) from None
+    if result is not None:
+        return result
+    current = (
+        TenantDatasetVersion.objects.using("owner")
+        .filter(tenant_id=tenant.id, name=dataset)
+        .order_by("-version")
+        .first()
+    )
+    return current.version if current else 0
+
+
+class DatasetStatusOut(Schema):
+    version: int | None
+    author: str | None
+    comment: str
+    created_at: datetime | None
+    source_name: str | None
+    source_version: int | None
+    newer_version_available: int | None  # the library's version, if newer than ours
+
+
+def tenant_dataset_status(slug: str, dataset: str) -> DatasetStatusOut:
+    """The ficha's "Horarios en uso" (C23): never the dataset's own content."""
+    from autobot.tenancy import dataset_library
+    from autobot.tenancy.models import TenantDatasetVersion
+
+    tenant = _tenant(slug)
+    current = (
+        TenantDatasetVersion.objects.using("owner")
+        .filter(tenant_id=tenant.id, name=dataset)
+        .order_by("-version")
+        .first()
+    )
+    newer = None
+    if current is not None and current.source_name:
+        latest = dataset_library.latest(tenant.document.pack, dataset, current.source_name)
+        if latest is not None and latest.version > (current.source_version or 0):
+            newer = latest.version
+    if current is None:
+        return DatasetStatusOut(
+            version=None,
+            author=None,
+            comment="",
+            created_at=None,
+            source_name=None,
+            source_version=None,
+            newer_version_available=None,
+        )
+    return DatasetStatusOut(
+        version=current.version,
+        author=current.author,
+        comment=current.comment,
+        created_at=current.created_at,
+        source_name=current.source_name,
+        source_version=current.source_version,
+        newer_version_available=newer,
+    )
+
+
 def _health_checked_at(tenant_id: UUID) -> datetime | None:
     cached = cache.get(f"health:{tenant_id}")
     if isinstance(cached, dict) and "checked_at" in cached:

@@ -145,9 +145,9 @@ tenant-push: ## Exporta la BD local y la importa por SSH (SLUG=<slug> [SECRETS=<
 
 # Bus tools operate on ignored exports under var/datos/<slug>/.
 BUS_TOOL = PYTHONPATH=apps/backend/src uv run --project apps/backend python -m tools
-export TENANT COMMENT PROD
+export TENANT COMMENT PROD NOMBRE DIR
 
-.PHONY: bus-bajar bus-validar bus-formatear bus-revision bus-publicar
+.PHONY: bus-bajar bus-validar bus-formatear bus-revision bus-publicar bus-subir
 
 bus-bajar: ## Exporta el dataset vigente a var/datos/<slug>/timetable (TENANT=<slug> [PROD=1])
 	$(BUS_TOOL).bus.data download
@@ -163,6 +163,9 @@ bus-revision: ## Genera HTML/PDF comparando con .publicado (TENANT=<slug> [ARGS=
 
 bus-publicar: ## Publica la copia local validada en BD (TENANT=<slug> COMMENT="..." [PROD=1])
 	$(BUS_TOOL).bus.data publish
+
+bus-subir: ## Sube horarios validados a la biblioteca (ADR-013, C21); nunca toca a ningún cliente (NOMBRE=<nombre> DIR=<dir> COMMENT="..." [PROD=1])
+	$(BUS_TOOL).bus.library
 
 ##@ Entorno local completo (localprod)
 

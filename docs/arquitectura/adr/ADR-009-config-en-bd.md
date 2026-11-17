@@ -64,7 +64,10 @@ fija las decisiones de arquitectura.
   `0002`.
 - **Horarios de `bus` por terminal, no por el panel** (`tenant_dataset export`/`import`),
   porque son ficheros extensos con su propio flujo de revisión (`make bus-*`); el panel
-  solo los muestra.
+  solo los muestra. **Modificado por el ADR-013:** siguen subiéndose por terminal, pero
+  a una biblioteca de conjuntos de datos, independiente de cualquier cliente; el alta y
+  la ficha eligen y aplican una entrada desde el panel, en vez de subir directamente al
+  cliente.
 
 ## Alternativas consideradas
 

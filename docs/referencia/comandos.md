@@ -29,6 +29,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make bus-formatear TENANT=<slug>` | Realinea las columnas de las tablas de horarios sobre `var/datos/<slug>/timetable`, sin cambiar los datos |
 | `make bus-revision TENANT=<slug> [ARGS="..."]` | Genera HTML/PDF comparando con `.publicado/timetable`; `ARGS="--base <dir>"` elige otra base |
 | `make bus-publicar TENANT=<slug> COMMENT="..." [PROD=1]` | Publica la copia local validada en BD y actualiza `.publicado` tras el éxito; sin `PROD`, usa la BD local |
+| `make bus-subir NOMBRE=<nombre> DIR=<dir> COMMENT="..." [PROD=1]` | ADR-013: valida, prueba sin escribir y sube `<dir>` a la biblioteca de conjuntos de datos como `<nombre>`, rechazando si otra persona subió antes (`--base-sha`); nunca toca a ningún cliente |
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
 | `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
 | `make check-prod-config` | Ejecuta `apps/backend/src/tools/ops/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
@@ -78,6 +79,9 @@ también se puede pasar en la línea de comandos.
 | `tenant_config validate --all` | Valida todos los documentos vigentes; sale con error si alguno es ilegible, inválido, degradado o ambiguo |
 | `tenant_dataset export <slug> <name> <dir\|->` | Exporta el dataset vigente a un directorio vacío o tar.gz, sin secretos |
 | `tenant_dataset import <slug> <name> <dir\|-> --comment "..."` | Publica un dataset de texto UTF-8; con el mismo hash imprime «sin cambios» |
+| `dataset_library push <pack> <dataset> <nombre> <dir\|-> --comment "..." [--base-sha <sha>] [--dry-run]` | ADR-013: valida con el pack (`Pack.dataset_summary`) y sube una versión a la biblioteca, independiente de cualquier cliente; `--dry-run` no escribe |
+| `dataset_library list <pack> <dataset>` | Lista, en JSON, la última versión de cada entrada de la biblioteca (nombre, versión, resumen, autor), nunca su contenido |
+| `dataset_library current-sha <pack> <dataset> <nombre>` | Imprime el `sha256` vigente de esa entrada, o nada si no existe; para construir `--base-sha` |
 | `seed_demos` | Crea los demos de las plantillas solo si no tienen versiones; conserva los cambios posteriores |
 | `seed_dev_activity [--days N] [--reset]` | Crea actividad falsa en local (mensajes, avisos, alertas, un trabajo fallido, muestras de sistema); sin `--days`, los transcurridos del mes en curso. Con `--reset`, borra antes lo que creó. Se niega fuera de `local` |
 | `tenant_status <slug> pause\|resume\|offboard` | Cambia el estado y crea una versión auditada; la baja exige escribir exactamente el slug |

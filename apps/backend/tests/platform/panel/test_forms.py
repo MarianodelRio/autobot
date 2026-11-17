@@ -76,8 +76,10 @@ def test_list_packs_reports_datasets_and_template() -> None:
     by_name = {p.name: p for p in forms.list_packs()}
     assert by_name["bus"].has_datasets is True
     assert by_name["bus"].has_template is True
+    assert by_name["bus"].dataset_names == ("timetable",)
     assert by_name["salon"].has_datasets is False
     assert by_name["salon"].has_template is True
+    assert by_name["salon"].dataset_names == ()
 
 
 def test_pack_template_blanks_the_salon_placeholders() -> None:

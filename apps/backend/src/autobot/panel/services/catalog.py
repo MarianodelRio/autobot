@@ -52,6 +52,14 @@ CATALOG: dict[str, TableDoc] = {
         "Hasta la purga del negocio",
         False,
     ),
+    "dataset_library_version": TableDoc(
+        CONFIG,
+        "Biblioteca de conjuntos de datos (ADR-013), independiente de cualquier"
+        " negocio; se copian a tenant_dataset_version al elegirlos o aplicarlos.",
+        "Comando dataset_library",
+        "Permanente",
+        False,
+    ),
     "tenant_secret": TableDoc(
         CONFIG,
         "Credenciales cifradas de los canales.",

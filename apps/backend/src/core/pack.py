@@ -118,6 +118,11 @@ class Pack:
     periodic: list[Periodic] = field(default_factory=list)
     needs_calendar: bool = False
     load_data: Callable[[TenantInfo, BaseModel, Path], object] | None = None
+    dataset_summary: Callable[[str, Path], dict[str, Any]] | None = None
+    """Validates a dataset on its own (no tenant config) and returns a small,
+    JSON-serializable summary of it — e.g. `bus`'s towns and lines (ADR-013). `path`
+    is the dataset's own directory (what `load_data` sees under
+    `datasets/<name>/`), never a whole tenant's. Raises on invalid data."""
     health: Callable[[PackContext], list[HealthIssue]] | None = None
     templates: list[TemplateSpec] = field(default_factory=list)
     summary: SummaryHook | None = None

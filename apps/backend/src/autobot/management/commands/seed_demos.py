@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from autobot.tenancy import archive, store
+from autobot.tenancy import archive, dataset_library, store
 from autobot.tenancy.models import TenantDocumentVersion
 from autobot.tenancy.registry import source_from_dir
 
@@ -30,6 +30,22 @@ class Command(BaseCommand):
                         "DEMO_SALON_CALENDAR_ID is empty: a new salon demo keeps the "
                         "template's placeholder calendar and cannot book."
                     )
+            # ADR-013: the demo's own dataset is just another library entry
+            # ("demo"), not a special case of its own — the demo tenant below
+            # copies from it like any other client would.
+            dataset_origins = {}
+            for dataset_name, files in source.datasets.items():
+                entry = dataset_library.push(
+                    pack=pack.name,
+                    dataset=dataset_name,
+                    name="demo",
+                    files=files,
+                    author="command:seed_demos",
+                    comment="Plantilla de la demo",
+                    base_sha=None,
+                ) or dataset_library.latest(pack.name, dataset_name, "demo")
+                assert entry is not None
+                dataset_origins[dataset_name] = dataset_library.origin(entry)
             try:
                 with transaction.atomic(using="owner"):
                     store._lock()
@@ -43,6 +59,7 @@ class Command(BaseCommand):
                     store.create_tenant(
                         document=source.document,
                         datasets=source.datasets,
+                        dataset_origins=dataset_origins or None,
                         actor="command:seed_demos",
                         comment="Plantilla inicial",
                         keep_status=True,

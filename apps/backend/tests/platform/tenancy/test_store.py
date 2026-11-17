@@ -128,7 +128,9 @@ def test_degraded_tenant_surfaces_its_real_reason(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr("packs.registry.PACKS", PACKS | {"toy": broken})
     doc = tg_tenant("tg")
     with pytest.raises(store.StoreError) as error:
-        store.create_tenant(document=doc, actor="user", comment="Create")
+        # A dataset is passed (C4 now requires one when load_data is declared);
+        # its content does not matter, `boom` rejects it regardless.
+        store.create_tenant(document=doc, datasets={"any": {}}, actor="user", comment="Create")
     assert any("Nowhere" in detail for detail in error.value.details)
 
 
@@ -177,12 +179,25 @@ def test_initial_secret_is_encrypted_and_audited_by_field_names() -> None:
     assert revision() == 2
 
 
-def test_bus_creation_copies_template_dataset() -> None:
+def test_bus_creation_requires_a_dataset_choice() -> None:
+    # C4: a pack with load_data (bus's timetable) must not silently inherit the
+    # demo template's dataset; the caller must choose one explicitly (ADR-013).
     pack = REGISTERED["bus"]
     assert pack.template is not None
     template = source_from_dir(pack.template)
     doc = tg_tenant("bus", pack="bus", config=template.document["config"])
-    create(doc)
+    with pytest.raises(store.StoreError) as error:
+        create(doc)
+    assert error.value.code == "bad_request"
+    assert not Tenant.objects.using("owner").filter(slug="bus").exists()
+
+
+def test_bus_creation_with_an_explicit_dataset() -> None:
+    pack = REGISTERED["bus"]
+    assert pack.template is not None
+    template = source_from_dir(pack.template)
+    doc = tg_tenant("bus", pack="bus", config=template.document["config"])
+    create(doc, datasets=template.datasets)
     rows = TenantDatasetVersion.objects.using("owner").filter(tenant__slug="bus")
     assert rows.count() == 1
     row = rows.get()

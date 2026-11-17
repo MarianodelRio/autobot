@@ -8,6 +8,7 @@ import yaml
 from ninja import Schema
 
 from autobot.panel.errors import ApiError
+from autobot.tenancy.registry import source_from_dir
 from autobot.tenancy.schema import TenantDocument
 
 
@@ -16,12 +17,14 @@ class PackSummary:
     name: str
     has_datasets: bool
     has_template: bool
+    dataset_names: tuple[str, ...] = ()
 
 
 class PackOut(Schema):
     name: str
     has_datasets: bool
     has_template: bool
+    dataset_names: list[str]
 
 
 class PackSchemaOut(Schema):
@@ -31,6 +34,34 @@ class PackSchemaOut(Schema):
 
 class PackTemplateOut(Schema):
     config: dict[str, Any] | None
+
+
+class LibraryEntryOut(Schema):
+    name: str
+    version: int
+    summary: dict[str, Any]
+    author: str
+    comment: str
+    created_at: Any
+
+
+def dataset_library_entries(pack_name: str, dataset: str) -> list[LibraryEntryOut]:
+    """The alta's and the ficha's picker (C22/C23): every named entry's latest
+    version for this pack's dataset, never the raw files."""
+    from autobot.tenancy import dataset_library
+
+    _pack(pack_name)  # 404 for an unknown pack
+    return [
+        LibraryEntryOut(
+            name=entry.name,
+            version=entry.version,
+            summary=entry.summary,
+            author=entry.author,
+            comment=entry.comment,
+            created_at=entry.created_at,
+        )
+        for entry in dataset_library.list_entries(pack_name, dataset)
+    ]
 
 
 GROUPS: tuple[tuple[str, str, list[str]], ...] = (
@@ -53,12 +84,25 @@ def _pack(name: str) -> Any:
     return pack
 
 
+def _template_dataset_names(pack: Any) -> tuple[str, ...]:
+    """The dataset names a pack's own template declares (C22): the alta's picker
+    needs these to know which library datasets to ask for, since a pack's own
+    directory layout is the only canonical source of them."""
+    if pack.template is None:
+        return ()
+    source = source_from_dir(pack.template)
+    return tuple(sorted(source.datasets))
+
+
 def list_packs() -> list[PackSummary]:
     from packs.registry import PACKS
 
     return [
         PackSummary(
-            name=p.name, has_datasets=p.load_data is not None, has_template=p.template is not None
+            name=p.name,
+            has_datasets=p.load_data is not None,
+            has_template=p.template is not None,
+            dataset_names=_template_dataset_names(p),
         )
         for p in PACKS.values()
     ]

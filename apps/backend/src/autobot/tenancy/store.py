@@ -27,7 +27,6 @@ from autobot.tenancy.models import (
 from autobot.tenancy.registry import (
     TenantSource,
     load_registry,
-    source_from_dir,
     sources_from_database,
 )
 from autobot.tenancy.schema import SECRETS_SCHEMA, TenantDocument
@@ -309,6 +308,7 @@ def create_tenant(
     *,
     document: dict[str, Any],
     datasets: Mapping[str, Mapping[str, str]] | None = None,
+    dataset_origins: Mapping[str, tuple[str, int, str]] | None = None,
     secrets: Mapping[str, str] | None = None,
     actor: str,
     comment: str,
@@ -326,13 +326,17 @@ def create_tenant(
     if Tenant.objects.using("owner").filter(slug=doc["slug"]).exclude(pk=doc["id"]).exists():
         raise StoreError("conflict", "El slug ya existe")
     pack = PACKS.get(doc["pack"])
-    if (
-        datasets is None
-        and pack is not None
-        and pack.load_data is not None
-        and pack.template is not None
-    ):
-        datasets = source_from_dir(pack.template).datasets
+    # C4: a pack that needs datasets (e.g. bus's timetable) must have one chosen
+    # explicitly (ADR-013's library). Silently copying the demo template's own —
+    # fictional — dataset left a new client with it unnoticed; `seed_demos` and
+    # `tenant_config import` always pass their own datasets explicitly, so this
+    # never fires for them.
+    if pack is not None and pack.load_data is not None and not datasets:
+        raise StoreError(
+            "bad_request",
+            "Este pack necesita un conjunto de datos elegido de la biblioteca",
+            ["datasets: hay que elegir uno antes de crear el negocio"],
+        )
     raw_secrets = None
     if secrets is not None:
         if doc["channel"] is None:
@@ -351,7 +355,8 @@ def create_tenant(
     if raw_secrets is not None:
         _write_secret(source, raw_secrets, actor)
     for name, files in (datasets or {}).items():
-        _write_dataset(source, name, files, actor=actor, comment=comment)
+        origin = (dataset_origins or {}).get(name)
+        _write_dataset(source, name, files, actor=actor, comment=comment, library_origin=origin)
     return version
 
 
@@ -498,7 +503,13 @@ def _dataset_digest(files: Mapping[str, str]) -> str:
 
 
 def _write_dataset(
-    source: TenantSource, name: str, files: Mapping[str, str], *, actor: str, comment: str
+    source: TenantSource,
+    name: str,
+    files: Mapping[str, str],
+    *,
+    actor: str,
+    comment: str,
+    library_origin: tuple[str, int, str] | None = None,
 ) -> int:
     tenant_id = source.document["id"]
     prior = (
@@ -508,6 +519,7 @@ def _write_dataset(
         .first()
     )
     version = prior.version + 1 if prior else 1
+    source_name, source_version, source_sha = library_origin or (None, None, None)
     TenantDatasetVersion.objects.using("owner").create(
         tenant_id=tenant_id,
         name=name,
@@ -516,6 +528,9 @@ def _write_dataset(
         sha256=_dataset_digest(files),
         author=actor,
         comment=comment,
+        source_name=source_name,
+        source_version=source_version,
+        source_sha=source_sha,
     )
     record(
         actor=actor,
@@ -531,7 +546,13 @@ def _write_dataset(
 
 @transaction.atomic(using="owner")
 def import_dataset(
-    slug: str, name: str, files: Mapping[str, str], *, actor: str, comment: str
+    slug: str,
+    name: str,
+    files: Mapping[str, str],
+    *,
+    actor: str,
+    comment: str,
+    library_origin: tuple[str, int, str] | None = None,
 ) -> int | None:
     revision = _lock()
     sources = current_sources()
@@ -547,7 +568,9 @@ def import_dataset(
         return None
     candidate = replace(current, datasets={**current.datasets, name: files})
     _validate(candidate, sources)
-    version = _write_dataset(candidate, name, files, actor=actor, comment=comment)
+    version = _write_dataset(
+        candidate, name, files, actor=actor, comment=comment, library_origin=library_origin
+    )
     _bump(revision)
     return version
 

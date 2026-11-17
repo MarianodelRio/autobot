@@ -711,30 +711,32 @@ Revisado leyendo el código; C25 lo confirma en real.
 
 **Errores:**
 
-- [ ] **C1 (S)** La lista «Pendiente para activar» **no se usa en ninguna pantalla**
+- [x] **C1 (S)** La lista «Pendiente para activar» **no se usa en ninguna pantalla**
   (`missing-checklist.tsx`). Corregir además sus falsos positivos: cuenta mensajes
   ignorados de desconocidos, da plantillas por buenas sin canal o en Telegram y no exige
   `display_phone`, y sin él no hay QR (`activation.py:49-55`).
-- [ ] **C2 (S)** Un `salon` nuevo hereda el texto «peluquería de prueba» (`info_text`).
-- [ ] **C3 (S)** Un `bus` nuevo hereda nombre, teléfono y pueblos: su pack no tiene
+- [x] **C2 (S)** Un `salon` nuevo hereda el texto «peluquería de prueba» (`info_text`).
+- [x] **C3 (S)** Un `bus` nuevo hereda nombre, teléfono y pueblos: su pack no tiene
   `template_blank`.
-- [ ] **C4 (S)** Un `bus` nuevo recibe en silencio **los horarios inventados de la demo**
+- [x] **C4 (S)** Un `bus` nuevo recibe en silencio **los horarios inventados de la demo**
   (`store.py:274-280`). Lo resuelve la biblioteca de horarios (C19–C24): el alta exige
   elegir horarios.
-- [ ] **C5 (S)** Bloqueo circular en `bus`: los pueblos deben existir en el dataset y el
+- [x] **C5 (S)** Bloqueo circular en `bus`: los pueblos deben existir en el dataset y el
   dataset en los pueblos, y el error real se pierde (`datos.py:41`, `store.py:123`). Lo
   resuelve la biblioteca (C22): los pueblos se eligen de los horarios escogidos. Corregir
   aparte el mensaje de error.
-- [ ] **C6 (M)** Campos nulos sin caja de texto en el formulario (`str|None`, `Owner|None`),
+- [x] **C6 (M)** Campos nulos sin caja de texto en el formulario (`str|None`, `Owner|None`),
   `demo` visible en clientes reales y `reminder_window_hours` roto.
-- [ ] **C7 (S)** Validación ilegible, como `(root): valor no válido` (`store.py:52`); mensajes en inglés.
-- [ ] **C8 (S)** `owner.notify` vacío: un dueño recién enlazado **no recibe avisos**.
+- [x] **C7 (S)** Validación ilegible, como `(root): valor no válido` (`store.py:52`); mensajes en inglés.
+- [x] **C8 (S)** `owner.notify` vacío: un dueño recién enlazado **no recibe avisos**.
   Valores por defecto y casillas por pack.
-- [ ] **C9 (S)** Tras Activar o Pausar, el siguiente guardado da 409 (`editor.tsx:230`), y la
+- [x] **C9 (S)** Tras Activar o Pausar, el siguiente guardado da 409 (`editor.tsx:230`), y la
   caché de 2 s da 404 tras crear (`registry.py:448`).
-- [ ] **C10 (S)** Al cambiar `webhook_secret` de Telegram, sigue el antiguo y el panel dice
+- [x] **C10 (S)** Al cambiar `webhook_secret` de Telegram, sigue el antiguo y el panel dice
   «Registrado» (`registration.py:88`). Volver a registrar al guardar.
-- [ ] **C11 (S)** Errores silenciosos: guardar sin datos, 422 sin campo, tokens sin recortar.
+- [x] **C11 (S)** Errores silenciosos: guardar sin datos, 422 sin campo, tokens sin recortar.
+
+C1–C11 hechos el 2026-11-17, con sus tests (backend y panel en verde).
 
 **Lo que tiene que estar a mano:**
 
@@ -750,11 +752,13 @@ Revisado leyendo el código; C25 lo confirma en real.
   - **Telegram:** token, `getMe` rellena el usuario, secreto automático y registro del webhook.
   - **`salon`:** ver D. **`bus`:** horarios elegidos de la biblioteca, su versión, vigencia
     y pueblos (C22–C23).
-- [ ] **C13 (S)** **QR de clientes:** hoy desborda y no se descarga. Tamaño y margen
+- [x] **C13 (S)** **QR de clientes:** hoy desborda y no se descarga. Tamaño y margen
   correctos, descarga en SVG/PNG, vista para imprimir y aviso si falta el dato en vez de ocultarse.
 - [ ] **C14 (S)** **QR del chat de avisos del dueño:** el enlace ya existe; añadir QR, estado
   «invitación pendiente» y desconectar. Añadir «Mi QR» al menú del dueño.
-- [ ] **C15 (S)** Sistema debe avisar si el webhook del bot de avisos no está registrado: hoy
+  Hecho el 2026-11-17 en el panel (QR, «Invitación pendiente» y «Desconectar»); falta
+  «Mi QR» en el menú del bot de avisos.
+- [x] **C15 (S)** Sistema debe avisar si el webhook del bot de avisos no está registrado: hoy
   marca «ok» y el dueño no recibe respuesta (`system.py:178`).
 - [ ] **C16 (M)** Historial y vuelta atrás de configuración (la API ya existe), y lo que hoy
   solo está en terminal: `owner_unlink`, exportar y olvidar contacto, exportar negocio.
@@ -779,28 +783,31 @@ horarios directamente sobre cada cliente.
 - Es genérico: sirve para cualquier pack que declare datasets, no solo `bus`. En el código
   se llama conjunto de datos; en el panel, «Horarios».
 
-- [ ] **C19 (S)** ADR «Biblioteca de conjuntos de datos», que modifica ADR-009, donde hoy
+- [x] **C19 (S)** ADR «Biblioteca de conjuntos de datos», que modifica ADR-009, donde hoy
   los datos van ligados a cada cliente. Debe fijar el nombre del concepto, copia frente a
   referencia (propuesta: copia), qué guarda el cliente (nombre y versión de origen) y cómo
   queda la demo.
-- [ ] **C20 (M)** Almacén: tabla de la plataforma con nombre, pack, versión, contenido,
+- [x] **C20 (M)** Almacén: tabla de la plataforma con nombre, pack, versión, contenido,
   sha, autor, comentario y fecha, sin `tenant_id`. Permisos en `autobot/db/grants.py`. Sin
   RLS, porque no son datos de cliente: no requiere aprobación especial. La plantilla de la
   demo de `bus` pasa a ser una entrada más.
-- [ ] **C21 (M)** Comando de subida desde el portátil:
+- [x] **C21 (M)** Comando de subida desde el portátil:
   `make bus-subir NOMBRE=<nombre> DIR=var/datos/<nombre> COMMENT="…" [PROD=1]`.
   1. Valida en local y muestra el diff con la versión anterior de ese nombre.
   2. Prueba en el servidor sin escribir.
   3. Sube por SSH una versión nueva, rechazando si otra persona subió antes (`--base-sha`).
   Nunca toca a ningún cliente.
-- [ ] **C22 (M)** Alta en el panel: elegir horarios de la biblioteca, con resumen de líneas,
+- [x] **C22 (M)** Alta en el panel: elegir horarios de la biblioteca, con resumen de líneas,
   pueblos, vigencia y fecha. Los pueblos del menú se eligen de una lista sacada de ellos.
   El alta de un pack con datasets no se completa sin elegirlos.
-- [ ] **C23 (S)** Ficha del cliente: horarios en uso (nombre, versión, autor, fecha,
+- [x] **C23 (S)** Ficha del cliente: horarios en uso (nombre, versión, autor, fecha,
   vigencia), aviso de versión nueva con resumen de cambios y botón «Aplicar». Antes de
   aplicar, avisa si falta algún pueblo del menú. Nunca muestra el contenido.
 - [ ] **C24 (S)** Sustituir los comandos actuales `tenant_dataset`, `bus-bajar` y
   `bus-publicar`, y su documentación (`docs/procedimientos/horarios-bus.md`).
+  C19–C23 hechos el 2026-11-17 (ADR-013, tabla, `make bus-subir`, selector en el alta,
+  «Aplicar» en la ficha), con tests y probado en real contra la BD local. C24 queda
+  pendiente: los comandos antiguos siguen ahí, sin usarse en el flujo nuevo.
 
 **Validación final:**
 
@@ -818,12 +825,14 @@ válido; el problema es que el panel no lo guía.
 Descartados: crear calendarios desde la plataforma (la propiedad no se transfiere fuera de
 Workspace) y «Conectar con Google» (verificación de Google, tokens por negocio y página pública).
 
-- [ ] **D1 (S)** Mostrar el email de la cuenta de servicio, con botón de copiar.
+- [x] **D1 (S)** Mostrar el email de la cuenta de servicio, con botón de copiar.
 - [ ] **D2 (S)** Texto para enviar al peluquero: compartir el calendario y dar el id. Probar
   cuál es el permiso mínimo: «Hacer cambios en eventos» y sus variantes actuales.
+  El texto está hecho (junto a D1); falta probar el permiso mínimo contra un calendario
+  real (depende de D3).
 - [ ] **D3 (S)** «Comprobar acceso» con **prueba de escritura** (hoy solo lee,
   `client.py:283`), fila propia en la activación y mensaje claro (`health.py:146` lo oculta).
-- [ ] **D4 (S)** Avisar en el alta si es un Gmail personal: Google no cubre esas cuentas con su
+- [x] **D4 (S)** Avisar en el alta si es un Gmail personal: Google no cubre esas cuentas con su
   contrato de tratamiento de datos.
 
 ### E. Varios peluqueros

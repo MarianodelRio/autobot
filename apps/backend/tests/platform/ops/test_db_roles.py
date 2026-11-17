@@ -150,6 +150,24 @@ def test_fp_owner_writes_config_tables(table: str) -> None:
         ) == (True,)
 
 
+def test_fp_app_has_no_access_to_the_dataset_library() -> None:
+    # ADR-013: the registry never reads this table, unlike the CONFIG_TABLES fp_app
+    # reloads at startup; fp_readonly still gets it from the default SELECT grant.
+    for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+        assert query(
+            "owner",
+            f"SELECT has_table_privilege('fp_app', 'dataset_library_version', '{privilege}')",
+        ) == (False,)
+    assert query(
+        "owner", "SELECT has_table_privilege('fp_readonly', 'dataset_library_version', 'SELECT')"
+    ) == (True,)
+    for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+        assert query(
+            "owner",
+            f"SELECT has_table_privilege('fp_owner', 'dataset_library_version', '{privilege}')",
+        ) == (True,)
+
+
 def test_fp_readonly_cannot_read_tenant_secret() -> None:
     assert query(
         "owner", "SELECT has_table_privilege('fp_readonly', 'tenant_secret', 'SELECT')"
