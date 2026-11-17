@@ -57,8 +57,9 @@ export function CalendarSection({ detail }: { detail: Detail }) {
           </div>
           <p className="text-muted-foreground">
             Pide al negocio que comparta su calendario con ese email, con
-            permiso «Hacer cambios en eventos», y que te dé el id del calendario
-            (en los ajustes del calendario, «Integrar calendario»).
+            permiso «Hacer cambios y ver todos los detalles de eventos», y que
+            te dé el id del calendario (en los ajustes del calendario, «Integrar
+            calendario»).
           </p>
         </div>
       )}

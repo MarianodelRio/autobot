@@ -244,8 +244,6 @@ def pack_template(pack_name: str) -> dict[str, Any] | None:
     if pack.template is None:
         return None
     document_path = pack.template / "document.yaml"
-    if not document_path.is_file():
-        document_path = pack.template / "tenant.yaml"
     raw = yaml.safe_load(document_path.read_text(encoding="utf-8"))
     config: dict[str, Any] = copy.deepcopy(raw.get("config", {}))
     for field in pack.template_blank:

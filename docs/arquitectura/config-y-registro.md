@@ -6,8 +6,9 @@ decisiones de arquitectura por sí mismo; corrige o amplía según cambie el có
 
 ## Formato de directorio
 
-`source_from_dir` acepta `document.yaml` o el nombre antiguo `tenant.yaml`; el nombre
-de la carpeta no condiciona el slug del documento, de modo que una plantilla en
+`source_from_dir` exige `document.yaml` (el nombre antiguo `tenant.yaml` ya no se
+acepta, retirado el 2026-11-17); el nombre de la carpeta no condiciona el slug del
+documento, de modo que una plantilla en
 `template/` o un export a un directorio temporal conserva la identidad del negocio.
 El registro recibe `TenantSource` y materializa sus datasets en un directorio temporal
 solo durante `Pack.load_data`, sin cambiar el contrato del pack. Las rutas absolutas,

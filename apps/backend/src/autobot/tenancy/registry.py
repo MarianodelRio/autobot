@@ -147,9 +147,7 @@ def load_registry(sources: Iterable[TenantSource], packs: Mapping[str, Pack]) ->
 def source_from_dir(directory: Path, secrets: Mapping[str, Any] | None = None) -> TenantSource:
     document = directory / "document.yaml"
     if not document.is_file():
-        document = directory / "tenant.yaml"
-    if not document.is_file():
-        return TenantSource(directory.name, None, document_error="no document.yaml or tenant.yaml")
+        return TenantSource(directory.name, None, document_error="no document.yaml")
     try:
         raw = yaml.safe_load(document.read_text(encoding="utf-8"))
         datasets: dict[str, dict[str, str]] = {}

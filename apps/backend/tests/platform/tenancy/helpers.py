@@ -64,10 +64,10 @@ def write_tenants(root: Path, *docs: dict[str, Any], raw: dict[str, str] | None 
     tenants.mkdir(exist_ok=True)
     for doc in docs:
         (tenants / doc["slug"]).mkdir()
-        (tenants / doc["slug"] / "tenant.yaml").write_text(yaml.safe_dump(doc))
+        (tenants / doc["slug"] / "document.yaml").write_text(yaml.safe_dump(doc))
     for name, text in (raw or {}).items():
         (tenants / name).mkdir()
-        (tenants / name / "tenant.yaml").write_text(text)
+        (tenants / name / "document.yaml").write_text(text)
     return tenants
 
 

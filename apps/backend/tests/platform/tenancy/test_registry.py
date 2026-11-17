@@ -248,7 +248,7 @@ def test_directory_name_does_not_define_tenant_identity(tmp_path: Path) -> None:
 
 def test_unreadable_yaml_is_reported(tmp_path: Path) -> None:
     registry = load(tmp_path, tenant_yaml("good"), raw={"broken": "id: [unclosed"})
-    assert registry.errors == {"broken": ["tenant.yaml cannot be read (ParserError)"]}
+    assert registry.errors == {"broken": ["document.yaml cannot be read (ParserError)"]}
     assert [t.slug for t in registry.tenants] == ["good"]
 
 
@@ -328,18 +328,18 @@ def test_serving_excludes_degraded_and_offboarded(tmp_path: Path) -> None:
 def test_a_tenant_file_that_is_not_utf8_only_affects_itself(tmp_path: Path) -> None:
     tenants = write_tenants(tmp_path, tenant_yaml("good"))
     (tenants / "latin1").mkdir()
-    (tenants / "latin1" / "tenant.yaml").write_bytes("name: Peluquería".encode("latin-1"))
+    (tenants / "latin1" / "document.yaml").write_bytes("name: Peluquería".encode("latin-1"))
     registry = load_registry([source_from_dir(p) for p in sorted(tenants.iterdir())], PACKS)
-    assert registry.errors == {"latin1": ["tenant.yaml cannot be read (UnicodeDecodeError)"]}
+    assert registry.errors == {"latin1": ["document.yaml cannot be read (UnicodeDecodeError)"]}
     assert [t.slug for t in registry.tenants] == ["good"]
 
 
-def test_a_directory_without_tenant_yaml_is_reported(tmp_path: Path) -> None:
+def test_a_directory_without_document_yaml_is_reported(tmp_path: Path) -> None:
     tenants = write_tenants(tmp_path, tenant_yaml("a"))
     (tenants / "typo").mkdir()
     (tenants / "typo" / "tenant.yml").write_text("id: x")
     registry = load_registry([source_from_dir(p) for p in sorted(tenants.iterdir())], PACKS)
-    assert registry.errors == {"typo": ["no document.yaml or tenant.yaml"]}
+    assert registry.errors == {"typo": ["no document.yaml"]}
 
 
 @pytest.mark.parametrize(
@@ -353,23 +353,14 @@ def test_channel_ids_have_a_format(tmp_path: Path, channel: dict[str, str]) -> N
     assert "channel" in str(load(tmp_path, tenant_yaml("a", channel=channel)).errors["a"])
 
 
-@pytest.mark.parametrize("filename", ["document.yaml", "tenant.yaml"])
-def test_directory_document_names(tmp_path: Path, filename: str) -> None:
+def test_directory_document_name(tmp_path: Path) -> None:
     directory = tmp_path / "a"
     directory.mkdir()
-    (directory / filename).write_text(yaml.safe_dump(tenant_yaml("a")))
+    (directory / "document.yaml").write_text(yaml.safe_dump(tenant_yaml("a")))
     source = source_from_dir(directory, WA_SECRETS)
     registry = load_registry([source], PACKS)
     assert registry.problems == {}
     assert registry.tenants[0].main_enabled
-
-
-def test_document_yaml_takes_precedence(tmp_path: Path) -> None:
-    directory = tmp_path / "a"
-    directory.mkdir()
-    (directory / "tenant.yaml").write_text("invalid: true")
-    (directory / "document.yaml").write_text(yaml.safe_dump(tenant_yaml("a")))
-    assert load_registry([source_from_dir(directory)], PACKS).problems == {}
 
 
 def test_dataset_is_materialized_then_removed(tmp_path: Path) -> None:

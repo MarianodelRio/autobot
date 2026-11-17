@@ -859,10 +859,11 @@ Descartados: crear calendarios desde la plataforma (la propiedad no se transfier
 Workspace) y «Conectar con Google» (verificación de Google, tokens por negocio y página pública).
 
 - [x] **D1 (S)** Mostrar el email de la cuenta de servicio, con botón de copiar.
-- [ ] **D2 (S)** Texto para enviar al peluquero: compartir el calendario y dar el id. Probar
+- [x] **D2 (S)** Texto para enviar al peluquero: compartir el calendario y dar el id. Probar
   cuál es el permiso mínimo: «Hacer cambios en eventos» y sus variantes actuales.
-  El texto está hecho (junto a D1); falta probar el permiso mínimo contra un calendario
-  real (depende de D3).
+  Probado contra un calendario real el 2026-11-17: el mínimo que funciona es «Hacer
+  cambios y ver todos los detalles de eventos», no «Hacer cambios en eventos» (que no
+  basta). Texto corregido en el panel.
 - [x] **D3 (S)** «Comprobar acceso» con **prueba de escritura** (hoy solo lee,
   `client.py:283`), fila propia en la activación y mensaje claro (`health.py:146` lo oculta).
   Hecho el 2026-11-17, junto con C12: `check_write_access()` (inserta, confirma y borra un
@@ -929,10 +930,11 @@ Tareas:
 
 **Pendiente, sin decisión:**
 
-- [ ] Compatibilidad con `tenant.yaml` (`registry.py:150`, `forms.py:129`): se conserva.
-  El único fichero local que la necesita, `var/tenants/<slug>/tenant.yaml`, son datos
-  reales de un futuro cliente que aún no quieres en el repo ni dado de alta; borrar la
-  compatibilidad antes de decidir eso le rompería la importación.
+- [x] Compatibilidad con `tenant.yaml` (`registry.py:150`, `forms.py:129`): retirada el
+  2026-11-17 (decidido con la persona). `source_from_dir` y `pack_template` ya solo
+  aceptan `document.yaml`. El único fichero local que usaba el nombre antiguo,
+  `var/tenants/autocares-ss/tenant.yaml`, no se ha tocado (no está en git; se
+  rehará cuando se dé de alta ese negocio).
 - [ ] La migración del bot anterior (`salon/migration.py`,
   `tools/salon/migrate_salon_events.py`, `list_future_events`, `patch_private` del
   puerto) **se conserva**: D3 pasa a «no se borra, puede hacer falta en el futuro».
