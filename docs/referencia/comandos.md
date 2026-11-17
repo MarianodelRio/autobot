@@ -24,12 +24,11 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make check` | Puerta de calidad del backend: `ruff check`, `ruff format --check`, `mypy`, `import-linter`, `pytest` |
 | `make telegram-poll SLUG=<slug>` | *Long polling* del bot de Telegram de un tenant (o `notify`), para desarrollo local sin webhook |
 | `make chat PACK=salon\|bus [CHANNEL=telegram]` | Chat de prueba por terminal con la plantilla de demo de un pack (L4); sin canal real, BD ni contenedores |
-| `make bus-bajar TENANT=<slug> [PROD=1]` | Exporta el dataset vigente a `var/datos/<slug>/timetable` y `.publicado/timetable`; sustituye ambas copias locales |
-| `make bus-validar TENANT=<slug>` | Valida `var/datos/<slug>/timetable` |
-| `make bus-formatear TENANT=<slug>` | Realinea las columnas de las tablas de horarios sobre `var/datos/<slug>/timetable`, sin cambiar los datos |
-| `make bus-revision TENANT=<slug> [ARGS="..."]` | Genera HTML/PDF comparando con `.publicado/timetable`; `ARGS="--base <dir>"` elige otra base |
-| `make bus-publicar TENANT=<slug> COMMENT="..." [PROD=1]` | Publica la copia local validada en BD y actualiza `.publicado` tras el éxito; sin `PROD`, usa la BD local |
-| `make bus-subir NOMBRE=<nombre> DIR=<dir> COMMENT="..." [PROD=1]` | ADR-013: valida, prueba sin escribir y sube `<dir>` a la biblioteca de conjuntos de datos como `<nombre>`, rechazando si otra persona subió antes (`--base-sha`); nunca toca a ningún cliente |
+| `make bus-bajar NOMBRE=<nombre> [DIR=<dir>] [VERSION=<n>] [PROD=1]` | ADR-013: descarga esa entrada de la biblioteca a `var/datos/<nombre>/timetable` y `.publicado/timetable`; sin `VERSION`, la vigente |
+| `make bus-validar NOMBRE=<nombre>` | Valida `var/datos/<nombre>/timetable` |
+| `make bus-formatear NOMBRE=<nombre>` | Realinea las columnas de las tablas de horarios sobre `var/datos/<nombre>/timetable`, sin cambiar los datos |
+| `make bus-revision NOMBRE=<nombre> [ARGS="..."]` | Genera HTML/PDF comparando con `.publicado/timetable`; `ARGS="--base <dir>"` elige otra base |
+| `make bus-subir NOMBRE=<nombre> [DIR=<dir>] COMMENT="..." [PROD=1]` | ADR-013: valida, prueba sin escribir y sube `var/datos/<nombre>/timetable` (o `DIR`) a la biblioteca, rechazando si otra persona subió antes (`--base-sha`, resuelto solo); nunca toca a ningún cliente |
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
 | `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
 | `make check-prod-config` | Ejecuta `apps/backend/src/tools/ops/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
@@ -77,9 +76,8 @@ también se puede pasar en la línea de comandos.
 | `tenant_config export <slug> <dir\|->` | Exporta documento y datasets vigentes, sin secretos; el directorio debe estar vacío o ser nuevo. Con `-`, tar.gz por stdout y diagnósticos por stderr |
 | `tenant_config import <dir\|-> [--secrets <yaml>] [--comment "..."]` | Crea o publica desde un directorio o tar.gz por stdin. Valida documento, datasets y secretos juntos en una transacción. Admite `secrets.yaml` en la raíz del tar |
 | `tenant_config validate --all` | Valida todos los documentos vigentes; sale con error si alguno es ilegible, inválido, degradado o ambiguo |
-| `tenant_dataset export <slug> <name> <dir\|->` | Exporta el dataset vigente a un directorio vacío o tar.gz, sin secretos |
-| `tenant_dataset import <slug> <name> <dir\|-> --comment "..."` | Publica un dataset de texto UTF-8; con el mismo hash imprime «sin cambios» |
 | `dataset_library push <pack> <dataset> <nombre> <dir\|-> --comment "..." [--base-sha <sha>] [--dry-run]` | ADR-013: valida con el pack (`Pack.dataset_summary`) y sube una versión a la biblioteca, independiente de cualquier cliente; `--dry-run` no escribe |
+| `dataset_library pull <pack> <dataset> <nombre> <dir\|-> [--version <n>]` | Descarga esa entrada (vigente, o `--version`) a un directorio vacío o tar.gz, sin secretos |
 | `dataset_library list <pack> <dataset>` | Lista, en JSON, la última versión de cada entrada de la biblioteca (nombre, versión, resumen, autor), nunca su contenido |
 | `dataset_library current-sha <pack> <dataset> <nombre>` | Imprime el `sha256` vigente de esa entrada, o nada si no existe; para construir `--base-sha` |
 | `seed_demos` | Crea los demos de las plantillas solo si no tienen versiones; conserva los cambios posteriores |

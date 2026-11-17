@@ -12,7 +12,11 @@
    Telegram, `bot_token` y `webhook_secret` (32 caracteres o más). Nunca van en el documento.
 3. `manage.py tenant_config import <dir> --secrets <yaml> --comment "Alta"` publica
    la configuración en la BD del entorno. Cifra los secretos y valida el conjunto antes
-   de guardar nada. Para `bus`, sin datasets se copian los iniciales de su plantilla.
+   de guardar nada. Si el directorio incluye `datasets/<nombre>/`, esos datasets se
+   publican junto al documento; si no los incluye y el pack los necesita (`bus`), la
+   importación falla y hay que elegir una entrada de la biblioteca (ADR-013) con
+   `manage.py dataset_library pull/push` y pasarla en `datasets/timetable/`, o dar de
+   alta desde el panel, que la elige en el propio asistente.
 4. En `salon`, el negocio comparte su calendario con la cuenta de servicio y declara
    su `calendar_id`. Las plantillas de WhatsApp deben estar creadas y aprobadas.
 5. `manage.py owner_invite <slug>` genera el enlace privado y de un solo uso para el
@@ -35,8 +39,10 @@ crea otra versión; en el panel, la ficha del cliente edita la config con formul
 o YAML (diff y comentario obligatorio) y guarda cada versión en su historial. Los
 seis campos de identidad y estado no se cambian por importación.
 Pausar o reactivar: `tenant_status <slug> pause|resume`, o el mismo botón en la
-ficha del cliente. Los datasets también pueden
-publicarse con `tenant_dataset import <slug> <nombre> <dir> --comment "Motivo"`.
+ficha del cliente. Para cambiar los datasets de un cliente ya dado de alta, ver
+[horarios de `bus`](horarios-bus.md): se sube una versión nueva a la biblioteca con
+`dataset_library`/`make bus-subir` y se aplica desde su ficha, nunca se publica
+directamente sobre el cliente.
 
 Los cambios se aplican sin commit ni despliegue, en la siguiente comprobación de revisión
 (como máximo dos segundos). Las acciones sobre producción las ejecuta la persona.

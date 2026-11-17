@@ -96,12 +96,15 @@ del servidor y reinicia `web`, `worker-inbound` y `worker-outbound`.
 
 ## Renovación anual del calendario de `demo-autobuses`
 
-El dataset de `demo-autobuses` declara una `vigencia` (ver `docs/referencia/packs/bus.md`). Cada
-verano, antes de que caduque, bajar con `make bus-bajar TENANT=demo-autobuses`, editar
-`var/datos/demo-autobuses/timetable/calendario.yaml`, formatear, validar y revisar con los
-targets `bus-*`, y publicar con `COMMENT="Renovación anual de demo"`. Para actuar sobre
-el servidor, la persona añade `PROD=1` tanto al bajar como al publicar. Es un dataset
-ficticio y no tiene una empresa que deba aprobar el PDF.
+El dataset de `demo-autobuses` declara una `vigencia` (ver `docs/referencia/packs/bus.md`). Es la
+entrada `demo` de la biblioteca (ADR-013; `seed_demos` la sube la primera vez). Cada
+verano, antes de que caduque: bajar con `make bus-bajar NOMBRE=demo`, editar
+`var/datos/demo/timetable/calendario.yaml`, formatear, validar y revisar con los
+targets `bus-*`, y subir con `make bus-subir NOMBRE=demo COMMENT="Renovación anual de
+demo"`. Para actuar sobre el servidor, añadir `PROD=1` tanto al bajar como al subir.
+Por último, aplicar la versión nueva desde la ficha de `demo-autobuses` → Configuración
+→ Horarios → «Aplicar» (y la de cualquier otro cliente que use la misma entrada). Es un
+dataset ficticio y no tiene una empresa que deba aprobar el PDF.
 
 Actualizar también `apps/backend/src/packs/bus/template/datasets/timetable/calendario.yaml` para
 los demos que se creen en el futuro, ejecutar `make check` y hacer commit de ese cambio

@@ -601,7 +601,7 @@ def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
     parser = argparse.ArgumentParser(
         description="Genera la revisión de los horarios de un tenant para negocio"
     )
-    parser.add_argument("tenant", help="slug del tenant (datos/<slug>/)")
+    parser.add_argument("tenant", help="nombre del conjunto de horarios (var/datos/<nombre>/)")
     parser.add_argument(
         "--base",
         type=Path,

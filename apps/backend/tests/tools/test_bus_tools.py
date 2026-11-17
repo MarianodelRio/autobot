@@ -35,7 +35,7 @@ def test_tenant_is_required_and_must_exist(
 ) -> None:
     assert callable(main)
     assert main([], repo_root=repo) == 2
-    assert "TENANT=<slug>" in capsys.readouterr().out
+    assert "NOMBRE=<nombre>" in capsys.readouterr().out
     assert main(["no-existe"], repo_root=repo) == 2
     assert "no tiene dataset de horarios" in capsys.readouterr().out
     for invalid in ("../fuera", "-x", f"{SLUG}\n"):

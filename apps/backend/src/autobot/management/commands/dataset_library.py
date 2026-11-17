@@ -1,5 +1,5 @@
-"""Upload (`push`) and list named, versioned datasets in the operator's library
-(ADR-013), independent of any tenant."""
+"""Upload (`push`), download (`pull`) and list named, versioned datasets in the
+operator's library (ADR-013), independent of any tenant."""
 
 import json
 from typing import Any
@@ -25,6 +25,13 @@ class Command(BaseCommand):
         push.add_argument("--base-sha", default=None)
         push.add_argument("--dry-run", action="store_true")
 
+        pull = commands.add_parser("pull")
+        pull.add_argument("pack")
+        pull.add_argument("dataset")
+        pull.add_argument("name")
+        pull.add_argument("location")
+        pull.add_argument("--version", type=int, default=None)
+
         listing = commands.add_parser("list")
         listing.add_argument("pack")
         listing.add_argument("dataset")
@@ -39,6 +46,8 @@ class Command(BaseCommand):
         try:
             if action == "push":
                 self._push(options)
+            elif action == "pull":
+                self._pull(options)
             elif action == "current-sha":
                 entry = dataset_library.latest(options["pack"], options["dataset"], options["name"])
                 # Prefixed so a caller that only reads the last stdout line (a
@@ -78,6 +87,17 @@ class Command(BaseCommand):
             base_sha=options["base_sha"],
         )
         self.stdout.write("sin cambios" if entry is None else f"Subido {name} v{entry.version}")
+
+    def _pull(self, options: dict[str, Any]) -> None:
+        entry = dataset_library.get(
+            options["pack"], options["dataset"], options["name"], options["version"]
+        )
+        with archive.output_directory(options["location"]) as directory:
+            archive.write_files(directory, entry.files)
+        # `-` already streamed the tar.gz straight to stdout.buffer; a text line
+        # after it would corrupt that stream.
+        if options["location"] != "-":
+            self.stdout.write(f"Descargado {entry.name} v{entry.version}")
 
     def _list(self, pack: str, dataset: str) -> None:
         entries = dataset_library.list_entries(pack, dataset)

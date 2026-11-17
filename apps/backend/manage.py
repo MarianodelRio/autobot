@@ -8,8 +8,10 @@ if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     if (
         len(sys.argv) > 2
-        and sys.argv[1] in ("tenant_config", "tenant_dataset")
-        and sys.argv[2] == "export"
+        and (
+            (sys.argv[1] == "tenant_config" and sys.argv[2] == "export")
+            or (sys.argv[1] == "dataset_library" and sys.argv[2] == "pull")
+        )
         and "-" in sys.argv[3:]
     ):
         os.environ["AUTOBOT_BINARY_STDOUT"] = "1"

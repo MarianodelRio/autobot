@@ -127,22 +127,6 @@ def test_tar_import_accepts_inline_secret_and_exports_no_secret(
     assert TG_SECRETS["bot_token"].encode() not in contents
 
 
-def test_dataset_roundtrip_and_no_change(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    create()
-    directory = tmp_path / "rows"
-    command("tenant_dataset", "export", "tg", "rows", str(directory))
-    assert "sin cambios" in command(
-        "tenant_dataset", "import", "tg", "rows", str(directory), "--comment", "Same"
-    )
-    raw = tar_bytes({"nested/a.txt": "otra línea\n".encode()})
-    with monkeypatch.context() as patch:
-        patch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(raw)))
-        assert "v2" in command("tenant_dataset", "import", "tg", "rows", "-", "--comment", "Change")
-    assert TenantDatasetVersion.objects.using("owner").latest("version").files == {
-        "nested/a.txt": "otra línea\n"
-    }
-
-
 def test_import_is_atomic_and_rejects_unsafe_tar(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -239,7 +223,7 @@ def test_purge_requires_offboard_and_erases_everything() -> None:
     ("args", "member"),
     [
         (["tenant_config", "export", "demo-autobuses", "-"], "./document.yaml"),
-        (["tenant_dataset", "export", "demo-autobuses", "timetable", "-"], "./calendario.yaml"),
+        (["dataset_library", "pull", "bus", "timetable", "demo", "-"], "./calendario.yaml"),
     ],
 )
 def test_cli_binary_export_stdout_is_clean(args: list[str], member: str) -> None:

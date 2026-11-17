@@ -13,8 +13,10 @@ no como «sin servicio».
 presentes en el dataset) y `next_day_search_days` (45 por defecto). Los días
 de oficina se declaran una vez, con franjas `HH:MM-HH:MM` sin solapes.
 
-El dataset está versionado en la BD. `tenant_dataset export <slug> timetable <dir>`
-lo saca a un directorio con esta estructura:
+El dataset está versionado en la BD, en una biblioteca independiente de cualquier
+cliente (ADR-013); el cliente se queda con una copia de la entrada elegida.
+`manage.py dataset_library pull bus timetable <nombre> <dir>` saca una entrada a un
+directorio con esta estructura:
 
 | Archivo | Campos y formato |
 |---|---|
@@ -60,17 +62,19 @@ horarios:
       08:50  09:00  09:40
 ```
 
-Para publicar, primero `make bus-bajar TENANT=<slug>` descarga a
-`var/datos/<slug>/timetable/` y guarda la base en `.publicado/timetable`. Tras editar,
-ejecuta `make bus-formatear`, `make bus-validar` y `make bus-revision`, siempre con
-`TENANT=<slug>`. La revisión HTML/PDF compara con esa copia de la versión publicada;
-`ARGS="--base <dir>"` permite elegir otra base.
+Para subir una versión nueva, primero `make bus-bajar NOMBRE=<nombre>` descarga la
+vigente a `var/datos/<nombre>/timetable/` y guarda la base en `.publicado/timetable`.
+Tras editar, ejecuta `make bus-formatear`, `make bus-validar` y `make bus-revision`,
+siempre con `NOMBRE=<nombre>`. La revisión HTML/PDF compara con esa copia de la
+versión anterior; `ARGS="--base <dir>"` permite elegir otra base.
 
-La empresa confirma el PDF antes de `make bus-publicar TENANT=<slug>
-COMMENT="Motivo"`. Sin `PROD`, se usa la BD local; con `PROD=1`, bajar y publicar
-usan SSH al servidor. El import crea una versión de dataset y su auditoría; no hay
-tags de git ni despliegue. La copia `.publicado` se actualiza solo tras el éxito.
-[`docs/procedimientos/horarios-bus.md`](../../procedimientos/horarios-bus.md) describe el flujo y las comprobaciones.
+La empresa (o quien aprueba la línea) confirma el PDF antes de `make bus-subir
+NOMBRE=<nombre> COMMENT="Motivo"`, que sube la versión nueva **a la biblioteca**, no
+a ningún cliente. Sin `PROD`, se usa la BD local; con `PROD=1`, bajar y subir usan
+SSH al servidor. Cada cliente que use esa entrada aplica la versión nueva desde su
+propia ficha. El alta crea una versión de dataset y su auditoría; no hay tags de git
+ni despliegue.
+[`docs/procedimientos/horarios-bus.md`](../../procedimientos/horarios-bus.md) describe el flujo completo y las comprobaciones.
 
 ### Resumen mensual al dueño
 

@@ -803,11 +803,13 @@ horarios directamente sobre cada cliente.
 - [x] **C23 (S)** Ficha del cliente: horarios en uso (nombre, versión, autor, fecha,
   vigencia), aviso de versión nueva con resumen de cambios y botón «Aplicar». Antes de
   aplicar, avisa si falta algún pueblo del menú. Nunca muestra el contenido.
-- [ ] **C24 (S)** Sustituir los comandos actuales `tenant_dataset`, `bus-bajar` y
+- [x] **C24 (S)** Sustituir los comandos actuales `tenant_dataset`, `bus-bajar` y
   `bus-publicar`, y su documentación (`docs/procedimientos/horarios-bus.md`).
-  C19–C23 hechos el 2026-11-17 (ADR-013, tabla, `make bus-subir`, selector en el alta,
-  «Aplicar» en la ficha), con tests y probado en real contra la BD local. C24 queda
-  pendiente: los comandos antiguos siguen ahí, sin usarse en el flujo nuevo.
+  C19–C24 hechos el 2026-11-17 (ADR-013, tabla, `dataset_library` push/pull/list,
+  `make bus-subir`/`bus-bajar` sobre la biblioteca, selector en el alta, «Aplicar»
+  en la ficha), con tests y probado en real contra la BD local. `tenant_dataset` y
+  `tools/bus/data.py` retirados; `bus-validar`/`bus-formatear`/`bus-revision` siguen
+  igual, ahora con `NOMBRE=<nombre>`.
 
 **Validación final:**
 
@@ -909,12 +911,14 @@ objetivos, y `manage.py` de 21 a 14:
 | `manage.py` despliegue | `migrate apply_grants seed_demos tenant_config export_openapi` |
 | `manage.py` emergencia | `panel_user tenant_secrets_reencrypt telegram_set_webhook` (solo `demo` y `notify`) |
 | `manage.py` RGPD | `contact_export contact_forget tenant_data_export tenant_purge` |
-| `manage.py` otros | `seed_dev_activity` y el comando de la biblioteca de C21 |
+| `manage.py` otros | `seed_dev_activity` y `dataset_library` (C21) |
 
 Desaparecen: `status`, `db-roles` (va al bootstrap), `telegram_poll` y `polling.py`,
 `check-prod-config`, `tenant-health`/`tenant_health`, `tenant_status`, `outbound_resolve`,
 `job_retry`, `owner_invite`, `owner_unlink` (cuando exista en el panel), `tenant-import`,
-`tenant-push` y los `bus-*` no listados.
+`tenant-push` y los `bus-*` no listados. `tenant_dataset` y `tools/bus/data.py` ya
+desaparecieron (C24, 2026-11-17); `bus-bajar`/`bus-validar`/`bus-formatear`/`bus-revision`
+siguen, sobre la biblioteca.
 
 `qr` queda absorbido por C13. Quitar los comandos duplicados tiene un coste: si el panel cae,
 la vía de emergencia es `prod-manage shell`.

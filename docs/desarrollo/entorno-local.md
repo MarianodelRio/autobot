@@ -61,8 +61,9 @@ revisión mantiene el último registro válido; `/health` responde 503 si no pue
 la primera carga.
 
 La configuración y los secretos de negocio no se copian del repositorio ni se montan
-desde un YAML. `tenant_config import/export/validate`, `tenant_dataset`, `seed_demos`
-y `tenant_status` gestionan las versiones en PostgreSQL; ver
+desde un YAML. `tenant_config import/export/validate`, `seed_demos` y `tenant_status`
+gestionan las versiones en PostgreSQL; los datasets de un pack se suben a una
+biblioteca independiente con `dataset_library` (ADR-013). Ver
 [comandos](../referencia/comandos.md). La publicación no requiere commits ni reinicios.
 
 ## Reproducir producción en local (L1/L2)

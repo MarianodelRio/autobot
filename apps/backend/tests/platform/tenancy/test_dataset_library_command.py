@@ -120,6 +120,23 @@ def test_current_sha_matches_the_pushed_entry(tmp_path: Path) -> None:
     )
 
 
+def test_pull_writes_the_entrys_files_to_a_directory(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    write_bus_dataset(source)
+    command("dataset_library", "push", "bus", "timetable", "prueba", str(source), "--comment", "c")
+    destination = tmp_path / "dest"
+    output = command("dataset_library", "pull", "bus", "timetable", "prueba", str(destination))
+    assert "v1" in output
+    assert (destination / "calendario.yaml").read_text(encoding="utf-8") == (
+        source / "calendario.yaml"
+    ).read_text(encoding="utf-8")
+
+
+def test_pull_an_unknown_entry_fails_clearly(tmp_path: Path) -> None:
+    with pytest.raises(CommandError):
+        command("dataset_library", "pull", "bus", "timetable", "nope", str(tmp_path))
+
+
 def test_list_reports_name_version_and_summary_never_files(tmp_path: Path) -> None:
     write_bus_dataset(tmp_path)
     command(

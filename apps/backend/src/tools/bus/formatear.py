@@ -1,4 +1,4 @@
-"""tools/bus_formatear.py — make bus-formatear TENANT=<slug>.
+"""tools/bus_formatear.py — make bus-formatear NOMBRE=<nombre>.
 
 Realinea las columnas de los bloques
 `tabla: |` de `lineas/*.yaml` del dataset del tenant a
@@ -99,7 +99,7 @@ def formatear_texto(texto: str) -> str:
 def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
     args = argv if argv is not None else sys.argv[1:]
     if len(args) != 1:
-        print("Uso: make bus-formatear TENANT=<slug>")
+        print("Uso: make bus-formatear NOMBRE=<nombre>")
         return 2
     try:
         directorio = dataset_dir(args[0], repo_root)

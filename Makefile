@@ -145,27 +145,24 @@ tenant-push: ## Exporta la BD local y la importa por SSH (SLUG=<slug> [SECRETS=<
 
 # Bus tools operate on ignored exports under var/datos/<slug>/.
 BUS_TOOL = PYTHONPATH=apps/backend/src uv run --project apps/backend python -m tools
-export TENANT COMMENT PROD NOMBRE DIR
+export COMMENT PROD NOMBRE DIR VERSION
 
-.PHONY: bus-bajar bus-validar bus-formatear bus-revision bus-publicar bus-subir
+.PHONY: bus-bajar bus-validar bus-formatear bus-revision bus-subir
 
-bus-bajar: ## Exporta el dataset vigente a var/datos/<slug>/timetable (TENANT=<slug> [PROD=1])
-	$(BUS_TOOL).bus.data download
+bus-bajar: ## Descarga una entrada de la biblioteca a var/datos/<nombre>/timetable (ADR-013; NOMBRE=<nombre> [VERSION=<n>] [PROD=1])
+	$(BUS_TOOL).bus.library pull
 
-bus-validar: ## Valida var/datos/<slug>/timetable (TENANT=<slug>)
-	$(BUS_TOOL).bus.validar $(TENANT)
+bus-validar: ## Valida var/datos/<nombre>/timetable (NOMBRE=<nombre>)
+	$(BUS_TOOL).bus.validar $(NOMBRE)
 
-bus-formatear: ## Realinea las columnas de las tablas de horarios (TENANT=<slug>)
-	$(BUS_TOOL).bus.formatear $(TENANT)
+bus-formatear: ## Realinea las columnas de las tablas de horarios (NOMBRE=<nombre>)
+	$(BUS_TOOL).bus.formatear $(NOMBRE)
 
-bus-revision: ## Genera HTML/PDF comparando con .publicado (TENANT=<slug> [ARGS="..."])
-	$(BUS_TOOL).bus.revision $(TENANT) $(ARGS)
-
-bus-publicar: ## Publica la copia local validada en BD (TENANT=<slug> COMMENT="..." [PROD=1])
-	$(BUS_TOOL).bus.data publish
+bus-revision: ## Genera HTML/PDF comparando con .publicado (NOMBRE=<nombre> [ARGS="..."])
+	$(BUS_TOOL).bus.revision $(NOMBRE) $(ARGS)
 
 bus-subir: ## Sube horarios validados a la biblioteca (ADR-013, C21); nunca toca a ningún cliente (NOMBRE=<nombre> DIR=<dir> COMMENT="..." [PROD=1])
-	$(BUS_TOOL).bus.library
+	$(BUS_TOOL).bus.library push
 
 ##@ Entorno local completo (localprod)
 
