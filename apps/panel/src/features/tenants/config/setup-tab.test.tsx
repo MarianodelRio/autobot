@@ -47,6 +47,7 @@ const STEPS = [
     blocking: true,
     detail: "El documento es válido.",
     values: [],
+    tester_candidates: [],
     checkable: false,
   },
   {
@@ -63,11 +64,28 @@ const STEPS = [
         copiable: true,
       },
     ],
+    tester_candidates: [],
     checkable: true,
+  },
+  {
+    key: "tester",
+    label: "Mensaje de un tester",
+    why: "Confirma que el canal principal responde de verdad antes de activar.",
+    state: "pending",
+    blocking: true,
+    detail: "Pendiente.",
+    values: [],
+    tester_candidates: [
+      { id: "999", display: "id 999", received_at: "2026-11-17T10:00:00Z" },
+    ],
+    checkable: false,
   },
 ];
 
-function renderAt(checkResult: Record<string, unknown>) {
+function renderAt(
+  checkResult: Record<string, unknown>,
+  addTesterResult?: Record<string, unknown>,
+) {
   const queryClient = new QueryClient();
   const router = createRouter({
     routeTree,
@@ -83,6 +101,7 @@ function renderAt(checkResult: Record<string, unknown>) {
     else if (url.pathname.endsWith("/overview"))
       value = { status: { level: "ok" }, tenant_rows: [] };
     else if (url.pathname.endsWith("/setup/check/webhook")) value = checkResult;
+    else if (url.pathname.endsWith("/setup/testers")) value = addTesterResult;
     else if (url.pathname.endsWith("/setup")) value = STEPS;
     else value = TENANT;
     return new Response(JSON.stringify(value), {
@@ -125,4 +144,28 @@ test("lists the steps and lets a checkable one be re-checked", async () => {
 
   await user.click(screen.getByRole("button", { name: "Comprobar" }));
   await screen.findByText("Registrado.");
+}, 10_000);
+
+test("lists recent non-tester senders and adds one as a tester", async () => {
+  const user = userEvent.setup();
+  renderAt(
+    {},
+    {
+      key: "tester",
+      label: "Mensaje de un tester",
+      why: "Confirma que el canal principal responde de verdad antes de activar.",
+      state: "pending",
+      blocking: true,
+      detail: "Pendiente.",
+      values: [],
+      tester_candidates: [],
+      checkable: false,
+    },
+  );
+  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
+  await user.click(screen.getByRole("tab", { name: "Alta" }));
+  await screen.findByText("id 999");
+  await user.click(screen.getByRole("button", { name: "Añadir" }));
+  await screen.findByText("Tester añadido.");
+  expect(screen.queryByText("id 999")).not.toBeInTheDocument();
 }, 10_000);

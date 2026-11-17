@@ -151,6 +151,19 @@
         "title": "ActivityPage",
         "type": "object"
       },
+      "AddTesterIn": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AddTesterIn",
+        "type": "object"
+      },
       "AlertBrief": {
         "properties": {
           "id": {
@@ -2546,6 +2559,14 @@
             "title": "State",
             "type": "string"
           },
+          "tester_candidates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TesterCandidate"
+            },
+            "title": "Tester Candidates",
+            "type": "array"
+          },
           "values": {
             "default": [],
             "items": {
@@ -3490,6 +3511,29 @@
           "last_activity_at"
         ],
         "title": "TenantRow",
+        "type": "object"
+      },
+      "TesterCandidate": {
+        "properties": {
+          "display": {
+            "title": "Display",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "received_at": {
+            "title": "Received At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display",
+          "received_at"
+        ],
+        "title": "TesterCandidate",
         "type": "object"
       },
       "VersionDetail": {
@@ -5773,6 +5817,53 @@
           }
         ],
         "summary": "Tenant Setup Check",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/setup/testers": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_tenant_setup_add_tester",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddTesterIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStepOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Setup Add Tester",
         "tags": [
           "tenants"
         ]

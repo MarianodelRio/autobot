@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { CopyButton } from "@/components/copy-button";
 import { ErrorState } from "@/components/error-state";
 import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
+import { errorMessage } from "@/lib/errors";
 
 type SetupStep = components["schemas"]["SetupStepOut"];
 
@@ -14,6 +16,50 @@ const STEP_LEVEL: Record<SetupStep["state"], StatusDotLevel> = {
   error: "critical",
   "n/a": "unknown",
 };
+
+function TesterCandidates({ slug, step }: { slug: string; step: SetupStep }) {
+  const client = useQueryClient();
+  const add = useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.POST("/tenants/{slug}/setup/testers", {
+          params: { path: { slug } },
+          body: { id },
+        }),
+      ),
+    onSuccess: (result) => {
+      client.setQueryData<SetupStep[]>(["tenant-setup", slug], (previous) =>
+        previous?.map((item) => (item.key === step.key ? result : item)),
+      );
+      toast.success("Tester añadido.");
+    },
+    onError: (error) =>
+      toast.error(errorMessage(error, "No se pudo añadir el tester.")),
+  });
+  if (step.tester_candidates.length === 0) return null;
+  return (
+    <div className="space-y-1 text-sm">
+      <p className="text-muted-foreground">
+        Últimos que escribieron sin ser testers:
+      </p>
+      <ul className="space-y-1">
+        {step.tester_candidates.map((candidate) => (
+          <li key={candidate.id} className="flex items-center gap-2">
+            <code>{candidate.display}</code>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={add.isPending}
+              onClick={() => add.mutate(candidate.id)}
+            >
+              Añadir
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
   const client = useQueryClient();
@@ -69,6 +115,7 @@ function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
           ))}
         </dl>
       )}
+      {step.key === "tester" && <TesterCandidates slug={slug} step={step} />}
     </li>
   );
 }

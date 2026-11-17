@@ -847,6 +847,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{slug}/setup/testers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tenant Setup Add Tester */
+        post: operations["autobot_panel_routers_tenants_tenant_setup_add_tester"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{slug}/status": {
         parameters: {
             query?: never;
@@ -976,6 +993,11 @@ export interface components {
             items: components["schemas"]["ActivityItem"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** AddTesterIn */
+        AddTesterIn: {
+            /** Id */
+            id: string;
         };
         /** AlertBrief */
         AlertBrief: {
@@ -1830,6 +1852,11 @@ export interface components {
             /** State */
             state: string;
             /**
+             * Tester Candidates
+             * @default []
+             */
+            tester_candidates: components["schemas"]["TesterCandidate"][];
+            /**
              * Values
              * @default []
              */
@@ -2140,6 +2167,15 @@ export interface components {
             slug: string;
             /** Status */
             status: string;
+        };
+        /** TesterCandidate */
+        TesterCandidate: {
+            /** Display */
+            display: string;
+            /** Id */
+            id: string;
+            /** Received At */
+            received_at: string;
         };
         /** VersionDetail */
         VersionDetail: {
@@ -3356,6 +3392,32 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStepOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_tenant_setup_add_tester: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddTesterIn"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {

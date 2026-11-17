@@ -28,10 +28,14 @@ tiene seis pestañas: Resumen, Alta, Configuración, Actividad, Contactos y Avis
 Resumen muestra los indicadores del mes, la salud del canal con «Comprobar
 ahora» y las alertas abiertas; el resumen del dueño se carga a petición, pues
 puede consultar Calendar. Alta (ADR-014) reúne en un solo sitio, paso a paso, lo que
-falta para activar el negocio: documento, canal, secretos, plantillas (WhatsApp),
-salud, un mensaje real de un tester, el dueño, el webhook de Telegram, el calendario
-de `salon` (D1-D4) y los horarios de `bus`; los pasos marcados «Comprobar» hacen una
-llamada real al proveedor (nunca al cargar la pestaña) y quedan auditados.
+falta para activar el negocio: documento, canal (en WhatsApp, también la URL del
+webhook a pegar en el panel de Meta), secretos, plantillas (WhatsApp: el texto de
+cada una del pack y, al «Comprobar», su estado real en Meta), salud, un mensaje real
+de un tester, el dueño, el webhook de Telegram, el calendario de `salon` (D1-D4) y
+los horarios de `bus`; los pasos marcados «Comprobar» hacen una llamada real al
+proveedor (nunca al cargar la pestaña) y quedan auditados. El paso del tester lista
+los últimos que escribieron sin estarlo, con «Añadir» para sumarlos a
+`testers.main` sin pasar por Configuración.
 Configuración edita con formulario o YAML, con diff legible (campo por campo, no un
 volcado de la librería de diferencias) y comentario opcional, e incluye el canal
 (enlace, QR, webhook y «Cambiar credenciales», con «Generar» para los campos que lo

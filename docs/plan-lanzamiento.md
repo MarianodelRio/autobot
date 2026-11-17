@@ -756,8 +756,13 @@ C1–C11 hechos el 2026-11-17, con sus tests (backend y panel en verde).
   (documento, canal, secretos, plantillas, salud, tester, dueño), webhook de Telegram,
   calendario de `salon` (D3 incluido) y horarios de `bus`; `tenant_setup` reutiliza los
   servicios existentes en vez de un hook por pack/adaptador (alternativa que el ADR
-  descarta explícitamente). Falta: añadir testers desde la pestaña, el detalle propio de
-  WhatsApp (`subscribed_apps`, texto/estado de cada plantilla) y mover aquí QR/Activar.
+  descarta explícitamente). Añadido también el 2026-11-17: testers desde la pestaña
+  (lista de quién escribió sin estarlo, con «Añadir»), y del detalle de WhatsApp, la
+  URL del webhook en el paso Canal y el texto de cada plantilla con su estado real en
+  Meta al «Comprobar» (`whatsapp_template_statuses`, antes solo un apto/no-apto
+  agregado). Falta: `subscribed_apps` y el campo `messages` — activan de verdad la
+  recepción de mensajes de un número real, así que quedan dentro de **C18**
+  `[Aprobación]`, no de este punto — y mover aquí QR/Activar.
 - [x] **C13 (S)** **QR de clientes:** hoy desborda y no se descarga. Tamaño y margen
   correctos, descarga en SVG/PNG, vista para imprimir y aviso si falta el dato en vez de ocultarse.
 - [x] **C14 (S)** **QR del chat de avisos del dueño:** el enlace ya existe; añadir QR, estado
