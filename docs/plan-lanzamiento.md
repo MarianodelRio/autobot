@@ -875,17 +875,17 @@ Workspace) y «Conectar con Google» (verificación de Google, tokens por negoci
 
 ### E. Varios peluqueros
 
-**Decisión propuesta:** ampliar `salon`, no crear otro pack, y hacerlo para **N peluqueros
-con tope de 8** (8 + «me da igual» + volver = 10 filas). Un calendario por peluquero. Con un
-solo peluquero el flujo no cambia.
+**Decisión tomada (ADR-015, 2026-11-17):** ampliar `salon`, no crear otro pack, y
+hacerlo para **N peluqueros con tope de 8** (8 + «me da igual» + volver = 10 filas). Un
+calendario por peluquero. Con un solo peluquero el flujo no cambia (clave `main`).
 
-Preguntas (D8), con lo que propongo:
+Preguntas (D8), resueltas en el ADR:
 
-- [ ] «Me da igual»: unión de huecos, asignar al de menos citas ese día y decir con quién.
-- [ ] Horario propio: opcional, heredando el del negocio.
-- [ ] Servicios por peluquero: opcional.
-- [ ] Cierre de todo el negocio: lista en la config.
-- [ ] Avisos: solo al dueño de momento.
+- [x] «Me da igual»: unión de huecos, asignar al de menos citas ese día y decir con quién.
+- [x] Horario propio: opcional, heredando el del negocio.
+- [x] Servicios por peluquero: opcional.
+- [x] Cierre de todo el negocio: lista en la config.
+- [x] Avisos: solo al dueño de momento.
 
 Trampas que el diseño debe evitar:
 
@@ -900,7 +900,7 @@ Trampas que el diseño debe evitar:
 
 Tareas:
 
-- [ ] **E1 (S)** ADR con lo anterior.
+- [x] **E1 (S)** ADR con lo anterior. Hecho el 2026-11-17: ADR-015.
 - [ ] **E2 (M)** Limpiar el contrato del pack: `Pack.calendars(config)` y `ctx.calendars`, sin
   que la plataforma lea `staff`. También `Periodic.tracks_health` y `metric_labels`, hoy con
   nombres fijos (`periodic.py:115`, `check.py:143`).

@@ -20,3 +20,4 @@ Plantilla: [`plantilla.md`](plantilla.md).
 | [012](ADR-012-instalacion-y-traslado.md) | Instalación y traslado del servidor desde la máquina del operador | aceptada |
 | [013](ADR-013-biblioteca-de-conjuntos-de-datos.md) | Biblioteca de conjuntos de datos (modifica el ADR-009) | aceptada |
 | [014](ADR-014-pestana-de-alta.md) | Pestaña «Alta» guiada por pasos | aceptada |
+| [015](ADR-015-varios-peluqueros.md) | Varios peluqueros en `salon` | aceptada |
