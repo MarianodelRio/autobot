@@ -283,3 +283,54 @@ def test_observer_retains_denial_when_caller_catches_it(missing_status: int) -> 
     service.events.return_value.list.return_value.execute.return_value = {"items": []}
     client.check_access()
     assert seen == ["denied", "ok"]
+
+
+def test_check_write_access_inserts_confirms_and_deletes_a_probe_event() -> None:
+    """D3: verified for real against the local demo calendar too (not just here)."""
+    api = MagicMock()
+    api.events.return_value.list.return_value.execute.side_effect = [{"items": []}]
+
+    def fake_insert(**kwargs: Any) -> dict[str, Any]:
+        body = kwargs["body"]
+        return {**body, "description": ""}
+
+    api.events.return_value.insert.return_value.execute.side_effect = lambda **_: fake_insert(
+        **api.events.return_value.insert.call_args.kwargs
+    )
+    api.events.return_value.delete.return_value.execute.return_value = {}
+    api.events.return_value.get.return_value.execute.side_effect = error(404)
+
+    cal = CalendarClient("test-calendar", api=api, sleep=lambda _: None)
+    cal.check_write_access()
+
+    insert_body = api.events().insert.call_args.kwargs["body"]
+    assert insert_body["summary"].startswith("[cfg]")
+    assert insert_body["transparency"] == "transparent"
+    assert insert_body["extendedProperties"]["private"] == {"fp_probe": "1"}
+    assert insert_body["start"]["dateTime"].startswith("2000-01-01")
+    assert api.events().delete.call_args.kwargs["eventId"] == insert_body["id"]
+
+
+def test_check_write_access_clears_a_leftover_probe_first() -> None:
+    api = MagicMock()
+    leftover = {
+        **EVENT,
+        "id": "old-probe",
+        "extendedProperties": {"private": {"fp_probe": "1"}},
+    }
+    api.events.return_value.list.return_value.execute.side_effect = [{"items": [leftover]}]
+
+    def fake_insert(**kwargs: Any) -> dict[str, Any]:
+        return {**kwargs["body"], "description": ""}
+
+    api.events.return_value.insert.return_value.execute.side_effect = lambda **_: fake_insert(
+        **api.events.return_value.insert.call_args.kwargs
+    )
+    api.events.return_value.delete.return_value.execute.return_value = {}
+    api.events.return_value.get.return_value.execute.side_effect = error(404)
+
+    cal = CalendarClient("test-calendar", api=api, sleep=lambda _: None)
+    cal.check_write_access()
+
+    deleted_ids = [call.kwargs["eventId"] for call in api.events().delete.call_args_list]
+    assert "old-probe" in deleted_ids

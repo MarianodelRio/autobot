@@ -117,6 +117,9 @@ class FakeCalendar:
     def check_access(self) -> None:
         self._check("check_access")
 
+    def check_write_access(self) -> None:
+        self._check("check_write_access")
+
 
 # Checked by mypy: the fake has the same structural interface as the API client.
 _port: CalendarPort = FakeCalendar()

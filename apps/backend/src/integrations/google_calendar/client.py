@@ -1,11 +1,13 @@
 """Google Calendar client; no cache, globals or personal-data logs."""
 
+import base64
 import re
+import secrets as random_secrets
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from datetime import time as day_time
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -38,6 +40,7 @@ class CalendarPermanentError(PermanentError):
 # Partial response (`fields=`): only what `_event()` reads, instead of the full
 # resource (attendees, conferenceData, reminders...) on every read or write.
 _EVENT_FIELDS = "id,summary,description,start,end,created,status,extendedProperties/private"
+_PROBE_KEY = "fp_probe"  # D3: marks check_write_access()'s own throwaway event
 
 
 @dataclass(frozen=True)
@@ -338,3 +341,27 @@ class CalendarClient:
 
     def check_access(self) -> None:
         self._request("list", maxResults=1, singleEvents=True, fields="items(id)")
+
+    def check_write_access(self) -> None:
+        """D3: proves the service account can actually write to this calendar, not
+        just read it. Inserts a throwaway event (year 2000, transparent, private,
+        `[cfg]` summary, `fp_probe=1` — never `fp_key`/`fp_contact`, so neither the
+        sweep nor the owner's summary ever mistake it for a booking), confirms it,
+        then deletes it. Clears any leftover probe from an earlier ambiguous call
+        first, so a retry never leaves one behind."""
+        window_start = datetime(2000, 1, 1, tzinfo=self._tz)
+        window_end = datetime(2000, 1, 2, tzinfo=self._tz)
+        for leftover in self.list_events(window_start, window_end):
+            if leftover.private.get(_PROBE_KEY):
+                self.cancel_event(leftover.gcal_id)
+        probe_id = base64.b32hexencode(random_secrets.token_bytes(16)).decode().lower()[:26]
+        event = {
+            "summary": "[cfg] Autobot: prueba de acceso",
+            "start": {"dateTime": window_start.isoformat()},
+            "end": {"dateTime": (window_start + timedelta(minutes=5)).isoformat()},
+            "transparency": "transparent",
+            "visibility": "private",
+            "extendedProperties": {"private": {_PROBE_KEY: "1"}},
+        }
+        inserted = self.insert_event(event, probe_id)
+        self.cancel_event(inserted.gcal_id)

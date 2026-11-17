@@ -7,6 +7,7 @@ from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router, Schema
 
+from autobot.panel.services import setup as setup_service
 from autobot.panel.services import tenants as service
 from autobot.panel.services.overview import TenantRow, tenant_rows
 from autobot.tenancy import store
@@ -172,6 +173,16 @@ def tenant_secrets(request: HttpRequest, slug: str) -> service.SecretsStatus:
 @router.get("/tenants/{slug}/activation-checklist", response=list[service.ChecklistItemOut])
 def tenant_checklist(request: HttpRequest, slug: str) -> list[service.ChecklistItemOut]:
     return service.tenant_checklist(slug)
+
+
+@router.get("/tenants/{slug}/setup", response=list[setup_service.SetupStepOut])
+def tenant_setup(request: HttpRequest, slug: str) -> list[setup_service.SetupStepOut]:
+    return setup_service.tenant_setup(slug)
+
+
+@router.post("/tenants/{slug}/setup/check/{step}", response=setup_service.SetupStepOut)
+def tenant_setup_check(request: HttpRequest, slug: str, step: str) -> setup_service.SetupStepOut:
+    return setup_service.tenant_setup_check(slug, step, actor=request.user.username)
 
 
 @router.get("/tenants/{slug}/summary", response=service.SummaryOut)
