@@ -6,6 +6,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { components } from "@/api/schema";
 import { CalendarSection } from "./calendar-section";
 import { ChannelSection } from "./channel-section";
+import { DatasetSection } from "./dataset-section";
 import { OwnerSection } from "./owner-section";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -238,5 +239,53 @@ test("C14: disconnecting a linked owner says so", async () => {
   await user.click(within(dialog).getByRole("button", { name: "Desconectar" }));
   await waitFor(() =>
     expect(toastSpy).toHaveBeenCalledWith("Dueño desconectado."),
+  );
+});
+
+const busDetail = {
+  ...detail,
+  slug: "bus",
+  pack: "bus",
+  document: { config: {} },
+} as unknown as components["schemas"]["TenantDetail"];
+
+test("C23: warns without any dataset chosen yet", async () => {
+  setup(<DatasetSection detail={busDetail} dataset="timetable" />, () => ({
+    version: null,
+    author: null,
+    comment: "",
+    created_at: null,
+    source_name: null,
+    source_version: null,
+    newer_version_available: null,
+  }));
+  expect(
+    await screen.findByText(/Sin horarios elegidos todavía/),
+  ).toBeInTheDocument();
+});
+
+test("C23: offers Aplicar when a newer library version exists", async () => {
+  const toastSpy = vi.spyOn(toast, "success");
+  const user = userEvent.setup();
+  setup(<DatasetSection detail={busDetail} dataset="timetable" />, (url) =>
+    url.pathname.endsWith("/apply")
+      ? { version: 2 }
+      : {
+          version: 1,
+          author: "op",
+          comment: "",
+          created_at: "2026-11-01T00:00:00Z",
+          source_name: "linea-cordoba",
+          source_version: 1,
+          newer_version_available: 2,
+        },
+  );
+  await screen.findByText("Horarios en uso");
+  expect(screen.getAllByText(/linea-cordoba/).length).toBeGreaterThan(0);
+  expect(screen.getByText(/versión más nueva/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Aplicar" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar" }));
+  await waitFor(() =>
+    expect(toastSpy).toHaveBeenCalledWith("Horarios actualizados."),
   );
 });

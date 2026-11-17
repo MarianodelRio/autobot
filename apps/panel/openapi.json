@@ -355,6 +355,35 @@
         "title": "AlertsPage",
         "type": "object"
       },
+      "ApplyDatasetIn": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "title": "Comment",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ApplyDatasetIn",
+        "type": "object"
+      },
       "AuditEventOut": {
         "properties": {
           "action": {
@@ -830,6 +859,20 @@
             "title": "Config",
             "type": "object"
           },
+          "dataset_choices": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Choices"
+          },
           "demo_description": {
             "anyOf": [
               {
@@ -866,6 +909,92 @@
           "config"
         ],
         "title": "CreateTenantIn",
+        "type": "object"
+      },
+      "DatasetStatusOut": {
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "newer_version_available": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newer Version Available"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "version",
+          "author",
+          "comment",
+          "created_at",
+          "source_name",
+          "source_version",
+          "newer_version_available"
+        ],
+        "title": "DatasetStatusOut",
         "type": "object"
       },
       "DayCount": {
@@ -1463,6 +1592,44 @@
         "title": "LastEventOut",
         "type": "object"
       },
+      "LibraryEntryOut": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "summary",
+          "author",
+          "comment",
+          "created_at"
+        ],
+        "title": "LibraryEntryOut",
+        "type": "object"
+      },
       "LogFilters": {
         "properties": {
           "end": {
@@ -1935,6 +2102,13 @@
       },
       "PackOut": {
         "properties": {
+          "dataset_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dataset Names",
+            "type": "array"
+          },
           "has_datasets": {
             "title": "Has Datasets",
             "type": "boolean"
@@ -1951,7 +2125,8 @@
         "required": [
           "name",
           "has_datasets",
-          "has_template"
+          "has_template",
+          "dataset_names"
         ],
         "title": "PackOut",
         "type": "object"
@@ -4398,6 +4573,56 @@
         ]
       }
     },
+    "/packs/{pack}/datasets/{dataset}/library": {
+      "get": {
+        "operationId": "autobot_panel_routers_packs_dataset_library_entries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack",
+            "required": true,
+            "schema": {
+              "title": "Pack",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "title": "Dataset",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryEntryOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Dataset Library Entries",
+        "tags": [
+          "packs"
+        ]
+      }
+    },
     "/packs/{pack}/schema": {
       "get": {
         "operationId": "autobot_panel_routers_packs_pack_schema",
@@ -4744,6 +4969,108 @@
         "summary": "Contacts",
         "tags": [
           "contacts"
+        ]
+      }
+    },
+    "/tenants/{slug}/datasets/{dataset}": {
+      "get": {
+        "operationId": "autobot_panel_routers_tenants_tenant_dataset_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "title": "Dataset",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetStatusOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Dataset Status",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/datasets/{dataset}/apply": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_apply_dataset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "title": "Dataset",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyDatasetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Apply Dataset",
+        "tags": [
+          "tenants"
         ]
       }
     },

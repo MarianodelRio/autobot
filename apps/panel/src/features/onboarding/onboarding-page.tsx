@@ -24,6 +24,8 @@ type Draft = {
   channel: "whatsapp" | "telegram";
   config: Record<string, unknown> | null;
   template: Record<string, unknown> | null;
+  // C22: {dataset name -> chosen library entry name}; empty for a pack with none.
+  datasetChoices: Record<string, string>;
 };
 const initial: Draft = {
   step: 1,
@@ -35,6 +37,7 @@ const initial: Draft = {
   channel: "whatsapp",
   config: null,
   template: null,
+  datasetChoices: {},
 };
 export function slugFromName(name: string) {
   return name
@@ -61,7 +64,7 @@ function restore(): Draft {
       typeof value.name !== "string" ||
       typeof value.slug !== "string" ||
       typeof value.timezone !== "string" ||
-      ![1, 2, 3, 4].includes(value.step) ||
+      ![1, 2, 3, 4, 5].includes(value.step) ||
       !["whatsapp", "telegram"].includes(value.channel)
     )
       return initial;
@@ -104,6 +107,70 @@ function configUi(
   return result;
 }
 
+function DatasetChoiceField({
+  pack,
+  dataset,
+  value,
+  onChange,
+}: {
+  pack: string;
+  dataset: string;
+  value: string;
+  onChange: (name: string) => void;
+}) {
+  const entries = useQuery({
+    queryKey: ["dataset-library", pack, dataset],
+    queryFn: () =>
+      unwrap(
+        api.GET("/packs/{pack}/datasets/{dataset}/library", {
+          params: { path: { pack, dataset } },
+        }),
+      ),
+  });
+  if (entries.isPending) return <p>Cargando biblioteca de {dataset}…</p>;
+  if (entries.isError)
+    return (
+      <ErrorState
+        message={`No se pudo cargar la biblioteca de ${dataset}.`}
+        onRetry={() => void entries.refetch()}
+      />
+    );
+  if (entries.data.length === 0)
+    return (
+      <p role="alert">
+        No hay ninguna entrada subida para «{dataset}». Súbela primero con{" "}
+        <code>make bus-subir</code>.
+      </p>
+    );
+  return (
+    <fieldset className="space-y-2 rounded-md border p-3">
+      <legend className="px-1 font-medium">{dataset}</legend>
+      {entries.data.map((entry) => {
+        const towns = entry.summary.pueblos;
+        return (
+          <label key={entry.name} className="flex items-start gap-2 text-sm">
+            <input
+              type="radio"
+              name={`dataset-${dataset}`}
+              checked={value === entry.name}
+              onChange={() => onChange(entry.name)}
+            />
+            <span>
+              <strong>{entry.name}</strong> (v{entry.version})
+              {Array.isArray(towns) && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {towns.join(", ")}
+                </span>
+              )}
+            </span>
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
+
 export function OnboardingPage({
   onCreated,
 }: {
@@ -133,6 +200,12 @@ export function OnboardingPage({
     queryKey: ["packs"],
     queryFn: () => unwrap(api.GET("/packs")),
   });
+  const selectedPack = packs.data?.find((p) => p.name === draft.pack);
+  const needsDatasets = (selectedPack?.dataset_names.length ?? 0) > 0;
+  const datasetsChosen =
+    !needsDatasets ||
+    (selectedPack?.dataset_names.every((d) => draft.datasetChoices[d]) ??
+      false);
   const available = useQuery({
     queryKey: ["slug-availability", draft.slug],
     queryFn: () =>
@@ -193,7 +266,7 @@ export function OnboardingPage({
     )
       return;
     setErrors([]);
-    update({ step: 3 });
+    update({ step: needsDatasets ? 3 : 4 });
   }
   function nextConfig() {
     if (!formSchema || !draft.config || yamlError) return;
@@ -209,7 +282,7 @@ export function OnboardingPage({
         return;
       }
       setErrors([]);
-      update({ step: 4 });
+      update({ step: 5 });
     } catch {
       setErrors(["No se pudo validar la configuración."]);
     }
@@ -241,6 +314,7 @@ export function OnboardingPage({
             channel_type: draft.channel,
             config: draft.config ?? {},
             comment: "",
+            dataset_choices: needsDatasets ? draft.datasetChoices : undefined,
           },
         }),
       );
@@ -256,7 +330,7 @@ export function OnboardingPage({
         setValidationErrors(
           errorsToSchema(details.map((d) => d.replace(/^config\./, ""))),
         );
-        update({ step: 3 });
+        update({ step: 4 });
       } else if (e.status === 409) {
         setErrors([e.message || "El slug ya existe."]);
         update({ step: 2 });
@@ -272,7 +346,7 @@ export function OnboardingPage({
     <div className="space-y-5">
       <PageHeader
         title="Nuevo cliente"
-        description={`Paso ${draft.step} de 4`}
+        description={`Paso ${draft.step} de ${needsDatasets ? 5 : 4}`}
       />
       {draft.step === 1 && (
         <section className="space-y-4">
@@ -296,7 +370,12 @@ export function OnboardingPage({
                   className="rounded-lg border p-4 aria-pressed:border-primary"
                   onClick={() => {
                     if (pack.name !== draft.pack) {
-                      update({ pack: pack.name, config: null, template: null });
+                      update({
+                        pack: pack.name,
+                        config: null,
+                        template: null,
+                        datasetChoices: {},
+                      });
                       setYaml("{}");
                     }
                     setErrors([]);
@@ -401,7 +480,40 @@ export function OnboardingPage({
           </div>
         </section>
       )}
-      {draft.step === 3 && (
+      {draft.step === 3 && needsDatasets && (
+        <section className="space-y-4">
+          <h2 className="font-semibold">Horarios</h2>
+          <p className="text-sm text-muted-foreground">
+            Elige, para cada conjunto, la entrada de la biblioteca que usará
+            este negocio. El alta no se completa sin elegir uno.
+          </p>
+          {selectedPack?.dataset_names.map((dataset) => (
+            <DatasetChoiceField
+              key={dataset}
+              pack={draft.pack}
+              dataset={dataset}
+              value={draft.datasetChoices[dataset] ?? ""}
+              onChange={(name) =>
+                update({
+                  datasetChoices: { ...draft.datasetChoices, [dataset]: name },
+                })
+              }
+            />
+          ))}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => update({ step: 2 })}>
+              Anterior
+            </Button>
+            <Button
+              disabled={!datasetsChosen}
+              onClick={() => update({ step: 4 })}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </section>
+      )}
+      {draft.step === 4 && (
         <section className="space-y-4">
           <h2 className="font-semibold">Configuración</h2>
           {schema.isPending || (draft.config === null && template.isPending) ? (
@@ -471,7 +583,10 @@ export function OnboardingPage({
             </>
           )}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => update({ step: 2 })}>
+            <Button
+              variant="outline"
+              onClick={() => update({ step: needsDatasets ? 3 : 2 })}
+            >
               Anterior
             </Button>
             <Button
@@ -483,7 +598,7 @@ export function OnboardingPage({
           </div>
         </section>
       )}
-      {draft.step === 4 && (
+      {draft.step === 5 && (
         <section className="space-y-4">
           <h2 className="font-semibold">Revisión</h2>
           <p>
@@ -492,6 +607,14 @@ export function OnboardingPage({
           <p>
             Zona horaria: {draft.timezone} · Canal: {draft.channel}
           </p>
+          {needsDatasets && (
+            <p>
+              Horarios:{" "}
+              {Object.entries(draft.datasetChoices)
+                .map(([dataset, name]) => `${dataset} → ${name}`)
+                .join(", ")}
+            </p>
+          )}
           <pre className="overflow-auto rounded-md border p-3">
             {YAML.stringify(draft.config)}
           </pre>
@@ -499,7 +622,7 @@ export function OnboardingPage({
             <Button
               variant="outline"
               disabled={pending}
-              onClick={() => update({ step: 3 })}
+              onClick={() => update({ step: 4 })}
             >
               Anterior
             </Button>

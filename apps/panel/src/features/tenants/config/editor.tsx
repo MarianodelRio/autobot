@@ -30,6 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { validator } from "@/lib/form-validator";
 import { CalendarSection } from "./calendar-section";
 import { ChannelSection } from "./channel-section";
+import { DatasetSection } from "./dataset-section";
 import { OwnerSection } from "./owner-section";
 
 type Detail = components["schemas"]["TenantDetail"];
@@ -308,6 +309,9 @@ export function ConfigEditor({
         people: <OwnerSection detail={detail} />,
         ...(detail.pack === "salon"
           ? { config: <CalendarSection detail={detail} /> }
+          : {}),
+        ...(detail.pack === "bus"
+          ? { config: <DatasetSection detail={detail} dataset="timetable" /> }
           : {}),
       },
     }),

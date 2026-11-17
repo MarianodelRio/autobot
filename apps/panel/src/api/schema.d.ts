@@ -430,6 +430,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/packs/{pack}/datasets/{dataset}/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dataset Library Entries */
+        get: operations["autobot_panel_routers_packs_dataset_library_entries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/packs/{pack}/schema": {
         parameters: {
             query?: never;
@@ -561,6 +578,40 @@ export interface paths {
         get: operations["autobot_panel_routers_contacts_contacts"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{slug}/datasets/{dataset}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant Dataset Status */
+        get: operations["autobot_panel_routers_tenants_tenant_dataset_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{slug}/datasets/{dataset}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Dataset */
+        post: operations["autobot_panel_routers_tenants_apply_dataset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -906,6 +957,18 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** ApplyDatasetIn */
+        ApplyDatasetIn: {
+            /**
+             * Comment
+             * @default
+             */
+            comment: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version?: number | null;
+        };
         /** AuditEventOut */
         AuditEventOut: {
             /** Action */
@@ -1064,6 +1127,10 @@ export interface components {
             config: {
                 [key: string]: unknown;
             };
+            /** Dataset Choices */
+            dataset_choices?: {
+                [key: string]: string;
+            } | null;
             /** Demo Description */
             demo_description?: string | null;
             /** Name */
@@ -1074,6 +1141,23 @@ export interface components {
             slug: string;
             /** Timezone */
             timezone: string;
+        };
+        /** DatasetStatusOut */
+        DatasetStatusOut: {
+            /** Author */
+            author: string | null;
+            /** Comment */
+            comment: string;
+            /** Created At */
+            created_at: string | null;
+            /** Newer Version Available */
+            newer_version_available: number | null;
+            /** Source Name */
+            source_name: string | null;
+            /** Source Version */
+            source_version: number | null;
+            /** Version */
+            version: number | null;
         };
         /** DayCount */
         DayCount: {
@@ -1267,6 +1351,23 @@ export interface components {
             at: string | null;
             /** Type */
             type: string | null;
+        };
+        /** LibraryEntryOut */
+        LibraryEntryOut: {
+            /** Author */
+            author: string;
+            /** Comment */
+            comment: string;
+            /** Created At */
+            created_at: unknown;
+            /** Name */
+            name: string;
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Version */
+            version: number;
         };
         /** LogFilters */
         LogFilters: {
@@ -1468,6 +1569,8 @@ export interface components {
         };
         /** PackOut */
         PackOut: {
+            /** Dataset Names */
+            dataset_names: string[];
             /** Has Datasets */
             has_datasets: boolean;
             /** Has Template */
@@ -2512,6 +2615,29 @@ export interface operations {
             };
         };
     };
+    autobot_panel_routers_packs_dataset_library_entries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack: string;
+                dataset: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryEntryOut"][];
+                };
+            };
+        };
+    };
     autobot_panel_routers_packs_pack_schema: {
         parameters: {
             query?: never;
@@ -2708,6 +2834,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContactPage"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_tenant_dataset_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                dataset: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetStatusOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_apply_dataset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                dataset: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyDatasetIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionOut"];
                 };
             };
         };

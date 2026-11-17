@@ -17,7 +17,9 @@ function json(data: unknown, status = 200) {
     headers: { "Content-Type": "application/json" },
   });
 }
-const packs = [{ name: "bus", has_template: true, has_datasets: true }];
+const packs = [
+  { name: "bus", has_template: true, has_datasets: true, dataset_names: [] },
+];
 const schema = {
   document: {
     type: "object",
@@ -120,6 +122,66 @@ test("submits the review step as the POST body and creates the tenant", async ()
     channel_type: "whatsapp",
     config: { price: 1 },
     comment: "",
+  });
+});
+
+test("C22: a pack with datasets requires choosing one before the config step", async () => {
+  const busPacks = [
+    {
+      name: "bus",
+      has_template: true,
+      has_datasets: true,
+      dataset_names: ["timetable"],
+    },
+  ];
+  const libraryEntries = [
+    {
+      name: "linea-cordoba",
+      version: 2,
+      summary: { pueblos: ["Posadas", "Córdoba"] },
+      author: "op",
+      comment: "",
+      created_at: "2026-11-01T00:00:00Z",
+    },
+  ];
+  let sent: unknown;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (request: Request) => {
+      const url = new URL(request.url);
+      if (request.method === "POST" && url.pathname.endsWith("/tenants")) {
+        sent = await request.json();
+        return json({ version: 1 });
+      }
+      if (url.pathname.endsWith("/packs")) return json(busPacks);
+      if (url.pathname.endsWith("/library")) return json(libraryEntries);
+      if (url.pathname.endsWith("/tenant-slug-availability"))
+        return json({ available: true });
+      if (url.pathname.endsWith("/schema")) return json(schema);
+      if (url.pathname.endsWith("/template")) return json(template);
+      return json({}, 404);
+    }),
+  );
+  const onCreated = vi.fn();
+  provider(<OnboardingPage onCreated={onCreated} />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "bus" }));
+  await user.click(screen.getByRole("button", { name: "Siguiente" }));
+  await user.type(screen.getByLabelText("Nombre"), "Autobuses Centro");
+  await screen.findByText("Slug disponible.");
+  await user.click(screen.getByRole("button", { name: "Siguiente" }));
+  await screen.findByText("Horarios");
+  expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+  await user.click(await screen.findByText(/linea-cordoba/));
+  expect(screen.getByRole("button", { name: "Siguiente" })).not.toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Siguiente" }));
+  await screen.findByLabelText("Precio");
+  await user.click(screen.getByRole("button", { name: "Siguiente" }));
+  await screen.findByText(/Revisión/);
+  await user.click(screen.getByRole("button", { name: "Crear cliente" }));
+  await waitFor(() => expect(onCreated).toHaveBeenCalled());
+  expect(sent).toMatchObject({
+    dataset_choices: { timetable: "linea-cordoba" },
   });
 });
 
