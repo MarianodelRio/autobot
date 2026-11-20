@@ -16,6 +16,9 @@ x-app: &app
     DB_READONLY_URL: postgres://fp_readonly:fp_readonly@db:5432/autobot
     GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
     OPS_STATE_DIR: /tmp/ops  # the default resolves to /state in the container, not writable
+    # runserver opens a thread per request: persistent connections would leak until
+    # PostgreSQL runs out of slots. The workers replace this environment.
+    DB_CONN_MAX_AGE: "0"
   volumes:
     - ../../apps/backend/src:/app/src
     - ../../apps/backend/manage.py:/app/manage.py

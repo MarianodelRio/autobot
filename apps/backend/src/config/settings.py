@@ -102,7 +102,10 @@ DATABASE_ROUTERS = ["autobot.db.router.AuthDatabaseRouter"]
 # survives the connection. The worker runs without DB_OWNER_URL or DB_READONLY_URL, so
 # without those aliases. Local defaults match compose.yaml, whose db is published on
 # port 5433.
-def _database(url: str, conn_max_age: int = 60) -> dict[str, Any]:
+CONN_MAX_AGE = int(os.environ.get("DB_CONN_MAX_AGE", "60"))
+
+
+def _database(url: str, conn_max_age: int = CONN_MAX_AGE) -> dict[str, Any]:
     return dict(dj_database_url.parse(url, conn_max_age=conn_max_age, conn_health_checks=True))
 
 
