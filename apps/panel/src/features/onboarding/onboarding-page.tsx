@@ -1,6 +1,12 @@
 import Form from "@rjsf/shadcn";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ComponentProps, useEffect, useMemo, useState } from "react";
+import {
+  type ComponentProps,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import YAML from "yaml";
 import { type ApiError, api, unwrap } from "@/api/client";
 import { ErrorState } from "@/components/error-state";
@@ -11,9 +17,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { errorsToSchema } from "@/features/tenants/config/editor";
+import { TimezoneSelect } from "@/features/tenants/config/timezone-widget";
 import { validator } from "@/lib/form-validator";
 
 const STORAGE_KEY = "autobot.onboarding";
+
+/** The wizard step that owns the field a 422 names: the basics (name, slug, zone,
+ * channel) live on step 2, the pack on step 1, everything else is the config (4). */
+export function stepForErrors(details: string[]): number {
+  const fields = details.map(
+    (detail) =>
+      (detail.split(":")[0] ?? "")
+        .replace(/^(body\.)?(payload\.)?/, "")
+        .split(".")[0],
+  );
+  if (fields.includes("pack")) return 1;
+  if (
+    fields.some((f) =>
+      ["slug", "name", "timezone", "channel_type"].includes(f ?? ""),
+    )
+  )
+    return 2;
+  return 4;
+}
 type Draft = {
   step: number;
   pack: string;
@@ -300,7 +326,11 @@ export function OnboardingPage({
       setYamlError("El YAML debe contener una configuración válida.");
     }
   }
+  // A ref, not `pending` state: two clicks in the same tick both see `pending` false.
+  const creating = useRef(false);
   async function create() {
+    if (creating.current) return;
+    creating.current = true;
     setPending(true);
     setErrors([]);
     try {
@@ -330,7 +360,7 @@ export function OnboardingPage({
         setValidationErrors(
           errorsToSchema(details.map((d) => d.replace(/^config\./, ""))),
         );
-        update({ step: 4 });
+        update({ step: stepForErrors(details) });
       } else if (e.status === 409) {
         setErrors([e.message || "El slug ya existe."]);
         update({ step: 2 });
@@ -339,6 +369,7 @@ export function OnboardingPage({
         });
       } else setErrors([e.message || "No se pudo crear el cliente."]);
     } finally {
+      creating.current = false;
       setPending(false);
     }
   }
@@ -442,10 +473,10 @@ export function OnboardingPage({
           </div>
           <div>
             <Label htmlFor="new-timezone">Zona horaria</Label>
-            <Input
+            <TimezoneSelect
               id="new-timezone"
               value={draft.timezone}
-              onChange={(event) => update({ timezone: event.target.value })}
+              onChange={(timezone) => update({ timezone })}
             />
           </div>
           <div>
@@ -642,8 +673,9 @@ export function OnboardingPage({
       )}
       {errors.length > 0 && (
         <ul role="alert" className="text-sm text-destructive">
-          {errors.map((error) => (
-            <li key={error}>{error}</li>
+          {errors.map((error, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the same message can repeat
+            <li key={`${index}:${error}`}>{error}</li>
           ))}
         </ul>
       )}

@@ -133,8 +133,9 @@ cmd_restore() {
   [[ $confirm == y ]] || exit 1
   compose_down
   rm -f "$srv_dir/var/.deployed-sha"
-  touch "$root/var/localprod/bootstrap-complete"
-  (cd "$srv_dir" && AUTOBOT_BOOTSTRAP_MARKER="$root/var/localprod/bootstrap-complete" \
+  # This machine is not a bootstrapped VM and never will be: say so out loud instead
+  # of faking /var/lib/autobot/bootstrap-complete (only install-vm.sh writes it).
+  (cd "$srv_dir" && AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK=true \
     AUTOBOT_BACKUP_CONFIG="$root/var/localprod/backup.env" \
     deploy/scripts/restore.sh --confirm-empty-target)
 }

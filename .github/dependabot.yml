@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: docker
+    directories:
+      - /apps/backend
+      - /apps/panel
+    schedule:
+      interval: weekly
+  # Compose files pin postgres, caddy and victorialogs by tag/digest.
+  - package-ecosystem: docker-compose
+    directory: /deploy/compose
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /apps/backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /apps/panel
+    schedule:
+      interval: weekly

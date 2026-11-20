@@ -185,14 +185,16 @@ def contact_forget(request: HttpRequest, id: UUID) -> ContactForgetOut:
 
     contact = get_object_or_404(Contact.objects.using("owner").select_related("tenant"), pk=id)
     tenant_id, contact_id = contact.tenant_id, contact.id
-    privacy.forget(contact)
-    record(
-        actor=request.user.username,
-        action="contact.forget",
-        summary="Contacto olvidado (derecho de supresión)",
-        tenant_id=tenant_id,
-        target_type="contact",
-        target_id=str(contact_id),
-        details={"contact_id": str(contact_id)},
-    )
+    # The erasure and its audit row commit together: never an erasure without a trace.
+    with transaction.atomic(using="owner"):
+        privacy.forget(contact)
+        record(
+            actor=request.user.username,
+            action="contact.forget",
+            summary="Contacto olvidado (derecho de supresión)",
+            tenant_id=tenant_id,
+            target_type="contact",
+            target_id=str(contact_id),
+            details={"contact_id": str(contact_id)},
+        )
     return ContactForgetOut()

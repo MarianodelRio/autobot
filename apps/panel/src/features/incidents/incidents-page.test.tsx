@@ -71,7 +71,14 @@ function stubFetch() {
       );
     if (url.pathname.endsWith("/incidents"))
       return new Response(
-        JSON.stringify({ alerts: [alert], outbound: [outbound], jobs: [job] }),
+        JSON.stringify({
+          alerts: [alert],
+          outbound: [outbound],
+          jobs: [job],
+          alerts_total: 1,
+          outbound_total: 1,
+          jobs_total: 1,
+        }),
         { headers: { "Content-Type": "application/json" } },
       );
     if (url.pathname.endsWith("/alerts"))

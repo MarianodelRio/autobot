@@ -252,7 +252,8 @@ def test_old_finished_procrastinate_jobs_are_purged(tenants: Any, settings: Sett
     older than 30 days (by its last event, Procrastinate's own criterion) is deleted,
     cascading to its events, while a recent one is kept."""
     loaded(tenants)
-    settings.RETENTION_CLEANUP_ENABLED = True
+    # Not conditioned by RETENTION_CLEANUP_ENABLED: only ids live in those tables.
+    settings.RETENTION_CLEANUP_ENABLED = False
 
     def finished_job(days_ago: int) -> int:
         with connection.cursor() as cursor:
@@ -272,7 +273,7 @@ def test_old_finished_procrastinate_jobs_are_purged(tenants: Any, settings: Sett
 
     old_id = finished_job(31)
     recent_id = finished_job(1)
-    retention.cleanup(now=NOW)
+    retention.cleanup_jobs()
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT id FROM procrastinate_jobs WHERE id IN (%s, %s)", [old_id, recent_id]
@@ -282,6 +283,36 @@ def test_old_finished_procrastinate_jobs_are_purged(tenants: Any, settings: Sett
         (old_events,) = cursor.fetchone()
     assert remaining == {recent_id}
     assert old_events == 0  # cascaded
+
+
+def test_the_jobs_cleanup_is_its_own_periodic_task() -> None:
+    from autobot.runtime.jobs import jobs_cleanup
+
+    assert "jobs_cleanup" in app.tasks
+    assert jobs_cleanup.queueing_lock == "jobs_cleanup"
+
+
+def test_an_expired_contact_that_opted_out_keeps_only_its_suppression(
+    tenants: Any, settings: Settings
+) -> None:
+    """The opt-out outlives the retention period (it is what stops reminders for a later
+    manual appointment of the same phone); only the name is cleared."""
+    a = loaded(tenants)
+    settings.RETENTION_CLEANUP_ENABLED = True
+    kept = contact(a, "optout")
+    gone = contact(a, "plain")
+    Contact.objects.using("owner").filter(id=kept.id).update(
+        opt_out=True,
+        display_name="Lucía",
+        last_activity_at=NOW - timedelta(days=400),
+    )
+    Contact.objects.using("owner").filter(id=gone.id).update(
+        display_name="Pedro", last_activity_at=NOW - timedelta(days=400)
+    )
+    retention.cleanup(now=NOW)
+    row = Contact.objects.using("owner").get(id=kept.id)
+    assert row.opt_out is True and row.display_name == ""
+    assert not Contact.objects.using("owner").filter(id=gone.id).exists()
 
 
 def test_selector_and_expired_conversations(tenants: Any, settings: Settings) -> None:
@@ -390,6 +421,8 @@ def test_export_private_and_contact_ambiguity(
     with pytest.raises(CommandError, match="archivo privado"):
         call_command("tenant_data_export", "a", output=str(target))
     assert json.loads(target.read_text()) == data
+    actions = list(AuditEvent.objects.using("owner").order_by("at").values_list("actor", "action"))
+    assert ("command:contact_export", "contact.export") in actions
 
 
 def test_forget_only_matching_contact_and_events() -> None:
@@ -409,6 +442,9 @@ def test_forget_only_matching_contact_and_events() -> None:
     with pytest.raises(CommandError, match="ambiguo"):
         call_command("contact_forget", "a", "111")
     call_command("contact_forget", "a", "111", channel="demo_tg")
+    audit = AuditEvent.objects.using("owner").get(action="contact.forget")
+    assert audit.actor == "command:contact_forget" and audit.target_id == str(c.id)
+    assert "111" not in json.dumps(audit.details) + audit.summary
     assert set(Contact.objects.using("owner").values_list("pk", flat=True)) == {
         other_channel.pk,
         other_tenant.pk,
@@ -462,6 +498,11 @@ def test_purge_requires_exact_confirmation_and_preserves_other_tenant(tmp_path: 
     DemoEvent.objects.create(channel="demo_tg", provider_event_id="99", payload={}, received_at=NOW)
     target = tmp_path / "tenant.json"
     call_command("tenant_data_export", "a", output=str(target), stdout=io.StringIO())
+    assert (
+        AuditEvent.objects.using("owner")
+        .filter(actor="command:tenant_data_export", action="tenant.export", tenant_id=a.id)
+        .exists()
+    )
     assert all(
         row["tenant_id"] == str(a.id)
         for rows in json.loads(target.read_text())["data"].values()

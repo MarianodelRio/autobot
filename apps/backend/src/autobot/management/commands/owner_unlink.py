@@ -5,6 +5,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
+from autobot.ops.audit import record
 from autobot.owner.links import unlink
 from autobot.tenancy.registry import get_registry
 
@@ -19,7 +20,16 @@ class Command(BaseCommand):
         tenant = get_registry().by_slug.get(options["slug"])
         if tenant is None:
             raise CommandError("Negocio desconocido.")
-        if unlink(tenant.id):
+        had_chat = unlink(tenant.id)
+        record(
+            actor="command:owner_unlink",
+            action="tenant.owner_unlink",
+            tenant_id=tenant.id,
+            target_type="tenant",
+            target_id=str(tenant.id),
+            summary="Dueño desconectado" if had_chat else "Invitación del dueño cancelada",
+        )
+        if had_chat:
             self.stdout.write(f"Chat de {tenant.document.name} desconectado.")
         else:
             self.stdout.write(f"{tenant.document.name} no tenía ningún chat conectado.")

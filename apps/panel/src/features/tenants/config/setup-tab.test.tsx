@@ -1,17 +1,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  createMemoryHistory,
-  createRouter,
-  RouterProvider,
-} from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Toaster } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
-import { routeTree } from "@/routeTree.gen";
+import type { components } from "@/api/schema";
+import { SetupTab } from "./setup-tab";
+
+// The tab is rendered on its own, not through the app's route tree: loading every
+// route (rjsf, CodeMirror...) made these tests time out under the full suite.
 
 afterEach(() => vi.unstubAllGlobals());
 
-const TENANT = {
+const TENANT: components["schemas"]["TenantDetail"] = {
   slug: "demo",
   name: "Negocio",
   pack: "bus",
@@ -35,6 +35,7 @@ const TENANT = {
   webhook_url: "https://example.test/webhook",
   public_link: "https://t.me/example_bot",
   owner_linked: false,
+  owner_invite_pending: false,
   month: { inbound: 12, outbound: 10, users: 4, cost_eur: "1.20" },
 };
 
@@ -87,11 +88,6 @@ function renderAt(
   addTesterResult?: Record<string, unknown>,
 ) {
   const queryClient = new QueryClient();
-  const router = createRouter({
-    routeTree,
-    context: { queryClient },
-    history: createMemoryHistory({ initialEntries: ["/clientes/demo"] }),
-  });
   const fetcher = vi.fn(async (request: RequestInfo | URL) => {
     const url = new URL(
       request instanceof Request ? request.url : String(request),
@@ -112,7 +108,8 @@ function renderAt(
   vi.stubGlobal("fetch", fetcher);
   render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <Toaster />
+      <SetupTab slug="demo" detail={TENANT} />
     </QueryClientProvider>,
   );
 }
@@ -135,8 +132,6 @@ test("lists the steps and lets a checkable one be re-checked", async () => {
     ],
     checkable: true,
   });
-  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
-  await user.click(screen.getByRole("tab", { name: "Alta" }));
   await screen.findByText("Documento");
   expect(
     screen.getByText("Pulsa «Comprobar» para consultarlo en Telegram."),
@@ -144,7 +139,7 @@ test("lists the steps and lets a checkable one be re-checked", async () => {
 
   await user.click(screen.getByRole("button", { name: "Comprobar" }));
   await screen.findByText("Registrado.");
-}, 10_000);
+});
 
 test("lists recent non-tester senders and adds one as a tester", async () => {
   const user = userEvent.setup();
@@ -162,36 +157,29 @@ test("lists recent non-tester senders and adds one as a tester", async () => {
       checkable: false,
     },
   );
-  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
-  await user.click(screen.getByRole("tab", { name: "Alta" }));
   await screen.findByText("id 999");
   await user.click(screen.getByRole("button", { name: "Añadir" }));
   await screen.findByText("Tester añadido.");
   expect(screen.queryByText("id 999")).not.toBeInTheDocument();
-}, 10_000);
+});
 
 test("C13: shows a downloadable QR for the public link", async () => {
-  const user = userEvent.setup();
   renderAt({});
-  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
-  await user.click(screen.getByRole("tab", { name: "Alta" }));
   await screen.findByText("QR del canal");
   expect(
     screen.getByRole("button", { name: "Descargar SVG" }),
   ).toBeInTheDocument();
-}, 10_000);
+});
 
 test("C12: Activar in the Alta tab stays disabled while a blocking step isn't ok", async () => {
   const user = userEvent.setup();
   renderAt({});
-  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
-  await user.click(screen.getByRole("tab", { name: "Alta" }));
   const openButtons = await screen.findAllByRole("button", { name: "Activar" });
   await user.click(openButtons[0]!);
   await user.type(screen.getByLabelText("Escribe demo"), "demo");
   const confirm = screen.getAllByRole("button", { name: "Activar" }).at(-1);
   expect(confirm).toBeDisabled(); // STEPS has blocking webhook/tester steps still pending
-}, 10_000);
+});
 
 const WA_STEPS = [
   {
@@ -222,11 +210,6 @@ const WA_STEPS = [
 
 function renderWhatsApp(actionStatus: number, actionBody: unknown) {
   const queryClient = new QueryClient();
-  const router = createRouter({
-    routeTree,
-    context: { queryClient },
-    history: createMemoryHistory({ initialEntries: ["/clientes/demo"] }),
-  });
   const actions: { path: string; body: unknown }[] = [];
   const fetcher = vi.fn(async (request: RequestInfo | URL) => {
     const req = request instanceof Request ? request : new Request(request);
@@ -250,7 +233,10 @@ function renderWhatsApp(actionStatus: number, actionBody: unknown) {
   vi.stubGlobal("fetch", fetcher);
   render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <SetupTab
+        slug="demo"
+        detail={{ ...TENANT, channel_type: "whatsapp", public_link: null }}
+      />
     </QueryClientProvider>,
   );
   return actions;
@@ -258,8 +244,6 @@ function renderWhatsApp(actionStatus: number, actionBody: unknown) {
 
 async function openAlta() {
   const user = userEvent.setup();
-  await screen.findByRole("heading", { name: "Negocio" }, { timeout: 8000 });
-  await user.click(screen.getByRole("tab", { name: "Alta" }));
   await screen.findByText("Número registrado");
   return user;
 }
@@ -288,7 +272,7 @@ test("C18: registering a number asks for a 6-digit PIN and sends it", async () =
       body: { pin: "123456" },
     },
   ]);
-}, 10_000);
+});
 
 test("C18: subscribing the app needs an explicit confirmation", async () => {
   const actions = renderWhatsApp(200, {
@@ -308,7 +292,7 @@ test("C18: subscribing the app needs an explicit confirmation", async () => {
   );
   expect(actions).toHaveLength(1);
   expect(actions[0]?.body).toEqual({});
-}, 10_000);
+});
 
 test("C18: a failed action shows the server's message", async () => {
   renderWhatsApp(502, {
@@ -322,4 +306,4 @@ test("C18: a failed action shows the server's message", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Resultado desconocido",
   );
-}, 10_000);
+});

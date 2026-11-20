@@ -20,8 +20,9 @@ class TestTrunc:
 
 class TestBuilders:
     def test_button_title_truncated_to_20(self) -> None:
+        # The emoji counts 2 (UTF-16), as WhatsApp counts it.
         assert button("menu_book", "📅 Pedir cita muy larga de verdad").title == (
-            "📅 Pedir cita muy lar"
+            "📅 Pedir cita muy la"
         )
 
     def test_row_title_24_and_description_72(self) -> None:

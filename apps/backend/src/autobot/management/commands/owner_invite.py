@@ -6,6 +6,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
+from autobot.ops.audit import record
 from autobot.owner.invites import InviteError, create_invite_link
 from autobot.tenancy.registry import get_registry
 
@@ -24,6 +25,14 @@ class Command(BaseCommand):
             link = create_invite_link(tenant)
         except InviteError as e:
             raise CommandError(str(e)) from None
+        record(
+            actor="command:owner_invite",
+            action="tenant.owner_invite",
+            tenant_id=tenant.id,
+            target_type="tenant",
+            target_id=str(tenant.id),
+            summary="Enlace de invitación generado",
+        )
         if link.replaces_chat:
             self.stdout.write("Ya hay un chat conectado; este enlace lo sustituirá cuando se use.")
         expires = link.expires_at.astimezone(tenant.info.timezone)

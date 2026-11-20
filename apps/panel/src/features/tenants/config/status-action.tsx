@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { errorDetail } from "@/lib/errors";
 
 export function StatusAction({
   slug,
@@ -49,6 +50,17 @@ export function StatusAction({
       ),
     enabled: open && action === "activate",
     staleTime: 0,
+    // Reading never calls Meta, Telegram or Google: only «Comprobar» does.
+    refetchOnWindowFocus: false,
+  });
+  const refresh = useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST("/tenants/{slug}/setup/check/{step}", {
+          params: { path: { slug, step: "health" } },
+        }),
+      ),
+    onSuccess: () => void checklist.refetch(),
   });
   const mutation = useMutation({
     mutationFn: () =>
@@ -84,7 +96,7 @@ export function StatusAction({
       </Button>
       {mutation.isError && (
         <p role="alert" className="text-sm text-destructive">
-          No se pudo cambiar el estado.
+          {errorDetail(mutation.error, "No se pudo cambiar el estado.")}
         </p>
       )}
       {action !== "activate" ? (
@@ -120,6 +132,19 @@ export function StatusAction({
               />
             ) : (
               <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={refresh.isPending}
+                  onClick={() => refresh.mutate()}
+                >
+                  Comprobar ahora
+                </Button>
+                {refresh.isError && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {errorDetail(refresh.error, "No se pudo comprobar.")}
+                  </p>
+                )}
                 <ul>
                   {checklist.data.map((item) => (
                     <li key={item.key}>
@@ -146,7 +171,10 @@ export function StatusAction({
                 </Button>
                 {mutation.isError && (
                   <p role="alert" className="text-sm text-destructive">
-                    No se pudo activar el cliente.
+                    {errorDetail(
+                      mutation.error,
+                      "No se pudo activar el cliente.",
+                    )}
                   </p>
                 )}
               </>

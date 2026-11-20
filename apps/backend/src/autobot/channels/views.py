@@ -1,9 +1,15 @@
 """Webhooks of each tenant's main channel.
 
-Order: IP blocked by invalid signatures (429), tenant (404), body size (400), authenticity
-(401, counted for the IP limit), JSON (400), offboarded (200 without saving), then each
-item is saved and queued (200). The signature is checked before the body is parsed. No
-external calls: only the in-memory registry and the database.
+Order: tenant (404), body size (400), authenticity (401, counted for the limit of that
+IP and that tenant; once the limit is reached the answer is 429), JSON (400), offboarded
+(200 without saving), then each item is saved and queued (200). The signature is checked
+before the body is parsed. No external calls: only the in-memory registry and the
+database.
+
+The invalid-signature limit is per (IP, tenant): the addresses of Meta and Telegram are
+shared by every business, so one tenant with a wrong secret must never block the others.
+It only ever answers 429 to a request whose signature is *not* valid: a valid one is
+always accepted, whatever was counted before.
 """
 
 import json
@@ -11,6 +17,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from django.db import DataError
 from django.db import Error as DatabaseError
 from django.http import HttpRequest, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -32,20 +39,58 @@ from autobot.tenancy.schema import (
 
 log = logging.getLogger(__name__)
 
-MAX_BODY = 64 * 1024
+MAX_BODY = 256 * 1024
 
-limiter = WindowLimiter()  # invalid signatures per IP
+limiter = WindowLimiter()  # invalid signatures per (IP, route: tenant or bot)
 
 
-def _limiter_key(request: HttpRequest, route: str) -> str:
+def limiter_key(request: HttpRequest, route: str) -> str:
+    """`route` names what the request is for (`whatsapp:<public_id>`, `telegram-demo`…)."""
     return f"{client_ip(request)}:{route}"
+
+
+def reject_unauthenticated(request: HttpRequest, route: str) -> HttpResponse:
+    """The answer to a request whose signature or secret is wrong: 401, counted for
+    (IP, route); 429 once that count reaches the limit (and then not counted again)."""
+    key = limiter_key(request, route)
+    if limiter.blocked(key):
+        return HttpResponse(status=429)
+    limiter.record(key)
+    return HttpResponse(status=401)
+
+
+def body_too_large(request: HttpRequest) -> bool:
+    try:
+        declared = int(request.META.get("CONTENT_LENGTH") or 0)
+    except ValueError:
+        return True
+    return declared > MAX_BODY or len(request.body) > MAX_BODY
+
+
+def json_object(request: HttpRequest) -> dict[str, Any] | None:
+    """The request's JSON object, or None if the body is not one."""
+    try:
+        body = json.loads(request.body)
+    except ValueError, RecursionError:
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def storage_failure(error: Exception, what: str) -> HttpResponse:
+    """The answer when saving an authentic update failed. A database `DataError` (a body
+    the database refuses to hold) is permanent: the provider's retries would fail the
+    same way, so it is dropped (200) and logged without its content. Anything else
+    (connection, queue) is transient: 503, so the provider retries."""
+    if isinstance(error, DataError):
+        log.error("%s dropped: the database refused it (%s)", what, type(error).__name__)
+        return HttpResponse(status=200)
+    log.error("%s not saved: %s", what, type(error).__name__)
+    return HttpResponse(status=503)
 
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
-    if limiter.blocked(_limiter_key(request, "whatsapp")):
-        return HttpResponse(status=429)
     try:
         tenant = main_channel_tenant("whatsapp", public_id)
     except DatabaseError:
@@ -59,14 +104,14 @@ def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
     if request.method == "GET":  # Meta's subscription handshake
         challenge = WHATSAPP.verify_subscription(request.GET.dict(), secrets)
         if challenge is None:
-            limiter.record(_limiter_key(request, "whatsapp"))
             log.warning("WhatsApp verification refused for tenant %s", tenant.slug)
-            return HttpResponse(status=403)
+            response = reject_unauthenticated(request, f"whatsapp:{public_id}")
+            return HttpResponse(status=403) if response.status_code == 401 else response
         return HttpResponse(challenge, content_type="text/plain")
     return _receive(
         request,
         tenant,
-        route="whatsapp",
+        route=f"whatsapp:{public_id}",
         verify=lambda: WHATSAPP.verify(request, channel, secrets),
         parse=lambda body: WHATSAPP.parse(body, channel),
     )
@@ -75,8 +120,6 @@ def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
 @csrf_exempt
 @require_POST
 def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
-    if limiter.blocked(_limiter_key(request, "telegram")):
-        return HttpResponse(status=429)
     try:
         tenant = main_channel_tenant("telegram", public_id)
     except DatabaseError:
@@ -90,7 +133,7 @@ def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
     return _receive(
         request,
         tenant,
-        route="telegram",
+        route=f"telegram:{public_id}",
         verify=lambda: TELEGRAM.verify(request, channel, secrets),
         parse=lambda body: TELEGRAM.parse(body, channel),
     )
@@ -113,27 +156,18 @@ def _receive(
     verify: Callable[[], bool],
     parse: Callable[[dict[str, Any]], list[ParsedItem]],
 ) -> HttpResponse:
-    try:
-        declared = int(request.META.get("CONTENT_LENGTH") or 0)
-    except ValueError:
-        return HttpResponse(status=400)
-    if declared > MAX_BODY or len(request.body) > MAX_BODY:
+    if body_too_large(request):
         return HttpResponse(status=400)
     if not verify():
-        limiter.record(_limiter_key(request, route))
         log.warning("Invalid webhook signature for tenant %s", tenant.slug)
-        return HttpResponse(status=401)
-    try:
-        body = json.loads(request.body)
-    except ValueError:
-        return HttpResponse(status=400)
-    if not isinstance(body, dict):
+        return reject_unauthenticated(request, route)
+    body = json_object(request)
+    if body is None:
         return HttpResponse(status=400)
     try:
         accept(tenant, body, parse)
     except (DatabaseError, ProcrastinateException) as e:  # the provider retries
-        log.error("Webhook of tenant %s not saved: %s", tenant.slug, type(e).__name__)
-        return HttpResponse(status=503)
+        return storage_failure(e, f"Webhook of tenant {tenant.slug}")
     return HttpResponse(status=200)
 
 

@@ -362,6 +362,11 @@ export function IncidentsPage() {
     refetchInterval: 30_000,
   });
   const openCount = query.data
+    ? query.data.alerts_total +
+      query.data.outbound_total +
+      query.data.jobs_total
+    : 0;
+  const shown = query.data
     ? query.data.alerts.length +
       query.data.outbound.length +
       query.data.jobs.length
@@ -396,6 +401,12 @@ export function IncidentsPage() {
         </Card>
       ) : (
         <div className="space-y-4">
+          {shown < openCount && (
+            <p className="text-sm text-status-notice">
+              Mostrando {shown} de {openCount}: cada lista se limita a las más
+              recientes; resuelve las visibles para ver el resto.
+            </p>
+          )}
           <OpenAlerts alerts={query.data.alerts} />
           <div>
             <GroupHeading>

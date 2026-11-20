@@ -27,6 +27,20 @@ Google Calendar (la llaman los packs desde `inbound` y la barrida de `salon` des
 (`ops_check`, ADR-005), para que la caída de uno de ellos no silencie también su
 propia alerta.
 
+Defensas del webhook (`autobot/channels/views.py`): cuerpo de 256 KB como máximo; la
+firma se comprueba antes de leer el JSON; las firmas inválidas se cuentan por (IP,
+negocio) en la ruta de cada negocio y por (IP, bot) en la puerta de demo y el bot de
+avisos, porque las IPs de Meta y Telegram son compartidas: un negocio con el secreto mal
+configurado nunca bloquea a otro, y una petición con firma válida nunca recibe 429. Lo
+que la base de datos no puede guardar (NUL, sustitutos UTF-16 sueltos) se elimina de
+todos los textos del payload al interpretarlo (`channels/payload.py`); si aun así la base
+rechaza un cuerpo firmado (`DataError`) se responde 200 y se descarta con un log sin
+datos, y solo los fallos de conexión o de cola dan 503 para que el proveedor reintente.
+Las reacciones, `request_welcome`, los avisos de sistema de WhatsApp y los mensajes de
+servicio de Telegram se ignoran sin responder; los medios no soportados sí se contestan.
+Los errores de límite de tasa de Meta (4, 17, 32, 613, 80007, 130429, 131056), incluso con
+HTTP 4xx, se reintentan con espera; 131047 y 131049 no.
+
 ## Capas y sus reglas
 
 `import-linter` vigila estas reglas en CI:

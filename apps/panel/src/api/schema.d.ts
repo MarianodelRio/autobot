@@ -318,6 +318,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/demo/invites/{id}/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Qr
+         * @description Drawn only when someone opens «Ver código», never for every row of the list.
+         */
+        get: operations["autobot_panel_routers_demo_invites_qr"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/demo/invites/{id}/revoke": {
         parameters: {
             query?: never;
@@ -700,10 +720,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tenant Export */
-        get: operations["autobot_panel_routers_tenants_tenant_export"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** Tenant Export */
+        post: operations["autobot_panel_routers_tenants_tenant_export"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1368,14 +1388,24 @@ export interface components {
             max_uses: number;
             /** Note */
             note: string;
-            /** Qr Svg */
-            qr_svg: string | null;
             /** Revoked At */
             revoked_at: string | null;
             /** Telegram Link */
             telegram_link: string | null;
             /** Uses */
             uses: number;
+        };
+        /** DemoInvitePage */
+        DemoInvitePage: {
+            /** Items */
+            items: components["schemas"]["DemoInviteOut"][];
+            /** Total */
+            total: number;
+        };
+        /** DemoInviteQr */
+        DemoInviteQr: {
+            /** Qr Svg */
+            qr_svg: string | null;
         };
         /** DocumentIn */
         DocumentIn: {
@@ -1453,10 +1483,16 @@ export interface components {
         IncidentsOut: {
             /** Alerts */
             alerts: components["schemas"]["AlertOut"][];
+            /** Alerts Total */
+            alerts_total: number;
             /** Jobs */
             jobs: components["schemas"]["JobOut"][];
+            /** Jobs Total */
+            jobs_total: number;
             /** Outbound */
             outbound: components["schemas"]["OutboundIncidentOut"][];
+            /** Outbound Total */
+            outbound_total: number;
         };
         /** IntegrationOut */
         IntegrationOut: {
@@ -2641,7 +2677,10 @@ export interface operations {
     };
     autobot_panel_routers_demo_invites_list_invites: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2654,7 +2693,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DemoInviteOut"][];
+                    "application/json": components["schemas"]["DemoInvitePage"];
                 };
             };
         };
@@ -2683,6 +2722,28 @@ export interface operations {
             };
         };
     };
+    autobot_panel_routers_demo_invites_qr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoInviteQr"];
+                };
+            };
+        };
+    };
     autobot_panel_routers_demo_invites_revoke: {
         parameters: {
             query?: never;
@@ -2707,7 +2768,9 @@ export interface operations {
     };
     autobot_panel_routers_incidents_incidents: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3589,7 +3652,10 @@ export interface operations {
     };
     autobot_panel_routers_tenants_tenant_versions: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                before?: number | null;
+            };
             header?: never;
             path: {
                 slug: string;

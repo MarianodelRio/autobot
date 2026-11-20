@@ -263,7 +263,8 @@ class Conversation:
             now=now,
         )
         state = effective.state
-        command = global_command(message)
+        free_text = self.pack.expects_free_text is not None and self.pack.expects_free_text(state)
+        command = global_command(message, free_text=free_text)
         idem = IdemKeys(event_id)
         if command == "menu":
             state = {}

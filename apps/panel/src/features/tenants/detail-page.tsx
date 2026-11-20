@@ -394,8 +394,12 @@ function Notifications({ slug }: { slug: string }) {
   return q.data.length ? (
     <Card>
       <CardContent className="divide-y p-0">
-        {q.data.map((n) => (
-          <div className="px-6 py-3" key={`${n.created_at}-${n.kind}`}>
+        {q.data.map((n, index) => (
+          <div
+            className="px-6 py-3"
+            // biome-ignore lint/suspicious/noArrayIndexKey: two notices can share a timestamp and kind
+            key={`${index}-${n.created_at}-${n.kind}`}
+          >
             <p>{n.text}</p>
             <p className="text-sm text-muted-foreground">
               {n.status} · <TimeAgo date={n.created_at} />
@@ -414,14 +418,19 @@ export function TenantDetailPage({
   onDirtyChange = () => {},
   initialTab = "resumen",
   initialSection,
+  onTabChange,
 }: {
   slug: string;
   dirty?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   initialTab?: string;
   initialSection?: "canal";
+  /** With it the active tab lives in the URL (the route); without it, in local state. */
+  onTabChange?: (tab: string) => void;
 }) {
-  const [tab, setTab] = useState(initialTab);
+  const [localTab, setLocalTab] = useState(initialTab);
+  const tab = onTabChange ? initialTab : localTab;
+  const setTab = onTabChange ?? setLocalTab;
   const q = useQuery({
     queryKey: ["tenant", slug],
     queryFn: () => unwrap(api.GET("/tenants/{slug}", param(slug))),

@@ -68,9 +68,35 @@ else
   printf '%s' "$repo_id" >"$repo_id_file"
 fi
 
+# Free space: the dump is written to disk first (and removed on exit). Require twice
+# the size of the last successful dump (or AUTOBOT_BACKUP_MIN_FREE_BYTES, 512 MiB by
+# default, if that is bigger or unknown), so a full disk fails here, loudly, instead
+# of leaving a truncated dump for restic to upload.
+last_dump_bytes=$(python3 -c 'import json,sys
+try:
+    print(int(json.load(open(sys.argv[1]))["dump_bytes"]))
+except Exception:
+    print(0)' var/state/ops/backup.json 2>/dev/null) || last_dump_bytes=0
+min_free=${AUTOBOT_BACKUP_MIN_FREE_BYTES:-536870912}
+required=$((last_dump_bytes * 2))
+((required > min_free)) || required=$min_free
+free_bytes=$(df --output=avail -B1 var/backups | tail -n 1 | tr -d ' ')
+if [[ ! $free_bytes =~ ^[0-9]+$ ]] || ((free_bytes < required)); then
+  echo "Not enough free disk space for the dump (${free_bytes:-?} bytes free, $required needed)" >&2
+  exit 1
+fi
+
 "${compose[@]}" exec -T db \
   pg_dump -U postgres -d autobot -Fc >"$dump_tmp"
 test -s "$dump_tmp"
+# A truncated or corrupt dump must never reach restic (and, through retention,
+# replace a good one): pg_restore --list reads the whole table of contents, which
+# a cut-off custom-format dump does not have. Run with the database's own
+# pg_restore, the same version that would restore it.
+if ! "${compose[@]}" exec -T db pg_restore --list <"$dump_tmp" >/dev/null; then
+  echo 'The dump failed pg_restore --list; not uploading it' >&2
+  exit 1
+fi
 mv "$dump_tmp" var/backups/autobot.dump
 dump_bytes=$(stat -c '%s' var/backups/autobot.dump)
 
@@ -94,6 +120,19 @@ if [[ ! -f $prune_marker || $(cat "$prune_marker") != "$today" ]]; then
   printf '%s' "$today" >"$prune_marker"
 else
   "$restic_bin" forget "${forget_args[@]}"
+fi
+# Weekly integrity check of a random subset of the pack data, not just the index
+# (`restic backup` only ever checks what it uploads): catches a bucket that is
+# silently corrupting or losing objects while backups keep "succeeding". It runs on
+# the first backup of each ISO week and fails the run *before* the ping, so
+# Healthchecks notices; the week is only recorded once the check passes. The
+# subset (AUTOBOT_RESTIC_CHECK_SUBSET, 5% by default) keeps it cheap on a
+# provider that charges for reads.
+check_marker=var/.last-restic-check
+this_week=$(date -u +%G-W%V)
+if [[ ! -f $check_marker || $(cat "$check_marker") != "$this_week" ]]; then
+  "$restic_bin" check --read-data-subset="${AUTOBOT_RESTIC_CHECK_SUBSET:-5%}"
+  printf '%s' "$this_week" >"$check_marker"
 fi
 python3 -c 'import os, urllib.request; urllib.request.urlopen(os.environ["HEALTHCHECKS_BACKUP_PING_URL"], timeout=10).close()'
 echo 'Backup completed'

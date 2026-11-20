@@ -233,7 +233,8 @@ def test_render_two_blocks_for_a_shared_demo_chat(tenants: Any) -> None:
         (datetime(2026, 11, 1, 11, 59, tzinfo=MADRID), False),
         (datetime(2026, 11, 1, 12, 0, tzinfo=MADRID), True),
         (datetime(2026, 11, 1, 18, 0, tzinfo=MADRID), True),  # recovery after an outage
-        (datetime(2026, 11, 2, 12, 0, tzinfo=MADRID), False),
+        (datetime(2026, 11, 2, 3, 0, tzinfo=MADRID), True),  # any later day, any hour
+        (datetime(2026, 11, 20, 12, 0, tzinfo=MADRID), True),
     ],
 )
 def test_due_checks_day_and_hour_local(tenants: Any, when: datetime, expected: bool) -> None:
@@ -266,12 +267,32 @@ def test_dispatch_skips_inactive_and_unsubscribed_tenants(tenants: Any) -> None:
     assert [j for j in jobs() if j[0] == "send_owner_summary"] == []
 
 
-def test_dispatch_only_fires_on_day_one_past_noon_local(tenants: Any) -> None:
+def test_dispatch_waits_for_noon_of_day_one(tenants: Any) -> None:
     tenants(wa_tenant(owner={"summary_monthly": True}))
     link("wa")
-    mid_month = datetime(2026, 11, 15, 12, tzinfo=MADRID)
-    assert summary.dispatch_owner_summaries(mid_month) == 0
+    assert summary.dispatch_owner_summaries(datetime(2026, 11, 1, 11, tzinfo=MADRID)) == 0
     assert [j for j in jobs() if j[0] == "send_owner_summary"] == []
+
+
+def test_dispatch_recovers_a_missed_summary_any_later_day_but_not_a_created_one(
+    tenants: Any,
+) -> None:
+    tenants(wa_tenant(owner={"summary_monthly": True}))
+    link("wa")
+    wa = get_registry().by_slug["wa"]
+    mid_month = datetime(2026, 11, 15, 12, tzinfo=MADRID)
+    assert summary.dispatch_owner_summaries(mid_month) == 1
+    # Once its notification exists, later hours queue nothing.
+    with tenant_tx(wa.id):
+        Notification.objects.create(
+            tenant_id=wa.id,
+            idem_key=f"summary:{wa.id}:2026-10",
+            kind=summary.OWNER_SUMMARY_KIND,
+            text="x",
+        )
+    with connections["owner"].cursor() as cursor:
+        cursor.execute("DELETE FROM procrastinate_jobs WHERE task_name = 'send_owner_summary'")
+    assert summary.dispatch_owner_summaries(mid_month) == 0
 
 
 def test_dispatch_queues_send_owner_summary_once_for_the_closed_previous_month(

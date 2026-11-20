@@ -5,6 +5,8 @@ of relying on a migration staying in the restored dump."""
 
 from typing import Any
 
+from django.db import transaction
+
 SENSITIVE_TABLES: tuple[str, ...] = (
     "auth_user",
     "django_session",
@@ -13,6 +15,14 @@ SENSITIVE_TABLES: tuple[str, ...] = (
     "owner_link",
     "platform_cache",
     "demo_invite",
+    # Raw inbound payloads and external ids (phones, BSUIDs, Telegram ids) of demo and
+    # owner chats: personal data of people who are not tenants' staff. The SQL console
+    # (fp_readonly) must not read them; the operator checks them with the panel's own
+    # views or by terminal.
+    "demo_event",
+    "owner_event",
+    "demo_session",
+    "demo_access_grant",
 )
 # Config tables (ADR-009): fp_app keeps SELECT, but only fp_owner (the panel, the
 # commands) writes.
@@ -67,6 +77,11 @@ def _function_grants(name: str, signature: str) -> str:
 
 def statements() -> list[str]:
     return [
+        # The base: init-roles.sh no longer grants table permissions (it only manages
+        # roles, CONNECT and schema USAGE), so this is the single place fp_app gets
+        # them, including Procrastinate's tables and sequences. The REVOKEs below narrow it.
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO fp_app",
+        "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO fp_app",
         "REVOKE INSERT, UPDATE, DELETE ON tenant FROM fp_app",
         _revoke_if_exists("audit_event", "fp_app"),
         _revoke_if_exists("ops_alert", "fp_app", "DELETE"),
@@ -85,6 +100,7 @@ def statements() -> list[str]:
 
 
 def apply(connection: Any) -> None:
-    with connection.cursor() as cursor:
+    # One transaction, so the broad base grant never shows without the REVOKEs after it.
+    with transaction.atomic(using=connection.alias), connection.cursor() as cursor:
         for statement in statements():
             cursor.execute(statement)

@@ -1,4 +1,8 @@
-import { createFileRoute, useBlocker } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  useBlocker,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useState } from "react";
 import { TenantDetailPage } from "@/features/tenants/detail-page";
 
@@ -29,6 +33,7 @@ export const Route = createFileRoute("/_app/clientes/$slug")({
 function TenantRoute() {
   const { slug } = Route.useParams();
   const { tab, section } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
   const [dirty, setDirty] = useState(false);
   useBlocker({
     shouldBlockFn: () =>
@@ -43,6 +48,9 @@ function TenantRoute() {
       onDirtyChange={setDirty}
       initialTab={tab}
       initialSection={section}
+      onTabChange={(next) =>
+        void navigate({ search: { tab: next }, replace: true })
+      }
     />
   );
 }

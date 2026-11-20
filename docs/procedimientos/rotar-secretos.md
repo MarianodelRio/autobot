@@ -18,6 +18,10 @@ importarlo con `tenant_config import <dir> --secrets <yaml> --comment "Rotación
 canal"`. Ese YAML privado solo es una entrada de importación (slug → campos); se
 cifra al escribirlo en BD y no se monta en el servidor.
 Los secretos de plataforma se cambian en `.env` (0600), recreando `web`, `worker-inbound` y `worker-outbound`.
+`FP_OWNER_PASSWORD`, `FP_APP_PASSWORD` y `FP_READONLY_PASSWORD` se rotan cambiando solo la
+variable y ejecutando `deploy.sh` (o `deploy/scripts/ensure-env.sh` y recrear): `ensure-env.sh`
+vuelve a derivar `DB_*_URL` de la contraseña y `init-roles.sh` la aplica al rol de
+PostgreSQL, así que no hay que editar las URL a mano.
 Coordina el cambio
 de webhook y ventana de solape; prueba primero con `testers.main`. Nunca incluyas
 valores en Git, argumentos de jobs, logs ni mensajes de revisión.

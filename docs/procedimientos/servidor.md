@@ -1,71 +1,88 @@
 # Preparar la VPS de Autobot
 
-**Síntoma:** no hay servidor listo, el despliegue SSH falla, o un segundo bootstrap cambia
-la configuración. **Diagnóstico:** comprueba DNS, SSH, puertos, Docker y timer por separado.
-`make server-init` (A15) automatiza los pasos de este procedimiento; lo que sigue es su
-desglose, para entender qué hace cada paso y para el ensayo manual (A16) o si algo falla
-a mitad. El agente no lo ejecuta contra un servidor real. Antes de empezar, guarda en tu
-gestor de contraseñas la clave privada de operación y confirma que puedes abrir una
-sesión `root` (o con `sudo`, según el proveedor) con tu clave en la VPS recién creada.
+**Síntoma:** no hay servidor listo, el despliegue SSH falla, o hay que repetir/reparar la
+instalación. **Diagnóstico:** `sudo deploy/scripts/install-vm.sh --check` dice qué pasos
+están hechos y cuáles pendientes. El agente no lo ejecuta contra un servidor real.
+Decisión y motivos: ADR-017 (sustituye `server-init.sh`).
 
-1. Copia `deploy/scripts/bootstrap-server.sh` a la VPS nueva. Prepara dos ficheros de
-   **claves públicas**: `operator.pub` (la tuya; se instala tanto en `admin` como en
-   `deploy`) y `ci.pub` (solo en `deploy`, con comando forzado). El repositorio es
-   público, así que no hace falta ninguna deploy key: el clon es por HTTPS.
-2. Ejecuta, como `root` o con `sudo` (el script se reinvoca con `sudo` solo si no es
-   ya root):
-   `REPO_URL=https://github.com/<owner>/<repo>.git bash deploy/scripts/bootstrap-server.sh --base operator.pub ci.pub`.
-   Esta fase instala Docker Engine/Compose desde el repositorio oficial, `ufw`
-   (sin activar todavía), `fail2ban`, actualizaciones automáticas, restic y 2 GB de
-   swap; crea dos cuentas con la **misma** clave de operación, `deploy` (sin `sudo`,
-   en el grupo `docker`; además acepta la clave de CI, restringida a
-   `deploy/scripts/deploy.sh <sha completo de main>`) y `admin` (con `sudo` sin
-   contraseña: no hay contraseñas en ningún sitio, la entrada ya está controlada por
-   la clave); clona el repositorio en `/srv/autobot` e instala los timers. **No
-   toca SSH todavía**, así que es seguro repetirla desde la misma sesión.
-3. Abre **dos sesiones nuevas**: `ssh deploy@<host>` y `ssh admin@<host>`, ambas con
-   tu clave de operación. En la de `deploy`, comprueba `docker compose version` y
-   `systemctl is-enabled autobot-backup.timer/autobot-containers.timer/autobot-prune.timer`.
-   En la de `admin`, comprueba `sudo true`. Si cualquiera falla, conserva la consola
-   del proveedor para corregir `authorized_keys` antes de cerrarla: todavía hay
-   acceso de emergencia porque SSH no está endurecido.
-4. Solo tras verificar el paso 3, ejecuta
-   `sudo bash deploy/scripts/bootstrap-server.sh --harden-ssh` (como `admin`). Cierra
-   el acceso de `root` y por contraseña, limita las sesiones a `deploy`/`admin` y
-   activa `ufw` (22, 80, 443) y la cárcel de `fail2ban` para SSH. Repítela; verifica
-   que no cambia nada (`sshd -T | grep -E 'permitrootlogin|passwordauthentication'`,
-   `ufw status numbered`). Desde otra máquina, escanea los puertos públicos; solo
-   deben aparecer 22, 80 y 443. Los puertos 8000 (`web`) y 8080 (`panel`) escuchan
-   únicamente en 127.0.0.1.
-5. En `/srv/autobot/.env`, usa `.env.example` como guía y fija `AUTOBOT_IMAGE` y
-   `AUTOBOT_PANEL_IMAGE` con las imágenes de tu repo sin tag (`ghcr.io/<owner>/autobot`
-   y `ghcr.io/<owner>/autobot-panel`); `ensure-env.sh` se niega a seguir sin ellas y,
-   como `DEPLOY_UID`, lo recalcula siempre con `id -u` (nunca a mano). Crea
-   `var/google_sa.json`, `var/backup.env` y `var/restic-password` como `deploy`, modo
-   0600. El usuario no root de `web` y los `worker-*` usan ese UID para leer el
-   fichero de cuenta de servicio montado. La cuenta de servicio y los tokens reales
-   dependen de Google Cloud, del bot de avisos y de los secretos de GitHub. En
-   `DJANGO_ALLOWED_HOSTS`, incluye `api.<dominio>`, `localhost` y `127.0.0.1`:
-   el panel recibe el host local al entrar por el túnel SSH.
-6. Inicializa restic a mano (`restic init` nunca es automático, A3) y anota el
-   destino y la contraseña en `var/backup.env`/`var/restic-password`; solo entonces,
-   como `deploy` (o `admin` con `sudo systemctl`), arranca el timer con
-   `systemctl start autobot-backup.timer`. Antes del primer despliegue, comprueba
-   que los paquetes GHCR (`autobot` y `autobot-panel`) son públicos o configura
-   autenticación de lectura para `deploy` en Docker. Fija también su política de
-   retención (GitHub → paquete → *Package settings*) para que cubra al menos los 6
-   meses que `backup.sh` conserva (`--keep-monthly 6`): si GHCR borra la imagen de un
-   SHA antes de eso, restaurar ese snapshot falla al no poder descargarla (A14,
-   `docs/procedimientos/restaurar.md`). En GitHub, crea el entorno `production` con
-   revisión requerida, si tu plan de GitHub lo permite, y añade `DEPLOY_HOST`,
-   `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS`. Fija `known_hosts` desde una huella
-   verificada fuera de la conexión inicial.
+## Instalación: un comando, dentro de la VM
 
-**Verificación:** las sesiones de `deploy` y `admin` funcionan, la clave de CI rechaza
-comandos distintos del despliegue, `docker compose version` responde, los timers están
-activos, `ufw` solo abre 22/80/443 y repetir `--base` y `--harden-ssh` no cambia nada. El
-primer despliegue y el escaneo externo son pasos del plan de lanzamiento
-(`docs/plan-lanzamiento.md`); este procedimiento no los da por hechos.
+Antes de empezar: una VM Ubuntu 24.04 con acceso `root` o `sudo` por clave SSH, el
+registro DNS de `api.<dominio>` apuntando a ella (o se hace después), la cuenta de
+servicio de Google y, si ya los tienes, los tokens externos. Los paquetes GHCR
+(`autobot`, `autobot-panel`) deben ser públicos y el CI del commit en verde (el instalador
+comprueba que la imagen existe).
+
+```bash
+git clone https://github.com/<owner>/<repo>.git && cd <repo>
+sudo deploy/scripts/install-vm.sh --public-host api.<dominio> --google-sa ~/google_sa.json \
+  [--env-file ~/install.env]
+```
+
+`--env-file` es un `CLAVE=valor` (modo 0600, fuera del repo) con credenciales externas
+opcionales: `DEMO_TELEGRAM_TOKEN`, `NOTIFY_BOT_TOKEN`, `OPS_TELEGRAM_CHAT_ID`,
+`SENTRY_DSN`, `HEALTHCHECKS_PING_URL`, los `DEMO_*`, y los de backup (`RESTIC_REPOSITORY`,
+`AWS_*`, `HEALTHCHECKS_BACKUP_PING_URL`, que van a `var/backup.env`). Sin
+`--operator-key`, usa la única clave de `~/.ssh/authorized_keys` del usuario que ejecuta
+`sudo`; con varias, pasa `--operator-key <fichero.pub>`. Sin Google todavía:
+`--no-google-sa` (Calendar no funcionará hasta subir el real).
+
+Pasos, en este orden (cada uno comprueba antes si ya está hecho; se puede repetir el
+comando entero, o `--only paso` / `--skip paso`):
+
+1. `ci-key`: genera dentro de la VM la clave ed25519 de CI (la privada queda en
+   `/root/autobot-ci-deploy-key`, solo root).
+2. `base`: `bootstrap-server.sh --base` (paquetes, Docker, swap, cuentas `deploy` y
+   `admin` con la **misma** clave del operador, clon en `/srv/autobot`, timers). La clave
+   de CI se instala en `deploy` con `restrict,command="…/ssh-deploy.sh"`, que solo deja
+   pasar `deploy/scripts/deploy.sh <sha de main>`.
+3. `env`: `.env` (valores explícitos y `ensure-env.sh`, que genera los secretos internos y
+   nunca inventa los externos), `var/google_sa.json`.
+4. `deploy`: primer despliegue del commit del clon (o `--sha`) por el mismo
+   `ssh-deploy.sh` que usa el CI.
+5. `health`: web, panel, workers, HTTPS y timers.
+6. `harden-ssh`: cierra root y contraseña, solo `admin`/`deploy`, `ufw` 22/80/443 y
+   `fail2ban`. **Pide confirmar** que has abierto otra sesión como `admin@` y `deploy@`;
+   rechaza seguir si sshd no escucha solo en el 22 o la clave no está en ambas cuentas.
+   Sin terminal y sin `--yes` se omite y queda pendiente. La consola del proveedor sigue
+   siendo la salida de emergencia.
+7. `marker`: escribe `/var/lib/autobot/bootstrap-complete` (lo exige `restore.sh`), solo
+   si el SSH está endurecido.
+8. `github` (opcional): si `gh` está instalado y autenticado en la VM y confirmas, crea el
+   entorno `production` si falta y sube `DEPLOY_HOST`, `DEPLOY_SSH_KEY` y
+   `DEPLOY_KNOWN_HOSTS` (la clave de host se lee en la VM, sin fiarse de la red), y borra
+   la clave privada con `shred`.
+
+Al final imprime un **resumen de pasos manuales pendientes**. Lo habitual:
+
+- **DNS** del `PUBLIC_HOST` a la IP de la VM.
+- **Secretos de GitHub** si no se subieron con `gh`, desde el portátil:
+  `ssh admin@<host> 'sudo cat /root/autobot-ci-deploy-key' | gh secret set DEPLOY_SSH_KEY --env production`,
+  luego `ssh admin@<host> 'sudo shred -u /root/autobot-ci-deploy-key'`, y `DEPLOY_HOST`,
+  `DEPLOY_KNOWN_HOSTS`.
+- **Entorno `production` de GitHub**: restringirlo a la rama `main` y con revisores
+  obligatorios (Settings → Environments); sin eso cualquier rama con acceso al workflow
+  puede usar la clave de despliegue.
+- **Backups**: `var/backup.env`, `var/restic-password` (cópiala a tu gestor de
+  contraseñas), `restic init` **a mano** (A3, nunca automático), un `backup.sh`, y
+  `sudo systemctl start autobot-backup.timer`. Fija también la retención de GHCR para
+  cubrir los 6 meses de `--keep-monthly 6` (A14, `restaurar.md`).
+- **Healthchecks.io** (`HEALTHCHECKS_PING_URL`, `HEALTHCHECKS_BACKUP_PING_URL`), Sentry,
+  chat de avisos y tokens de Telegram en `.env` (como `deploy`), y relanzar el despliegue.
+- **Google**: la cuenta de servicio real si se instaló el marcador vacío.
+- **Panel**: `ssh -t deploy@<host> deploy/scripts/manage.sh panel_user create panel` y
+  los webhooks (`telegram_set_webhook`).
+
+Para rotar la clave de CI: `sudo deploy/scripts/install-vm.sh --only ci-key --rotate-ci-key`
+y repetir la entrega. Para preparar una VM solo para restaurar o recibir un traslado:
+`--restore-target` (sin `.env` ni despliegue; ver `restaurar.md`).
+
+**Verificación:** `install-vm.sh --check` sin pendientes, sesiones de `deploy` y `admin`
+funcionando, la clave de CI rechaza comandos distintos del despliegue, los timers activos,
+`ufw` solo abre 22/80/443 (`ufw status numbered`; desde otra máquina, escanea los puertos
+públicos) y repetir `install-vm.sh` no cambia nada. Los puertos 8000 (`web`) y 8080
+(`panel`) escuchan solo en 127.0.0.1. El escaneo externo es un paso del plan de lanzamiento
+(`docs/plan-lanzamiento.md`).
 
 El Django Admin se eliminó (ADR-008); el panel (`docs/procedimientos/panel.md`) solo se
 alcanza por `make panel-tunnel` (túnel al puerto 8080 del contenedor `panel`), nunca

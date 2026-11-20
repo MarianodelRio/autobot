@@ -33,6 +33,18 @@ def _check(details: Any) -> None:
             _check(value)
 
 
+def _clean(value: Any) -> Any:
+    """Drop NUL characters: PostgreSQL rejects them in `text` and `jsonb`, and an audit
+    write must never fail (nor roll back the action it records) over free text."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {_clean(key): _clean(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_clean(item) for item in value]
+    return value
+
+
 def record(
     *,
     actor: str,
@@ -43,8 +55,10 @@ def record(
     target_id: str = "",
     details: dict[str, Any] | None = None,
 ) -> None:
-    details = details or {}
+    details = _clean(details or {})
     _check(details)
+    actor, action, summary = _clean(actor), _clean(action), _clean(summary)
+    target_type, target_id = _clean(target_type), _clean(target_id)
     with transaction.atomic(using="owner"):
         AuditEvent.objects.using("owner").create(
             actor=actor,

@@ -4,7 +4,7 @@ non-overlapping `HH:MM-HH:MM` ranges, and 1 to 8 distinct start-menu towns."""
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 from core.text import normalize
 
@@ -23,6 +23,7 @@ def _minutes(range_: str) -> tuple[int, int]:
 
 
 class OfficeHours(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     days: list[Weekday] = Field(min_length=1)
     ranges: list[TimeRange] = Field(min_length=1)
 
@@ -45,9 +46,13 @@ class OfficeHours(BaseModel):
 
 
 class BusConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     business_name: str = Field(min_length=1, title="Nombre del negocio")
     contact_phone: str = Field(
-        min_length=1, title="Teléfono de contacto", description="Para los mensajes del bot."
+        min_length=1,
+        max_length=30,
+        title="Teléfono de contacto",
+        description="Para los mensajes del bot.",
     )
     office_hours: list[OfficeHours] = Field(default=[], title="Horario de oficina")
     links: dict[Literal["web", "compra_online", "bonos", "pdf_horarios"], HttpUrl] = Field(

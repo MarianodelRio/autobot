@@ -11,10 +11,14 @@ trap '' HUP
 # shellcheck source=./lib.sh
 source "$(dirname "$0")/lib.sh"
 mkdir -p var/state/ops
-exec 9>var/.deploy.lock
-# containers.sh only probes this lock in shared mode for microseconds; wait instead
-# of failing instantly so it can never collide with a real deployment.
-flock -w 10 9 || { echo 'Another deployment is running' >&2; exit 1; }
+# ssh-deploy.sh takes this lock itself, before its `git checkout`, and tells us so
+# with AUTOBOT_DEPLOY_LOCK_HELD=1 (fd 9 is inherited and still holds it).
+if [[ ${AUTOBOT_DEPLOY_LOCK_HELD:-} != 1 ]]; then
+  exec 9>var/.deploy.lock
+  # containers.sh only probes this lock in shared mode for microseconds; wait instead
+  # of failing instantly so it can never collide with a real deployment.
+  flock -w 10 9 || { echo 'Another deployment is running' >&2; exit 1; }
+fi
 
 if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Usage: deploy/scripts/deploy.sh <full-40-character-sha>' >&2
@@ -128,6 +132,7 @@ reload_caddy_if_changed() {
       printf '%s' "$current" >var/.caddy-config-sha
     else
       echo 'Could not reload Caddy; it may still be running the previous config' >&2
+      alert_ops deploy_caddy_reload '🟡 No se pudo recargar Caddy: puede seguir con la configuración anterior' informational
     fi
   fi
 }
@@ -178,8 +183,8 @@ abort() {
   if [[ -n $previous ]]; then
     export SHA="$previous"  # the new image may not even have been pulled
   fi
-  # init-roles.sh (just run, or mid-way through) may have left fp_app with the broad
-  # grants it starts with; reapply the real ones so an aborted deploy never leaves them.
+  # init-roles.sh creates the roles but no longer grants table access (apply_grants
+  # does); reapply the real grants so an aborted deploy never leaves them half done.
   "${compose[@]}" run --rm web python manage.py apply_grants \
     || echo 'Could not reapply grants after aborting; fp_app may still have broad permissions' >&2
   alert_ops deploy_aborted '🔴 Despliegue abortado antes de cambiar la imagen: revisar logs'

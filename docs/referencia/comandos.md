@@ -9,14 +9,15 @@ o cambia un comando amplía esta tabla en el mismo commit.
 |---|---|
 | `make help` | Lista los objetivos por sección (Desarrollo, Calidad, Panel, Negocios, Bus, Producción); objetivo por defecto |
 | `make up` | Tras el bootstrap, levanta los contenedores (`docker compose up -d --build`) |
-| `make dev-bootstrap` | Prepara db y roles, construye la imagen local con herramientas dev, migra, reaplica permisos, siembra demos y levanta web/workers; se puede repetir |
-| `make dev-reset` | Exige escribir `RESET`, elimina el volumen local y repite el bootstrap |
+| `make local` | Un solo comando para dejar todo el entorno local funcionando, desde cero o desde un estado previo y sin borrar datos (`deploy/scripts/install-local.sh`, ADR-017): comprueba requisitos, crea `.env` desde `.env.example` si falta, levanta db, roles, build, migra, `apply_grants`, `seed_demos`, crea el usuario del panel (si hay terminal) y levanta web/workers comprobando su salud; opciones `--check`, `--skip-panel-user` |
+| `make dev-bootstrap` | Alias de `make local` |
+| `make dev-reset` | Exige escribir `RESET`, elimina el volumen local y repite `make local` |
 | `make tenant-import DIR=<dir> [SECRETS=<yaml>]` | Importa un directorio contra la BD local desde el host; acepta rutas con espacios |
 | `make dev-activity` | `manage.py seed_dev_activity`: actividad falsa y realista (mensajes, respuestas, avisos, alertas abiertas y resueltas, un `unknown`, un trabajo fallido y muestras de sistema) para ver el panel con datos; se niega fuera de `local` |
 | `make ngrok` | Abre el túnel al puerto 8000 con tu dominio reservado de ngrok |
 | `make down` | Para los contenedores |
 | `make status` | `docker compose ps` |
-| `make db-roles` | Ejecuta `init-roles.sh` dentro del contenedor `db`: crea `fp_owner`, `fp_app` y `fp_readonly`, o actualiza sus contraseñas, sin recrear el contenedor |
+| `make db-roles` | Ejecuta `init-roles.sh` dentro del contenedor `db`: crea `fp_owner`, `fp_app` y `fp_readonly`, o actualiza sus contraseñas, timeouts y `CONNECT`, sin recrear el contenedor; los permisos de tablas los aplica solo `manage.py apply_grants` (ejecútalo después) |
 | `make logs SERVICE=<servicio>` | Sigue los logs de un servicio (`docker compose logs --tail=100 --follow`) |
 | `make shell` | Abre una shell de Django dentro de `web` |
 | `make test` | `uv run pytest` |
@@ -41,8 +42,8 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make localprod-backup` | L2: `backup.sh` real contra un repositorio restic en `var/localprod/restic` |
 | `make localprod-restore` | L2: `restore.sh` real; reemplaza el volumen de BD de `localprod` |
 | `make localprod-down` | Para y borra los contenedores y el registro local de `localprod` |
-| `make server-init [CHECK=1] [ONLY=paso]` | Instala Autobot en una VPS nueva desde `var/server.env` (A15, ADR-012); `CHECK=1` solo valida en local |
-| `make server-migrate FROM= TO= [ONLY=paso]` | Traslada el despliegue de `FROM` a `TO` (T4, ADR-012); `TO` ya debe tener el bootstrap hecho |
+| `make install-vm [ARGS="..."]` | Se ejecuta **dentro de la VM**: `sudo deploy/scripts/install-vm.sh` (ADR-017). Instala/repara de forma idempotente: clave de CI, paquetes y Docker, cuentas, `.env`, primer despliegue, salud, endurecimiento de SSH y marcador `bootstrap-complete`; `--only`/`--skip PASO`, `--check`, `--restore-target`, `--public-host`, `--google-sa`, `--env-file`, `--rotate-ci-key`, `--yes` |
+| `make server-migrate FROM= TO= [ONLY=paso]` | Traslada el despliegue de `FROM` a `TO` (T4, ADR-012); `TO` ya debe tener `install-vm.sh --restore-target` ejecutado; exige `FROM` ≠ `TO` y un destino sin despliegue |
 | `make deploy [SHA=]` | Sin `SHA`, usa `origin/main`; comprueba con `gh` que su CI está en verde y lanza el workflow de despliegue |
 | `make rollback` | Lee del servidor el `previous` del último despliegue correcto y, con confirmación, ejecuta `make deploy SHA=<previous>`; se niega a encadenar un segundo rollback sobre el SHA roto |
 | `make backup-now` | Ejecuta `deploy/scripts/backup.sh` en el servidor por SSH |
@@ -86,5 +87,5 @@ también se puede pasar en la línea de comandos.
 | `panel_user create <usuario>` | Crea el usuario único del panel: contraseña (dos veces, con los validadores de Django) y un TOTP confirmado; muestra la URI `otpauth://` y su QR en ASCII una sola vez |
 | `panel_user reset-totp <usuario>` | Sustituye el dispositivo TOTP; lo muestra una sola vez |
 | `panel_user set-password <usuario>` | Cambia la contraseña del usuario del panel |
-| `panel_user exists <usuario>` | Sale con código 0 si existe, 1 si no; lo usa `make dev-bootstrap` |
+| `panel_user exists <usuario>` | Sale con código 0 si existe, 1 si no; lo usa `make local` |
 | `export_openapi <ruta>` | Escribe el esquema OpenAPI de la API del panel; lo usa `make api` |

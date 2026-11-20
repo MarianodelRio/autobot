@@ -33,7 +33,7 @@ pytestmark = [
 PHONE_NUMBER_ID = "5566778899"  # the demo door's own number, never a tenant's
 OTHER_PHONE_NUMBER_ID = "1122334455"  # a foreign number: dropped by WHATSAPP.parse
 APP_SECRET = "demo-wa-app-secret-0123456789012"
-VERIFY_TOKEN = "demo-wa-verify"
+VERIFY_TOKEN = "demo-wa-verify-token"
 USER = "34600000099"  # in DEMO_WHATSAPP_USERS
 STRANGER = "34600000098"
 URL = "/webhooks/whatsapp-demo"
@@ -183,8 +183,7 @@ def test_a_user_without_access_gets_no_reply(tenants: Any, providers: Providers)
     tenants(demo("wa"))
     assert say(STRANGER, "hola") == 200
     assert providers.meta == []  # WhatsApp never answers: Meta bills every message
-    (event,) = DemoEvent.objects.using("owner").all()
-    assert event.status == "done"
+    assert DemoEvent.objects.using("owner").count() == 0  # nothing of a stranger is kept
 
 
 def test_an_allowed_user_sees_the_list(tenants: Any, providers: Providers) -> None:

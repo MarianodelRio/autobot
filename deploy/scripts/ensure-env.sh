@@ -44,17 +44,26 @@ for name in FP_OWNER_PASSWORD FP_APP_PASSWORD FP_READONLY_PASSWORD POSTGRES_PASS
 done
 generate_if_missing SECRETS_ENCRYPTION_KEY fernet_key
 
-generate_db_url() {
-  local name=$1 role=$2 password_var=$3
-  [[ -n ${!name:-} ]] && return 0
-  local value="postgres://${role}:${!password_var}@db:5432/autobot"
+# The DB_*_URL are derived from the FP_*_PASSWORD, never independent of them: they
+# are generated when missing and re-derived whenever they stop matching, so rotating
+# a password in .env (and re-running deploy.sh, whose init-roles.sh applies it to the
+# role) can never leave a URL with the old one. See rotar-secretos.md.
+# FP_*_PASSWORD come from `secrets.token_urlsafe`, which needs no URL-encoding; a
+# hand-picked password with reserved characters has to be percent-encoded here.
+url_password() {
+  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+sync_db_url() {
+  local name=$1 role=$2 password_var=$3 value
+  value="postgres://${role}:$(url_password "${!password_var}")@db:5432/autobot"
+  [[ ${!name:-} == "$value" ]] && return 0
+  if [[ -n ${!name:-} && ${!name} != *localhost* ]]; then
+    echo "$name did not match $password_var; re-derived it" >&2
+  fi
   export "$name=$value"
   generated_names+=("$name")
   generated_lines+=("$name=$value")
 }
-generate_db_url DB_APP_URL fp_app FP_APP_PASSWORD
-generate_db_url DB_OWNER_URL fp_owner FP_OWNER_PASSWORD
-generate_db_url DB_READONLY_URL fp_readonly FP_READONLY_PASSWORD
 
 # Not secrets: enforced, not just generated when missing, so a server .env never
 # drifts to a stale compose file list or project name.
@@ -88,6 +97,9 @@ reject_localhost_url() {
 reject_localhost_url DB_APP_URL
 reject_localhost_url DB_OWNER_URL
 reject_localhost_url DB_READONLY_URL
+sync_db_url DB_APP_URL fp_app FP_APP_PASSWORD
+sync_db_url DB_OWNER_URL fp_owner FP_OWNER_PASSWORD
+sync_db_url DB_READONLY_URL fp_readonly FP_READONLY_PASSWORD
 
 # Appends whatever generate_if_missing/ensure_fixed collected so far and clears the
 # arrays; called twice, so secrets are saved even if a later check aborts the script.

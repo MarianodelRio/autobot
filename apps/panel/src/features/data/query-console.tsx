@@ -29,6 +29,12 @@ function writeLastQuery(value: { sql: string; tenant: string }): void {
   }
 }
 
+/** A cell as text: objects (jsonb, arrays) as JSON, never "[object Object]". */
+export function displayCell(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
 export { readLastQuery };
 
 export function QueryConsole({
@@ -50,6 +56,11 @@ export function QueryConsole({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <TenantSelect value={tenant} onChange={setTenant} />
+        <p className="text-xs text-muted-foreground">
+          El selector de cliente es un filtro de comodidad, no una frontera de
+          seguridad: la consola es de solo lectura, pero una consulta puede
+          cambiar el filtro (<code>set_config</code>) y ver otros clientes.
+        </p>
         <Button disabled={run.isPending} onClick={() => run.mutate()}>
           Ejecutar (⌘↵)
         </Button>
@@ -113,9 +124,10 @@ export function QueryConsole({
             <table className="w-full text-sm">
               <thead>
                 <tr>
-                  {result.columns.map((column) => (
+                  {result.columns.map((column, index) => (
                     <th
-                      key={column.name}
+                      // biome-ignore lint/suspicious/noArrayIndexKey: columns may repeat a name
+                      key={`${index}:${column.name}`}
                       className="border-b px-2 py-1 text-left"
                     >
                       {column.name}
@@ -124,14 +136,16 @@ export function QueryConsole({
                 </tr>
               </thead>
               <tbody>
-                {result.rows.map((row) => (
-                  <tr key={row.join("\u0000")}>
+                {result.rows.map((row, rowIndex) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: result rows have no identity of their own
+                  <tr key={rowIndex}>
                     {row.map((value, index) => (
                       <td
-                        key={result.columns[index]?.name ?? index}
+                        // biome-ignore lint/suspicious/noArrayIndexKey: columns may repeat a name
+                        key={index}
                         className="border-b px-2 py-1"
                       >
-                        {value === null ? "—" : String(value)}
+                        {displayCell(value)}
                       </td>
                     ))}
                   </tr>

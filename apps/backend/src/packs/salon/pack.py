@@ -6,7 +6,7 @@ from typing import Any
 from core.pack import OwnerNotice, Pack, Periodic
 from packs.salon import health, summary, sweep
 from packs.salon.config import SalonConfig
-from packs.salon.conversation import handle
+from packs.salon.conversation import expects_free_text, handle
 from packs.salon.messages import TEMPLATE_CONFIRMATION, TEMPLATE_REMINDER
 
 OWNER_NOTICES = (
@@ -33,6 +33,7 @@ pack = Pack(
     config_schema=SalonConfig,
     state_version=1,
     handle_message=handle,
+    expects_free_text=expects_free_text,
     needs_calendar=True,
     periodic=[Periodic("calendar_sweep", every_min=15, handler=sweep.run, max_delay_min=60)],
     health=health.check,

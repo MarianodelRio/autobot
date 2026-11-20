@@ -3,7 +3,7 @@
 import base64
 import hashlib
 from collections.abc import Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import cast
 
 from core.errors import PermanentError
@@ -35,12 +35,17 @@ def availability(
     *,
     event: bool = False,
     busy: Sequence[CalEvent] | None = None,
+    exclude: str | None = None,
 ) -> tuple[list[time], list[tuple[str, str]]]:
+    """Free slots and the day's effective ranges. `exclude` is the gcal id of the
+    appointment being moved: it does not block its own replacement."""
     cfg = configuration(ctx)
     now = ctx.clock.now()
     start = datetime.combine(day, time(), now.tzinfo)
     end = datetime.combine(day + timedelta(days=1), time(), now.tzinfo)
     events = calendar(ctx).list_events(start, end) if busy is None else busy
+    if exclude is not None:
+        events = [e for e in events if e.gcal_id != exclude]
     ranges = cfg.spans(day, event=event)
     slots = compute_slots(day, cfg.services[service_key], ranges, events, now, cfg)
     for item in events:
@@ -62,11 +67,14 @@ def day_slots(
     *,
     event: bool = False,
     busy: Sequence[CalEvent] | None = None,
+    exclude: str | None = None,
 ) -> list[time]:
-    return availability(ctx, day, service_key, event=event, busy=busy)[0]
+    return availability(ctx, day, service_key, event=event, busy=busy, exclude=exclude)[0]
 
 
-def available_days(ctx: PackContext, service_key: str, *, event: bool = False) -> list[date]:
+def available_days(
+    ctx: PackContext, service_key: str, *, event: bool = False, exclude: str | None = None
+) -> list[date]:
     cfg, now = configuration(ctx), ctx.clock.now()
     days = (
         sorted(d for d in cfg.special_event.days if d >= now.date())
@@ -78,7 +86,9 @@ def available_days(ctx: PackContext, service_key: str, *, event: bool = False) -
     start = datetime.combine(days[0], time(), now.tzinfo)
     end = datetime.combine(days[-1] + timedelta(days=1), time(), now.tzinfo)
     busy = calendar(ctx).list_events(start, end)
-    return [d for d in days if day_slots(ctx, d, service_key, event=event, busy=busy)]
+    return [
+        d for d in days if day_slots(ctx, d, service_key, event=event, busy=busy, exclude=exclude)
+    ]
 
 
 def contact_events(ctx: PackContext) -> Sequence[CalEvent]:
@@ -113,6 +123,7 @@ def reserve(
     *,
     event: bool = False,
     operation: str = "booking",
+    exclude: str | None = None,
 ) -> CalEvent:
     assert ctx.contact is not None
     cfg = configuration(ctx)
@@ -127,7 +138,7 @@ def reserve(
             ):
                 raise PermanentError("Calendar id collision")
             return existing
-        if slot not in day_slots(ctx, day, service_key, event=event):
+        if slot not in day_slots(ctx, day, service_key, event=event, exclude=exclude):
             raise SlotTaken()
         start = datetime.combine(day, slot, ctx.clock.now().tzinfo)
         end = start + timedelta(minutes=svc.duration_min)
@@ -151,8 +162,10 @@ def reserve(
         result = calendar(ctx).insert_event(raw, gcal_id)
         if (
             result.gcal_id != gcal_id
-            or result.start != start
-            or result.end != end
+            # Compared as UTC instants: `==` between two zones is always False for a wall
+            # time inside a DST fold (the repeated hour of October).
+            or result.start.astimezone(UTC) != start.astimezone(UTC)
+            or result.end.astimezone(UTC) != end.astimezone(UTC)
             or result.private.get("fp_key") != key
         ):
             raise PermanentError("Calendar did not confirm booking")

@@ -12,10 +12,11 @@ correcto. La política de retención de GHCR debe cubrir, como mínimo, el snaps
 antiguo que `backup.sh` conserva (`--keep-daily 7 --keep-weekly 4 --keep-monthly 6`:
 hasta 6 meses); configúrala al crear el repositorio (`docs/procedimientos/servidor.md`).
 
-**Pasos:** prepara una VPS temporal (con el bootstrap ya hecho: `restore.sh` se niega
-sin `/var/lib/autobot/bootstrap-complete`) o un proyecto local aislado, instala Docker
-y restic, clona el repositorio y crea `var/backup.env` y `var/restic-password` como
-`deploy` con modo 0600. Ejecuta `deploy/scripts/restore.sh --confirm-empty-target`.
+**Pasos:** prepara una VPS temporal con `sudo deploy/scripts/install-vm.sh --restore-target`
+(`docs/procedimientos/servidor.md`): `restore.sh` se niega sin
+`/var/lib/autobot/bootstrap-complete`, que escribe ese instalador al terminar la base y el
+endurecimiento de SSH (nada más lo crea). Crea `var/backup.env` y `var/restic-password`
+como `deploy` con modo 0600 (el repositorio ya queda clonado en `/srv/autobot`). Ejecuta `deploy/scripts/restore.sh --confirm-empty-target`.
 El script hace checkout del SHA del snapshot, restaura `.env`, `google_sa.json`, el
 `Caddyfile` y, si estaban en el snapshot, el estado de Caddy (certificados/cuenta
 ACME) y `deploys.jsonl` (T2; ninguno es obligatorio). Reaplica los roles de
@@ -34,9 +35,12 @@ Si falla tras crear el volumen, conserva `var/.restore-incomplete` y vuelve a
 ejecutar el mismo comando tras arreglar la causa; el script solo admite ese reintento
 controlado. Si el snapshot era inválido y aún no se creó volumen, corrige la fuente
 antes de repetir. No apuntes DNS hasta verificar. Para prueba puramente local ejecuta
-`make restore-test` con Docker y restic; crea dos proyectos temporales y compara
-conteos por tenant (usa `AUTOBOT_RESTORE_DB_ONLY=true`, así que no arranca ningún
-servicio de aplicación).
+`make restore-test` con Docker y restic; crea dos proyectos temporales, compara
+conteos por tenant (restaura con `AUTOBOT_RESTORE_DB_ONLY=true`), y después arranca solo
+`web` sobre la copia restaurada para comprobar que `/health/internal` responde sin
+negocios ilegibles y que la `SECRETS_ENCRYPTION_KEY` restaurada descifra `tenant_secret`.
+En una máquina que no es VM salta la comprobación del marcador con
+`AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK=true` (avisándolo), no la falsifica.
 
 **Verificación:** `/health` responde 200, compara por tenant los conteos de `contact`,
 `inbound_event` y `outbound_message` con el origen o informe previo; comprueba un

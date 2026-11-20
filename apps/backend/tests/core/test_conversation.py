@@ -131,3 +131,10 @@ def test_recovery_result_apologises_and_resets() -> None:
     assert result.replies == [Text(RECOVERY_TEXT)]
     assert result.state == {}
     assert result.actions == []
+
+
+def test_alta_and_baja_are_text_where_the_pack_waits_for_free_text() -> None:
+    assert global_command(text("baja"), free_text=True) is None
+    assert global_command(text("alta"), free_text=True) is None
+    assert global_command(text("menú"), free_text=True) == "menu"
+    assert global_command(text("/start"), free_text=True) == "menu"

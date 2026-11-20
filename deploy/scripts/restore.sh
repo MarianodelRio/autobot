@@ -12,10 +12,16 @@ if [[ $# -ne 1 || $1 != --confirm-empty-target ]]; then
 fi
 # T1: a target that was never bootstrapped is missing the deploy user, the pinned
 # UFW/SSH hardening and the systemd timers; restoring onto it would silently skip
-# all of that instead of failing loudly.
+# all of that instead of failing loudly. The marker is written by install-vm.sh
+# (ADR-017) once the base install and the SSH hardening are done; nothing else
+# creates it. AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK=true exists only for drills on a
+# machine that is not a VM (restore-test.sh, localprod.sh): it skips the check out
+# loud instead of faking the marker.
 bootstrap_marker=${AUTOBOT_BOOTSTRAP_MARKER:-/var/lib/autobot/bootstrap-complete}
-if [[ ! -f $bootstrap_marker ]]; then
-  echo "Bootstrap not done ($bootstrap_marker missing); run bootstrap-server.sh first" >&2
+if [[ ${AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK:-false} == true ]]; then
+  echo "Skipping the bootstrap check (AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK=true): drill only" >&2
+elif [[ ! -f $bootstrap_marker ]]; then
+  echo "Bootstrap not done ($bootstrap_marker missing); run deploy/scripts/install-vm.sh first" >&2
   exit 1
 fi
 # T4: server-migrate.sh freezes the origin before its final backup; a target that

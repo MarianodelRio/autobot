@@ -399,7 +399,7 @@ def test_database_down_gives_503(tenants: Any) -> None:
     connection.settings_dict["PORT"] = 1  # nothing listens there
     try:
         assert post_wa(fixture("whatsapp/text.json")) == 503
-        assert Client().get("/health").status_code == 503
+        assert Client().get("/health/internal").status_code == 503
     finally:
         connection.close()
         connection.settings_dict["PORT"] = port

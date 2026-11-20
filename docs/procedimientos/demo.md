@@ -62,7 +62,8 @@ Mismo mecanismo que el servidor (webhook), sobre un túnel de
 
 Para un bot sin webhook (p. ej. grabar fixtures de un negocio real antes de darlo de
 alta), `manage.py telegram_poll <slug>` (`make telegram-poll SLUG=<slug>`) sigue
-disponible; un bot con webhook no admite polling a la vez (`telegram_set_webhook
+disponible (reintenta un update si la base de datos cae un momento, y no avanza el
+*offset* hasta guardarlo); un bot con webhook no admite polling a la vez (`telegram_set_webhook
 demo --delete` se lo quita, nunca a un bot que use el servidor).
 
 ## Puerta WhatsApp en local (ngrok)
@@ -87,7 +88,9 @@ vez del dominio propio:
 (nota, usos y caducidad). La persona entra con `/start <código>` en Telegram (el panel
 da el enlace `t.me/<bot>?start=<código>` y su QR si `DEMO_TELEGRAM_BOT_USERNAME` está
 configurada; sin ella, solo el código) o enviando el código tal cual por WhatsApp. No
-hace falta tocar el `.env` ni reiniciar nada. Revocar un código impide canjearlo de
+hace falta tocar el `.env` ni reiniciar nada. Los códigos tienen 12 caracteres (los
+de menos de 10 no se canjean) y quien falla 5 canjes en una hora no puede canjear más
+hasta que pase (memoria del proceso; reiniciar `web`/`worker-inbound` lo borra). Revocar un código impide canjearlo de
 nuevo, pero no retira el acceso ya concedido con él; para eso, editar la lista cerrada
 (abajo) sigue siendo la única vía.
 

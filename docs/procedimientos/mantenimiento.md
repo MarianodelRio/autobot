@@ -12,6 +12,11 @@ revisa calidad del número, plantillas, restaura un snapshot en entorno temporal
 `make check` y valida el SHA publicado en GHCR. Las pruebas reales o cambios de
 canal requieren intervención humana.
 
+**Backups:** cada backup valida el volcado (`pg_restore --list`) antes de subirlo y
+comprueba el espacio libre; el primero de cada semana ISO ejecuta `restic check
+--read-data-subset=5%` y, si falla, el backup falla sin avisar a Healthchecks. Si salta,
+revisa el repositorio (`restic check` completo) antes de fiarte de él.
+
 **Verificación:** CI verde, backup/restauración reciente documentados, alertas
 resueltas y `tenant_health` sin degradaciones tras el mantenimiento.
 

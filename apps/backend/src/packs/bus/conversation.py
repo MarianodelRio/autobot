@@ -9,12 +9,12 @@ tenant.
 
 Estado: `step` (uno de los estados de abajo; sin `step`, MENU), `campo`
 ("origen" | "destino" mientras se busca o confirma), `origen`, `destino`,
-`fecha` (ISO) y `pendiente` (id de localidad por confirmar).
+`fecha` (ISO), `pendiente` (id de localidad por confirmar) y `fecha_pendiente` (ISO de
+una fecha sin año que cae en otro año, por confirmar).
 """
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -31,9 +31,11 @@ from packs.bus.datos import Datos
 from packs.bus.interactive import (
     build_candidatas,
     build_confirmar,
+    build_confirmar_fecha,
     build_destinos,
     build_dias,
     build_escribir,
+    build_fecha,
     build_info,
     build_linea,
     build_lineas,
@@ -45,26 +47,18 @@ from packs.bus.interactive import (
 from packs.bus.matcher import lineas as matcher_lineas
 from packs.bus.modelo import Linea, Localidad
 
-# Textos no reconocidos se registran normalizados, nunca con el identificador
-# del contacto: si el texto contiene 6 dígitos o más (p. ej.
-# un teléfono escrito donde iba una fecha, con o sin espacios/guiones), se
-# registra `<numero>` en su lugar. El recuento se hace sobre los dígitos del
-# texto sin separadores, porque `formato.normalizar()` sustituye separadores
-# por espacios y los dígitos dejarían de estar consecutivos.
-_RE_NO_DIGITO = re.compile(r"\D")
-
-# Palabras que, escritas en cualquier estado, vuelven al menú. `menu`, `menú` e
-# `inicio` ya los atiende la plataforma (llegan como texto vacío); `hola` y
-# `salir` son propias del pack.
-_ESCAPE_MENU = {"menu", "menú", "inicio", "hola", "salir"}
+# Palabras que, escritas en cualquier estado, vuelven al menú (se comparan normalizadas,
+# sin tildes ni puntuación). `menu`, `menú` e `inicio` ya los atiende la plataforma
+# (llegan como texto vacío); el resto son propias del pack.
+_ESCAPE_MENU = frozenset(
+    {"menu", "inicio", "hola", "salir", "cancelar", "cancela", "volver", "atras"}
+)
 
 
-def _texto_para_log(texto: str) -> str:
-    normalizado = formato.normalizar(texto)[:40]
-    solo_digitos = _RE_NO_DIGITO.sub("", normalizado)
-    if len(solo_digitos) >= 6:
-        return "<numero>"
-    return normalizado
+def _registrar_no_reconocido(t: _Turno, paso: str, texto: str) -> None:
+    """Solo el paso y la longitud: lo que escribe el cliente (un teléfono, un nombre) no
+    va nunca a los logs."""
+    t.ctx.log.info("[NO_RECONOCIDO] paso=%s longitud=%d", paso, len(texto))
 
 
 # ── Estados ────────────────────────────────────────────────────────────────
@@ -74,6 +68,7 @@ ESCRIBIR_ORIGEN = "ESCRIBIR_ORIGEN"
 SEL_DESTINO = "SEL_DESTINO"
 ESCRIBIR_DESTINO = "ESCRIBIR_DESTINO"
 CONFIRMAR_PUEBLO = "CONFIRMAR_PUEBLO"
+CONFIRMAR_FECHA = "CONFIRMAR_FECHA"
 SEL_DIA = "SEL_DIA"
 ESCRIBIR_FECHA = "ESCRIBIR_FECHA"
 RESULTADO = "RESULTADO"
@@ -92,6 +87,8 @@ class _Turno:
         self.estado: dict[str, Any] = dict(ctx.state)
         self.replies: list[Reply] = []
         self.actions: list[Action] = []
+        # True si el mensaje es el id de un botón o fila; False si es texto escrito.
+        self.es_boton = False
 
     def responder(self, *replies: Reply) -> None:
         self.replies.extend(replies)
@@ -242,7 +239,7 @@ def _buscar(t: _Turno, campo: str, texto: str) -> None:
         return
 
     # sin_coincidencia
-    t.ctx.log.info("[NO_RECONOCIDO] paso=%s texto=%s", campo, _texto_para_log(texto))
+    _registrar_no_reconocido(t, campo, texto)
     t.set("campo", campo)
     _mostrar_paso(t, campo, aviso=msg.msg_no_conozco_ese_pueblo(), con_lineas=True)
 
@@ -452,6 +449,7 @@ def _mostrar_dias(t: _Turno, aviso: str | None = None) -> None:
         )
     t.step = SEL_DIA
     t.set("campo", None)
+    t.set("fecha_pendiente", None)
     t.responder(
         build_dias(
             t.cfg,
@@ -471,18 +469,24 @@ def _leer_fecha_libre(t: _Turno, texto: str, en_lista: bool) -> None:
     if lectura.estado == "ok" and lectura.fecha is not None:
         _resultado(t, lectura.fecha)
         return
+    if lectura.estado == "confirmar" and lectura.fecha is not None:
+        # Año distinto del actual y no evidente: se pregunta, no se adivina.
+        t.set("fecha_pendiente", lectura.fecha.isoformat())
+        t.step = CONFIRMAR_FECHA
+        t.responder(build_confirmar_fecha(t.cfg, msg.msg_confirmar_fecha(lectura.fecha)))
+        return
     if lectura.estado == "pasada":
         if en_lista:
             _mostrar_dias(t, aviso=msg.msg_fecha_pasada())
         else:
-            t.responder(Text(msg.msg_fecha_pasada_con_formato()))
+            t.responder(build_fecha(t.cfg, msg.msg_fecha_pasada_con_formato()))
         return
     # formato | inexistente
-    t.ctx.log.info("[NO_RECONOCIDO] paso=fecha texto=%s", _texto_para_log(texto))
+    _registrar_no_reconocido(t, "fecha", texto)
     if en_lista:
         _mostrar_dias(t, aviso=msg.msg_elige_de_la_lista())
     else:
-        t.responder(Text(msg.msg_fecha_no_entendida()))
+        t.responder(build_fecha(t.cfg, msg.msg_fecha_no_entendida()))
 
 
 # ── Resultado ──────────────────────────────────────────────────────────
@@ -530,9 +534,11 @@ def _resultado(t: _Turno, fecha: date) -> None:
         _nombre_localidad(t.datos, origen),
         _nombre_localidad(t.datos, destino),
         fecha,
+        t.hoy(),
     )
     botones = _botones_resultado(t, consulta, fecha)
     t.set("fecha", fecha.isoformat())
+    t.set("fecha_pendiente", None)
     t.step = RESULTADO
     t.responder(*build_resultado(t.cfg, texto, botones))
     if consulta.estado == "con_salidas":
@@ -551,8 +557,19 @@ def _handle_menu(t: _Turno, value: str) -> None:
         to_menu(t)
 
 
+def _repetir_paso(t: _Turno, campo: str) -> None:
+    """Un botón que no es de este paso (un mensaje viejo, o un id manipulado): se repite
+    el paso actual en vez de tratarlo como un pueblo escrito."""
+    if t.step in (ESCRIBIR_ORIGEN, ESCRIBIR_DESTINO):
+        t.responder(build_escribir(t.cfg, campo, msg.msg_pedir_pueblo(campo)))
+    else:
+        _mostrar_paso(t, campo)
+
+
 def _handle_sel_origen(t: _Turno, value: str) -> None:
-    if value.startswith("loc:"):
+    if not t.es_boton:
+        _buscar(t, "origen", value)
+    elif value.startswith("loc:"):
         _elegir(t, "origen", value.removeprefix("loc:"))
     elif value.startswith("usar:"):
         _usar(t, "origen", value)
@@ -570,11 +587,13 @@ def _handle_sel_origen(t: _Turno, value: str) -> None:
     elif value == "menu":
         to_menu(t)
     else:
-        _buscar(t, "origen", value)
+        _repetir_paso(t, "origen")
 
 
 def _handle_sel_destino(t: _Turno, value: str) -> None:
-    if value.startswith("loc:"):
+    if not t.es_boton:
+        _buscar(t, "destino", value)
+    elif value.startswith("loc:"):
         _elegir(t, "destino", value.removeprefix("loc:"))
     elif value.startswith("usar:"):
         _usar(t, "destino", value)
@@ -592,32 +611,42 @@ def _handle_sel_destino(t: _Turno, value: str) -> None:
     elif value == "cambiar_origen":
         _ir_a_origen(t)
     else:
-        _buscar(t, "destino", value)
+        _repetir_paso(t, "destino")
 
 
 def _handle_confirmar_pueblo(t: _Turno, value: str) -> None:
-    campo = t.get("campo")
-    if value == "si":
+    campo = t.get("campo") or "origen"
+    paso_busqueda = SEL_ORIGEN if campo == "origen" else SEL_DESTINO
+    respuesta = value if t.es_boton else formato.normalizar(value)  # "sí" escrito vale
+    if respuesta == "si":
         pendiente = t.get("pendiente")
-        if pendiente is None or campo is None:
+        if pendiente is None:
             to_menu(t)
             return
         t.set("pendiente", None)
         _elegir(t, campo, pendiente)
-    elif value == "no":
+    elif respuesta == "no":
         t.set("pendiente", None)
-        campo = campo or "origen"
         t.step = ESCRIBIR_ORIGEN if campo == "origen" else ESCRIBIR_DESTINO
         t.responder(build_escribir(t.cfg, campo, msg.msg_escribelo_de_otra_forma()))
-    else:
-        # Ni Sí ni No: otro nombre, o el botón de una de las candidatas que
-        # `_buscar` va a mostrar. Sale de CONFIRMAR_PUEBLO antes de buscar, al
-        # paso correspondiente (el mismo que la búsqueda de texto libre), para
-        # que un `loc:` de la lista o un nuevo texto no se vuelvan a leer aquí.
+    elif not t.es_boton:
+        # Otro nombre: sale de CONFIRMAR_PUEBLO y lo busca como en el paso de búsqueda.
         t.set("pendiente", None)
-        campo = campo or "origen"
-        t.step = SEL_ORIGEN if campo == "origen" else SEL_DESTINO
+        t.step = paso_busqueda
         _buscar(t, campo, value)
+    elif value.startswith("loc:"):
+        # Una de las candidatas que `_buscar` mostró en lugar de esta pregunta, o un
+        # botón viejo: se elige si existe (`_elegir` repite el paso si no).
+        t.set("pendiente", None)
+        t.step = paso_busqueda
+        _elegir(t, campo, value.removeprefix("loc:"))
+    else:
+        # Cualquier otro botón no es de este paso: se repite la pregunta.
+        pendiente = t.get("pendiente")
+        if pendiente is None or pendiente not in t.datos.horarios.modelo.localidades:
+            to_menu(t)
+            return
+        t.responder(build_confirmar(t.cfg, _nombre_localidad(t.datos, pendiente)))
 
 
 def _fecha_de(value: str) -> date | None:
@@ -627,22 +656,64 @@ def _fecha_de(value: str) -> date | None:
         return None
 
 
-def _handle_sel_dia(t: _Turno, value: str) -> None:
-    if value.startswith("dia:"):
-        f = _fecha_de(value)
-        if f is None:
-            _mostrar_dias(t)
-            return
-        _resultado(t, f)
-    elif value == "otra_fecha":
-        t.step = ESCRIBIR_FECHA
-        t.responder(Text(msg.msg_formato_fecha()))
+def _ir_a_dia(t: _Turno, value: str) -> None:
+    """Botón `dia:<ISO>`. Si ese día ya pasó (la lista se mostró antes de medianoche) se
+    vuelve a la lista de días, no se enseña el horario de ayer."""
+    f = _fecha_de(value)
+    if f is None:
+        _mostrar_dias(t)
+    elif f < t.hoy():
+        _mostrar_dias(t, aviso=msg.msg_fecha_pasada())
     else:
+        _resultado(t, f)
+
+
+def _pedir_fecha(t: _Turno) -> None:
+    t.step = ESCRIBIR_FECHA
+    t.set("fecha_pendiente", None)
+    t.responder(build_fecha(t.cfg, msg.msg_formato_fecha()))
+
+
+def _handle_sel_dia(t: _Turno, value: str) -> None:
+    if not t.es_boton:
         _leer_fecha_libre(t, value, en_lista=True)
+    elif value.startswith("dia:"):
+        _ir_a_dia(t, value)
+    elif value == "otra_fecha":
+        _pedir_fecha(t)
+    else:
+        _mostrar_dias(t)
 
 
 def _handle_escribir_fecha(t: _Turno, value: str) -> None:
-    _leer_fecha_libre(t, value, en_lista=False)
+    if not t.es_boton:
+        _leer_fecha_libre(t, value, en_lista=False)
+    elif value == "ver_dias":
+        _mostrar_dias(t)
+    elif value.startswith("dia:"):
+        _ir_a_dia(t, value)
+    else:
+        t.responder(build_fecha(t.cfg, msg.msg_formato_fecha()))
+
+
+def _handle_confirmar_fecha(t: _Turno, value: str) -> None:
+    pendiente = t.get("fecha_pendiente")
+    fecha = _fecha_de(pendiente) if pendiente else None
+    respuesta = value if t.es_boton else formato.normalizar(value)
+    if respuesta == "si" and fecha is not None:
+        _resultado(t, fecha)
+    elif respuesta == "no":
+        _pedir_fecha(t)
+    elif not t.es_boton:
+        _leer_fecha_libre(t, value, en_lista=False)
+    elif value == "ver_dias":
+        _mostrar_dias(t)
+    elif value.startswith("dia:"):
+        _ir_a_dia(t, value)
+    elif fecha is not None:
+        t.responder(build_confirmar_fecha(t.cfg, msg.msg_confirmar_fecha(fecha)))
+    else:
+        _pedir_fecha(t)
 
 
 def _handle_resultado(t: _Turno, value: str) -> None:
@@ -668,11 +739,7 @@ def _handle_resultado(t: _Turno, value: str) -> None:
     elif value == "otra_consulta":
         _ir_a_origen(t)
     elif value.startswith("dia:"):
-        f = _fecha_de(value)
-        if f is None:
-            to_menu(t)
-            return
-        _resultado(t, f)
+        _ir_a_dia(t, value)
     else:
         to_menu(t)
 
@@ -684,6 +751,7 @@ DESPACHO: dict[str, Callable[[_Turno, str], None]] = {
     SEL_DESTINO: _handle_sel_destino,
     ESCRIBIR_DESTINO: _handle_sel_destino,
     CONFIRMAR_PUEBLO: _handle_confirmar_pueblo,
+    CONFIRMAR_FECHA: _handle_confirmar_fecha,
     SEL_DIA: _handle_sel_dia,
     ESCRIBIR_FECHA: _handle_escribir_fecha,
     RESULTADO: _handle_resultado,
@@ -715,8 +783,9 @@ def handle(ctx: PackContext, message: IncomingMessage) -> PackResult:
 
 
 def _despachar(t: _Turno, text: str | None, interactive_id: str | None, value: str) -> None:
+    t.es_boton = interactive_id is not None
     # Escape global: palabras que vuelven al menú desde cualquier estado.
-    if text is not None and text.strip().lower() in _ESCAPE_MENU:
+    if text is not None and formato.normalizar(text) in _ESCAPE_MENU:
         to_menu(t)
         return
 

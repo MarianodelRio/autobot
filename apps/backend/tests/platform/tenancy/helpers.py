@@ -12,7 +12,7 @@ PACKS = {"toy": toy.pack}
 WA_SECRETS = {
     "app_secret": "S3CR3T-APP-" + "x" * 21,
     "access_token": "EAAB-T0KEN",
-    "verify_token": "V3RIFY-T0KEN",
+    "verify_token": "V3RIFY-T0KEN-1234",
 }
 TG_SECRETS = {"bot_token": "123:ABC-token", "webhook_secret": "w" * 32}
 

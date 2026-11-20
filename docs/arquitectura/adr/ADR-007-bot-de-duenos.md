@@ -53,8 +53,9 @@ conocerlo todavía.
 
 - **Dos periodos de calendario**, en la zona horaria del negocio:
   - **Automático:** el mes anterior completo. Sale el día 1 a partir de las 12:00
-    locales. El periodic corre cada hora y un envío perdido se recupera ese mismo día;
-    la clave `summary:<tenant>:<año-mes>` evita duplicados.
+    locales. El periodic corre cada hora y un envío perdido se recupera cualquier día
+    posterior del mes mientras no exista la notificación `summary:<tenant>:<año-mes>`
+    (la clave evita duplicados).
   - **A demanda:** desde el día 1 a las 00:00 hasta ahora, **solo lo ya pasado**.
 - **Cada pack aporta sus líneas** con el gancho `Pack.summary(ctx, start, end, recorded)`,
   que se ejecuta sin transacción abierta. La plataforma no sabe qué es una cita.

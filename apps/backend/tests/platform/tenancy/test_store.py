@@ -257,8 +257,9 @@ def test_pause_is_never_blocked_by_validation(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(store, "_validate", boom)
     assert store.change_status("tg", action="pause", actor="user") == 3
     assert current().document["status"] == "paused"
-    with pytest.raises(store.StoreError):
-        store.change_status("tg", action="offboard", confirm_slug="tg", actor="user")
+    # Offboarding is the way out for a broken tenant too: it does not revalidate.
+    assert store.change_status("tg", action="offboard", confirm_slug="tg", actor="user") == 4
+    assert current().document["status"] == "offboarded"
 
 
 def test_demo_rejects_secrets_and_can_be_offboarded() -> None:
@@ -340,3 +341,92 @@ def test_slug_conflict_and_nontext_dataset_roll_back() -> None:
     assert error.value.code == "validation_error"
     assert "private-value" not in str(error.value.details)
     assert revision() == 1
+
+
+def test_rollback_restores_only_content_and_keeps_channel_testers_and_owner() -> None:
+    """A rollback to a version from before WhatsApp was connected must not disconnect
+    the number (nor drop testers or the owner's notices)."""
+    doc = tg_tenant("wa-rb")
+    doc["channel"] = {
+        "type": "whatsapp",
+        "public_id": "pubwarb00000000",
+        "app_id": None,
+        "waba_id": None,
+        "phone_number_id": None,
+    }
+    doc["testers"] = {"main": []}
+    doc["owner"] = {"notify": [], "summary_monthly": False}
+    create(doc)
+    new = copy.deepcopy(current("wa-rb").document)
+    new["name"] = "Renamed"
+    new["config"] = {"greeting": "Buenas"}
+    new["channel"].update(
+        app_id="111", waba_id="222", phone_number_id="333", display_phone="34600111222"
+    )
+    new["channel"]["monthly_alert_threshold"] = 99
+    new["testers"] = {"main": ["34600000009"]}
+    new["owner"] = {"notify": ["x"], "summary_monthly": True}
+    store.publish("wa-rb", document=new, base_version=1, actor="user", comment="Connect")
+    store.rollback("wa-rb", version=1, actor="user", comment="Undo")
+    restored = current("wa-rb").document
+    assert restored["name"] == doc["name"] and restored["config"] == doc["config"]
+    assert restored["channel"] == new["channel"]
+    assert restored["testers"] == new["testers"]
+    assert restored["owner"] == new["owner"]
+    assert restored["status"] == new["status"] and restored["id"] == new["id"]
+
+
+def test_import_source_keeps_dataset_origin_and_export_writes_it(tmp_path: Any) -> None:
+    from autobot.tenancy import archive
+
+    pack = REGISTERED["bus"]
+    assert pack.template is not None
+    template = source_from_dir(pack.template)
+    doc = tg_tenant("bus", pack="bus", config=template.document["config"])
+    origin = ("linea-cordoba", 3, "a" * 64)
+    create(doc, datasets=template.datasets, dataset_origins={"timetable": origin})
+    source = archive.current("bus")
+    assert source.dataset_origins == {"timetable": origin}
+    archive.write_source(tmp_path, source)
+    reread = archive.read_source(tmp_path, None)
+    assert reread.dataset_origins == {"timetable": origin}
+    # A changed dataset arriving by import carries its origin into the new version.
+    files = {**reread.datasets["timetable"], "note.txt": "x"}
+    other = ("otra", 1, "b" * 64)
+    from dataclasses import replace
+
+    store.import_source(
+        replace(reread, datasets={"timetable": files}, dataset_origins={"timetable": other}),
+        actor="user",
+        comment="re-import",
+    )
+    row = TenantDatasetVersion.objects.using("owner").filter(tenant__slug="bus").latest("version")
+    assert (row.source_name, row.source_version, row.source_sha) == other
+
+
+def _salon_doc(slug: str, calendar_id: str) -> dict[str, Any]:
+    pack = REGISTERED["salon"]
+    assert pack.template is not None
+    config = copy.deepcopy(source_from_dir(pack.template).document["config"])
+    config["calendar_id"] = calendar_id
+    return tg_tenant(slug, pack="salon", config=config)
+
+
+def test_two_businesses_cannot_share_a_calendar() -> None:
+    create(_salon_doc("sala", "shared@group.calendar.google.com"))
+    with pytest.raises(store.StoreError) as error:
+        create(_salon_doc("salb", " SHARED@group.calendar.google.com "))
+    assert error.value.code == "validation_error"
+    assert error.value.details == ["config.calendar_id: ya lo usa otro negocio"]
+    assert not Tenant.objects.using("owner").filter(slug="salb").exists()
+    create(_salon_doc("salc", "other@group.calendar.google.com"))
+    # Publishing the same tenant again with its own calendar is fine.
+    doc = copy.deepcopy(current("sala").document)
+    doc["name"] = "Otra"
+    store.publish("sala", document=doc, base_version=1, actor="user", comment="own")
+
+
+def test_offboarded_business_releases_its_calendar() -> None:
+    create(_salon_doc("sala", "shared@group.calendar.google.com"))
+    store.change_status("sala", action="offboard", confirm_slug="sala", actor="user")
+    create(_salon_doc("salb", "shared@group.calendar.google.com"))

@@ -3,6 +3,7 @@ guards and behaviour of `panel.services.query.run`."""
 
 from typing import Any
 
+import psycopg
 import pytest
 from django.db import connections, transaction
 
@@ -160,3 +161,68 @@ def test_query_endpoint(authed_client: Any, tenants: Any) -> None:
         post(authed_client, "data/query", {"sql": "SELECT 1", "tenant": "nope"}).status_code == 404
     )
     assert post(authed_client, "data/query", {"sql": "DROP TABLE contact"}).status_code == 400
+
+
+def test_semicolons_inside_literals_and_comments_are_allowed() -> None:
+    assert query._clean("select ';' as a -- ; trailing\n") == "select ';' as a -- ; trailing"
+    assert query._clean('select $$a;b$$, "x;y" from (select 1 as "x;y") t;') == (
+        'select $$a;b$$, "x;y" from (select 1 as "x;y") t'
+    )
+    assert query._clean("select 1; -- done") == "select 1"
+    assert query._clean("select E'a\\';b'") == "select E'a\\';b'"
+    for bad in ("select 1; select 2", "select 1; drop table x", "select 1 /* ; */; select 2"):
+        with pytest.raises(ApiError):
+            query._clean(bad)
+
+
+def test_the_database_itself_refuses_a_second_statement(tenants: Any) -> None:
+    # Defence in depth: even bypassing `_clean`, DECLARE CURSOR takes one statement.
+    connection = connections["readonly"]
+    with pytest.raises(psycopg.Error) as refused, transaction.atomic(using="readonly"):
+        connection.cursor().close()
+        with connection.connection.cursor(name="x") as cursor:
+            cursor.execute("select 1; select 2")
+    assert "syntax" in str(refused.value) or "multiple" in str(refused.value)
+
+
+def test_nul_and_data_errors_are_400(tenants: Any) -> None:
+    with pytest.raises(ApiError) as nul:
+        query.run("select 'a\x00b'", tenant_id=None, actor="operator")
+    assert nul.value.status == 400
+    with pytest.raises(ApiError) as out_of_range:
+        query.run("select 1::smallint + 100000::int::smallint", tenant_id=None, actor="operator")
+    assert out_of_range.value.status == 400
+
+
+def test_cells_and_the_total_are_capped(tenants: Any) -> None:
+    result = query.run("select repeat('x', 3000000)", tenant_id=None, actor="operator")
+    assert len(result.rows[0][0]) == query.MAX_CELL_CHARS + 1 and result.truncated
+    result = query.run(
+        "select repeat('x', 9000) from generate_series(1, 900)", tenant_id=None, actor="operator"
+    )
+    assert result.truncated and 400 < len(result.rows) < 900
+
+
+def test_jsonb_and_special_floats_are_json_safe(tenants: Any) -> None:
+    result = query.run(
+        "select '{\"a\": [1, 2]}'::jsonb, 'NaN'::float8, now()", tenant_id=None, actor="operator"
+    )
+    assert result.rows[0][:2] == ['{"a": [1, 2]}', "nan"]
+
+
+def test_a_busy_console_answers_429(tenants: Any) -> None:
+    held = [query._slots.acquire(blocking=False) for _ in range(query.MAX_CONCURRENT)]
+    try:
+        with pytest.raises(ApiError) as busy:
+            query.run("select 1", tenant_id=None, actor="operator")
+        assert busy.value.status == 429
+    finally:
+        for _ in held:
+            query._slots.release()
+
+
+def test_unknown_panel_routes_are_json_404(authed_client: Any) -> None:
+    for path in ("/api/panel/nope/at/all", "/api/panel/"):
+        response = authed_client.get(path, HTTP_HOST="127.0.0.1")
+        assert response.status_code == 404
+        assert response.json()["code"] == "not_found"

@@ -19,12 +19,35 @@ function readCookie(name: string): string | null {
   return value ? decodeURIComponent(value) : null;
 }
 
+// An unsafe request's body can be read only once, so a copy is kept to resend it.
+const pending = new WeakMap<Request, Request>();
+
 const csrfMiddleware: Middleware = {
   onRequest({ request }) {
     if (!UNSAFE_METHODS.has(request.method)) return undefined;
     const token = readCookie("autobot_panel_csrftoken");
     if (token) request.headers.set("X-CSRFToken", token);
+    pending.set(request, request.clone());
     return request;
+  },
+  // A stale or missing CSRF cookie (expired, cleared) answers 403 "CSRF ...": ask for a
+  // fresh token and resend once, instead of leaving the person with a dead form.
+  async onResponse({ request, response }) {
+    const copy = pending.get(request);
+    pending.delete(request);
+    if (copy === undefined || response.status !== 403) return undefined;
+    const body: unknown = await response
+      .clone()
+      .json()
+      .catch(() => null);
+    const detail = isNinjaErrorBody(body) ? body.detail : "";
+    if (!/csrf/i.test(detail)) return undefined;
+    await globalThis.fetch(`${window.location.origin}/api/panel/auth/csrf`, {
+      credentials: "same-origin",
+    });
+    const token = readCookie("autobot_panel_csrftoken");
+    if (token) copy.headers.set("X-CSRFToken", token);
+    return globalThis.fetch(copy);
   },
 };
 

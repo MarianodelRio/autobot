@@ -2,7 +2,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { OnboardingPage, slugFromName, validSlug } from "./onboarding-page";
+import {
+  OnboardingPage,
+  slugFromName,
+  stepForErrors,
+  validSlug,
+} from "./onboarding-page";
 
 function provider(child: React.ReactNode) {
   const client = new QueryClient({
@@ -86,8 +91,12 @@ test("blocks moving on until the basic data is complete and the slug is free", a
   await user.type(screen.getByLabelText("Nombre"), "Taller Centro");
   await screen.findByText("Slug disponible.");
   expect(screen.getByRole("button", { name: "Siguiente" })).not.toBeDisabled();
-  await user.clear(screen.getByLabelText("Zona horaria"));
-  expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+  // The zone is a selector over real IANA names, so it can no longer be left blank.
+  await user.selectOptions(
+    screen.getByLabelText("Zona horaria"),
+    "Europe/London",
+  );
+  expect(screen.getByRole("button", { name: "Siguiente" })).not.toBeDisabled();
 });
 
 test("submits the review step as the POST body and creates the tenant", async () => {
@@ -215,4 +224,11 @@ test("a 422 on creation returns to the config step with the fields marked", asyn
   await screen.findByText("valor no válido");
   expect(screen.getByText(/Configuración/)).toBeInTheDocument();
   expect(screen.getByLabelText("Precio")).toBeInTheDocument();
+});
+
+test("a 422 sends the wizard to the step that owns the field", () => {
+  expect(stepForErrors(["timezone: no válida"])).toBe(2);
+  expect(stepForErrors(["body.payload.slug: no válido"])).toBe(2);
+  expect(stepForErrors(["pack: desconocido"])).toBe(1);
+  expect(stepForErrors(["config.services.0.name: obligatorio"])).toBe(4);
 });

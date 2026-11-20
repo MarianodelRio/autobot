@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { api } from "@/api/client";
+import { api, normalizeError } from "@/api/client";
 import type { components } from "@/api/schema";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { errorDetail } from "@/lib/errors";
 
 type SecretField = components["schemas"]["SecretField"];
 
@@ -35,13 +36,13 @@ export function SecretsForm({
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const client = useQueryClient();
 
   function reset() {
     setValues({});
-    setError(false);
+    setError(null);
   }
 
   async function submit() {
@@ -50,13 +51,14 @@ export function SecretsForm({
     );
     if (Object.keys(secrets).length === 0) return;
     setPending(true);
-    setError(false);
+    setError(null);
     try {
       const result = await api.PUT("/tenants/{slug}/secrets", {
         params: { path: { slug } },
         body: { secrets },
       });
-      if (!result.response.ok) throw new Error();
+      if (!result.response.ok)
+        throw normalizeError(result.error, result.response.status);
       // C10: the backend re-registers the Telegram webhook right after a change
       // (the old one would otherwise stay registered with the previous secret).
       if (result.data?.telegram_webhook_registered === false) {
@@ -71,8 +73,12 @@ export function SecretsForm({
       void client.invalidateQueries({ queryKey: ["tenant-secrets", slug] });
       void client.invalidateQueries({ queryKey: ["tenant", slug] });
       void client.invalidateQueries({ queryKey: ["tenant-webhook", slug] });
-    } catch {
-      setError(true);
+    } catch (caught) {
+      // The typed values stay in the form: only a success clears them.
+      setError(
+        errorDetail(caught, "No se pudieron sustituir los secretos.") +
+          " Los valores siguen en el formulario.",
+      );
     } finally {
       setPending(false);
     }
@@ -140,7 +146,7 @@ export function SecretsForm({
           ))}
           {error && (
             <p role="alert" className="text-sm text-destructive">
-              No se pudieron sustituir los secretos. Vuelve a introducirlos.
+              {error}
             </p>
           )}
         </div>

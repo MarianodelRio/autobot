@@ -2,12 +2,12 @@
 for a person to redeem it on the demo door's Telegram bot."""
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
-from ninja import Field, Router, Schema
+from ninja import Field, Query, Router, Schema
 
 from autobot.panel.errors import ApiError
 from autobot.panel.services import demo_invites
@@ -28,11 +28,19 @@ class DemoInviteOut(Schema):
     created_by: str
     created_at: datetime
     telegram_link: str | None
+
+
+class DemoInvitePage(Schema):
+    items: list[DemoInviteOut]
+    total: int
+
+
+class DemoInviteQr(Schema):
     qr_svg: str | None
 
 
 class DemoInviteCreate(Schema):
-    note: str = ""
+    note: str = Field("", max_length=200)
     max_uses: int = Field(1, ge=1, le=1000)
     # None: never expires. The field is required (no default) so the panel always
     # states its choice explicitly, rather than silently falling back to one.
@@ -40,26 +48,37 @@ class DemoInviteCreate(Schema):
 
 
 def _out(invite: DemoInvite) -> dict[str, Any]:
+    grants = getattr(invite, "grant_total", None)
     return {
         "id": invite.id,
         "code": invite.code,
         "note": invite.note,
         "max_uses": invite.max_uses,
         "uses": invite.uses,
-        "grants": demo_invites.grant_count(invite),
+        "grants": grants if grants is not None else demo_invites.grant_count(invite),
         "expires_at": invite.expires_at,
         "revoked_at": invite.revoked_at,
         "created_by": invite.created_by,
         "created_at": invite.created_at,
         "telegram_link": demo_invites.telegram_link(invite.code),
-        "qr_svg": demo_invites.qr_svg(invite.code),
     }
 
 
-@router.get("/demo/invites", response=list[DemoInviteOut])
-def list_invites(request: HttpRequest) -> list[dict[str, Any]]:
-    invites = DemoInvite.objects.using("owner").order_by("-created_at")
-    return [_out(invite) for invite in invites]
+@router.get("/demo/invites", response=DemoInvitePage)
+def list_invites(
+    request: HttpRequest,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict[str, Any]:
+    invites, total = demo_invites.list_invites(limit=limit, offset=offset)
+    return {"items": [_out(invite) for invite in invites], "total": total}
+
+
+@router.get("/demo/invites/{id}/qr", response=DemoInviteQr)
+def qr(request: HttpRequest, id: UUID) -> dict[str, Any]:
+    """Drawn only when someone opens «Ver código», never for every row of the list."""
+    invite = get_object_or_404(DemoInvite.objects.using("owner"), pk=id)
+    return {"qr_svg": demo_invites.qr_svg(invite.code)}
 
 
 @router.post("/demo/invites", response=DemoInviteOut)

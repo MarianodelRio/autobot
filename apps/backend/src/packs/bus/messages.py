@@ -14,7 +14,7 @@ from core.limits import MAX_TEXT
 from packs.bus.config import BusConfig
 from packs.bus.formato import NOMBRES_PUBLICOS_TEMPORADA
 from packs.bus.loader import Horarios
-from packs.bus.query import Consulta
+from packs.bus.query import Consulta, Salida
 
 _DIAS_ES_ABREV = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
 
@@ -192,6 +192,10 @@ def msg_elige_de_la_lista() -> str:
     return "Elige un día de la lista o pulsa 📅 Otra fecha."
 
 
+def msg_confirmar_fecha(fecha: date) -> str:
+    return f"¿Te refieres al {fecha.day:02d}/{fecha.month:02d}/{fecha.year}?"
+
+
 def msg_fecha_pasada_con_formato() -> str:
     return f"{msg_fecha_pasada()} {msg_formato_fecha()}"
 
@@ -213,9 +217,13 @@ def _nombre_parada(horarios: Horarios, codigo: str) -> str:
     return parada.nombre if parada is not None else codigo
 
 
-def _cabecera_fecha(consulta: Consulta, fecha: date, horarios: Horarios) -> str:
+def _cabecera_fecha(
+    consulta: Consulta, fecha: date, horarios: Horarios, hoy: date | None = None
+) -> str:
     info = consulta.info_dia
     dia_txt = f"{nombre_dia_es(fecha).capitalize()} {fecha.day:02d}/{fecha.month:02d}"
+    if hoy is not None and fecha.year != hoy.year:
+        dia_txt += f"/{fecha.year}"  # nunca un año distinto sin decirlo
     if info is not None and info.es_festivo:
         # el festivo general gana sobre el local si coinciden
         return f"📅 {dia_txt} · festivo ({info.nombre_festivo})"
@@ -240,6 +248,7 @@ def msg_resultado(
     origen_nombre: str,
     destino_nombre: str,
     fecha: date,
+    hoy: date | None = None,
 ) -> str:
     """Mensaje de resultado. `consulta.estado` decide el
     contenido; nunca se deriva de si `salidas` está vacío (`sin_datos`
@@ -254,14 +263,14 @@ def msg_resultado(
 
     if consulta.estado == "sin_datos":
         return (
-            f"{cabecera}\n{_cabecera_fecha(consulta, fecha, horarios)}\n\n"
+            f"{cabecera}\n{_cabecera_fecha(consulta, fecha, horarios, hoy)}\n\n"
             "No tengo el horario de ese día.\n"
             f"{tel_y_horario(cfg)}"
         )
 
     if consulta.estado == "sin_servicio" and consulta.sin_servicio_general:
         cuerpo = (
-            f"{cabecera}\n{_cabecera_fecha(consulta, fecha, horarios)}\n\n"
+            f"{cabecera}\n{_cabecera_fecha(consulta, fecha, horarios, hoy)}\n\n"
             f"El {fecha.day:02d}/{fecha.month:02d} no hay servicio en ninguna"
             " línea.\n"
         )
@@ -274,7 +283,7 @@ def msg_resultado(
         return cuerpo + tel_y_horario(cfg)
 
     if consulta.estado == "sin_servicio":
-        cuerpo = f"{cabecera}\n{_cabecera_fecha(consulta, fecha, horarios)}\n\n"
+        cuerpo = f"{cabecera}\n{_cabecera_fecha(consulta, fecha, horarios, hoy)}\n\n"
         if consulta.siguiente_con_servicio is not None:
             sig = consulta.siguiente_con_servicio
             if (sig - fecha).days <= _DIAS_SIGUIENTE_CERCANO:
@@ -295,9 +304,34 @@ def msg_resultado(
 
     if not listadas:
         return (
-            f"{cabecera}\n{_cabecera_fecha(consulta, fecha, horarios)}\n\nHoy ya no quedan salidas."
+            f"{cabecera}\n{_cabecera_fecha(consulta, fecha, horarios, hoy)}\n\n"
+            "Hoy ya no quedan salidas."
         )
 
+    # Si no cabe en un mensaje de texto, se recorta por la última salida completa y se
+    # avisa de cuántas faltan; las notas (⚠️) son las de las filas que se quedan.
+    for visibles in range(len(listadas), 0, -1):
+        texto = _texto_salidas(
+            cfg, consulta, horarios, cabecera, fecha, hoy, listadas, visibles, ya_salidas
+        )
+        if len(texto) <= MAX_TEXT:
+            return texto
+    return texto[: MAX_TEXT - 1] + "…"  # una sola salida con notas enormes: no debería pasar
+
+
+def _texto_salidas(
+    cfg: BusConfig,
+    consulta: Consulta,
+    horarios: Horarios,
+    cabecera: str,
+    fecha: date,
+    hoy: date | None,
+    listadas: list[Salida],
+    visibles: int,
+    ya_salidas: int,
+) -> str:
+    """El resultado con las `visibles` primeras salidas de `listadas`. Lo que es común
+    a todas (origen, destino, notas) se decide con todas, aunque algunas se omitan."""
     origenes = {s.parada_origen for s in listadas}
     destinos = {s.parada_destino for s in listadas}
     mismo_origen = len(origenes) == 1
@@ -321,7 +355,7 @@ def msg_resultado(
         return marcas[nota]
 
     lineas_salidas = []
-    for s in listadas:
+    for s in listadas[:visibles]:
         if s.duracion_min >= 60:
             duracion = f"{s.duracion_min // 60}h {s.duracion_min % 60:02d}"
         else:
@@ -342,8 +376,13 @@ def msg_resultado(
             fila += f"  ({origen_parada} → {destino_parada})"
         lineas_salidas.append(fila)
 
-    partes = [cabecera, _cabecera_fecha(consulta, fecha, horarios), ""]
+    partes = [cabecera, _cabecera_fecha(consulta, fecha, horarios, hoy), ""]
     partes.extend(lineas_salidas)
+    if visibles < len(listadas):
+        omitidas = len(listadas) - visibles
+        partes.append(
+            f"…y {omitidas} salidas más. Para verlas todas, llama al {cfg.contact_phone}."
+        )
     partes.append("")
 
     if mismo_origen:
@@ -361,22 +400,4 @@ def msg_resultado(
     if ya_salidas:
         partes.append(f"(hoy ya han salido {ya_salidas})")
 
-    texto = "\n".join(partes)
-    if len(texto) > MAX_TEXT:
-        # Trunca por la última salida completa.
-        acumulado = []
-        largo = 0
-        cabecera_txt = "\n".join(partes[:3]) + "\n"
-        largo = len(cabecera_txt)
-        for fila in lineas_salidas:
-            if largo + len(fila) + 1 > MAX_TEXT - 80:
-                break
-            acumulado.append(fila)
-            largo += len(fila) + 1
-        restantes = len(lineas_salidas) - len(acumulado)
-        texto = (
-            cabecera_txt
-            + "\n".join(acumulado)
-            + f"\n\n…y {restantes} salidas más, llama al {cfg.contact_phone}."
-        )
-    return texto
+    return "\n".join(partes)

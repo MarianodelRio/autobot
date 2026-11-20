@@ -390,7 +390,9 @@ def test_msg_resultado_truncates_at_4096_chars() -> None:
         __import__("datetime").date(2026, 9, 23),
     )
     assert len(texto) <= 4096
-    assert "más, llama al" in texto
+    assert "salidas más. Para verlas todas, llama al" in texto
+    # Las notas que quedan son solo las de las filas visibles.
+    assert "Nota número 199" not in texto
 
 
 def test_msg_resultado_sin_servicio_general_sin_siguiente_da_hecho_y_telefono() -> None:

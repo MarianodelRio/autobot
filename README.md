@@ -14,7 +14,7 @@ todavía en producción. Pasos pendientes en [docs/plan-lanzamiento.md](docs/pla
 Requisito: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta).
 
 ```bash
-make dev-bootstrap   # db, roles, migraciones, permisos, demos, web y worker
+make local           # todo el entorno local: db, roles, migraciones, permisos, demos, web y workers
 make check           # ruff, mypy, import-linter y tests contra la BD local
 make help             # todos los objetivos, por sección
 ```

@@ -143,6 +143,25 @@ def _block_external_network() -> Iterator[None]:
         yield
 
 
+@pytest.fixture(autouse=True)
+def reset_channel_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The in-memory limits of the demo and owner bots start empty in every test."""
+    from autobot.channels import views
+    from autobot.channels.demo import invites, selector
+    from autobot.channels.ratelimit import WindowLimiter
+    from autobot.owner import inbox
+
+    monkeypatch.setattr(views, "limiter", WindowLimiter())
+    monkeypatch.setattr(selector, "refusals", WindowLimiter(limit=3, window_s=3600))
+    monkeypatch.setattr(
+        selector, "event_limiter", WindowLimiter(limit=selector.EVENTS_PER_MINUTE, window_s=60)
+    )
+    monkeypatch.setattr(
+        invites, "failed_redeems", WindowLimiter(limit=invites.MAX_FAILED_REDEEMS, window_s=3600)
+    )
+    monkeypatch.setattr(inbox, "NOT_LINKED_LIMIT", WindowLimiter(limit=3, window_s=3600))
+
+
 @pytest.fixture
 def tenants(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     """Seed versioned config and encrypted secrets, resetting the runtime limits."""

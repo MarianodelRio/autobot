@@ -476,7 +476,7 @@ healthchecks.io y backups.
   automático (hacerlo podía crear uno vacío por un `RESTIC_REPOSITORY` mal escrito
   y ocultar así la pérdida del bueno); exige que exista y compara su id contra
   `var/.restic-repo-id`, que escribe la primera vez que corre. `restic init` se
-  ejecuta una vez a mano, como parte de `server-init` (A15). De paso, `--prune`
+  ejecuta una vez a mano, como paso manual del resumen de `install-vm.sh` (A15). De paso, `--prune`
   (que reescribe todo el repositorio) solo se ejecuta una vez al día, no en cada
   backup horario (T5).
 - [x] **A4** Exigir `google_sa.json` como fichero regular: si falta, Docker crea un directorio.
@@ -532,26 +532,19 @@ healthchecks.io y backups.
 
 **Comando de instalación:**
 
-- [x] **A15 (M) [Tú lo ejecutas]** `make server-init [CHECK=1] [ONLY=paso]`, con
-  `var/server.env` (dominio, repo, imagen y credenciales externas;
-  `deploy/env/server.env.example`). Idempotente, cada paso comprueba antes de
-  actuar y los que tocan `gh`, restic o despliegan de verdad piden confirmación:
-  1. Valida en local que no falte nada y que el DNS apunte a la IP (`CHECK=1` para
-     por aquí). No hace falta deploy key: el repo es público.
-  2. Genera la clave de CI y ejecuta `bootstrap-server.sh --base` por SSH.
-  3. Pide verificar `deploy@`/`admin@` desde una sesión nueva y, confirmado,
-     ejecuta `--harden-ssh`.
-  4. Sube `.env` (fusionado, nunca sustituido), `google_sa.json`, `backup.env` y la
-     contraseña de restic.
-  5. `restic init` a mano, con confirmación (A3), y activa el timer.
-  6. Crea el entorno `production` y sus secretos con `gh`.
-  7. Lanza el primer despliegue directamente por SSH (no por el workflow: en un
-     repo público, el primer despliegue es el que más conviene ver entero, no en
-     un log de Actions) y comprueba HTTPS.
-  8. Crea el usuario del panel; quedan por tu cuenta los webhooks de `demo` y
-     `notify` (dependen de los tokens reales) y el primer backup real.
-  Hecho: `deploy/scripts/server-init.sh`; su paso 1 (`CHECK=1`) tiene tests, el
-  resto se ensaya en A16.
+- [x] **A15 (M) [Tú lo ejecutas]** Instalador de la VM, **dentro de la VM** (ADR-017,
+  sustituye a `make server-init`): `sudo deploy/scripts/install-vm.sh --public-host
+  api.<dominio> --google-sa <fichero> [--env-file <fichero>]` desde un clon del repo.
+  Idempotente y reanudable (`--only`, `--skip`, `--check`): clave de CI propia generada en
+  la VM, `bootstrap-server.sh --base`, `.env` con `ensure-env.sh`, primer despliegue por
+  `ssh-deploy.sh`, comprobación de salud, endurecimiento de SSH con confirmación,
+  marcador `bootstrap-complete` y resumen de pasos manuales. Nunca inventa credenciales ni
+  hace `restic init`. Hecho: `deploy/scripts/install-vm.sh`; tiene tests de argumentos y
+  helpers, el resto se ensaya en A16.
+- [ ] **A15b [Tú]** Entorno `production` de GitHub: restringirlo a la rama `main` y con
+  revisores obligatorios (Settings → Environments → production), y subir `DEPLOY_HOST`,
+  `DEPLOY_SSH_KEY` (la clave de CI que imprime `install-vm.sh`, no la del operador) y
+  `DEPLOY_KNOWN_HOSTS`. Sin esto, cualquier rama con acceso al workflow puede usar la clave.
 - [ ] **A16 (M)** Ensayo en VM desechable: instalar, repetir sin cambios, vuelta atrás con
   un SHA roto, backup real y restauración (T3).
 - [ ] **A17 (S) [Tú]** Crear cuentas: Sentry, dos checks de healthchecks.io, monitor externo
@@ -596,7 +589,7 @@ falta nada de esto.
   montarlo en el primer contenedor). Comprobado en local con un `restic` real: pasa.
 - [ ] **T4 (M) [Tú lo ejecutas]** `make server-migrate FROM=<a> TO=<b>`:
   1. 24 h antes, bajar el TTL del DNS a 60–300 s.
-  2. `server-init --mode=restore` en destino: restaura sin desplegar y con el timer parado.
+  2. `install-vm.sh --restore-target` en destino: restaura sin desplegar y con el timer parado.
   3. Ensayo en destino (`AUTOBOT_RESTORE_DB_ONLY=true`) y comparación de conteos por
      negocio; `down -v` antes del corte real.
   4. Corte en origen: crea `var/.frozen` (que `deploy.sh` y `restore.sh` respetan),
@@ -696,7 +689,7 @@ El bootstrap, `ufw` y los timers solo se prueban en una VM desechable (A16).
   más adelante, junto con G2.
 - [ ] **B5 (S) [Aprobación]** `RETENTION_CLEANUP_ENABLED=true` (D4): sin esto tampoco
   caducan los datos de la demo. Decidido el 2026-11-16: no se activa todavía, a mano en
-  el `.env` del servidor cuando se apruebe (nunca por `server-init`, para que sea un paso
+  el `.env` del servidor cuando se apruebe (nunca por `install-vm.sh`, para que sea un paso
   consciente y no algo que un traslado copie sin querer). El código ya está listo: un
   tenant de demo caduca a los 30 días (contactos, conversaciones y avisos al dueño), no al
   año de un cliente real; las invitaciones y concesiones caducadas o revocadas se purgan
@@ -951,8 +944,8 @@ objetivos, y `manage.py` de 21 a 14:
 
 | Uso | Comandos |
 |---|---|
-| `make` desarrollo | `help up down logs shell dev-bootstrap dev-reset dev-activity ngrok test test-fast check fix api panel-dev panel-check new-pack localprod-*` |
-| `make` producción | `server-init server-migrate panel-tunnel deploy rollback backup-now restore-test prod-manage prod-compose bus-subir bus-revision` |
+| `make` desarrollo | `help up down logs shell local dev-reset dev-activity ngrok test test-fast check fix api panel-dev panel-check new-pack localprod-*` |
+| `make` producción | `install-vm server-migrate panel-tunnel deploy rollback backup-now restore-test prod-manage prod-compose bus-subir bus-revision` |
 | `manage.py` despliegue | `migrate apply_grants seed_demos tenant_config export_openapi` |
 | `manage.py` emergencia | `panel_user tenant_secrets_reencrypt telegram_set_webhook` (solo `demo` y `notify`) |
 | `manage.py` RGPD | `contact_export contact_forget tenant_data_export tenant_purge` |
@@ -1020,7 +1013,7 @@ Se da por terminado cuando todo esto se cumple:
   confirmados contra el repo actual, escenarios de `[CFG]` (S3) y de `bus` (X6, X7) en
   verde; sin regresiones ni transacciones abiertas durante llamadas externas (X3);
   medir memoria con dos workers (parte de X14) sigue aplazada a A16.
-- [ ] `make server-init` deja una VM limpia funcionando, y repetirlo no cambia nada.
+- [ ] `install-vm.sh` deja una VM limpia funcionando, y repetirlo no cambia nada.
 - [ ] Vuelta atrás probada con un SHA roto.
 - [ ] Backup automático en restic y restauración ensayada, con su tiempo anotado.
 - [ ] `make server-migrate` ensayado entre dos VMs desechables.

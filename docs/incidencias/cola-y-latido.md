@@ -20,6 +20,36 @@ métricas antes de cambiar concurrencia o número de workers.
 **Verificación:** llega un nuevo latido, el check vuelve a verde y los pendientes
 disminuyen sin duplicados.
 
+**Trabajo atascado (barridas de `ops_check`):** los trabajos se encolan dentro de la
+misma transacción que la fila que procesan (`autobot/runtime/queue.py`; nunca por el
+pool propio del worker de Procrastinate, que quedaría fuera de la transacción y podía
+arrancar un envío antes del commit de su mensaje), así que un mensaje o evento sin
+trabajo no debería existir. Como red de seguridad, cada cinco minutos
+`autobot/runtime/sweeps.py`: pasa a `unknown` un envío `sending` sin trabajo vivo (se
+cortó mientras hablaba con el proveedor; nunca se reenvía solo); reencola `send_message`
+para un envío `pending` de más de 10 minutos sin trabajo vivo (idempotente por estado,
+solo si tiene menos de 24 h); y avisa (`inbound_stuck`, 🔴) de un evento entrante
+`pending` de más de 5 minutos sin trabajo vivo, reencolándolo si tiene menos de 1 hora
+(`process_event` y `apply_status` son idempotentes por el estado del evento; el límite
+evita un bucle con un evento que fallara siempre). Pasado ese límite decide una persona.
+Si `send_message`/`send_notification` no encuentran su fila lo registran con `log.error`
+(ids, nunca datos personales). `ops_check` cuenta además los avisos al dueño en
+`failed` de las últimas 24 h (`notification_failed`: un aviso ambiguo no se reenvía a
+ciegas) y avisa del disco al 85 % (🟠) y al 95 % (🔴, `disk_critical`).
+
+**Reintentos:** los trabajos reintentan los errores de proveedor transitorios
+(`TransientError`) y los errores de BD de conexión o concurrencia (`OperationalError`,
+`InterfaceError`: conexión perdida, `lock_not_available`, deadlock, fallo de
+serialización); nunca `DataError`, `IntegrityError` ni `ProgrammingError`. Si
+persistir la respuesta falla de forma determinista (p. ej. `LimitError`), el contacto
+recibe el texto de recuperación y el evento queda `failed`.
+
+**Conexiones del worker:** el pool propio de `procrastinate worker` está acotado con
+`WORKER_DB_POOL_MIN`/`WORKER_DB_POOL_MAX` (1 y 6 por defecto; ver
+[variables de entorno](../referencia/variables-entorno.md)). Los trabajos terminados de
+más de 30 días de `procrastinate_jobs`/`procrastinate_events` los purga el periódico
+`jobs_cleanup` (03:30 UTC), independiente de `RETENTION_CLEANUP_ENABLED`.
+
 **Alertas persistidas:** cada cinco minutos `ops.check.collect()` evalúa la cola, los
 tenants, los bots y, en producción, la instantánea de contenedores
 (`autobot/ops/containers.py`, [contenedor caído](contenedor-caido.md)) sin enviar nada;

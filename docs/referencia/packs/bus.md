@@ -13,6 +13,38 @@ no como «sin servicio».
 presentes en el dataset) y `next_day_search_days` (45 por defecto). Los días
 de oficina se declaran una vez, con franjas `HH:MM-HH:MM` sin solapes.
 
+`config` rechaza claves desconocidas (un error tipográfico falla al importar, no se ignora) y
+`contact_phone` admite hasta 30 caracteres.
+
+### Comportamiento de la conversación
+
+- **Fecha escrita** (`día/mes[/año]`, separador `/`, `-`, `.` o espacio): `10 30` no es una
+  fecha. Si no se entiende o ya pasó, el mensaje lleva siempre dos botones, «📅 Ver lista de
+  días» y «↩️ Menú»; las palabras `menu`, `inicio`, `hola`, `salir`, `cancelar`, `volver` y
+  `atrás` vuelven al menú desde cualquier paso.
+- **Año nunca en silencio**: una fecha sin año se resuelve al año actual. Si cae en otro año y
+  no es evidente (p. ej. `23/08` en septiembre, o `29/02` que saltaría a 2028) se pregunta
+  «¿Te refieres al 23/08/2027?» [Sí] [No]; solo se acepta sin preguntar el año siguiente
+  cuando queda más cerca por delante que por detrás (`5/1` a finales de diciembre). Todo
+  resultado de un año distinto del actual muestra el año en la cabecera.
+- **Botones viejos**: un `loc:` de una pregunta anterior se elige si existe, y cualquier otro
+  id que no es del paso se ignora y se repite el paso; solo el texto escrito se busca como
+  pueblo. Un `dia:` de un día ya pasado (lista mostrada antes de medianoche) vuelve a la lista
+  de días con «Esa fecha ya ha pasado».
+- **Logs**: al no reconocer un texto solo se registra el paso y su longitud
+  (`[NO_RECONOCIDO] paso=origen longitud=12`); nunca el texto.
+- `alta`/`baja` siguen siendo comandos globales en todos los pasos (un pueblo no se llama así;
+  el opt-out debe poder pedirse siempre).
+
+### Limitaciones conocidas
+
+- **Viajes que cruzan la medianoche** no se pueden representar: en las tablas las horas nunca
+  retroceden y cada viaje pertenece al día de su salida. Un servicio nocturno hay que partirlo
+  en dos viajes (hasta las 23:59 y desde las 00:00) o dejarlo fuera del dataset.
+- **Resultados muy largos**: si el resultado supera los 4.096 caracteres se recorta por la
+  última salida completa, se añade «…y N salidas más. Para verlas todas, llama al …» y solo se
+  explican las notas (⚠️) de las salidas que se muestran.
+
 El dataset está versionado en la BD, en una biblioteca independiente de cualquier
 cliente (ADR-013); el cliente se queda con una copia de la entrada elegida.
 `manage.py dataset_library pull bus timetable <nombre> <dir>` saca una entrada a un

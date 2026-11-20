@@ -13,13 +13,17 @@ import logging
 import math
 from uuid import UUID
 
-from django.db import close_old_connections, transaction
+from django.db import InterfaceError as DjangoInterfaceError
+from django.db import OperationalError as DjangoOperationalError
+from django.db import close_old_connections
 from django.utils import timezone
 from procrastinate import BaseRetryStrategy, JobContext, RetryDecision, RetryStrategy
 from procrastinate.contrib.django import app as app
 from procrastinate.jobs import Job, Status
 from procrastinate.periodic import PeriodicRegistry
 from procrastinate.tasks import Task
+from psycopg import InterfaceError as PsycopgInterfaceError
+from psycopg import OperationalError as PsycopgOperationalError
 
 from autobot.ops.logging import async_contextual, contextual
 from core.errors import TransientError
@@ -51,27 +55,26 @@ SEND_OWNER_SUMMARY = "send_owner_summary"  # (tenant_id, year, month), queueing_
 HANDLE_OWNER_EVENT = "handle_owner_event"  # (event_id) of owner_event, lock ownerchat:<h>
 
 
-def defer_after_commit(name: str, *, queue: str, lock: str | None = None, **kwargs: str) -> None:
-    """Defer a job once the current transaction commits, immediately if none is open.
+# What a job retries: a `TransientError` (a provider that may answer later) and the
+# database errors of connection and concurrency, which usually pass on their own:
+# `OperationalError` (connection lost, `lock_not_available`, deadlock, serialization
+# failure) and `InterfaceError`, in Django's wrapping or psycopg's. Never
+# `DataError`, `IntegrityError` or `ProgrammingError`: they are bugs, a retry would
+# fail the same way.
+RETRYABLE: tuple[type[Exception], ...] = (
+    TransientError,
+    DjangoOperationalError,
+    DjangoInterfaceError,
+    PsycopgOperationalError,
+    PsycopgInterfaceError,
+)
 
-    Workers run jobs in their own threads, each with its own database connection
-    (separate from the one the caller is writing with): a job deferred while that
-    write is still uncommitted can start, and find nothing, before the row it needs
-    becomes visible to it. Never use this where the caller needs the deferred job's
-    id or must catch `AlreadyEnqueued` synchronously (`dispatch_periodic`,
-    `dispatch_owner_summaries`): the `.defer()` call itself moves past the point
-    where either is available.
-    """
-    task = app.configure_task(name, queue=queue, lock=lock)
-    transaction.on_commit(lambda: task.defer(**kwargs))
+SUMMARY_RETRY = RetryStrategy(max_attempts=3, wait=300, retry_exceptions=RETRYABLE)
 
-
-SUMMARY_RETRY = RetryStrategy(max_attempts=3, wait=300, retry_exceptions={TransientError})
-
-# `inbound` jobs are retried 3 times, only on TransientError, after 2, 4 and 8 s.
+# `inbound` jobs are retried 3 times, on `RETRYABLE`, after 2, 4 and 8 s.
 INBOUND_RETRIES = 3
 INBOUND_RETRY = RetryStrategy(
-    max_attempts=INBOUND_RETRIES, exponential_wait=2, retry_exceptions={TransientError}
+    max_attempts=INBOUND_RETRIES, exponential_wait=2, retry_exceptions=RETRYABLE
 )
 
 
@@ -105,18 +108,26 @@ def apply_status(tenant_id: str, event_id: str) -> None:
 
 
 class SendRetryStrategy(BaseRetryStrategy):
-    """`send_message` is retried only when the provider asked for it (`RetryLater`, raised
+    """`send_message` is retried when the provider asked for it (`RetryLater`, raised
     as `SendRetry`), after its `retry_after` or the `OUTBOUND_RETRY_WAITS_S` schedule
-    (spaced out to survive a ~30 s outage without losing the message). The message
-    itself counts its attempts and becomes `failed` after the fifth."""
+    (spaced out to survive a ~30 s outage without losing the message), and on the
+    database errors of `RETRYABLE` (the message is still `pending`, or `sending`, which
+    the retry leaves `unknown`: never resent). The message itself counts its attempts
+    and becomes `failed` after the fifth."""
 
     def get_retry_decision(self, *, exception: BaseException, job: Job) -> RetryDecision | None:
         from autobot.runtime.outbound import MAX_SEND_ATTEMPTS, OUTBOUND_RETRY_WAITS_S, SendRetry
 
-        if not isinstance(exception, SendRetry) or job.attempts >= MAX_SEND_ATTEMPTS:
+        if job.attempts >= MAX_SEND_ATTEMPTS:
             return None
-        if exception.after_s is not None:
-            wait = exception.after_s
+        if isinstance(exception, SendRetry):
+            after_s = exception.after_s
+        elif isinstance(exception, RETRYABLE):
+            after_s = None
+        else:
+            return None
+        if after_s is not None:
+            wait = after_s
         else:
             wait = OUTBOUND_RETRY_WAITS_S[min(job.attempts, len(OUTBOUND_RETRY_WAITS_S) - 1)]
         return RetryDecision(retry_in={"seconds": math.ceil(wait)})
@@ -285,6 +296,20 @@ def retention_cleanup(timestamp: int) -> None:
     close_old_connections()
     try:
         cleanup()
+    finally:
+        close_old_connections()
+
+
+# Procrastinate's own tables (ids only, no personal data): purged whatever
+# RETENTION_CLEANUP_ENABLED says, which only governs customer data.
+@app.periodic(cron="30 3 * * *", periodic_id="jobs_cleanup")
+@app.task(queue=PERIODIC, name="jobs_cleanup", queueing_lock="jobs_cleanup")
+def jobs_cleanup(timestamp: int) -> None:
+    from autobot.runtime.retention import cleanup_jobs
+
+    close_old_connections()
+    try:
+        cleanup_jobs()
     finally:
         close_old_connections()
 

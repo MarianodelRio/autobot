@@ -329,3 +329,132 @@ def test_a_telegram_main_business_is_not_reachable_through_the_demo_bot(
     assert providers.texts(USER)[-1] == "Gracias por elegir Rojo. ¿Te ha gustado?"
     assert providers.texts(USER, token="123:ABC-token") == []
     assert all(where.startswith("999:TEST-TOKEN/") for where, _ in providers.telegram)
+
+
+# ── Hardening: NUL, strangers, limits, lost replies ───────────────────────
+
+
+def test_a_nul_in_a_signed_demo_update_is_stored_clean(tenants: Any, providers: Providers) -> None:
+    tenants(demo("wa"))
+    assert say(USER, "ho\x00la") == 200  # not a 503 forever
+    event = DemoEvent.objects.using("owner").get()
+    assert "\\u0000" not in json.dumps(event.payload)
+
+
+def test_a_database_data_error_is_dropped_with_200_not_retried_forever(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from django.db import DataError
+
+    def refuse(*args: object) -> bool:
+        raise DataError("unsupported Unicode escape sequence")
+
+    monkeypatch.setattr("autobot.channels.demo.views.store_event", refuse)
+    assert say(USER, "hola") == 200
+
+
+def test_nothing_of_a_stranger_is_kept_after_the_refusal(
+    tenants: Any, providers: Providers
+) -> None:
+    tenants(demo("wa"))
+    say(STRANGER, "hola")
+    assert providers.texts(STRANGER) == [selector.NO_ACCESS_TEXT]
+    event = DemoEvent.objects.using("owner").get()
+    assert event.status == "done" and event.payload == {}
+
+
+def test_a_person_over_the_event_limit_is_dropped_before_saving(
+    tenants: Any, providers: Providers
+) -> None:
+    tenants(demo("wa"))
+    for _ in range(selector.EVENTS_PER_MINUTE + 5):
+        assert say(USER, "hola") == 200
+    assert DemoEvent.objects.using("owner").count() == selector.EVENTS_PER_MINUTE
+
+
+def test_a_reply_that_certainly_was_not_sent_is_retried_without_repeating_the_notice(
+    tenants: Any, providers: Providers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from autobot.channels.adapters import TELEGRAM
+    from autobot.channels.base import RetryLater
+    from core.errors import TransientError
+
+    tenants(demo("wa"))
+    real_send = TELEGRAM.send
+    failures = [RetryLater()]
+
+    def flaky(*args: Any, **kwargs: Any) -> Any:
+        return failures.pop() if failures else real_send(*args, **kwargs)
+
+    monkeypatch.setattr(TELEGRAM, "send", flaky)
+    update = {
+        "update_id": 7,
+        "message": {
+            "message_id": 1,
+            "from": user(USER),
+            "chat": {"id": USER, "type": "private"},
+            "date": 1791194400,
+            "text": "/start",
+        },
+    }
+    response = Client().post(
+        URL,
+        data=json.dumps(update).encode(),
+        content_type="application/json",
+        headers={"X-Telegram-Bot-Api-Secret-Token": SECRET},
+    )
+    assert response.status_code == 200
+    event = DemoEvent.objects.using("owner").get()
+    with pytest.raises(TransientError):  # the list was not sent: the job is retried
+        selector.route_demo_event(event.id)
+    assert DemoEvent.objects.using("owner").get().status == "pending"
+    assert providers.texts(USER) == []
+    selector.route_demo_event(event.id)  # the retry
+    assert DemoEvent.objects.using("owner").get().status == "done"
+    assert len(providers.texts(USER)) == 1
+
+
+def test_a_failed_demo_notice_is_retried_and_never_duplicated(
+    tenants: Any, providers: Providers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from autobot.channels.adapters import TELEGRAM
+    from autobot.channels.base import RetryLater
+    from core.errors import TransientError
+
+    tenants(demo("wa"))
+    say(USER, "/start")
+    real_send = TELEGRAM.send
+    failures = [RetryLater()]
+
+    def flaky(*args: Any, **kwargs: Any) -> Any:
+        return failures.pop() if failures else real_send(*args, **kwargs)
+
+    monkeypatch.setattr(TELEGRAM, "send", flaky)
+    Client().post(
+        URL,
+        data=json.dumps(
+            {
+                "update_id": 8,
+                "callback_query": {
+                    "id": "cb8",
+                    "from": user(USER),
+                    "message": {
+                        "message_id": 2,
+                        "chat": {"id": USER, "type": "private"},
+                        "date": 1,
+                    },
+                    "chat_instance": "1",
+                    "data": "fp_select:wa",
+                },
+            }
+        ).encode(),
+        content_type="application/json",
+        headers={"X-Telegram-Bot-Api-Secret-Token": SECRET},
+    )
+    event = DemoEvent.objects.using("owner").get(provider_event_id="8")
+    with pytest.raises(TransientError):
+        selector.route_demo_event(event.id)  # nothing sent, nothing picked yet
+    selector.route_demo_event(event.id)
+    drain()
+    notices = [t for t in providers.texts(USER) if t.startswith("Demo · ")]
+    assert len(notices) == 1

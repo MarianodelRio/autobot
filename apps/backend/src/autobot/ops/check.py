@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 import httpx
@@ -15,17 +15,30 @@ from django.utils import timezone
 from autobot.channels.demo.doors import door
 from autobot.ops import containers, health, state, system
 from autobot.ops.models import OpsAlert, SystemSample
-from autobot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
-from autobot.runtime.notifications import resolve_alert, send_ops_alert
+from autobot.owner import links
+from autobot.runtime.models import DEMO_CHANNELS, Channel, Notification, OutboundMessage
+from autobot.runtime.notifications import bot_secrets, resolve_alert, send_ops_alert
 from autobot.runtime.periodic import channels_for
-from autobot.tenancy.registry import get_registry
+from autobot.runtime.sweeps import SweepResult, sweep_tenant
+from autobot.tenancy.registry import LoadedTenant, get_registry
 from autobot.tenancy.tx import tenant_tx
 
 SAMPLE_RETENTION = timedelta(days=62)
+DISK_WARNING_PCT = 85
+DISK_CRITICAL_PCT = 95
 
 DEMO_LABELS = {Channel.DEMO_TG: "Telegram", Channel.DEMO_WA: "WhatsApp"}
 
 log = logging.getLogger(__name__)
+
+
+def _sweep(tenant: LoadedTenant, now: datetime) -> SweepResult:
+    """The stuck-work sweeps of one tenant; a failing one never stops the check."""
+    try:
+        return sweep_tenant(tenant, now)
+    except Exception:
+        log.exception("sweep of tenant %s failed", tenant.slug)
+        return SweepResult()
 
 
 @dataclass(frozen=True)
@@ -74,6 +87,23 @@ def collect() -> list[Finding]:
             pending.append(
                 ("tenant_unavailable", "🔴 Tenant degradado o canal sin secretos/configuración.")
             )
+        sweep = _sweep(tenant, now)
+        if sweep.outbound_unknown or sweep.outbound_stuck:
+            pending.append(
+                (
+                    "outbound_stuck",
+                    "🟠 Envíos atascados sin trabajo (ambiguos o demasiado antiguos para"
+                    " reencolar).",
+                )
+            )
+        if sweep.inbound_stuck:
+            pending.append(
+                (
+                    "inbound_stuck",
+                    "🔴 Eventos entrantes pendientes sin trabajo desde hace más de 5 minutos"
+                    f" ({sweep.inbound_requeued} reencolados).",
+                )
+            )
         with tenant_tx(tenant.id):
             messages = OutboundMessage.objects.all()
             # Messages already unknown before this version have no transition time.
@@ -92,6 +122,22 @@ def collect() -> list[Finding]:
                     (
                         "outbound_failed",
                         "🟠 Hay envíos fallidos o ambiguos desde hace más de 10 minutos.",
+                    )
+                )
+            # A notice is claimed `failed` before the provider is called and an ambiguous
+            # result stays so (never resent blindly). With the owner chat and the bot
+            # configured, a recent failed one was a rejected or ambiguous delivery.
+            if (
+                bot_secrets() is not None
+                and links.owner_chat(tenant.id) is not None
+                and Notification.objects.filter(
+                    status=Notification.Status.FAILED, created_at__gte=day_ago
+                ).exists()
+            ):
+                pending.append(
+                    (
+                        "notification_failed",
+                        "🟠 Hay avisos al dueño fallidos o ambiguos en las últimas 24 horas.",
                     )
                 )
             # A demo-door rejection belongs to the platform's own credentials, not the
@@ -228,7 +274,9 @@ def collect() -> list[Finding]:
                 )
             )
     disk_used_pct = system.disk()
-    if disk_used_pct is not None and disk_used_pct > 85:
+    if disk_used_pct is not None and disk_used_pct > DISK_CRITICAL_PCT:
+        findings.append(Finding("disk_critical", None, "🔴 Disco por encima del 95 %."))
+    elif disk_used_pct is not None and disk_used_pct > DISK_WARNING_PCT:
         findings.append(Finding("disk", None, "🟠 Disco por encima del 85 %."))
     # In local there is no containers.sh timer: without this guard every check
     # would report containers_stale.

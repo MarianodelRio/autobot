@@ -157,8 +157,7 @@ def test_fecha_pasada(conv: Conv, mock_wa: MockWA, freeze_calendario: Freeze) ->
     conv.handle_message(phone, phone, None, "loc:riomayor")
     conv.handle_message(phone, phone, None, "otra_fecha")
     conv.handle_message(phone, phone, "20/09", None)
-    all_texts = " ".join(c.args[1] for c in mock_wa["text"].call_args_list)
-    assert "pasado" in all_texts.lower()
+    assert "pasado" in _last_interactive(mock_wa)["interactive"]["body"]["text"].lower()
 
 
 def test_hoy_sin_salidas_ofrece_mañana(
@@ -594,9 +593,9 @@ def test_lineas_en_destino_solo_lineas_y_pueblos_alcanzables(
     phone = "34600000114"
     conv.handle_message(phone, phone, None, "menu_horarios")
     conv.handle_message(phone, phone, None, "loc:pozoluengo")
-    conv.handle_message(phone, phone, "escribir", None)
+    conv.handle_message(phone, phone, None, "escribir")
     total_before = _n_calls(mock_wa)
-    conv.handle_message(phone, phone, "lineas:0", None)
+    conv.handle_message(phone, phone, None, "lineas:0")
     assert _n_calls(mock_wa) - total_before == 1
     payload = _last_interactive(mock_wa)
     ids = _row_ids(payload)
@@ -608,12 +607,12 @@ def test_lineas_en_destino_solo_lineas_y_pueblos_alcanzables(
     desc = {r["id"]: r["description"] for r in _rows(payload) if "description" in r}
     assert desc["linea:pozoluengo-riomayor:0"] == "2 pueblos"
 
-    conv.handle_message(phone, phone, "linea:pozoluengo-riomayor:0", None)
+    conv.handle_message(phone, phone, None, "linea:pozoluengo-riomayor:0")
     ids = _row_ids(_last_interactive(mock_wa))
     pueblos = {r for r in ids if r.startswith("loc:")}
     assert "loc:pozoluengo" not in pueblos
     assert pueblos == {"loc:carrascal", "loc:riomayor"}
-    conv.handle_message(phone, phone, "loc:riomayor", None)
+    conv.handle_message(phone, phone, None, "loc:riomayor")
     assert any(r.startswith("dia:") for r in _row_ids(_last_interactive(mock_wa)))
     _assert_max_10_filas(mock_wa)
 
@@ -625,8 +624,8 @@ def test_lineas_en_destino_volver_es_cambiar_origen(
     phone = "34600000119"
     conv.handle_message(phone, phone, None, "menu_horarios")
     conv.handle_message(phone, phone, None, "loc:pozoluengo")
-    conv.handle_message(phone, phone, "escribir", None)
-    conv.handle_message(phone, phone, "lineas:0", None)
+    conv.handle_message(phone, phone, None, "escribir")
+    conv.handle_message(phone, phone, None, "lineas:0")
     conv.handle_message(phone, phone, None, "cambiar_origen")
     payload = _last_interactive(mock_wa)
     assert "pueblo" in payload["interactive"]["body"]["text"].lower()
@@ -642,10 +641,10 @@ def test_lineas_en_destino_volver_a_lineas_desde_una_linea(
     phone = "34600000120"
     conv.handle_message(phone, phone, None, "menu_horarios")
     conv.handle_message(phone, phone, None, "loc:pozoluengo")
-    conv.handle_message(phone, phone, "lineas:0", None)
-    conv.handle_message(phone, phone, "linea:pozoluengo-riomayor:0", None)
+    conv.handle_message(phone, phone, None, "lineas:0")
+    conv.handle_message(phone, phone, None, "linea:pozoluengo-riomayor:0")
     assert _row_ids(_last_interactive(mock_wa))[-1] == "lineas:0"
-    conv.handle_message(phone, phone, "lineas:0", None)
+    conv.handle_message(phone, phone, None, "lineas:0")
     assert _row_ids(_last_interactive(mock_wa))[-1] == "cambiar_origen"
 
 
@@ -753,7 +752,7 @@ def test_escribir_ofrece_boton_ver_por_linea(
     botones = _last_interactive(mock_wa)["interactive"]["action"]["buttons"]
     assert botones[0]["reply"] == {"id": "lineas:0", "title": "🚌 Ver por línea"}
     conv.handle_message(phone, phone, None, "loc:pozoluengo")
-    conv.handle_message(phone, phone, "escribir", None)
+    conv.handle_message(phone, phone, None, "escribir")
     botones = _last_interactive(mock_wa)["interactive"]["action"]["buttons"]
     assert botones[0]["reply"]["id"] == "lineas:0"
     assert botones[1]["reply"]["id"] == "cambiar_origen"
@@ -923,7 +922,7 @@ def test_fecha_pasada_en_escribir_fecha_un_solo_mensaje(
     total_before = _n_calls(mock_wa)
     conv.handle_message(phone, phone, "20/09", None)
     assert _n_calls(mock_wa) - total_before == 1
-    text = _last_text(mock_wa)
+    text = _last_interactive(mock_wa)["interactive"]["body"]["text"]
     assert "pasado" in text.lower()
     assert "25/12" in text  # formato de ejemplo, en el mismo mensaje
 
@@ -966,7 +965,7 @@ def test_log_redaction_numero_telefono(
         if "[NO_RECONOCIDO]" in r.message:
             encontrado = True
             assert numero not in r.message
-            assert "<numero>" in r.message
+            assert r.message == f"[NO_RECONOCIDO] paso=fecha longitud={len(numero)}"
     assert encontrado
 
 
@@ -994,7 +993,7 @@ def test_log_redaction_numero_telefono_con_separadores(
         assert numero not in r.message
         if "[NO_RECONOCIDO]" in r.message:
             encontrado = True
-            assert "<numero>" in r.message
+            assert r.message == f"[NO_RECONOCIDO] paso=fecha longitud={len(numero)}"
     assert encontrado
 
 

@@ -106,7 +106,7 @@ def test_no_free_day(salon: Conversation) -> None:
     salon.config = configuration(opening_hours={"domingo": ["10:00-10:30"]}, booking_window_days=1)
     salon.send("hola")
     salon.press("menu_book")
-    salon.press("service_corte").expect(text_contains="No hay horarios")
+    salon.press("service_corte").expect(text_contains="ningún día")
     assert salon.state == {}
 
 
@@ -142,7 +142,7 @@ def test_unsupported_message_repeats_the_step_instead_of_resetting(
     salon.press("menu_book")
     salon.press("service_corte")
     assert salon.state["step"] == "BOOK_DAY"
-    turn = salon.unsupported().expect(text_contains="mensaje de texto")
+    turn = salon.unsupported().expect(text_contains="No puedo leer audios")
     assert salon.state["step"] == "BOOK_DAY"
     assert any(
         isinstance(r, List) and any("Martes" in row.title for s in r.sections for row in s.rows)
@@ -187,10 +187,24 @@ def test_day_closed_by_calendar(salon: Conversation) -> None:
     assert "2026-03-24" not in salon.state["days"]
 
 
-def test_text_outside_name_returns_to_menu(salon: Conversation) -> None:
+def test_text_in_a_list_step_repeats_the_step_and_keeps_progress(salon: Conversation) -> None:
     salon.send("hola")
     salon.press("menu_book")
-    salon.send("corte").expect(list_includes="Pedir cita")
+    salon.send("corte").expect(text_contains="Elige una opción de la lista o escribe *menú*")
+    assert salon.state["step"] == "BOOK_SERVICE"
+    salon.press("service_corte")
+    salon.send("el martes").expect(text_contains="Elige una opción", list_includes="Martes")
+    assert salon.state["step"] == "BOOK_DAY" and salon.state["service"] == "corte"
+    salon.press("day_2026-03-24")
+    salon.send("a las 10").expect(text_contains="Elige una opción")
+    assert salon.state["step"] in ("BOOK_PERIOD", "BOOK_HOUR")
+    salon.send("menú").expect(list_includes="Pedir cita")
+    assert salon.state == {}
+
+
+def test_text_at_the_menu_shows_the_menu(salon: Conversation) -> None:
+    salon.send("hola").expect(list_includes="Pedir cita")
+    salon.send("quiero cita").expect(list_includes="Pedir cita")
     assert salon.state == {}
 
 

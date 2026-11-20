@@ -24,7 +24,7 @@ deshacer.
 - **API con django-ninja**, como subpaquete `autobot.panel` (no una app Django nueva), con
   esquemas Pydantic y OpenAPI generado; sin Swagger expuesto.
 - **Sesión con contraseña + TOTP** (`django_otp`), un único rol (solo la persona usa el
-  panel), bloqueo por usuario tras 5 fallos en 15 min, sesión de 12 h, cookies con nombre
+  panel), bloqueo por usuario tras 5 fallos en 15 min (y un tope de 20 por dirección), sesión de 12 h, cookies con nombre
   propio y `Secure=False`: el tráfico va por el túnel SSH a `127.0.0.1`, nunca en claro
   por una red no confiable.
 - **Enrutado de base de datos por modelo, no por petición.** `AuthDatabaseRouter` manda a

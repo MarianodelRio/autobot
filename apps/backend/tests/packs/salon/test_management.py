@@ -33,7 +33,8 @@ def test_cancel(salon: Conversation) -> None:
     gcal_id = book(salon)
     salon.press("back_to_menu")
     salon.press("menu_cancel")
-    salon.press("cancel_appt:0").expect(text_contains="cancelada")
+    salon.press("cancel_appt:0").expect(text_contains="¿Cancelar")
+    salon.press("cancel_yes").expect(text_contains="cancelada")
     assert salon.calendar.get_event(gcal_id) is None
     assert salon.notifications[-1].kind == "booking_cancelled"
     assert salon.notifications[-1].text == (
@@ -145,7 +146,8 @@ def test_legacy_booking_with_external_id_can_be_managed(salon: Conversation) -> 
     )
     salon.send("hola")
     salon.press("menu_cancel")
-    salon.press("cancel_appt:0").expect(text_contains="cancelada")
+    salon.press("cancel_appt:0").expect(text_contains="¿Cancelar")
+    salon.press("cancel_yes").expect(text_contains="cancelada")
 
 
 def test_manual_phone_booking_is_owned(salon: Conversation) -> None:
@@ -163,7 +165,8 @@ def test_manual_phone_booking_is_owned(salon: Conversation) -> None:
     )
     salon.send("hola")
     salon.press("menu_cancel")
-    salon.press("cancel_appt:0").expect(text_contains="cancelada")
+    salon.press("cancel_appt:0").expect(text_contains="¿Cancelar")
+    salon.press("cancel_yes").expect(text_contains="cancelada")
 
 
 def test_event_active_and_inactive(salon: Conversation) -> None:
@@ -214,7 +217,8 @@ def test_replayed_cancellation_keeps_confirmation_and_owner_notice(salon: Conver
     gcal_id = book(salon)
     salon.press("back_to_menu")
     salon.press("menu_cancel")
-    salon.press("cancel_appt:0").expect(text_contains="cancelada")
+    salon.press("cancel_appt:0").expect(text_contains="¿Cancelar")
+    salon.press("cancel_yes").expect(text_contains="cancelada")
     salon.replay().expect(text_contains="cancelada")
     assert salon.calendar.cancelled == [gcal_id]
     assert len([n for n in salon.notifications if n.kind == "booking_cancelled"]) == 1

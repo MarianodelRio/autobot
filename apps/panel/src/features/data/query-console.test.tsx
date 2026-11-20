@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { QueryConsole } from "./query-console";
+import { displayCell, QueryConsole } from "./query-console";
 
 vi.mock("@uiw/react-codemirror", () => ({
   default: ({
@@ -126,4 +126,10 @@ test("remembers the last query for next time", async () => {
     JSON.parse(localStorage.getItem("autobot.panel.data.lastQuery") ?? "{}")
       .sql,
   ).toBe("SELECT * FROM tenant");
+});
+
+test("displayCell shows objects as JSON, never [object Object]", () => {
+  expect(displayCell({ a: [1, 2] })).toBe('{"a":[1,2]}');
+  expect(displayCell(null)).toBe("—");
+  expect(displayCell(5)).toBe("5");
 });

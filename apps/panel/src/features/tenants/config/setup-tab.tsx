@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { errorMessage } from "@/lib/errors";
+import { errorDetail, errorMessage } from "@/lib/errors";
 
 type SetupStep = components["schemas"]["SetupStepOut"];
 type SetupAction = components["schemas"]["SetupAction"];
@@ -186,6 +186,12 @@ function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
       client.setQueryData<SetupStep[]>(["tenant-setup", slug], (previous) =>
         previous?.map((item) => (item.key === step.key ? result : item)),
       );
+      // The forced health check also refreshes what «templates» and the activation
+      // checklist read from the cache.
+      if (step.key === "health")
+        void client.invalidateQueries({
+          queryKey: ["activation-checklist", slug],
+        });
     },
   });
   return (
@@ -214,7 +220,7 @@ function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
       <p className="text-sm">{step.detail}</p>
       {check.isError && (
         <p role="alert" className="text-sm text-status-critical">
-          No se pudo comprobar.
+          {errorDetail(check.error, "No se pudo comprobar.")}
         </p>
       )}
       {step.values.length > 0 && (
@@ -339,6 +345,9 @@ export function SetupTab({ slug, detail }: { slug: string; detail: Detail }) {
     queryFn: () =>
       unwrap(api.GET("/tenants/{slug}/setup", { params: { path: { slug } } })),
     staleTime: 0,
+    // Reading the steps never calls a provider, but a refetch on every window focus
+    // would still overwrite results from «Comprobar» that are not cached.
+    refetchOnWindowFocus: false,
   });
   if (q.isPending) return <p>Cargando pasos del alta…</p>;
   if (q.isError)

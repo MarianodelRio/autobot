@@ -264,3 +264,23 @@ def test_apply_to_tenant_reports_no_change_without_creating_a_version() -> None:
         "clientew", "timetable", pack="bus", name="w", version=None, actor="user", comment=""
     )
     assert result is None
+
+
+def test_push_race_on_the_unique_version_becomes_a_clean_library_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two uploads that both read the same `prior` must not surface a raw
+    IntegrityError: the loser gets the same "bájala primero" error."""
+    kwargs: dict[str, Any] = {
+        "pack": "bus",
+        "dataset": "timetable",
+        "name": "carrera",
+        "author": "operator",
+        "comment": "x",
+        "base_sha": None,
+    }
+    assert dataset_library.push(files=bus_files(), **kwargs) is not None
+    monkeypatch.setattr(dataset_library, "latest", lambda *a, **k: None)  # a stale read
+    changed = {**bus_files(), "note.txt": "other"}
+    with pytest.raises(dataset_library.LibraryError, match="más reciente"):
+        dataset_library.push(files=changed, **kwargs)

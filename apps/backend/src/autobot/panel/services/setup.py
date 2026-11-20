@@ -113,7 +113,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
     """Only what is already cached or in the database — never calls a provider.
     `tenant_setup_check` does that, one step at a time."""
     tenant = _tenant(slug)
-    items = {item.key: item for item in activation.checklist(slug).items}
+    items = {item.key: item for item in activation.checklist(slug, refresh=False).items}
     channel = tenant.document.channel
     steps = [
         SetupStepOut(
@@ -152,8 +152,12 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
                 label="Webhook de Telegram",
                 why="Sin el webhook registrado, Telegram nunca entrega los mensajes.",
                 state="pending",
-                blocking=True,
-                detail="Pulsa «Comprobar» para consultarlo en Telegram.",
+                # Not blocking on its own: activation's source of truth is the
+                # checklist, where an unregistered webhook fails the health item
+                # (`telegram_health(expected_url=...)`, critical).
+                blocking=False,
+                detail="Pulsa «Comprobar» para consultarlo en Telegram. Si falta,"
+                " «Salud del canal» también lo señala y bloquea la activación.",
                 values=[SetupValue(label="URL esperada", value=expected or "—", copiable=True)],
                 checkable=True,
             )
@@ -180,6 +184,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
             state=_state(items["health"].ok),
             blocking=items["health"].blocking,
             detail=items["health"].detail,
+            checkable=True,
         )
     )
     steps.append(
@@ -296,6 +301,9 @@ def tenant_setup_add_tester(slug: str, tester_id: str, *, actor: str) -> SetupSt
     main = doc.get("testers", {}).get("main", [])
     if tester_id in main:
         raise ApiError("bad_request", "Ese tester ya está añadido.", 400)
+    # Only someone who really wrote and was ignored: never an id typed or crafted by hand.
+    if tester_id not in {c.id for c in _tester_candidates(tenant, limit=50)}:
+        raise ApiError("bad_request", "Ese id no es un candidato reciente.", 400)
     doc.setdefault("testers", {})["main"] = [*main, tester_id]
     store.publish(
         slug,
@@ -384,6 +392,8 @@ def tenant_setup_check(slug: str, step: str, *, actor: str) -> SetupStepOut:
             else "No se pudo comprobar."
         )
         result = current.model_copy(update={"state": state, "detail": detail})
+    elif step == "health":
+        result = _check_health(tenant, current)
     elif step == "calendar":
         result = _check_calendar(tenant, current)
     elif step == "templates":
@@ -403,6 +413,16 @@ def tenant_setup_check(slug: str, step: str, *, actor: str) -> SetupStepOut:
         details={"step": step, "state": result.state},
     )
     return result
+
+
+def _check_health(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:
+    from autobot.ops.status import tenant_status
+
+    # The same forced check activation runs, so what is shown is what would block it.
+    item = {i.key: i for i in activation.checklist(tenant.slug).items}["health"]
+    reasons = tenant_status(tenant).reasons
+    detail = "Sin problemas críticos." if item.ok else "; ".join(reasons) or "Hay un problema."
+    return current.model_copy(update={"state": "ok" if item.ok else "error", "detail": detail})
 
 
 def _check_calendar(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:

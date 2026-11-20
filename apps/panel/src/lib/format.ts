@@ -16,20 +16,24 @@ const RELATIVE_STEPS: [limit: number, divisor: number, unit: string][] = [
 ];
 const LAST_STEP: [divisor: number, unit: string] = [86400, "d"];
 
-/** Compact relative time ("hace 12 s", "hace 3 min"), used across the Resumen screen. */
+function span(diffS: number): string {
+  if (diffS < 60) return `${diffS} s`;
+  const step = RELATIVE_STEPS.find(([limit]) => diffS < limit);
+  const [divisor, unit] = step ? [step[1], step[2]] : LAST_STEP;
+  return `${Math.floor(diffS / divisor)} ${unit}`;
+}
+
+/** Compact relative time ("hace 12 s", "hace 3 min"; "en 3 d" for a future date),
+ * used across the Resumen screen. */
 export function formatRelative(
   date: string | Date,
   now: Date = new Date(),
 ): string {
-  const diffS = Math.max(
-    0,
-    Math.round((now.getTime() - new Date(date).getTime()) / 1000),
-  );
-  if (diffS === 0) return "justo ahora";
-  if (diffS < 60) return `hace ${diffS} s`;
-  const step = RELATIVE_STEPS.find(([limit]) => diffS < limit);
-  const [divisor, unit] = step ? [step[1], step[2]] : LAST_STEP;
-  return `hace ${Math.floor(diffS / divisor)} ${unit}`;
+  const signed = Math.round((now.getTime() - new Date(date).getTime()) / 1000);
+  if (signed === 0) return "justo ahora";
+  // A date in the future (an invite's expiry) must not read as "justo ahora".
+  if (signed < 0) return `en ${span(-signed)}`;
+  return `hace ${span(signed)}`;
 }
 
 export function formatEur(value: number): string {

@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
@@ -21,9 +26,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { errorMessage } from "@/lib/errors";
+import { errorDetail } from "@/lib/errors";
 
 type Invite = components["schemas"]["DemoInviteOut"];
+
+const PAGE = 50;
 
 function invalidate(client: ReturnType<typeof useQueryClient>) {
   void client.invalidateQueries({ queryKey: ["demo-invites"] });
@@ -76,6 +83,7 @@ function CreateInviteForm() {
             <Label htmlFor="invite-note">Nota (para quién es)</Label>
             <Input
               id="invite-note"
+              maxLength={200}
               placeholder="p. ej. peluquero Juan"
               value={note}
               onChange={(event) => setNote(event.target.value)}
@@ -120,7 +128,7 @@ function CreateInviteForm() {
         </form>
         {mutation.isError && (
           <p role="alert" className="mt-2 text-sm text-destructive">
-            {errorMessage(mutation.error, "No se pudo crear la invitación.")}
+            {errorDetail(mutation.error, "No se pudo crear la invitación.")}
           </p>
         )}
       </CardContent>
@@ -159,9 +167,7 @@ function RevokeAction({ invite }: { invite: Invite }) {
         onConfirm={() => mutation.mutate()}
       />
       {mutation.isError && (
-        <p role="alert">
-          {errorMessage(mutation.error, "No se pudo revocar.")}
-        </p>
+        <p role="alert">{errorDetail(mutation.error, "No se pudo revocar.")}</p>
       )}
     </>
   );
@@ -169,6 +175,18 @@ function RevokeAction({ invite }: { invite: Invite }) {
 
 function InviteQr({ invite }: { invite: Invite }) {
   const [open, setOpen] = useState(false);
+  // Drawn by the backend only when someone opens it, never for every row.
+  const qr = useQuery({
+    queryKey: ["demo-invite-qr", invite.id],
+    queryFn: () =>
+      unwrap(
+        api.GET("/demo/invites/{id}/qr", {
+          params: { path: { id: invite.id } },
+        }),
+      ),
+    enabled: open && invite.telegram_link !== null,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
   if (!open) {
     return (
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
@@ -185,10 +203,15 @@ function InviteQr({ invite }: { invite: Invite }) {
       {invite.telegram_link ? (
         <>
           <p className="text-sm break-all">{invite.telegram_link}</p>
-          {invite.qr_svg && (
+          {qr.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {errorDetail(qr.error, "No se pudo generar el QR.")}
+            </p>
+          )}
+          {qr.data?.qr_svg && (
             <div className="h-40 w-40 [&>svg]:h-full [&>svg]:w-full">
               {/* biome-ignore lint/security/noDangerouslySetInnerHtml: our own SVG, from the backend's QR generator (tools/ops/qr.py), never user-supplied markup. */}
-              <div dangerouslySetInnerHTML={{ __html: invite.qr_svg }} />
+              <div dangerouslySetInnerHTML={{ __html: qr.data.qr_svg }} />
             </div>
           )}
         </>
@@ -203,10 +226,21 @@ function InviteQr({ invite }: { invite: Invite }) {
 }
 
 export function DemoInvitesPage() {
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ["demo-invites"],
-    queryFn: () => unwrap(api.GET("/demo/invites")),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET("/demo/invites", {
+          params: { query: { limit: PAGE, offset: pageParam } },
+        }),
+      ),
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, page) => n + page.items.length, 0);
+      return loaded < last.total ? loaded : undefined;
+    },
   });
+  const invites = query.data?.pages.flatMap((page) => page.items) ?? [];
   return (
     <div className="space-y-6">
       <PageHeader
@@ -218,13 +252,13 @@ export function DemoInvitesPage() {
         <p>Cargando invitaciones…</p>
       ) : query.isError ? (
         <ErrorState
-          message={errorMessage(
+          message={errorDetail(
             query.error,
             "No se pudieron cargar las invitaciones.",
           )}
           onRetry={() => void query.refetch()}
         />
-      ) : query.data.length === 0 ? (
+      ) : invites.length === 0 ? (
         <EmptyState message="No hay invitaciones todavía." />
       ) : (
         <Table>
@@ -244,7 +278,7 @@ export function DemoInvitesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {query.data.map((invite) => {
+            {invites.map((invite) => {
               const s = status(invite);
               return (
                 <TableRow key={invite.id}>
@@ -276,6 +310,15 @@ export function DemoInvitesPage() {
             })}
           </TableBody>
         </Table>
+      )}
+      {query.hasNextPage && (
+        <Button
+          variant="outline"
+          disabled={query.isFetchingNextPage}
+          onClick={() => void query.fetchNextPage()}
+        >
+          Cargar más
+        </Button>
       )}
     </div>
   );

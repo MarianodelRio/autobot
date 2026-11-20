@@ -3,9 +3,12 @@
 import re
 from datetime import date, datetime
 from decimal import Decimal
+from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+import holidays as holidays_lib
+from holidays.utils import list_supported_countries
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from packs.salon.messages import SalonTexts
 
@@ -32,6 +35,7 @@ def validate_ranges(ranges: list[str]) -> list[str]:
 
 
 class Service(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=24)
     price_eur: Decimal | None = Field(default=None, ge=0, allow_inf_nan=False)
     duration_min: int = Field(gt=0, strict=True)
@@ -45,6 +49,7 @@ class Service(BaseModel):
 
 
 class SpecialEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     active: bool = False
     name: str = Field(default="", max_length=80)
     days: dict[date, list[TimeRange]] = {}
@@ -61,10 +66,64 @@ class SpecialEvent(BaseModel):
         return self
 
 
+@lru_cache(maxsize=32)
+def _public_holidays(country: str, subdivision: str | None) -> holidays_lib.HolidayBase:
+    """Public holidays of the country (and region); `holidays` builds each year on first
+    access, so the cached object keeps working as the years go by."""
+    return holidays_lib.country_holidays(country, subdiv=subdivision)
+
+
+class HolidaysConfig(BaseModel):
+    """Public-holiday calendar (library `holidays`): those days are closed, unless listed in
+    `open_dates`. `closed_dates` adds local feasts, holidays or any other closing day."""
+
+    model_config = ConfigDict(extra="forbid")
+    country: str = Field(default="ES", title="País", description="Código ISO del país, p. ej. ES.")
+    subdivision: str | None = Field(
+        default=None,
+        title="Comunidad o región",
+        description="Código de la comunidad autónoma (p. ej. MD, AN, CT) o vacío.",
+    )
+    closed_dates: list[date] = Field(
+        default=[],
+        max_length=366,
+        title="Días de cierre adicionales",
+        description="Fiestas locales, vacaciones u otros días cerrados.",
+    )
+    open_dates: list[date] = Field(
+        default=[],
+        max_length=366,
+        title="Festivos en los que se abre",
+        description="Días festivos en los que el negocio sí abre.",
+    )
+
+    @model_validator(mode="after")
+    def validate_calendar(self) -> HolidaysConfig:
+        countries = list_supported_countries()
+        if self.country not in countries:
+            raise ValueError(f"país no admitido: {self.country}")
+        if self.subdivision is not None and self.subdivision not in countries[self.country]:
+            raise ValueError(f"comunidad o región no válida para {self.country}")
+        if set(self.closed_dates) & set(self.open_dates):
+            raise ValueError("una fecha no puede estar a la vez en cierre y en apertura")
+        return self
+
+    def is_closed(self, day: date) -> bool:
+        if day in self.closed_dates:
+            return True
+        return day not in self.open_dates and day in _public_holidays(
+            self.country, self.subdivision
+        )
+
+
 class SalonConfig(BaseModel):
-    business_name: str = Field(min_length=1, title="Nombre del negocio")
+    model_config = ConfigDict(extra="forbid")
+    business_name: str = Field(min_length=1, max_length=60, title="Nombre del negocio")
     contact_phone: str = Field(
-        min_length=1, title="Teléfono de contacto", description="Para los mensajes del bot."
+        min_length=1,
+        max_length=30,
+        title="Teléfono de contacto",
+        description="Para los mensajes del bot.",
     )
     calendar_id: str = Field(
         min_length=1,
@@ -81,7 +140,7 @@ class SalonConfig(BaseModel):
     slot_step_min: int = Field(default=30, gt=0, strict=True, title="Paso de los huecos (min)")
     min_notice_min: int = Field(default=0, ge=0, strict=True, title="Antelación mínima (min)")
     booking_window_days: int = Field(
-        default=21, ge=1, strict=True, title="Ventana de reserva (días)"
+        default=21, ge=1, le=90, strict=True, title="Ventana de reserva (días)"
     )
     max_active_bookings: int = Field(
         default=5, ge=1, strict=True, title="Citas activas máximas por cliente"
@@ -95,6 +154,11 @@ class SalonConfig(BaseModel):
         default=None,
         title="Confirmación manual desde",
         description="Fecha a partir de la cual las citas nuevas exigen confirmación manual.",
+    )
+    holidays: HolidaysConfig | None = Field(
+        default=None,
+        title="Festivos",
+        description="Calendario de festivos: esos días no se puede reservar.",
     )
     special_event: SpecialEvent = Field(default=SpecialEvent(), title="Evento especial")
     info_text: str = Field(
@@ -138,9 +202,10 @@ class SalonConfig(BaseModel):
         return self
 
     def spans(self, day: date, *, event: bool = False) -> list[tuple[str, str]]:
-        ranges = (
-            self.special_event.days.get(day, [])
-            if event
-            else self.opening_hours.get(DAYS[day.weekday()], [])
-        )
+        if event:
+            ranges = self.special_event.days.get(day, [])
+        elif self.holidays is not None and self.holidays.is_closed(day):
+            ranges = []
+        else:
+            ranges = self.opening_hours.get(DAYS[day.weekday()], [])
         return [(r.split("-")[0], r.split("-")[1]) for r in ranges]

@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from django.core.cache import cache
+
 from autobot.ops import health
 from autobot.ops.status import tenant_status
 from autobot.runtime.models import InboundEvent, OwnerLink
@@ -29,7 +31,11 @@ class Checklist:
         return [item.key for item in self.items if item.blocking and not item.ok]
 
 
-def checklist(slug: str) -> Checklist:
+def checklist(slug: str, *, refresh: bool = True) -> Checklist:
+    """`refresh=True` (activating, and the panel's «Comprobar») asks the providers now.
+    `refresh=False` (the panel's plain reads) only looks at the cached health: a page
+    load must not call Meta, Telegram or Google, and an unchecked health counts as
+    pending, never as ok."""
     from packs.registry import PACKS
 
     sources = store.current_sources()
@@ -38,6 +44,7 @@ def checklist(slug: str) -> Checklist:
     tenant = registry.by_slug.get(slug)
     valid = tenant is not None and not tenant.is_degraded and not tenant.ambiguous
     channel_ok = secrets_ok = healthy = templates_ok = inbound = owner = False
+    checked = True
     if tenant is not None:
         channel = tenant.document.channel
         # C1: `complete` alone (app_id/waba_id/phone_number_id) still leaves a
@@ -51,10 +58,16 @@ def checklist(slug: str) -> Checklist:
         secrets_ok = tenant.secrets is not None and not any(
             "decrypt" in issue for issue in tenant.main_disabled
         )
-        issues = health.daily(tenant.id, lambda: health.tenant_health(tenant), force=True)
-        healthy = tenant_status(tenant).level != "critical"
-        templates_ok = not isinstance(channel, WhatsAppChannel) or not any(
-            issue.code == "templates" for issue in issues
+        if refresh:
+            issues = health.daily(tenant.id, lambda: health.tenant_health(tenant), force=True)
+        else:
+            cached = cache.get(f"health:{tenant.id}")
+            checked = isinstance(cached, dict)
+            issues = list(cached["issues"]) if isinstance(cached, dict) else []
+        healthy = checked and tenant_status(tenant).level != "critical"
+        templates_ok = checked and (
+            not isinstance(channel, WhatsAppChannel)
+            or not any(issue.code == "templates" for issue in issues)
         )
         with tenant_tx(tenant.id):
             # C1: a message from a stranger during onboarding is saved but ignored
@@ -76,7 +89,17 @@ def checklist(slug: str) -> Checklist:
     ]
     return Checklist(
         [
-            Item(key, label, ok, blocking, "Comprobado" if ok else "Pendiente")
+            Item(
+                key,
+                label,
+                ok,
+                blocking,
+                "Comprobado"
+                if ok
+                else "Sin comprobar: pulsa «Comprobar»."
+                if not checked and key in ("health", "templates")
+                else "Pendiente",
+            )
             for key, label, ok, blocking in rows
         ]
     )

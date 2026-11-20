@@ -28,6 +28,15 @@ con `POST /tenants/{slug}/rollback` o con `tenant_config import`; no hace falta 
 SHA nuevo. El panel ya no muestra el historial en pantalla, pero esos endpoints se
 conservan. No cambies webhooks de canales reales sin autorización.
 
+**Sin GitHub (SSH directo):** si GitHub o `gh` no están disponibles, con la clave de operador:
+`ssh deploy@<host> 'tail -n 50 /srv/autobot/var/state/ops/deploys.jsonl'` (el `previous` del último
+`deployed`), y
+`ssh admin@<host>` → `sudo -u deploy bash -lc 'cd /srv/autobot && git fetch origin main &&
+git merge-base --is-ancestor <sha> origin/main && git checkout --detach <sha> &&
+deploy/scripts/deploy.sh <sha>'`. Lo mismo que hace `ssh-deploy.sh` (el CI) pero sin su candado
+previo, así que primero comprueba que no hay otro despliegue en curso. La imagen de ese SHA tiene
+que seguir en GHCR (o en disco, si `prune.sh` aún no la quitó).
+
 **Verificación:** `var/.deployed-sha` coincide con el SHA sano, `/health` devuelve
 200, la cola continúa y una consulta por el bot de demo funciona.
 

@@ -25,11 +25,11 @@ def test_create_list_and_revoke(authed_client: Any) -> None:
     assert body["uses"] == 0
     assert body["grants"] == 0
     assert body["revoked_at"] is None
-    assert len(body["code"]) == 8
+    assert len(body["code"]) >= 8
     assert all(c not in body["code"] for c in "0O1IL")  # no ambiguous characters
 
     listed = get(authed_client, "demo/invites").json()
-    assert [i["id"] for i in listed] == [body["id"]]
+    assert [i["id"] for i in listed["items"]] == [body["id"]] and listed["total"] == 1
 
     revoked = post(authed_client, f"demo/invites/{body['id']}/revoke")
     assert revoked.status_code == 200, revoked.content
@@ -66,14 +66,46 @@ def test_link_and_qr_only_appear_with_a_configured_bot_username(
     settings.DEMO_TELEGRAM_BOT_USERNAME = ""
     without = post(authed_client, "demo/invites", {"expires_in_days": 1}).json()
     assert without["telegram_link"] is None
-    assert without["qr_svg"] is None
+    assert "qr_svg" not in without  # the list/create never carry the QR
+    assert get(authed_client, f"demo/invites/{without['id']}/qr").json() == {"qr_svg": None}
 
     settings.DEMO_TELEGRAM_BOT_USERNAME = "AutobotDemoBot"
     with_username = post(authed_client, "demo/invites", {"expires_in_days": 1}).json()
     assert with_username["telegram_link"] == (
         f"https://t.me/AutobotDemoBot?start={with_username['code']}"
     )
-    assert with_username["qr_svg"] is not None and "<svg" in with_username["qr_svg"]
+    qr = get(authed_client, f"demo/invites/{with_username['id']}/qr").json()
+    assert qr["qr_svg"] is not None and "<svg" in qr["qr_svg"]
+
+
+def test_note_is_capped_at_200(authed_client: Any) -> None:
+    ok = post(authed_client, "demo/invites", {"note": "x" * 200, "expires_in_days": 1})
+    assert ok.status_code == 200
+    long = post(authed_client, "demo/invites", {"note": "x" * 201, "expires_in_days": 1})
+    assert long.status_code == 422
+
+
+def test_list_is_paginated_with_grants_counted_in_one_query(authed_client: Any) -> None:
+    for _ in range(3):
+        post(authed_client, "demo/invites", {"expires_in_days": None})
+    page = get(authed_client, "demo/invites?limit=2&offset=0").json()
+    rest = get(authed_client, "demo/invites?limit=2&offset=2").json()
+    assert (len(page["items"]), len(rest["items"]), page["total"]) == (2, 1, 3)
+    assert get(authed_client, "demo/invites?limit=0").status_code == 422
+
+
+def test_creation_and_its_audit_row_roll_back_together(
+    authed_client: Any, monkeypatch: Any
+) -> None:
+    from autobot.panel.services import demo_invites
+
+    def boom(**kwargs: Any) -> None:
+        raise RuntimeError("audit down")
+
+    monkeypatch.setattr(demo_invites, "record", boom)
+    with pytest.raises(RuntimeError):
+        demo_invites.create_invite(note="x", max_uses=1, expires_in_days=None, actor="op")
+    assert DemoInvite.objects.using("owner").count() == 0
 
 
 def test_grants_count_reflects_redemptions(authed_client: Any) -> None:
@@ -83,4 +115,4 @@ def test_grants_count_reflects_redemptions(authed_client: Any) -> None:
         channel="demo_tg", external_id="1", invite=invite, granted_at=timezone.now()
     )
     listed = get(authed_client, "demo/invites").json()
-    assert listed[0]["grants"] == 1
+    assert listed["items"][0]["grants"] == 1

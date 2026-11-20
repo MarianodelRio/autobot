@@ -1,7 +1,7 @@
 """Pure slot engine."""
 
 from collections.abc import Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Protocol
 
 from packs.salon.parser import parse_cfg
@@ -38,6 +38,13 @@ def generate_slots(start: str, end: str, presence_min: int = 30, step_min: int =
         slots.append(time(minute // 60, minute % 60))
         minute += step_min
     return slots
+
+
+def exists(at: datetime) -> bool:
+    """False for a wall-clock time skipped by a DST jump (e.g. 02:30 on the last Sunday
+    of March in Madrid): it would not round-trip through UTC."""
+    back = at.astimezone(UTC).astimezone(at.tzinfo)
+    return back.replace(tzinfo=None) == at.replace(tzinfo=None)
 
 
 def overlaps(start: datetime, end: datetime, slot_start: datetime, slot_end: datetime) -> bool:
@@ -87,7 +94,7 @@ def compute_slots(
     for start, stop in ranges:
         for slot in generate_slots(start, stop, service.client_presence_min, rules.slot_step_min):
             at = datetime.combine(day, slot, now.tzinfo)
-            if at < now + timedelta(minutes=rules.min_notice_min):
+            if at < now + timedelta(minutes=rules.min_notice_min) or not exists(at):
                 continue
             finish = at + timedelta(minutes=service.duration_min)
             if not any(overlaps(e.start, e.end, at, finish) for e in blocking):

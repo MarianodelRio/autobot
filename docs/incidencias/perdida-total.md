@@ -22,7 +22,7 @@ y la pérdida de la máquina puede estar duplicado o ser irrecuperable:
 **Pasos:**
 
 1. Sigue [restauración y simulacro trimestral](../procedimientos/restaurar.md) en la
-   máquina nueva: bootstrap, `restore.sh --confirm-empty-target` (no arranca los
+   máquina nueva: `install-vm.sh --restore-target` (deja el marcador `bootstrap-complete`), `restore.sh --confirm-empty-target` (no arranca los
    workers por defecto) y verificación de `/health` y conteos por tenant.
 2. **Antes de arrancar los workers** (`deploy/scripts/compose.sh up -d
    worker-inbound worker-outbound`, ya que `restore.sh` se niega a repetirse sobre

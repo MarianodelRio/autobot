@@ -22,7 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { downloadJson } from "@/lib/download";
-import { errorMessage } from "@/lib/errors";
+import { errorDetail, errorMessage } from "@/lib/errors";
 
 type Detail = components["schemas"]["TenantDetail"];
 
@@ -60,14 +60,14 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
   const exportData = useMutation({
     mutationFn: () =>
       unwrap(
-        api.GET("/tenants/{slug}/export", {
+        api.POST("/tenants/{slug}/export", {
           params: { path: { slug: detail.slug } },
         }),
       ),
     onSuccess: (result) => {
       downloadJson(`${detail.slug}-datos.json`, result);
     },
-    onError: () => toast.error("No se pudo exportar."),
+    onError: (error) => toast.error(errorDetail(error, "No se pudo exportar.")),
   });
   if (detail.document.demo) return null;
   const active = detail.status === "active";

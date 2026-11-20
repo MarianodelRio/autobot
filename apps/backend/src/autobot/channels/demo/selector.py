@@ -16,7 +16,14 @@ WhatsApp are two independent sessions for the same person.
    door's channel, processed by `process_event` as any other.
 
 The selector's own messages (list, refusal, "Demo · …") belong to no tenant, so they
-are sent here directly, once the event is marked done: at most once.
+are sent here directly, once the event is marked done: at most once. The one exception
+is a message that certainly was not sent (the provider asked to wait, or there was no
+connection) while nothing else had been sent for that event: the event is reopened and
+the job retried (`TransientError`), so the answer is not lost in silence.
+
+Nothing is kept of a person without access longer than needed: on WhatsApp their events
+are not even saved, and on Telegram the saved update is emptied once the refusal is out.
+Every person is also limited in how many events per minute are accepted.
 """
 
 import copy
@@ -31,17 +38,19 @@ from django.core.cache import cache
 from django.db import connections, transaction
 from django.utils import timezone
 
-from autobot.channels.base import InboundItem, Rejected, Sent, StatusItem
+from autobot.channels.base import InboundItem, Rejected, RetryLater, Sent, StatusItem
 from autobot.channels.demo import invites
 from autobot.channels.demo.doors import Door, allowed, door
 from autobot.channels.ratelimit import WindowLimiter
 from autobot.ops.logging import bind, contextual
 from autobot.runtime.inbound import store
-from autobot.runtime.jobs import INBOUND, ROUTE_DEMO_EVENT, app
+from autobot.runtime.jobs import INBOUND, ROUTE_DEMO_EVENT
 from autobot.runtime.locks import demo_user_lock
 from autobot.runtime.models import Channel, DemoEvent, DemoSession, OutboundMessage
+from autobot.runtime.queue import enqueue
 from autobot.tenancy.registry import LoadedTenant, get_registry
 from autobot.tenancy.tx import tenant_tx
+from core.errors import TransientError
 from core.limits import MAX_ID_BYTES, plan_sends
 from core.replies import Reply, Text
 from core.ui import list_msg, paginate, row, section
@@ -62,6 +71,15 @@ NONE_AVAILABLE_TEXT = "No hay ninguna demo disponible ahora mismo."
 # (worker memory). WhatsApp never answers one: Meta bills every message.
 refusals = WindowLimiter(limit=3, window_s=3600)
 
+# Events accepted per person and door: past it they are dropped before being saved
+# (webhook process memory).
+EVENTS_PER_MINUTE = 30
+event_limiter = WindowLimiter(limit=EVENTS_PER_MINUTE, window_s=60)
+
+# The "Demo · {business}" notice already sent for an event (a retry must not repeat it).
+NOTICE_SENT_KEY = "demo:picked:{event_id}"
+NOTICE_SENT_TTL_S = 3600
+
 INSERT_EVENT = """
     INSERT INTO demo_event (id, channel, provider_event_id, payload, status, received_at)
     VALUES (%s, %s, %s, %s::jsonb, 'pending', %s)
@@ -73,6 +91,15 @@ INSERT_EVENT = """
 def store_event(door: Door, item: InboundItem) -> bool:
     """Save a demo door item and queue its routing; False if already received (the
     provider retried). Writes no table with RLS."""
+    if event_limiter.hit(f"{door.channel}:{item.external_id}"):
+        log.warning("demo events of a person over the limit dropped")
+        return False
+    if (
+        door.channel == Channel.DEMO_WA
+        and not allowed(door, item)
+        and invites.candidate_code(door, item) is None
+    ):
+        return False  # WhatsApp never answers a stranger: there is nothing to keep
     event_id = uuid.uuid7()
     bind(channel=str(door.channel), event_id=str(event_id))
     with transaction.atomic(using="default"), connections["default"].cursor() as cursor:
@@ -89,11 +116,12 @@ def store_event(door: Door, item: InboundItem) -> bool:
         row_ = cursor.fetchone()
         if row_ is None:
             return False
-        app.configure_task(
+        enqueue(
             ROUTE_DEMO_EVENT,
+            {"event_id": str(row_[0])},
             queue=INBOUND,
             lock=demo_user_lock(door.channel, item.external_id),
-        ).defer(event_id=str(row_[0]))
+        )
     return True
 
 
@@ -126,6 +154,7 @@ def route_demo_event(event_id: UUID) -> None:
                 _finish_and_reply(event, door_, item, [Text(NO_ACCESS_TEXT)])
         else:
             _finish(event)  # WhatsApp: never answer (Meta bills every message)
+        _scrub(event)  # nothing of a stranger is kept
         return
 
     available = _available()
@@ -203,7 +232,11 @@ def _pick(event: DemoEvent, door_: Door, item: InboundItem, tenant: LoadedTenant
     """Save the choice, say which business it is and send it a synthetic `menu`, so its
     pack answers with its menu. The notice goes first, so it arrives before the menu; if
     the job is cut before the end, a retry may repeat it, never the menu."""
-    _reply(door_, item, [Text(PICKED_TEXT.format(name=tenant.document.name))])
+    notice_key = NOTICE_SENT_KEY.format(event_id=event.id)
+    if cache.get(notice_key) is None:
+        if _reply(door_, item, [Text(PICKED_TEXT.format(name=tenant.document.name))]):
+            raise TransientError("demo notice not sent")  # nothing done yet: retried whole
+        cache.set(notice_key, True, timeout=NOTICE_SENT_TTL_S)
     DemoSession.objects.update_or_create(
         channel=door_.channel,
         external_id=item.external_id,
@@ -265,12 +298,24 @@ def _finish(event: DemoEvent) -> None:
     )
 
 
+def _scrub(event: DemoEvent) -> None:
+    """Empty the saved update (the person is not known to the demo, so nothing of theirs
+    is worth keeping). The event is already done: it is never parsed again."""
+    DemoEvent.objects.filter(id=event.id, status=DemoEvent.Status.DONE).update(payload={})
+
+
 def _finish_and_reply(
     event: DemoEvent, door_: Door, item: InboundItem, replies: list[Reply]
 ) -> None:
-    """Mark the event done, then answer: a retry never repeats the answer."""
+    """Mark the event done, then answer: a retry never repeats the answer. If nothing
+    could be sent and the provider says it is only temporary, the event is reopened and
+    the job retried instead (nothing went out, so nothing repeats)."""
     _finish(event)
-    _reply(door_, item, replies)
+    if _reply(door_, item, replies):
+        DemoEvent.objects.filter(id=event.id, status=DemoEvent.Status.DONE).update(
+            status=DemoEvent.Status.PENDING
+        )
+        raise TransientError("demo reply not sent")
 
 
 def route_demo_status(item: StatusItem) -> None:
@@ -298,10 +343,15 @@ def route_demo_status(item: StatusItem) -> None:
     log.info("demo WhatsApp status for an unknown outbound message")
 
 
-def _reply(door_: Door, item: InboundItem, replies: list[Reply]) -> None:
+def _reply(door_: Door, item: InboundItem, replies: list[Reply]) -> bool:
+    """Send the replies in order. True if the first one certainly was not sent and may be
+    retried (`RetryLater`: no connection, or the provider asked to wait): then nothing
+    went out. A failure after something was sent only stops the rest (resending would
+    repeat what arrived)."""
     # WhatsApp: the phone when known (a BSUID recipient needs a feature Meta's test
     # numbers lack), like runtime.outbound._recipient; Telegram: the chat id.
     recipient = item.phone or item.external_id
+    maybe_sent = False
     for reply in plan_sends(replies):
         outcome = door_.adapter.send(
             door_.adapter.render(reply, door_.description),
@@ -314,5 +364,12 @@ def _reply(door_: Door, item: InboundItem, replies: list[Reply]) -> None:
             cache.set(f"bot:{door_.channel}:auth", True, timeout=None)
         elif isinstance(outcome, Sent):
             cache.delete(f"bot:{door_.channel}:auth")
+        if isinstance(outcome, RetryLater):
+            log.warning("demo selector message not sent: RetryLater")
+            if not maybe_sent:
+                return True
+            break
         if not isinstance(outcome, Sent):
             log.warning("demo selector message not sent: %s", type(outcome).__name__)
+        maybe_sent = maybe_sent or not isinstance(outcome, Rejected)
+    return False

@@ -18,11 +18,39 @@ La configuración vigente está en PostgreSQL. Se edita en el bloque `config` de
 | `slot_step_min`, `min_notice_min`, `booking_window_days`, `max_active_bookings` | Paso de las horas, antelación, horizonte y límite de citas. |
 | `reminders_enabled`, `reminder_window_hours` | Barrido de recordatorios. |
 | `manual_confirmations_enabled`, `manual_confirmations_since` | Avisos de citas manuales creadas desde una fecha; la fecha es obligatoria si se activa. |
+| `holidays` | Calendario de festivos (opcional, ver más abajo). |
 | `special_event`, `info_text`, `texts` | Evento especial, contacto y textos sobrescribibles. |
+
+Límites: `business_name` ≤ 60 y `contact_phone` ≤ 30 caracteres; `booking_window_days` de 1 a 90;
+los textos de `texts` no pueden estar vacíos (se recortan los espacios de los extremos). La
+config rechaza claves desconocidas, en cualquier nivel: un error tipográfico falla al importar.
+
+### Festivos
+
+```yaml
+holidays:
+  country: ES          # código ISO; lo valida la librería `holidays`
+  subdivision: MD      # comunidad autónoma (AN, CT, MD…) o null
+  closed_dates: ["2026-05-15"]   # fiestas locales, vacaciones, cierres puntuales
+  open_dates: ["2026-12-08"]     # festivo en el que sí se abre
+```
+
+Con `holidays` definido, los festivos oficiales del país y la región (más `closed_dates`) no
+aparecen en la lista de días ni tienen huecos, y la reserva lo revalida bajo candado. `open_dates`
+reabre un festivo con su horario semanal normal; una fecha no puede estar en las dos listas.
+Sin `holidays` (por defecto) solo cuenta el día de la semana, como antes. El calendario del
+negocio manda siempre sobre esto: `[CFG] CERRADO` y `[CFG] VACACIONES` cierran cualquier día, y
+`[CFG] HORARIO HH:MM-HH:MM` abre un día festivo o cerrado esa jornada. Los días de un
+`special_event` no se ven afectados por los festivos (los eliges tú explícitamente).
 
 El servicio debe ocupar como máximo el tiempo de presencia del cliente
 (`duration_min ≤ client_presence_min`). Los eventos `[CFG] CERRADO`,
 `[CFG] VACACIONES` y `[CFG] HORARIO HH:MM-HH:MM` ajustan los huecos del día. El
+Cualquier otro evento de día completo (un cumpleaños, «Vacaciones» sin el prefijo `[CFG]`) **no
+cierra el día por sí solo**, pero tampoco se ignora: como todo evento que no es `[CFG]` ni
+cita del bot, **bloquea las horas que cubre**, y uno de día completo las bloquea todas. Es la
+opción conservadora (nunca se reserva sobre algo que el peluquero ha apuntado); para cerrar
+un día usa `[CFG] CERRADO`. El
 bot distingue citas propias por metadatos privados de Calendar; una cita creada
 a mano necesita `Telefono:` en la descripción para que el barrido pueda
 identificarla. Para probar cambios sin tocar el calendario real se usa
@@ -89,3 +117,27 @@ incidencia y de secretos están en `docs/incidencias/calendar.md` y
 La plantilla inicial del demo está en `apps/backend/src/packs/salon/template/document.yaml`.
 Al crear un negocio desde ella se vacían `calendar_id`, `contact_phone` y
 `business_name`, para que el negocio nuevo use sus propios datos y calendario.
+
+## Conversación
+
+- **Nombre**: el mensaje que lo pide lleva «❌ Cancelar» (vuelve al menú sin reservar) y, si el
+  contacto tiene nombre conocido, «Usar {nombre}». Las palabras de escape (`cancelar`, `volver`,
+  `atrás`, `salir`, `no`, `nada`, `hola`, `gracias`, `adiós`, `ayuda`…) no son nombres y
+  vuelven al menú. El nombre debe tener al menos una letra, entre 2 y 100 caracteres, y se
+  limpia de `*`, `_`, `` ` ``, `~` y saltos de línea. En este paso `alta` y `baja` son texto (un
+  nombre), no los comandos de avisos; en cualquier otro paso siguen siéndolo
+  (`Pack.expects_free_text`).
+- **Cancelar** una cita pide confirmación («¿Cancelar Corte de pelo del martes 24 de marzo a las
+  10:00?» [Sí, cancelar] [No]). Los botones de cancelar de los avisos proactivos
+  (`reminder_cancel`, `booking_cancel`) siguen siendo de un toque, porque son la respuesta
+  explícita a un aviso de esa cita. Una cita ya pasada no se puede cancelar ni mover.
+- **Mover**: la propia cita no bloquea los huecos que ocupa (ni al listarlos ni al revalidar
+  bajo candado).
+- **Texto libre** en un paso de lista (servicio, día, hora, cita) no pierde el progreso: se
+  repite el paso con «Elige una opción de la lista o escribe *menú*». Los pies de esos mensajes
+  lo dicen; en el menú, cualquier texto muestra el menú. Un audio o una imagen recibe un
+  texto genérico y se repite el paso (solo en el paso del nombre se pide escribirlo).
+- **Sin días**: si no queda ningún día con hueco se dice y se da el teléfono; si solo se llena el
+  día elegido se avisa («No hay horarios disponibles para ese día») y se ofrecen los demás.
+- **Cambio de hora**: los huecos que no existen por el cambio de hora (02:00–03:00 el último
+  domingo de marzo) no se ofrecen, y la hora repetida de octubre se ofrece una vez.

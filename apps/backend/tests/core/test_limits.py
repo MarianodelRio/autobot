@@ -262,3 +262,28 @@ def test_titles_that_become_equal_when_truncated_raise() -> None:
     )
     with pytest.raises(LimitError, match="titles are repeated"):
         plan_sends([reply])
+
+
+class TestUtf16Limits:
+    """WhatsApp counts titles in UTF-16 units: an emoji outside the BMP is 2."""
+
+    def test_length_and_cut_never_split_an_emoji(self) -> None:
+        from core.limits import cut_utf16, utf16_len
+
+        assert utf16_len("a📅") == 3
+        assert cut_utf16("📅" * 15, 20) == "📅" * 10
+        assert cut_utf16("📅" * 15, 21) == "📅" * 10  # the 11th would be units 21-22
+        assert cut_utf16("ñ" * 30, 20) == "ñ" * 20
+        assert cut_utf16("short", 20) == "short"
+
+    def test_a_title_over_the_units_is_long_and_is_truncated(self) -> None:
+        from core.limits import MAX_BUTTON_TITLE, check, plan_sends
+        from core.replies import Button, Buttons
+
+        title = "📅" * 11  # 11 characters, 22 units
+        reply = Buttons("body", [Button("a", title)])
+        assert check(reply)[1], "22 UTF-16 units exceed the 20 of a button title"
+        (planned,) = plan_sends([reply])
+        assert isinstance(planned, Buttons)
+        assert planned.buttons[0].title == "📅" * 10
+        assert MAX_BUTTON_TITLE == 20

@@ -167,6 +167,16 @@ def test_disk_row(tenants: Any, alerts: Any, monkeypatch: Any) -> None:
     assert "disk" in kinds(alerts)
 
 
+def test_disk_critical_row(tenants: Any, alerts: Any, monkeypatch: Any) -> None:
+    tenants()
+    monkeypatch.setattr(
+        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 96, "total": 100})()
+    )
+    check.run()
+    assert "disk_critical" in kinds(alerts)
+    assert "disk" not in kinds(alerts)
+
+
 def test_queue_rows(tenants: Any, alerts: Any) -> None:
     tenants()
     with connections["owner"].cursor() as cursor:
@@ -553,3 +563,19 @@ def test_record_calendar_skips_the_write_when_nothing_changed(
     assert len(writes) == 3  # recovered: written
     state.record_calendar(tenant_id, "main", "ok")
     assert len(writes) == 3  # already recovered: no change, no write
+
+
+@pytest.mark.django_db(databases=["default", "owner"])
+def test_audit_record_strips_nul_characters() -> None:
+    from autobot.ops import audit
+    from autobot.ops.models import AuditEvent
+
+    audit.record(
+        actor="a\x00b",
+        action="x.y",
+        summary="uno\x00dos",
+        details={"k\x00": ["v\x00", {"n": "m\x00"}]},
+    )
+    event = AuditEvent.objects.using("owner").get(action="x.y")
+    assert (event.actor, event.summary) == ("ab", "unodos")
+    assert event.details == {"k": ["v", {"n": "m"}]}

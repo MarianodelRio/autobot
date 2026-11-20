@@ -47,6 +47,54 @@ describe("CSRF", () => {
   });
 });
 
+describe("CSRF 403", () => {
+  afterEach(() => {
+    clearCookies();
+    vi.unstubAllGlobals();
+  });
+
+  test("asks for a fresh token and resends once", async () => {
+    setCookie("autobot_panel_csrftoken=stale");
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const request = input instanceof Request ? input : new Request(input);
+        calls.push(`${request.method} ${new URL(request.url).pathname}`);
+        if (request.url.endsWith("/auth/csrf")) {
+          setCookie("autobot_panel_csrftoken=fresh");
+          return new Response("{}", { status: 200 });
+        }
+        const token = request.headers.get("X-CSRFToken");
+        return token === "fresh"
+          ? new Response(JSON.stringify({ ok: true }), { status: 200 })
+          : new Response(JSON.stringify({ detail: "CSRF check Failed" }), {
+              status: 403,
+            });
+      }),
+    );
+    const { data } = await api.POST("/auth/logout");
+    expect(data).toEqual({ ok: true });
+    expect(calls).toEqual([
+      "POST /api/panel/auth/logout",
+      "GET /api/panel/auth/csrf",
+      "POST /api/panel/auth/logout",
+    ]);
+  });
+
+  test("does not retry a 403 that is not about CSRF", async () => {
+    setCookie("autobot_panel_csrftoken=t");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ detail: "no" }), { status: 403 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { response } = await api.POST("/auth/logout");
+    expect(response.status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("401 outside auth/me and auth/login", () => {
   beforeEach(() => {
     vi.stubGlobal(

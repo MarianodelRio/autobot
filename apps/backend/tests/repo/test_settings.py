@@ -17,6 +17,7 @@ def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:
         if k
         not in (
             "ENVIRONMENT",
+            "DJANGO_SETTINGS_MODULE",
             "DJANGO_SECRET_KEY",
             "DB_OWNER_URL",
             "DB_READONLY_URL",
@@ -26,7 +27,7 @@ def run(*args: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, *args],
         cwd=ROOT,
-        env={**base, **env},
+        env={"ENVIRONMENT": "local", **base, **env},
         capture_output=True,
         text=True,
         check=False,
@@ -159,3 +160,22 @@ def test_prod_rejects_invalid_encryption_key_without_disclosing_it() -> None:
         assert "SECRETS_ENCRYPTION_KEY must contain valid Fernet keys" in result.stderr
         for part in filter(None, key.split(",")):
             assert part not in result.stderr
+
+
+def test_unset_environment_fails_closed_as_prod() -> None:
+    """A forgotten ENVIRONMENT must not enable DEBUG nor the public example keys."""
+    base = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("ENVIRONMENT", "DJANGO_SETTINGS_MODULE", "DJANGO_SECRET_KEY")
+    }
+    result = subprocess.run(
+        [sys.executable, "manage.py", "check"],
+        cwd=ROOT,
+        env=base,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "DJANGO_SECRET_KEY" in result.stderr

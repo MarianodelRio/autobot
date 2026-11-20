@@ -2,6 +2,7 @@
 django-ninja's `APIKeyCookie` already rejects unsafe methods without a valid
 `X-CSRFToken`; neither class below repeats that check."""
 
+import hashlib
 from typing import Any
 
 from django.conf import settings
@@ -18,9 +19,11 @@ from ninja import Router, Schema
 from ninja.errors import HttpError
 from ninja.security import APIKeyCookie
 
+from autobot.channels.ratelimit import client_ip
 from autobot.ops import audit
 
 LOCKOUT_THRESHOLD = 5
+IP_LOCKOUT_THRESHOLD = 20  # one address may try several usernames
 LOCKOUT_WINDOW_S = 15 * 60
 GENERIC_ERROR = "Credenciales no válidas."
 
@@ -65,19 +68,42 @@ class MeOut(Schema):
     username: str
 
 
-def _lockout_key(username: str) -> str:
-    return f"panel:login:{username}"
+def _slot_keys(scope: str, subject: str, limit: int) -> list[str]:
+    digest = hashlib.sha256(subject.lower().encode()).hexdigest()[:32]
+    return [f"panel:login:{scope}:{digest}:{i}" for i in range(limit)]
+
+
+def _take_slot(keys: list[str]) -> str | None:
+    """Reserves one attempt before it is checked. `cache.add` is atomic (a unique key),
+    unlike a read-then-write counter, so concurrent guesses each take a distinct slot
+    and cannot slip past the limit together. `None`: no slot left, locked out."""
+    for key in keys:
+        if cache.add(key, 1, timeout=LOCKOUT_WINDOW_S):
+            return key
+    return None
+
+
+def _blocked(username: str, scope: str) -> HttpError:
+    audit.record(
+        actor=username,
+        action="auth.login_blocked",
+        summary=f"Login bloqueado ({scope}): {username}",
+        details={"scope": scope},
+    )
+    return HttpError(401, GENERIC_ERROR)
 
 
 @router.post("/login", auth=CsrfOnly())
 def login(request: HttpRequest, payload: LoginIn) -> MeOut:
     username = payload.username[:150]
-    lockout_key = _lockout_key(username)
-    if (cache.get(lockout_key) or 0) >= LOCKOUT_THRESHOLD:
-        audit.record(
-            actor=username, action="auth.login_failed", summary=f"Login bloqueado: {username}"
-        )
-        raise HttpError(401, GENERIC_ERROR)
+    user_keys = _slot_keys("user", username, LOCKOUT_THRESHOLD)
+    ip_keys = _slot_keys("ip", client_ip(request), IP_LOCKOUT_THRESHOLD)
+    ip_slot = _take_slot(ip_keys)
+    if ip_slot is None:
+        raise _blocked(username, "ip")
+    if _take_slot(user_keys) is None:
+        cache.delete(ip_slot)  # a locked-out user's attempt does not also burn the IP's
+        raise _blocked(username, "user")
     # Raising inside the atomic block would roll back the audit row and the device's
     # own throttle bookkeeping along with it: decide here, act on it once outside.
     failed = True
@@ -93,12 +119,11 @@ def login(request: HttpRequest, payload: LoginIn) -> MeOut:
             django_login(request, user)
             otp_login(request, device)
     if failed:
-        cache.set(lockout_key, (cache.get(lockout_key) or 0) + 1, timeout=LOCKOUT_WINDOW_S)
         audit.record(
             actor=username, action="auth.login_failed", summary=f"Login fallido: {username}"
         )
         raise HttpError(401, GENERIC_ERROR)
-    cache.delete(lockout_key)
+    cache.delete_many([*user_keys, ip_slot])
     audit.record(actor=username, action="auth.login", summary=f"Login: {username}")
     assert user is not None
     return MeOut(username=user.username)

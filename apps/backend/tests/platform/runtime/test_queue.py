@@ -7,7 +7,7 @@ import time
 from collections.abc import Iterator
 
 import pytest
-from django.db import connections
+from django.db import connections, transaction
 from procrastinate.contrib.django.django_connector import DjangoConnector
 
 from autobot.runtime.jobs import INBOUND, QUEUES, app
@@ -104,3 +104,43 @@ def test_jobs_with_different_locks_can_run_at_once() -> None:
     start_b.configure(lock="conv:b").defer()
     run_worker(concurrency=2)
     assert [what for label, what, _ in EVENTS if label == "a"] == ["saw_b"]
+
+
+def test_enqueue_inside_a_tenant_tx_is_atomic_even_with_the_worker_connector() -> None:
+    """Regression: `procrastinate worker` replaces the app's connector with its own psycopg
+    pool, so a defer through `app` inside a job left the Django transaction (a job visible
+    before the commit, and surviving a rollback). `enqueue` must stay in the transaction."""
+    from uuid import uuid4
+
+    from autobot.runtime.queue import enqueue
+    from autobot.tenancy.tx import tenant_tx
+
+    class Boom(Exception):
+        pass
+
+    assert isinstance(app.connector, DjangoConnector)
+    with app.replace_connector(app.connector.get_worker_connector()):
+        # Visible from another connection only after the commit.
+        with tenant_tx(uuid4()):
+            enqueue("tests.record", {"label": "committed"}, queue=INBOUND, lock="conv:atomic")
+            assert job_statuses() == []
+        assert job_statuses() == ["todo"]
+
+        # Gone with a rollback.
+        with pytest.raises(Boom), tenant_tx(uuid4()):
+            enqueue("tests.record", {"label": "rolled back"}, queue=INBOUND)
+            raise Boom
+        assert job_statuses() == ["todo"]
+
+
+def test_a_taken_queueing_lock_does_not_abort_the_caller_transaction() -> None:
+    from procrastinate.exceptions import AlreadyEnqueued
+
+    from autobot.runtime.queue import enqueue
+
+    enqueue("tests.record", {"label": "a"}, queue=INBOUND, queueing_lock="once")
+    with transaction.atomic(using="default"):
+        with pytest.raises(AlreadyEnqueued):
+            enqueue("tests.record", {"label": "b"}, queue=INBOUND, queueing_lock="once")
+        enqueue("tests.record", {"label": "c"}, queue=INBOUND)  # the transaction is still usable
+    assert job_statuses() == ["todo", "todo"]

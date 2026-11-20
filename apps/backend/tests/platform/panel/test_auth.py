@@ -123,7 +123,35 @@ def test_lockout_after_five_failures(user: Any) -> None:
         assert response.status_code == 401
     # The 6th attempt uses the right credentials, but the lockout still blocks it.
     assert login(client, token).status_code == 401
-    assert AuditEvent.objects.using("owner").filter(action="auth.login_failed").count() == 6
+    assert AuditEvent.objects.using("owner").filter(action="auth.login_failed").count() == 5
+    blocked = AuditEvent.objects.using("owner").filter(action="auth.login_blocked")
+    assert blocked.count() == 1 and blocked.get().details == {"scope": "user"}
+
+
+def test_lockout_by_ip_across_usernames(user: Any, settings: Any, monkeypatch: Any) -> None:
+    from autobot.panel import auth
+
+    monkeypatch.setattr(auth, "IP_LOCKOUT_THRESHOLD", 3)
+    client = Client(enforce_csrf_checks=True)
+    token = csrf(client)
+    for i in range(3):
+        response = login(client, token, username=f"guess{i}", password="wrong", otp="000000")
+        assert response.status_code == 401
+    # A fourth username, and even the real one with the right credentials, is blocked.
+    assert login(client, token).status_code == 401
+    blocked = AuditEvent.objects.using("owner").filter(action="auth.login_blocked")
+    assert blocked.get().details == {"scope": "ip"}
+
+
+def test_a_successful_login_clears_the_user_counter(user: Any) -> None:
+    client = Client(enforce_csrf_checks=True)
+    token = csrf(client)
+    for _ in range(4):
+        assert login(client, token, password="wrong", otp="000000").status_code == 401
+    assert login(client, token).status_code == 200
+    token = csrf(client)  # login rotates the CSRF token
+    for _ in range(4):
+        assert login(client, token, password="wrong", otp="000000").status_code == 401
 
 
 def test_me_without_session_is_401(user: Any) -> None:

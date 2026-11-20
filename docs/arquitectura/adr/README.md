@@ -22,3 +22,4 @@ Plantilla: [`plantilla.md`](plantilla.md).
 | [014](ADR-014-pestana-de-alta.md) | Pestaña «Alta» guiada por pasos | aceptada |
 | [015](ADR-015-varios-peluqueros.md) | Varios peluqueros en `salon` | aceptada |
 | [016](ADR-016-acciones-de-alta-whatsapp.md) | Acciones de alta de WhatsApp desde la pestaña «Alta» | aceptada |
+| [017](ADR-017-instalador-de-la-vm-y-entorno-local.md) | Instalador de la VM desde dentro y un solo comando para local (sustituye `server-init` del ADR-012) | aceptada |

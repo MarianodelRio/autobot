@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
 
 type Detail = components["schemas"]["TenantDetail"];
 type Invite = components["schemas"]["OwnerInviteOut"];
@@ -138,9 +139,7 @@ export function OwnerSection({ detail }: { detail: Detail }) {
                 fileName={`dueno-${detail.slug}`}
               />
               <div className="space-y-1 text-sm">
-                <p>
-                  Caduca el {new Date(link.expires_at).toLocaleString("es-ES")}.
-                </p>
+                <p>Caduca el {formatDateTime(link.expires_at)}.</p>
                 {link.replaces_chat && (
                   <p className="text-status-warning">
                     Ya hay un chat conectado; este enlace lo sustituirá cuando

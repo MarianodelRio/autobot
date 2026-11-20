@@ -41,6 +41,11 @@ describe("formatRelative", () => {
     expect(formatRelative("2026-11-01T12:00:12Z", now)).toBe("hace 3 d");
   });
 
+  test("a future date reads as 'en ...', not 'justo ahora'", () => {
+    expect(formatRelative("2026-11-07T12:00:12Z", now)).toBe("en 3 d");
+    expect(formatRelative("2026-11-04T12:00:42Z", now)).toBe("en 30 s");
+  });
+
   test("now", () => {
     expect(formatRelative(now, now)).toBe("justo ahora");
   });

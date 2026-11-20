@@ -208,6 +208,28 @@ def test_an_unexpected_pack_error_gives_the_recovery_text(
     assert bodies(event) == [RECOVERY_TEXT]
 
 
+def test_a_reply_that_cannot_be_planned_gives_the_recovery_text_not_silence(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deterministic failure persisting the result (`LimitError`: duplicated button
+    titles never truncate) must not leave the event pending and the person unanswered."""
+    from core.replies import Button
+
+    def bad(ctx: PackContext, msg: object) -> PackResult:
+        return PackResult(
+            replies=[Buttons("hola", [Button("a", "Igual"), Button("b", "Igual")])],
+            state={"x": 1},
+        )
+
+    use_pack(monkeypatch, handle_message=bad)
+    tenants(wa_tenant())
+    event = receive(wa_text("hola"))
+    assert event.status == "failed" and event.error.startswith("persist: ")
+    assert bodies(event) == [RECOVERY_TEXT]
+    assert conversation().state == {}
+    assert len([j for j in jobs() if j[0] == "send_message"]) == 1
+
+
 def test_a_failed_defer_rolls_back_the_reply_instead_of_losing_it(
     tenants: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -565,11 +587,14 @@ def test_a_status_updates_its_message(tenants: Any) -> None:
     tenants(wa_tenant())
     receive(wa_text("hola"))
     (row,) = outbound()
-    OutboundMessage.objects.using("owner").filter(id=row.id).update(status="unknown")
+    OutboundMessage.objects.using("owner").filter(id=row.id).update(
+        status="unknown", unknown_at=timezone.now(), last_error="timeout"
+    )
 
     event = apply(status_body("delivered", str(row.id)))
     assert event.status == "done"
     row.refresh_from_db(using="owner")
+    assert (row.unknown_at, row.last_error) == (None, "")  # proven sent: nothing to resolve
     assert (row.status, row.provider_message_id, row.pricing_category, row.billable) == (
         "sent",
         "wamid.OUT1",

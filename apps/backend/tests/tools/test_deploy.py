@@ -401,3 +401,34 @@ def test_refuses_when_frozen(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "frozen" in result.stderr
     assert not (tmp_path / "docker.log").exists()
+
+
+def test_a_failed_caddy_reload_alerts_ops(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, CADDY_RELOAD_FAIL="1")
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "docker.log").read_text().splitlines()
+    assert any("deploy_caddy_reload" in line for line in log)
+
+
+def test_a_lock_held_by_ssh_deploy_is_not_taken_twice(tmp_path: Path) -> None:
+    """ssh-deploy.sh locks before its checkout and hands the lock on."""
+    import fcntl
+
+    script, binaries = setup(tmp_path)
+    lock = open(tmp_path / "var" / ".deploy.lock", "w")  # noqa: SIM115
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    try:
+        blocked = invoke(script, binaries)
+        assert blocked.returncode == 1
+        assert "Another deployment is running" in blocked.stderr
+        handed_on = subprocess.run(
+            ["bash", str(script), NEW],
+            env=invoke_env(script, binaries, AUTOBOT_DEPLOY_LOCK_HELD="1"),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert handed_on.returncode == 0, handed_on.stderr
+    finally:
+        lock.close()

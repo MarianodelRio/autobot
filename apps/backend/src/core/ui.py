@@ -1,5 +1,5 @@
 """Reply builders that respect the common limits, building `core.replies`. Titles
-are truncated; anything else out of limits is a
+are truncated (in UTF-16 units); anything else out of limits is a
 programming error and raises `LimitError`."""
 
 from collections.abc import Sequence
@@ -11,6 +11,7 @@ from core.limits import (
     MAX_ROW_TITLE,
     LimitError,
     check,
+    cut_utf16,
 )
 from core.replies import Button, Buttons, List, Reply, Row, Section
 
@@ -18,7 +19,9 @@ PER_PAGE = 8  # 8 rows + "more" + "back" = 10, the list limit
 
 
 def trunc(text: str, max_len: int) -> str:
-    return text[:max_len]
+    """At most `max_len` UTF-16 code units (how WhatsApp counts titles), without
+    splitting an emoji."""
+    return cut_utf16(text, max_len)
 
 
 def button(id: str, title: str) -> Button:

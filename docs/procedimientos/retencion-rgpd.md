@@ -14,6 +14,18 @@ sin actividad registrada se usa la fecha de creación. `test_session.selected_at
 registra la selección o el último mensaje remitido al negocio. Los estados se vacían
 cuando superan el tiempo de conversación del pack o carecen de fecha de entrada.
 
+Un contacto que ha pedido la baja (`opt_out`) **no se purga** al caducar: se conserva
+como supresión mínima (el identificador o teléfono y la marca `opt_out`, con el nombre
+vaciado). Así una cita manual posterior para el mismo teléfono no crea un contacto
+nuevo al que enviar recordatorios (`_contact_by_phone` respeta el `opt_out`). Solo
+`contact_forget` (o «Olvidar contacto» en el panel) lo borra del todo, y entonces se
+pierde también esa supresión: el operador debe decirlo a quien lo pide.
+
+Las tablas de la cola (`procrastinate_jobs`/`procrastinate_events`) solo guardan ids y
+nombres de tarea, nunca datos personales. Un periódico propio (`jobs_cleanup`, 03:30
+UTC) borra los trabajos terminados de más de 30 días y **no** depende de
+`RETENTION_CLEANUP_ENABLED`, que solo gobierna los datos de clientes.
+
 Los comandos siguientes son síncronos, requieren el alias de operación `owner` y no
 encolan identificadores personales. Deben ejecutarse en un terminal privado por un
 operador autorizado. Sustituya los argumentos por el negocio y contacto correspondientes:
@@ -24,6 +36,9 @@ uv run python manage.py contact_forget SLUG EXTERNAL_ID --channel main
 uv run python manage.py tenant_data_export SLUG --output /ruta/privada/negocio.json
 uv run python manage.py tenant_purge SLUG
 ```
+
+Cada exportación y cada borrado deja un evento de auditoría (`actor` `command:<nombre>`, solo
+ids internos, nunca el identificador del contacto), igual que sus equivalentes del panel.
 
 `--channel` puede omitirse si el identificador corresponde a un único contacto; si
 coincide entre `main` y una puerta de demo (`demo_tg`/`demo_wa`), el comando exige

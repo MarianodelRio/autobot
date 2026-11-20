@@ -134,6 +134,10 @@ class Pack:
     """Directory containing the initial demo document and optional datasets."""
     template_blank: tuple[str, ...] = ()
     """Config fields cleared when the template initializes a new business."""
+    expects_free_text: Callable[[Mapping[str, Any]], bool] | None = None
+    """Given the effective conversation state, True when the current step waits for free
+    text (e.g. a name): the platform then does not read `alta`/`baja` as opt-in/out
+    commands there, and passes the text to the pack. `menu` always keeps working."""
     test_calendar: Callable[[], object] | None = None
     """When `needs_calendar`: builds an in-memory double for `manage.py chat` (L4).
     Never used outside that dev tool; the real calendar is wired by the worker."""

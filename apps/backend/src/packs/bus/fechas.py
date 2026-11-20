@@ -13,13 +13,21 @@ from datetime import date
 
 DIAS_FECHA_PASADA = 30
 
-_FECHA_RE = re.compile(r"^(\d{1,2})\s*[/\-. ]\s*(\d{1,2})(?:\s*[/\-. ]\s*(\d{2}|\d{4}))?$")
+# Separador `/`, `-` o `.` (con espacios alrededor si se quiere), el mismo en toda la fecha;
+# o solo espacios (`25 12`). Con espacios, el mes debe ser un mes (`10 30` es una hora,
+# no una fecha).
+_FECHA_RE = re.compile(
+    r"^(\d{1,2})\s*(?P<sep>[/\-.])\s*(\d{1,2})(?:\s*(?P=sep)\s*(\d{2}|\d{4}))?$"
+    r"|^(\d{1,2}) +(\d{1,2})(?: +(\d{2}|\d{4}))?$"
+)
 
 
 @dataclass(frozen=True)
 class LecturaFecha:
-    estado: str  # ok | formato | inexistente | pasada
-    fecha: date | None = None  # solo cuando estado == "ok"
+    # ok | formato | inexistente | pasada | confirmar (la fecha cae en otro año: hay que
+    # preguntar, nunca se adivina en silencio)
+    estado: str
+    fecha: date | None = None  # cuando estado es "ok" o "confirmar"
 
 
 def _es_fecha_valida(dia: int, mes: int, anio: int) -> bool:
@@ -61,14 +69,30 @@ def _dia_mes_valido_en_algun_anio(dia: int, mes: int) -> bool:
     return _es_fecha_valida(dia, mes, 2024)
 
 
+def _necesita_confirmar(dia: int, mes: int, hoy: date, proxima: date) -> bool:
+    """Una fecha sin año que no cae en el año actual solo se da por buena sin preguntar si
+    es el año siguiente y queda más cerca por delante que por detrás (`5/1` en diciembre);
+    el 29/02 que salta a otro año siempre se pregunta."""
+    if proxima.year == hoy.year:
+        return False
+    if (dia, mes) == (29, 2) or proxima.year != hoy.year + 1:
+        return True
+    ultima = _ultima_ocurrencia(dia, mes, hoy)
+    return (proxima - hoy).days > (hoy - ultima).days
+
+
 def leer_fecha(texto: str, hoy: date) -> LecturaFecha:
     m = _FECHA_RE.match(texto.strip())
     if not m:
         return LecturaFecha(estado="formato")
 
-    dia = int(m.group(1))
-    mes = int(m.group(2))
-    anio_txt = m.group(3)
+    if m.group(1) is not None:
+        dia_txt, mes_txt, anio_txt = m.group(1), m.group(3), m.group(4)
+    else:
+        dia_txt, mes_txt, anio_txt = m.group(5), m.group(6), m.group(7)
+        if not 1 <= int(mes_txt) <= 12:
+            return LecturaFecha(estado="formato")  # `10 30`: una hora, no una fecha
+    dia, mes = int(dia_txt), int(mes_txt)
 
     if anio_txt is not None:
         anio = int(anio_txt)
@@ -88,4 +112,6 @@ def leer_fecha(texto: str, hoy: date) -> LecturaFecha:
     proxima = _proxima_ocurrencia(dia, mes, hoy)
     if (hoy - ultima).days <= DIAS_FECHA_PASADA:
         return LecturaFecha(estado="pasada")
+    if _necesita_confirmar(dia, mes, hoy, proxima):
+        return LecturaFecha(estado="confirmar", fecha=proxima)
     return LecturaFecha(estado="ok", fecha=proxima)

@@ -26,6 +26,7 @@ from autobot.channels.base import (
     Sent,
     StatusItem,
 )
+from autobot.channels.payload import clean_payload
 from autobot.tenancy.schema import BSUID, PHONE, WhatsAppChannel, WhatsAppSecrets
 from core.limits import MAX_ID_BYTES, MAX_TEXT
 from core.messages import IncomingMessage
@@ -42,13 +43,29 @@ MAX_EVENT_ID = 200  # inbound_event.provider_event_id
 MAX_RETRY_AFTER_S = 3600.0
 
 STATUSES = frozenset({"sent", "delivered", "read", "failed"})
-# Graph API error codes. 190: invalid or expired access token. Recipient that cannot
-# receive: 131021 (recipient is the sender), 131026 (undeliverable: no WhatsApp, old
-# version…), 131030 (not in the allowed list of a test number).
+# Graph API error codes of a send, and what each becomes (`classify`):
+#
+# - 190: invalid or expired access token -> Rejected(auth).
+# - 131021 (recipient is the sender), 131026 (undeliverable: no WhatsApp, old version…),
+#   131030 (not in the allowed list of a test number) -> Rejected(recipient).
+# - Rate limits, with HTTP 4xx (Meta does not always use 429) -> RetryLater, backed off by
+#   the job: nothing was sent and the limit lifts by itself.
+#     4 (app: too many calls), 17 (user: too many calls), 32 (page: too many calls),
+#     613 (too many calls to this API), 80007 (WhatsApp Business Management API),
+#     130429 (Cloud API throughput reached), 131056 (too many messages to the same
+#     contact: pair rate limit).
+# - Anything else with HTTP 4xx -> Rejected(other), notably 131047 (outside the 24 h
+#   window: needs a template) and 131049 (Meta chose not to deliver a marketing message):
+#   retrying the same message never helps. 131048 (spam rate limit) is not retried either:
+#   insisting makes the quality rating worse.
 AUTH_ERROR = 190
 RECIPIENT_ERRORS = frozenset({131021, 131026, 131030})
-# Message types that do not come from the contact (e.g. a number change): never answered.
-IGNORED_TYPES = frozenset({"system"})
+RATE_LIMIT_ERRORS = frozenset({4, 17, 32, 613, 80007, 130429, 131056})
+# Message types that are not the contact writing to the business, never answered: a
+# system notice (e.g. a number change), a reaction to a message, the `request_welcome`
+# of a chat opened from an ad or a "click to chat" button. Media (audio, image…) is not
+# here: the contact did write, and the pack answers that it cannot read it.
+IGNORED_TYPES = frozenset({"system", "reaction", "request_welcome"})
 
 
 class WhatsAppAdapter:
@@ -84,6 +101,7 @@ class WhatsAppAdapter:
         return params.get("hub.challenge", "")
 
     def parse(self, body: dict[str, Any], channel: WhatsAppChannel) -> list[ParsedItem]:
+        body = clean_payload(body)  # what is stored must be accepted by jsonb
         items: list[ParsedItem] = []
         for entry in _dicts(body.get("entry")):
             for change in _dicts(entry.get("changes")):
@@ -196,7 +214,7 @@ def classify(response: httpx.Response) -> SendOutcome:
     code = error.get("code") if error is not None else None
     if status == 401 or code == AUTH_ERROR:
         return Rejected(reason, "auth")
-    if status == 429:
+    if status == 429 or (400 <= status < 500 and code in RATE_LIMIT_ERRORS):
         return RetryLater(_retry_after(response))
     if status == 400 and code in RECIPIENT_ERRORS:
         return Rejected(reason, "recipient")

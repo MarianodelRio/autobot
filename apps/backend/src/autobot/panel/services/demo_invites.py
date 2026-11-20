@@ -6,7 +6,9 @@ redemption, `autobot.channels.demo.invites`)."""
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
+from django.db.models import Count, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from autobot.channels.demo.invites import generate_code
@@ -33,41 +35,63 @@ def create_invite(
     *, note: str, max_uses: int, expires_in_days: int | None, actor: str
 ) -> DemoInvite:
     expires_at = timezone.now() + timedelta(days=expires_in_days) if expires_in_days else None
-    for _ in range(MAX_CODE_ATTEMPTS):
-        try:
-            invite = DemoInvite.objects.using("owner").create(
-                code=generate_code(),
-                note=note,
-                max_uses=max_uses,
-                expires_at=expires_at,
-                created_by=actor,
-            )
-            break
-        except IntegrityError:
-            continue
-    else:
-        raise RuntimeError("No se pudo generar un código de invitación único.")
-    record(
-        actor=actor,
-        action="demo_invite.create",
-        summary=f"Crea invitación de demo «{note}»." if note else "Crea invitación de demo.",
-        target_type="demo_invite",
-        target_id=str(invite.id),
-    )
+    # The invite and its audit row commit together or not at all.
+    with transaction.atomic(using="owner"):
+        for _ in range(MAX_CODE_ATTEMPTS):
+            try:
+                with transaction.atomic(using="owner"):
+                    invite = DemoInvite.objects.using("owner").create(
+                        code=generate_code(),
+                        note=note,
+                        max_uses=max_uses,
+                        expires_at=expires_at,
+                        created_by=actor,
+                    )
+                break
+            except IntegrityError:
+                continue
+        else:
+            raise RuntimeError("No se pudo generar un código de invitación único.")
+        record(
+            actor=actor,
+            action="demo_invite.create",
+            summary=f"Crea invitación de demo «{note}»." if note else "Crea invitación de demo.",
+            target_type="demo_invite",
+            target_id=str(invite.id),
+        )
     return invite
 
 
 def revoke_invite(invite: DemoInvite, *, actor: str) -> None:
-    DemoInvite.objects.using("owner").filter(pk=invite.pk, revoked_at__isnull=True).update(
-        revoked_at=timezone.now()
+    with transaction.atomic(using="owner"):
+        DemoInvite.objects.using("owner").filter(pk=invite.pk, revoked_at__isnull=True).update(
+            revoked_at=timezone.now()
+        )
+        record(
+            actor=actor,
+            action="demo_invite.revoke",
+            summary="Revoca invitación de demo.",
+            target_type="demo_invite",
+            target_id=str(invite.id),
+        )
+
+
+def list_invites(*, limit: int, offset: int) -> tuple[list[DemoInvite], int]:
+    """One query for the page (grants counted by a subquery, not one COUNT per row)
+    and one for the total."""
+    grants = (
+        DemoAccessGrant.objects.using("owner")
+        .filter(invite_id=OuterRef("pk"))
+        .order_by()
+        .values("invite_id")
+        .annotate(n=Count("pk"))
+        .values("n")
     )
-    record(
-        actor=actor,
-        action="demo_invite.revoke",
-        summary="Revoca invitación de demo.",
-        target_type="demo_invite",
-        target_id=str(invite.id),
-    )
+    queryset = DemoInvite.objects.using("owner")
+    page = queryset.annotate(grant_total=Coalesce(Subquery(grants), 0)).order_by(
+        "-created_at", "-id"
+    )[offset : offset + limit]
+    return list(page), queryset.count()
 
 
 def grant_count(invite: DemoInvite) -> int:

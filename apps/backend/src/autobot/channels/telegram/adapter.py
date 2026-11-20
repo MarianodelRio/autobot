@@ -26,8 +26,9 @@ from autobot.channels.base import (
     SendOutcome,
     Sent,
 )
+from autobot.channels.payload import clean_payload
 from autobot.tenancy.schema import TelegramChannel, TelegramSecrets
-from core.limits import MAX_ID_BYTES, MAX_TEXT
+from core.limits import MAX_ID_BYTES, MAX_TEXT, cut_utf16, utf16_len
 from core.messages import IncomingMessage
 from core.proactive import ProactiveMessage
 from core.replies import Button, Buttons, List, Text
@@ -45,6 +46,30 @@ NO_PREVIEW = {"is_disabled": True}  # WhatsApp shows no link preview; Telegram d
 # WhatsApp's *bold*: asterisks at word edges, with no space inside them ("2*3*4" and
 # "a * b * c" stay as they are, as in WhatsApp).
 BOLD = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])")
+# What a message carries when it is the person sending something that is not text: the
+# bot answers that it cannot read it. A message with none of these (and no text) is a
+# service message.
+MEDIA_KEYS = frozenset(
+    {
+        "animation",
+        "audio",
+        "contact",
+        "dice",
+        "document",
+        "game",
+        "invoice",
+        "location",
+        "paid_media",
+        "photo",
+        "poll",
+        "sticker",
+        "story",
+        "venue",
+        "video",
+        "video_note",
+        "voice",
+    }
+)
 PARAM = re.compile(r"\{(\d+)\}")
 
 # `None` is the platform's test bot, which has no tenant document channel.
@@ -69,6 +94,7 @@ class TelegramAdapter:
     def parse(self, body: dict[str, Any], channel: Channel) -> list[ParsedItem]:
         """One update → at most one item. Only private chats with people; groups,
         channels, bots and other update types are ignored."""
+        body = clean_payload(body)  # what is stored must be accepted by jsonb
         update_id = body.get("update_id")
         if not isinstance(update_id, int) or isinstance(update_id, bool):
             return []
@@ -128,9 +154,9 @@ class TelegramAdapter:
             log.warning("Telegram message truncated: %s", "; ".join(problems))
         header, body, buttons = _parts(out)
         if header:
-            header = _cut_utf16(header, MAX_MESSAGE_UTF16 - 1)  # room for the line break
-        budget = MAX_MESSAGE_UTF16 - (_utf16(header) + 1 if header else 0)
-        text = _html(_cut_utf16(body, budget))
+            header = cut_utf16(header, MAX_MESSAGE_UTF16 - 1)  # room for the line break
+        budget = MAX_MESSAGE_UTF16 - (utf16_len(header) + 1 if header else 0)
+        text = _html(cut_utf16(body, budget))
         if header:
             text = f"<b>{html.escape(header, quote=False)}</b>\n{text}"
         rendered: dict[str, Any] = {
@@ -231,7 +257,7 @@ def overflow(out: Outbound) -> list[str]:
     with header and list descriptions). Empty when it fits; the conversation tests fail
     otherwise."""
     header, body, buttons = _parts(out)
-    size = _utf16(body) + (_utf16(header) + 1 if header else 0)
+    size = utf16_len(body) + (utf16_len(header) + 1 if header else 0)
     problems = []
     if size > MAX_MESSAGE_UTF16:
         problems.append(f"message has {size} UTF-16 units (max {MAX_MESSAGE_UTF16})")
@@ -262,12 +288,20 @@ def _private(chat: object, sender: object) -> bool:
 
 def _message(message: dict[str, Any]) -> IncomingMessage | None:
     date = message.get("date")
-    if not isinstance(date, int):
+    if not isinstance(date, int) or isinstance(date, bool):
         return None
-    received_at = datetime.fromtimestamp(date, UTC)
+    try:
+        received_at = datetime.fromtimestamp(date, UTC)
+    except ValueError, OverflowError, OSError:  # an absurd date: not a real message
+        log.warning("Telegram message with an invalid date dropped")
+        return None
     text = message.get("text")
-    if not isinstance(text, str):  # sticker, photo, voice, location…
-        return IncomingMessage("unsupported", None, None, received_at)
+    if not isinstance(text, str):
+        if MEDIA_KEYS.isdisjoint(message):
+            # A service message (someone joined, a pinned message, a title change…): not
+            # the person writing, never answered.
+            return None
+        return IncomingMessage("unsupported", None, None, received_at)  # sticker, photo…
     if not text.strip():
         return None
     return IncomingMessage("text", text.strip()[:MAX_TEXT], None, received_at)
@@ -328,22 +362,6 @@ def _fill(text: str, params: list[str]) -> str:
 def _html(text: str) -> str:
     """Escape for parse_mode HTML and turn WhatsApp's `*bold*` into `<b>bold</b>`."""
     return BOLD.sub(r"<b>\1</b>", html.escape(text, quote=False))
-
-
-def _utf16(text: str) -> int:
-    return len(text.encode("utf-16-le")) // 2
-
-
-def _cut_utf16(text: str, limit: int) -> str:
-    """At most `limit` UTF-16 units, never splitting a character."""
-    if _utf16(text) <= limit:
-        return text
-    size = 0
-    for i, char in enumerate(text):
-        size += 2 if ord(char) > 0xFFFF else 1
-        if size > limit:
-            return text[:i]
-    return text
 
 
 def _json(response: httpx.Response) -> dict[str, Any]:

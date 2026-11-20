@@ -196,3 +196,18 @@ def test_never_overwrites_an_existing_external_value(script: Path, tmp_path: Pat
     result = run(script)
     assert result.returncode == 0, result.stderr
     assert "already.example.com,localhost,127.0.0.1" in (tmp_path / ".env").read_text()
+
+
+def test_db_urls_follow_a_rotated_password(script: Path, tmp_path: Path) -> None:
+    """Rotating FP_APP_PASSWORD in .env must not leave DB_APP_URL with the old one."""
+    run(script, **EXTERNALS)
+    first = env_dict(tmp_path)
+    (tmp_path / ".env").write_text(
+        "\n".join(f"{k}={v}" for k, v in first.items() if k != "FP_APP_PASSWORD")
+        + "\nFP_APP_PASSWORD=rotated-secret\n"
+    )
+    result = run(script, **EXTERNALS)
+    assert result.returncode == 0, result.stderr
+    assert "DB_APP_URL did not match FP_APP_PASSWORD" in result.stderr
+    assert "rotated-secret" not in result.stdout + result.stderr
+    assert env_dict(tmp_path)["DB_APP_URL"] == "postgres://fp_app:rotated-secret@db:5432/autobot"

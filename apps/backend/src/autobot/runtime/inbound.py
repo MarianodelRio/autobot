@@ -12,9 +12,10 @@ from django.utils import timezone
 
 from autobot.channels.base import InboundItem, ParsedItem
 from autobot.ops.logging import bind
-from autobot.runtime.jobs import APPLY_STATUS, INBOUND, PROCESS_EVENT, app
+from autobot.runtime.jobs import APPLY_STATUS, INBOUND, PROCESS_EVENT
 from autobot.runtime.locks import conversation_lock
 from autobot.runtime.models import Channel, InboundEvent
+from autobot.runtime.queue import enqueue
 from autobot.tenancy.registry import LoadedTenant
 from autobot.tenancy.tx import tenant_tx
 
@@ -33,9 +34,11 @@ def initial_status(tenant: LoadedTenant, item: ParsedItem) -> InboundEvent.Statu
     """`ignored` (saved, never processed) when the main channel must not answer: the
     tenant is paused, or in onboarding and the sender is not in testers.main (matched by
     its id or, in WhatsApp, its phone: since BSUIDs the id is not the phone). Delivery
-    statuses of our own messages are not subject to testers. A degraded tenant's events
-    stay pending: process_event answers them with the generic text."""
-    if tenant.document.status == "paused":
+    statuses of our own messages are never ignored, neither by testers nor by a pause:
+    they describe messages already sent, and dropping them would leave an ambiguous send
+    as `unknown` and lose its billing. A degraded tenant's events stay pending:
+    process_event answers them with the generic text."""
+    if tenant.document.status == "paused" and isinstance(item, InboundItem):
         return Status.IGNORED
     if tenant.document.status == "onboarding" and isinstance(item, InboundItem):
         testers = tenant.document.testers.main
@@ -81,7 +84,7 @@ def store(tenant: LoadedTenant, items: list[ParsedItem], channel: Channel = Chan
             ids = {"tenant_id": str(tenant.id), "event_id": str(row[0])}
             if isinstance(item, InboundItem):
                 lock = conversation_lock(tenant.id, channel, item.external_id)
-                app.configure_task(PROCESS_EVENT, queue=INBOUND, lock=lock).defer(**ids)
+                enqueue(PROCESS_EVENT, ids, queue=INBOUND, lock=lock)
             else:
-                app.configure_task(APPLY_STATUS, queue=INBOUND).defer(**ids)
+                enqueue(APPLY_STATUS, ids, queue=INBOUND)
     return created

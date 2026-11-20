@@ -1,14 +1,14 @@
 """Operational incident reads and explicitly authorised resolutions."""
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from django.db import transaction
 from django.db.models import Case, IntegerField, OuterRef, Subquery, Value, When
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
-from ninja import Router, Schema
+from ninja import Query, Router, Schema
 from procrastinate.contrib.django.models import ProcrastinateEvent, ProcrastinateJob
 
 from autobot.ops import actions
@@ -77,6 +77,11 @@ class IncidentsOut(Schema):
     alerts: list[AlertOut]
     outbound: list[OutboundIncidentOut]
     jobs: list[JobOut]
+    # Each list is capped at `limit`; the totals say how many there really are, so the
+    # screen can tell "showing 100 of 4,000" instead of silently hiding the rest.
+    alerts_total: int
+    outbound_total: int
+    jobs_total: int
 
 
 class AlertsPage(Schema):
@@ -156,27 +161,22 @@ def job_row(j: Any) -> dict[str, Any]:
 
 
 @router.get("/incidents", response=IncidentsOut)
-def incidents(request: HttpRequest) -> dict[str, Any]:
-    alerts = (
-        OpsAlert.objects.using("owner")
-        .filter(resolved_at__isnull=True)
-        .annotate(
-            severity_rank=Case(
-                When(severity="critical", then=Value(0)),
-                When(severity="warning", then=Value(1)),
-                default=Value(2),
-                output_field=IntegerField(),
-            )
+def incidents(
+    request: HttpRequest, limit: Annotated[int, Query(ge=1, le=200)] = 100
+) -> dict[str, Any]:
+    open_alerts = OpsAlert.objects.using("owner").filter(resolved_at__isnull=True)
+    failed_sends = OutboundMessage.objects.using("owner").filter(status__in=["unknown", "failed"])
+    failed_jobs = ProcrastinateJob.objects.using("owner").filter(status="failed")
+    alerts = open_alerts.annotate(
+        severity_rank=Case(
+            When(severity="critical", then=Value(0)),
+            When(severity="warning", then=Value(1)),
+            default=Value(2),
+            output_field=IntegerField(),
         )
-        .order_by("severity_rank", "-last_seen_at", "-id")
-    )
+    ).order_by("severity_rank", "-last_seen_at", "-id")[:limit]
     sends = []
-    for m in (
-        OutboundMessage.objects.using("owner")
-        .filter(status__in=["unknown", "failed"])
-        .select_related("tenant")
-        .order_by("-created_at", "-id")
-    ):
+    for m in failed_sends.select_related("tenant").order_by("-created_at", "-id")[:limit]:
         mark, mark_reason = actions.can_mark_sent(m)
         resend, resend_reason = actions.can_resend(m, db_tenant=m.tenant)
         sends.append(
@@ -198,7 +198,13 @@ def incidents(request: HttpRequest) -> dict[str, Any]:
     return dict(
         alerts=[alert_row(a, slugs) for a in alerts],
         outbound=sends,
-        jobs=[job_row(j) for j in job_queryset().filter(status="failed").order_by("-at", "-id")],
+        jobs=[
+            job_row(j)
+            for j in job_queryset().filter(status="failed").order_by("-at", "-id")[:limit]
+        ],
+        alerts_total=open_alerts.count(),
+        outbound_total=failed_sends.count(),
+        jobs_total=failed_jobs.count(),
     )
 
 

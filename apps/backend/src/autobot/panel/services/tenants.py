@@ -268,14 +268,17 @@ class VersionSummary(Schema):
     created_at: datetime
 
 
-def tenant_versions(slug: str) -> list[VersionSummary]:
+def tenant_versions(
+    slug: str, *, limit: int = 50, before: int | None = None
+) -> list[VersionSummary]:
+    """Newest first, `limit` at a time; `before` is the oldest version already shown."""
     tenant = _tenant(slug)
-    rows = (
-        TenantDocumentVersion.objects.using("owner")
-        .filter(tenant_id=tenant.id)
-        .order_by("-version")
-        .values("version", "author", "comment", "created_at")
-    )
+    queryset = TenantDocumentVersion.objects.using("owner").filter(tenant_id=tenant.id)
+    if before is not None:
+        queryset = queryset.filter(version__lt=before)
+    rows = queryset.order_by("-version").values("version", "author", "comment", "created_at")[
+        :limit
+    ]
     return [VersionSummary(**row) for row in rows]
 
 
@@ -405,7 +408,7 @@ def tenant_checklist(slug: str) -> list[ChecklistItemOut]:
     _tenant(slug)  # 404 before running the checklist
     return [
         ChecklistItemOut(key=i.key, label=i.label, ok=i.ok, blocking=i.blocking, detail=i.detail)
-        for i in activation.checklist(slug).items
+        for i in activation.checklist(slug, refresh=False).items
     ]
 
 
@@ -555,6 +558,11 @@ def tenant_owner_invite(slug: str, actor: str) -> OwnerInviteOut:
     )
 
 
+# The whole export is built in memory and sent as one JSON response: past this many
+# rows it is the `tenant_data_export` command's job (it writes a private file).
+MAX_EXPORT_ROWS = 50_000
+
+
 class ExportOut(Schema):
     tenant: str
     data: dict[str, Any]
@@ -568,15 +576,25 @@ def tenant_export(slug: str, *, actor: str) -> ExportOut:
     tenant = _tenant(slug)
     db_tenant = Tenant.objects.using("owner").get(pk=tenant.id)
     with transaction.atomic(using="owner"):
+        rows = sum(
+            model.objects.using("owner").filter(tenant_id=tenant.id).count()
+            for model in privacy.MODELS
+        )
+        if rows > MAX_EXPORT_ROWS:
+            raise ApiError(
+                "too_large",
+                f"Hay más de {MAX_EXPORT_ROWS} filas: usa el comando tenant_data_export.",
+                413,
+            )
         data = privacy.export_data(db_tenant)
-    record(
-        actor=actor,
-        action="tenant.export",
-        tenant_id=tenant.id,
-        target_type="tenant",
-        target_id=str(tenant.id),
-        summary="Exportación de datos del negocio",
-    )
+        record(
+            actor=actor,
+            action="tenant.export",
+            tenant_id=tenant.id,
+            target_type="tenant",
+            target_id=str(tenant.id),
+            summary="Exportación de datos del negocio",
+        )
     return ExportOut(**data)
 
 

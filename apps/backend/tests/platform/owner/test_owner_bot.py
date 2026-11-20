@@ -18,6 +18,7 @@ from django.test import Client
 from django.utils import timezone
 from pytest_django import Settings
 
+from autobot.ops.models import AuditEvent
 from autobot.owner import inbox, links, menu
 from autobot.runtime.models import MetricEvent, OwnerEvent, OwnerLink
 from autobot.tenancy.registry import get_registry
@@ -367,6 +368,8 @@ def test_owner_invite_prints_a_link_that_links_the_chat(
     out = run("owner_invite", "wa", monkeypatch=monkeypatch)
     match = re.search(r"https://t\.me/AvisosBot\?start=([A-Za-z0-9_-]+)", out)
     assert match is not None and "Ya hay un chat" not in out
+    audit = AuditEvent.objects.using("owner").get(action="tenant.owner_invite")
+    assert audit.actor == "command:owner_invite" and match[1] not in audit.summary
     assert post(say(OWNER_CHAT, f"/start {match[1]}")) == 200
     assert links.owner_chat(get_registry().by_slug["wa"].id) == OWNER_CHAT
 
@@ -412,6 +415,12 @@ def test_owner_unlink_clears_the_chat_and_any_pending_invite(
     link("wa")
     OwnerLink.objects.filter(tenant_id=wa.id).update(invite_hash="x" * 64)
     assert "desconectado" in run("owner_unlink", "wa", monkeypatch=monkeypatch)
+    assert (
+        AuditEvent.objects.using("owner")
+        .filter(actor="command:owner_unlink", action="tenant.owner_unlink", tenant_id=wa.id)
+        .count()
+        == 2
+    )
     row = OwnerLink.objects.get(tenant_id=wa.id)
     assert (row.chat_id, row.linked_at, row.invite_hash) == (None, None, None)
     with pytest.raises(CommandError, match="Negocio desconocido"):
@@ -431,3 +440,48 @@ def test_no_log_contains_the_chat_id_or_the_invite_code(
         post(say(OWNER_CHAT, "hola"))
     assert str(OWNER_CHAT) not in caplog.text
     assert code not in caplog.text
+
+
+# ── Hardening ───────────────────────────────────────────────────────────────
+
+
+def test_start_with_the_bots_name_links_the_chat(tenants: Any, providers: Providers) -> None:
+    tenants(wa_tenant())
+    code = invite("wa")
+    assert post(say(OWNER_CHAT, f"/start@autobot_avisos_bot {code}")) == 200
+    assert OwnerLink.objects.get().chat_id == OWNER_CHAT
+
+
+def test_invalid_invites_are_answered_only_a_few_times(tenants: Any, providers: Providers) -> None:
+    tenants(wa_tenant())
+    for _ in range(6):
+        assert post(say(OWNER_CHAT, "/start nope-nope")) == 200
+    assert len(texts(providers)) == inbox.NOT_LINKED_LIMIT.limit
+
+
+def test_a_reply_that_certainly_was_not_sent_is_retried(
+    tenants: Any, providers: Providers, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from autobot.channels.base import RetryLater
+    from core.errors import TransientError
+
+    tenants(wa_tenant())
+    link("wa")
+    monkeypatch.setattr(inbox, "deliver", lambda *a, **k: RetryLater())
+    update = say(OWNER_CHAT, "hola")
+    Client().post(
+        URL,
+        data=json.dumps(update).encode(),
+        content_type="application/json",
+        headers={"X-Telegram-Bot-Api-Secret-Token": SECRET},
+    )
+    event = OwnerEvent.objects.get()
+    with pytest.raises(TransientError):
+        inbox.handle_owner_event(event.id)
+    assert OwnerEvent.objects.get().status == "pending"
+
+
+def test_a_nul_in_an_owner_update_is_stored_clean(tenants: Any, providers: Providers) -> None:
+    tenants(wa_tenant())
+    assert post(say(OWNER_CHAT, "ho\x00la")) == 200
+    assert "\\u0000" not in json.dumps(OwnerEvent.objects.get().payload)

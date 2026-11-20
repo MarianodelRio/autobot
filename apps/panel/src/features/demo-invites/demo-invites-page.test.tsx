@@ -23,7 +23,6 @@ const activeInvite = {
   created_by: "operator",
   created_at: "2026-11-16T09:00:00Z",
   telegram_link: "https://t.me/AutobotDemoBot?start=ABCD1234",
-  qr_svg: "<svg><rect/></svg>",
 };
 
 function stubFetch(invites: unknown[] = [activeInvite]) {
@@ -34,10 +33,15 @@ function stubFetch(invites: unknown[] = [activeInvite]) {
       return new Response(JSON.stringify({ username: "operator" }), {
         headers: { "Content-Type": "application/json" },
       });
-    if (req.method === "GET" && url.pathname.endsWith("/demo/invites"))
-      return new Response(JSON.stringify(invites), {
+    if (req.method === "GET" && url.pathname.endsWith("/qr"))
+      return new Response(JSON.stringify({ qr_svg: "<svg><rect/></svg>" }), {
         headers: { "Content-Type": "application/json" },
       });
+    if (req.method === "GET" && url.pathname.endsWith("/demo/invites"))
+      return new Response(
+        JSON.stringify({ items: invites, total: invites.length }),
+        { headers: { "Content-Type": "application/json" } },
+      );
     if (req.method === "POST" && url.pathname.endsWith("/demo/invites")) {
       const body = (await req.json()) as { note: string };
       return new Response(
@@ -46,7 +50,6 @@ function stubFetch(invites: unknown[] = [activeInvite]) {
           id: "i2",
           note: body.note,
           telegram_link: null,
-          qr_svg: null,
         }),
         { headers: { "Content-Type": "application/json" } },
       );
@@ -96,7 +99,7 @@ test("lists existing invites with their status and QR link", async () => {
 }, 10_000);
 
 test("an invite without DEMO_TELEGRAM_BOT_USERNAME shows the code with no QR", async () => {
-  renderPage([{ ...activeInvite, telegram_link: null, qr_svg: null }]);
+  renderPage([{ ...activeInvite, telegram_link: null }]);
 
   await userEvent.click(
     await screen.findByRole(

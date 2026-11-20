@@ -7,7 +7,7 @@
 #   bootstrap-server.sh --harden-ssh
 #
 # --base never touches sshd: it is safe to repeat from the same session that is
-# already in, and it is what server-init.sh re-runs to check idempotency. It
+# already in, and it is what install-vm.sh re-runs to check idempotency. It
 # creates two accounts, both reachable only with the *same* operator keypair:
 # `admin` (full sudo, for this script itself and any other host-level
 # maintenance) and `deploy` (no sudo, in the `docker` group, holds the checkout
@@ -163,7 +163,7 @@ EOF
   install -m 0644 /srv/autobot/deploy/systemd/autobot-prune.service /etc/systemd/system/
   install -m 0644 /srv/autobot/deploy/systemd/autobot-prune.timer /etc/systemd/system/
   systemctl daemon-reload
-  # Not started yet: server-init.sh starts the backup timer only once
+  # Not started yet: the backup timer is started by hand only once
   # var/backup.env and the restic password are in place (A3/A15); enabling it now
   # just means it is ready without racing a backup against an unconfigured host.
   systemctl enable autobot-backup.timer

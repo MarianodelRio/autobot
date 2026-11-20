@@ -1,7 +1,8 @@
 """Django settings, read from environment variables.
 
-`ENVIRONMENT=local` (the default) provides development defaults; `ENVIRONMENT=prod`
-requires every secret to be set explicitly.
+`ENVIRONMENT=local` provides development defaults; `ENVIRONMENT=prod` requires every
+secret to be set explicitly. When `ENVIRONMENT` is unset the environment is `prod`
+(fail closed): local tools and tests use `config.settings_dev`, which sets it to `local`.
 """
 
 import importlib.util
@@ -15,7 +16,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
-ENVIRONMENT = os.environ.get("ENVIRONMENT", "local")
+ENVIRONMENT = os.environ.get("ENVIRONMENT") or "prod"
 if ENVIRONMENT not in ("local", "prod"):
     raise ImproperlyConfigured(f"ENVIRONMENT must be 'local' or 'prod', not {ENVIRONMENT!r}")
 IS_LOCAL = ENVIRONMENT == "local"
@@ -158,6 +159,12 @@ CSRF_COOKIE_SECURE = False
 # Job queue: Procrastinate on the `default` alias (fp_app); jobs are
 # declared in autobot/runtime/jobs.py.
 PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "runtime.jobs"
+# `procrastinate worker` uses its own psycopg pool (4 connections by default, never
+# shrinking): bounded here, with room for the LISTEN connection, fetch, heartbeat and
+# the finish of `--concurrency` jobs (autobot/runtime/worker_pool.py).
+PROCRASTINATE_ON_APP_READY = "autobot.runtime.worker_pool.configure"
+WORKER_DB_POOL_MIN = int(os.environ.get("WORKER_DB_POOL_MIN", "1"))
+WORKER_DB_POOL_MAX = int(os.environ.get("WORKER_DB_POOL_MAX", "6"))
 
 # Channels. Graph API version of the WhatsApp Cloud API (reviewed every six
 # months).

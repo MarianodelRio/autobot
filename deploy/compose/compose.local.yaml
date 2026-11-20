@@ -16,12 +16,11 @@ x-app: &app
     DB_READONLY_URL: postgres://fp_readonly:fp_readonly@db:5432/autobot
     GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
     OPS_STATE_DIR: /tmp/ops  # the default resolves to /state in the container, not writable
-    # runserver opens a thread per request: persistent connections would leak until
-    # PostgreSQL runs out of slots. The workers replace this environment.
-    DB_CONN_MAX_AGE: "0"
+    ENVIRONMENT: local
   volumes:
     - ../../apps/backend/src:/app/src
     - ../../apps/backend/manage.py:/app/manage.py
+    - ./dev-worker.py:/dev-worker.py:ro
     # Empty by default; a configured local credential stays outside the image.
     - ${GOOGLE_SERVICE_ACCOUNT_FILE:-/dev/null}:/app/google_sa.json:ro
   depends_on:
@@ -31,7 +30,10 @@ x-app: &app
 services:
   web:
     <<: *app
-    command: python manage.py runserver 0.0.0.0:8000
+    # Like production (bounded threads: runserver opens one thread per request with no
+    # limit, and 250 concurrent requests exhausted PostgreSQL), plus --reload to pick up
+    # code changes. DEBUG comes from ENVIRONMENT=local; the project serves no static files.
+    command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4 --no-control-socket --reload --timeout 60 --keep-alive 5 --access-logfile -
     ports:
       - "127.0.0.1:8000:8000"
 
@@ -45,13 +47,16 @@ services:
     environment:
       DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
       SERVICE_NAME: worker-inbound
+      ENVIRONMENT: local
+      DB_CONN_MAX_AGE: "0"
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
       DB_OWNER_URL: ""  # the worker never uses fp_owner
       DB_READONLY_URL: ""  # nor fp_readonly: it never runs the SQL console
     # Graceful stop: on SIGTERM it takes no new jobs and lets running
     # ones finish for up to 50 s, within the 60 s before Docker kills it; a cut job is
     # retried (every job is idempotent).
-    command: watchfiles --filter python --sigint-timeout 55 --sigkill-timeout 3 "python manage.py procrastinate worker --queues inbound,periodic,ops --concurrency 2 --shutdown-graceful-timeout 50" /app/src
+    command: python /dev-worker.py python manage.py procrastinate worker --queues inbound,periodic,ops --concurrency 2 --shutdown-graceful-timeout 50
+    restart: on-failure
     stop_grace_period: 60s
     init: true
 
@@ -60,10 +65,13 @@ services:
     environment:
       DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
       SERVICE_NAME: worker-outbound
+      ENVIRONMENT: local
+      DB_CONN_MAX_AGE: "0"
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
       DB_OWNER_URL: ""
       DB_READONLY_URL: ""
-    command: watchfiles --filter python --sigint-timeout 55 --sigkill-timeout 3 "python manage.py procrastinate worker --queues outbound,ops --concurrency 2 --shutdown-graceful-timeout 50" /app/src
+    command: python /dev-worker.py python manage.py procrastinate worker --queues outbound,ops --concurrency 2 --shutdown-graceful-timeout 50
+    restart: on-failure
     stop_grace_period: 60s
     init: true
 

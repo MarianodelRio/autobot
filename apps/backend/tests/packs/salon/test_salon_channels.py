@@ -158,6 +158,8 @@ def test_delete_then_transient_failure_retries_with_owner_notice(
 
     monkeypatch.setattr(calendars.main, "cancel_event", delete_then_fail)
     assert post_wa(wa_press("cancel_appt:0")) == 200
+    drain()  # asks for confirmation; the tap on "Sí, cancelar" is what cancels
+    assert post_wa(wa_press("cancel_yes")) == 200
     with pytest.raises(TransientError):
         drain()
     event = InboundEvent.objects.using("owner").get(status="pending", tenant_id=tenant.id)

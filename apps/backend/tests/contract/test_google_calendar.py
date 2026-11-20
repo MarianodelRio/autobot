@@ -241,10 +241,85 @@ def test_the_real_client_satisfies_the_pack_protocol() -> None:
     assert api.events().list.call_args.kwargs["maxResults"] == 1
 
 
-def test_future_events_for_migration_have_no_artificial_horizon() -> None:
+def test_future_events_for_migration_have_a_bounded_horizon() -> None:
+    from integrations.google_calendar.client import FUTURE_HORIZON
+
     cal, api = client({"items": [EVENT]})
     assert len(cal.list_future_events(START)) == 1
-    assert "timeMax" not in api.events().list.call_args.kwargs
+    assert api.events().list.call_args.kwargs["timeMax"] == (START + FUTURE_HORIZON).isoformat()
+
+
+def rate_limit_error(reason: str, status: int = 403) -> HttpError:
+    body = {"error": {"code": status, "errors": [{"reason": reason, "domain": "usageLimits"}]}}
+    return HttpError(httplib2.Response({"status": str(status)}), json.dumps(body).encode())
+
+
+@pytest.mark.parametrize("reason", ["rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"])
+def test_a_403_for_rate_limits_is_retried_with_backoff_and_is_transient(reason: str) -> None:
+    seen: list[str] = []
+    sleeps: list[float] = []
+    api = MagicMock()
+    api.events.return_value.list.return_value.execute.side_effect = [
+        rate_limit_error(reason),
+        rate_limit_error(reason),
+        {"items": []},
+    ]
+    cal = CalendarClient("c", api=api, sleep=sleeps.append, observe=seen.append)
+    assert cal.list_events(START, END) == []
+    assert sleeps == [1.0, 2.0]
+    assert seen == ["ok"]  # never `denied`
+
+    api.events.return_value.list.return_value.execute.side_effect = [rate_limit_error(reason)] * 3
+    seen.clear()
+    with pytest.raises(CalendarTransientError):
+        cal.list_events(START, END)
+    assert seen == ["error"]
+
+
+def test_a_403_for_another_reason_is_still_a_denial() -> None:
+    cal, api = client(rate_limit_error("forbidden"))
+    with pytest.raises(CalendarPermanentError):
+        cal.list_events(START, END)
+    assert api.events().list.call_count == 1
+
+
+def test_a_failing_observer_never_breaks_a_call() -> None:
+    def boom(status: str) -> None:
+        raise RuntimeError("observer down")
+
+    api = MagicMock()
+    api.events.return_value.list.return_value.execute.return_value = {"items": [EVENT]}
+    cal = CalendarClient("c", api=api, observe=boom)
+    assert len(cal.list_events(START, END)) == 1
+    api.events.return_value.list.return_value.execute.side_effect = error(403)
+    with pytest.raises(CalendarPermanentError):
+        cal.list_events(START, END)
+
+
+def test_cancelling_with_a_404_tells_a_deleted_event_from_lost_access() -> None:
+    cal, api = client({"items": []})  # check_access succeeds: the calendar is reachable
+    api.events().delete.return_value.execute.side_effect = error(404)
+    api.events().get.return_value.execute.side_effect = error(404)
+    cal.cancel_event("gone")  # already deleted: fine
+
+    cal, api = client(error(404))  # the listing is a 404 too: access lost
+    api.events().delete.return_value.execute.side_effect = error(404)
+    with pytest.raises(CalendarPermanentError):
+        cal.cancel_event("gone")
+
+
+def test_a_conflict_with_a_cancelled_event_reactivates_it() -> None:
+    cal, api = client()
+    api.events().insert.return_value.execute.side_effect = error(409)
+    api.events().get.return_value.execute.return_value = EVENT | {"status": "cancelled"}
+    api.events().patch.return_value.execute.return_value = EVENT | {"status": "confirmed"}
+    assert cal.insert_event(EVENT, "abc123").status == "confirmed"
+    body = api.events().patch.call_args.kwargs["body"]
+    assert body["status"] == "confirmed" and "id" not in body
+
+    api.events().patch.return_value.execute.return_value = EVENT | {"status": "cancelled"}
+    with pytest.raises(CalendarPermanentError):
+        cal.insert_event(EVENT, "abc123")
 
 
 @pytest.mark.parametrize("retryable", [True, False])

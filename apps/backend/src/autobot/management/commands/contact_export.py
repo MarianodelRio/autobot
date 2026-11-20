@@ -5,6 +5,7 @@ docs/procedimientos/retencion-rgpd.md."""
 from django.core.management.base import BaseCommand, CommandParser
 from django.db import transaction
 
+from autobot.ops.audit import record
 from autobot.runtime import privacy
 
 
@@ -27,4 +28,13 @@ class Command(BaseCommand):
         with transaction.atomic(using="owner"):
             data = privacy.export_data(tenant, contact)
         privacy.write_private(str(options["output"]), data)
+        record(
+            actor="command:contact_export",
+            action="contact.export",
+            summary="Exportación de datos del contacto",
+            tenant_id=contact.tenant_id,
+            target_type="contact",
+            target_id=str(contact.id),
+            details={"contact_id": str(contact.id)},
+        )
         self.stdout.write("Exportación guardada en archivo privado.")

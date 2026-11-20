@@ -50,6 +50,11 @@ config:
   reminder_window_hours: [0, 2]
   manual_confirmations_enabled: false
   manual_confirmations_since: null
+  holidays:
+    country: ES
+    subdivision: MD
+    closed_dates: []
+    open_dates: []
   special_event:
     active: false
     name: ''
@@ -62,6 +67,13 @@ config:
     name_prompt: ¿A nombre de quién reservamos? Escribe tu nombre.
     name_text_only: Por favor, escribe tu nombre en un mensaje de texto 🙂
     no_slots: No hay horarios disponibles para ese día. Prueba con otro día.
+    no_days: Ahora mismo no hay ningún día con horarios disponibles. Inténtalo más
+      adelante o llámanos.
+    unsupported: No puedo leer audios, imágenes ni stickers 🙂 Usa las opciones o
+      escribe *menú*.
+    list_hint: Elige una opción de la lista o escribe *menú*.
+    past_booking: Esa cita ya ha pasado, así que no se puede cambiar ni cancelar.
+    cancel_kept: Perfecto, tu cita sigue en pie ✅
     slot_taken: Ese horario ya no está disponible
     no_bookings: No tienes ninguna cita próxima.
     cancelled: Tu cita ha sido cancelada ✅

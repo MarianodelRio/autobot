@@ -7,6 +7,7 @@ import { ErrorState } from "@/components/error-state";
 import { StatusDot } from "@/components/status-dot";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
+import { errorDetail } from "@/lib/errors";
 
 type Detail = components["schemas"]["TenantDetail"];
 
@@ -54,7 +55,10 @@ export function DatasetSection({
   if (status.isError)
     return (
       <ErrorState
-        message="No se pudieron cargar los horarios."
+        message={errorDetail(
+          status.error,
+          "No se pudieron cargar los horarios.",
+        )}
         onRetry={() => void status.refetch()}
       />
     );
@@ -126,7 +130,7 @@ export function DatasetSection({
       )}
       {apply.isError && (
         <p role="alert" className="text-sm text-destructive">
-          No se pudo aplicar.
+          {errorDetail(apply.error, "No se pudo aplicar.")}
         </p>
       )}
     </div>

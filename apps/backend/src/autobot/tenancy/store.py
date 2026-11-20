@@ -41,6 +41,10 @@ IDENTITY = (
 )
 
 
+# What a rollback restores from the old version; everything else keeps its current value.
+CONTENT_KEYS = ("name", "timezone", "config")
+
+
 class StoreError(Exception):
     def __init__(self, code: str, message: str, details: list[str] | None = None) -> None:
         self.code, self.message, self.details = code, message, details or []
@@ -124,6 +128,34 @@ def _lock() -> ConfigRevision:
     return ConfigRevision.objects.using("owner").select_for_update().get(pk=1)
 
 
+def _calendar_key(document: Mapping[str, Any]) -> str | None:
+    config = document.get("config")
+    value = config.get("calendar_id") if isinstance(config, dict) else None
+    # Google calendar ids are e-mail-like, so case does not distinguish them.
+    return value.strip().lower() if isinstance(value, str) and value.strip() else None
+
+
+def _reject_shared_calendar(document: Mapping[str, Any], others: list[TenantSource]) -> None:
+    """Two businesses on one Google calendar would book over each other's events and
+    read each other's appointments: refuse it at save time. Offboarded businesses no
+    longer use theirs, so they do not count."""
+    mine = _calendar_key(document)
+    if mine is None or document.get("status") == "offboarded":
+        return
+    for other in others:
+        other_doc = other.document
+        if (
+            isinstance(other_doc, dict)
+            and other_doc.get("status") != "offboarded"
+            and _calendar_key(other_doc) == mine
+        ):
+            raise StoreError(
+                "validation_error",
+                "La configuración no es válida",
+                ["config.calendar_id: ya lo usa otro negocio"],
+            )
+
+
 def _validate(source: TenantSource, sources: list[TenantSource]) -> None:
     from packs.registry import PACKS
 
@@ -142,11 +174,13 @@ def _validate(source: TenantSource, sources: list[TenantSource]) -> None:
         pack.config_schema.model_validate(document["config"])
     except ValidationError as error:
         raise _validation(error, "config.") from None
-    candidates = [
+    others = [
         s
         for s in sources
         if not isinstance(s.document, dict) or s.document.get("id") != document["id"]
-    ] + [source]
+    ]
+    _reject_shared_calendar(document, others)
+    candidates = [*others, source]
     registry = load_registry(candidates, PACKS)
     tenant = registry.by_slug.get(document["slug"])
     if document["slug"] in registry.errors or tenant is None:
@@ -399,18 +433,16 @@ def rollback(slug: str, *, version: int, actor: str, comment: str) -> int:
     )
     if previous is None:
         raise StoreError("not_found", "No se encuentra la versión")
-    doc = copy.deepcopy(previous.document)
-    for key in ("id", "slug", "pack", "status"):
-        doc[key] = current.document[key]
-    old_channel, channel = doc.get("channel"), current.document.get("channel")
-    if channel is None:
-        doc["channel"] = None
-    else:
-        if not isinstance(old_channel, dict) or old_channel.get("type") != channel["type"]:
-            doc["channel"] = copy.deepcopy(channel)
-        else:
-            doc["channel"]["type"] = channel["type"]
-            doc["channel"]["public_id"] = channel["public_id"]
+    # A rollback restores only the editable content. Identity, status, the whole
+    # channel (its Meta ids, display phone and thresholds are operational state
+    # tied to the live number), testers, owner and demo info stay as they are now:
+    # going back to a version from before WhatsApp was connected must not
+    # disconnect the number.
+    previous_doc = previous.document
+    doc = copy.deepcopy(current.document)
+    for key in CONTENT_KEYS:
+        if key in previous_doc:
+            doc[key] = copy.deepcopy(previous_doc[key])
     candidate = replace(current, document=_document(doc))
     _validate(candidate, sources)
     return _write(
@@ -457,11 +489,11 @@ def change_status(
             raise StoreError("invalid_status", "El estado no permite esta acción")
         doc = _document({**current.document, "status": status})
         candidate = replace(current, document=doc)
-        if action != "pause":
-            # Pausing must always be possible, even for a tenant degraded for a reason
-            # unrelated to this change (X10): it changes nothing else, so there is
-            # nothing new to validate, and it is precisely the way to take a broken
-            # tenant out of service.
+        if action not in ("pause", "offboard"):
+            # Pausing and offboarding must always be possible, even for a tenant
+            # degraded for a reason unrelated to this change (X10): they change
+            # nothing else, so there is nothing new to validate, and they are
+            # precisely the way to take a broken tenant out of service.
             _validate(candidate, sources)
         return _write(
             candidate,
@@ -588,6 +620,7 @@ def import_source(source: TenantSource, *, actor: str, comment: str) -> int:
         return create_tenant(
             document=doc,
             datasets=source.datasets or None,
+            dataset_origins=source.dataset_origins or None,
             secrets=source.secrets,
             actor=actor,
             comment=comment,
@@ -628,7 +661,14 @@ def import_source(source: TenantSource, *, actor: str, comment: str) -> int:
             .first()
         )
         if prior is None or prior.sha256 != _dataset_digest(files):
-            _write_dataset(candidate, name, files, actor=actor, comment=comment)
+            _write_dataset(
+                candidate,
+                name,
+                files,
+                actor=actor,
+                comment=comment,
+                library_origin=source.dataset_origins.get(name),
+            )
     if raw_secrets is not None:
         _write_secret(candidate, raw_secrets, actor)
     return version

@@ -325,19 +325,21 @@ export function ConfigEditor({
     [schema.data, detail],
   );
   const save = useMutation({
-    mutationFn: () =>
+    // The document sent is passed in, so on success the baseline is exactly what the
+    // server stored, even if the person kept typing while the request was in flight.
+    mutationFn: (sent: Record<string, unknown>) =>
       unwrap(
         api.PUT("/tenants/{slug}/document", {
           params: { path: { slug: detail.slug } },
           body: {
-            document: draft,
+            document: sent,
             base_version: version ?? 0,
             comment: comment.trim(),
           },
         }),
       ),
-    onSuccess: (result) => {
-      setBaseline(draft);
+    onSuccess: (result, sent) => {
+      setBaseline(sent);
       setVersion(result.version);
       setComment("");
       setErrors([]);
@@ -416,7 +418,15 @@ export function ConfigEditor({
           <code className="text-xs">{String(detail.document.id ?? "")}</code>
         </div>
         <div className="flex items-center gap-2">
-          <HistorySection slug={detail.slug} current={draft} dirty={dirty} />
+          <HistorySection
+            slug={detail.slug}
+            current={draft}
+            dirty={dirty}
+            onRolledBack={() => {
+              discard();
+              void loadLatest(true);
+            }}
+          />
           {mode === "form" ? (
             <Button variant="outline" size="sm" onClick={() => setMode("yaml")}>
               Editar YAML
@@ -472,8 +482,9 @@ export function ConfigEditor({
       )}
       {errors.length > 0 && (
         <ul role="alert" className="text-sm text-destructive">
-          {errors.map((error) => (
-            <li key={error}>{error}</li>
+          {errors.map((error, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the same message can repeat
+            <li key={`${index}:${error}`}>{error}</li>
           ))}
         </ul>
       )}
@@ -508,7 +519,7 @@ export function ConfigEditor({
             </Button>
             <Button
               disabled={!!yamlError || save.isPending || version === null}
-              onClick={() => save.mutate()}
+              onClick={() => save.mutate(draft)}
             >
               Guardar
             </Button>

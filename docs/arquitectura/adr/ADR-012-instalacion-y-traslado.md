@@ -1,6 +1,6 @@
 # ADR-012 — Instalación y traslado del servidor desde la máquina del operador
 
-**Estado:** aceptada
+**Estado:** aceptada; la instalación desde el portátil (`server-init.sh`) fue sustituida por el ADR-017 (`install-vm.sh`, dentro de la VM). Cuentas, bootstrap en dos fases, `server-migrate.sh` y `restic init` manual siguen vigentes.
 
 ## Contexto
 

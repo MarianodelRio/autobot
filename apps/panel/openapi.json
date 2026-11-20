@@ -1121,6 +1121,7 @@
           },
           "note": {
             "default": "",
+            "maxLength": 200,
             "title": "Note",
             "type": "string"
           }
@@ -1175,17 +1176,6 @@
             "title": "Note",
             "type": "string"
           },
-          "qr_svg": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Qr Svg"
-          },
           "revoked_at": {
             "anyOf": [
               {
@@ -1225,10 +1215,50 @@
           "revoked_at",
           "created_by",
           "created_at",
-          "telegram_link",
-          "qr_svg"
+          "telegram_link"
         ],
         "title": "DemoInviteOut",
+        "type": "object"
+      },
+      "DemoInvitePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DemoInviteOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "DemoInvitePage",
+        "type": "object"
+      },
+      "DemoInviteQr": {
+        "properties": {
+          "qr_svg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qr Svg"
+          }
+        },
+        "required": [
+          "qr_svg"
+        ],
+        "title": "DemoInviteQr",
         "type": "object"
       },
       "DocumentIn": {
@@ -1440,6 +1470,10 @@
             "title": "Alerts",
             "type": "array"
           },
+          "alerts_total": {
+            "title": "Alerts Total",
+            "type": "integer"
+          },
           "jobs": {
             "items": {
               "$ref": "#/components/schemas/JobOut"
@@ -1447,18 +1481,29 @@
             "title": "Jobs",
             "type": "array"
           },
+          "jobs_total": {
+            "title": "Jobs Total",
+            "type": "integer"
+          },
           "outbound": {
             "items": {
               "$ref": "#/components/schemas/OutboundIncidentOut"
             },
             "title": "Outbound",
             "type": "array"
+          },
+          "outbound_total": {
+            "title": "Outbound Total",
+            "type": "integer"
           }
         },
         "required": [
           "alerts",
           "outbound",
-          "jobs"
+          "jobs",
+          "alerts_total",
+          "outbound_total",
+          "jobs_total"
         ],
         "title": "IncidentsOut",
         "type": "object"
@@ -4372,17 +4417,37 @@
     "/demo/invites": {
       "get": {
         "operationId": "autobot_panel_routers_demo_invites_list_invites",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DemoInviteOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/DemoInvitePage"
                 }
               }
             },
@@ -4435,6 +4500,45 @@
         ]
       }
     },
+    "/demo/invites/{id}/qr": {
+      "get": {
+        "description": "Drawn only when someone opens «Ver código», never for every row of the list.",
+        "operationId": "autobot_panel_routers_demo_invites_qr",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoInviteQr"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Qr",
+        "tags": [
+          "demo-invites"
+        ]
+      }
+    },
     "/demo/invites/{id}/revoke": {
       "post": {
         "operationId": "autobot_panel_routers_demo_invites_revoke",
@@ -4476,7 +4580,20 @@
     "/incidents": {
       "get": {
         "operationId": "autobot_panel_routers_incidents_incidents",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5464,7 +5581,7 @@
       }
     },
     "/tenants/{slug}/export": {
-      "get": {
+      "post": {
         "operationId": "autobot_panel_routers_tenants_tenant_export",
         "parameters": [
           {
@@ -6142,6 +6259,35 @@
             "schema": {
               "title": "Slug",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
             }
           }
         ],

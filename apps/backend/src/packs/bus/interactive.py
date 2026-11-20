@@ -286,6 +286,23 @@ def build_dias(
     )
 
 
+def build_fecha(cfg: BusConfig, texto: str) -> Buttons:
+    """Pide o repite la fecha escrita, siempre con salida: la lista de días o el menú."""
+    return buttons_msg(
+        body=texto,
+        buttons=[button("ver_dias", "📅 Ver lista de días"), button("menu", "↩️ Menú")],
+        footer=_pie(cfg),
+    )
+
+
+def build_confirmar_fecha(cfg: BusConfig, texto: str) -> Buttons:
+    return buttons_msg(
+        body=texto,
+        buttons=[button("si", "Sí"), button("no", "No")],
+        footer=_pie(cfg),
+    )
+
+
 # ── Resultado ─────────────────────────────────────────────────────────
 
 

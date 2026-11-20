@@ -275,7 +275,8 @@ def test_pueblo_desconocido_ofrece_pueblos_por_linea(
     turn.expect(list_includes="🚌 Ver pueblos por línea")
     (registro,) = [r for r in caplog.records if "[NO_RECONOCIDO]" in r.getMessage()]
     # Ni el identificador del contacto ni su teléfono, ni el número escrito.
-    assert registro.getMessage() == "[NO_RECONOCIDO] paso=origen texto=<numero>"
+    assert registro.getMessage() == "[NO_RECONOCIDO] paso=origen longitud=26"
+    assert "612345678" not in registro.getMessage()
     assert chat.contact.external_id not in registro.getMessage()
 
 
@@ -354,7 +355,7 @@ def test_resultado_largo_se_corta_y_va_aparte(
     assert isinstance(texto, Text) and isinstance(botones, Buttons)
     assert len(texto.body) <= 4096
     assert texto.body.startswith("🚌 Origen → Destino")
-    assert "salidas más, llama al 600 00 00 00." in texto.body
+    assert "salidas más. Para verlas todas, llama al 600 00 00 00." in texto.body
     assert "05:00 → 05:55" in texto.body
     turn.expect(text="¿Qué quieres hacer ahora?", buttons=RESULTADO)
 
@@ -386,3 +387,163 @@ def test_estado_manipulado_vuelve_al_menu(canal: ChannelType) -> None:
     chat.state["origen"] = "pueblo-que-ya-no-existe"
     chat.press("otro_dia", check=False).expect(buttons=MENU)
     assert chat.state == {}
+
+
+# ── Fecha escrita: siempre hay salida y nunca se adivina el año ───────────────
+
+SALIDA_FECHA = ["📅 Ver lista de días", "↩️ Menú"]
+
+
+def test_fecha_no_entendida_ofrece_salida(canal: ChannelType) -> None:
+    chat = charla(canal)
+    hasta_dias(chat)
+    chat.press("otra_fecha").expect(buttons=SALIDA_FECHA)
+    chat.send("mañana").expect(text_contains="No he entendido la fecha", buttons=SALIDA_FECHA)
+    chat.send("10 30").expect(text_contains="No he entendido la fecha", buttons=SALIDA_FECHA)
+    chat.send("20/09").expect(text_contains="ya ha pasado", buttons=SALIDA_FECHA)
+    assert chat.state["step"] == "ESCRIBIR_FECHA"
+    chat.press("ver_dias").expect(list_includes="Hoy")
+    assert chat.state["step"] == "SEL_DIA"
+    chat.press("otra_fecha")
+    chat.press("menu").expect(buttons=MENU)
+    assert chat.state == {}
+
+
+@pytest.mark.parametrize("palabra", ["cancelar", "Volver", "atrás", "Salir."])
+def test_palabras_de_escape_vuelven_al_menu_en_la_fecha(canal: ChannelType, palabra: str) -> None:
+    chat = charla(canal)
+    hasta_dias(chat)
+    chat.press("otra_fecha")
+    chat.send(palabra).expect(buttons=MENU)
+    assert chat.state == {}
+
+
+def test_fecha_sin_anio_en_otro_anio_se_pregunta(canal: ChannelType) -> None:
+    chat = charla(canal)
+    hasta_dias(chat)
+    chat.press("otra_fecha")
+    # 23/08 ya pasó hace un mes: no se salta en silencio a 2027.
+    chat.send("23/08").expect(text="¿Te refieres al 23/08/2027?", buttons=["Sí", "No"])
+    assert chat.state["step"] == "CONFIRMAR_FECHA"
+    chat.press("no").expect(text_contains="Escribe la fecha", buttons=SALIDA_FECHA)
+    chat.send("23/08")
+    turn = chat.press("si")
+    assert "/2027" in cuerpo(turn)  # el año se muestra en el resultado
+    assert chat.state["step"] == "RESULTADO" and chat.state["fecha"] == "2027-08-23"
+
+
+def test_29_de_febrero_no_salta_en_silencio(canal: ChannelType) -> None:
+    chat = charla(canal)
+    hasta_dias(chat)
+    chat.press("otra_fecha")
+    chat.send("29/02").expect(text="¿Te refieres al 29/02/2028?", buttons=["Sí", "No"])
+    chat.send("sí").expect(text_contains="29/02/2028")
+
+
+def test_fecha_en_la_lista_de_dias_tambien_pregunta(canal: ChannelType) -> None:
+    chat = charla(canal)
+    hasta_dias(chat)
+    chat.send("23/08").expect(text="¿Te refieres al 23/08/2027?")
+    chat.send("hola").expect(buttons=MENU)
+
+
+# ── Botones viejos y de otros pasos ────────────────────────────────────────────
+
+
+def test_loc_viejo_en_confirmar_pueblo_se_elige(canal: ChannelType) -> None:
+    chat = charla(canal)
+    chat.send("hola")
+    chat.press("menu_horarios")
+    chat.send("pozolengo").expect(buttons=["Sí", "No"])
+    assert chat.state["step"] == "CONFIRMAR_PUEBLO"
+    chat.press("loc:riomayor", check=False).expect(list_includes="Pozoluengo")
+    assert chat.state["origen"] == "riomayor" and chat.state["step"] == "SEL_DESTINO"
+
+
+def test_loc_desconocido_en_confirmar_pueblo_repite_el_paso(canal: ChannelType) -> None:
+    chat = charla(canal)
+    chat.send("hola")
+    chat.press("menu_horarios")
+    chat.send("pozolengo")
+    chat.press("loc:no-existe", check=False).expect(list_includes="Riomayor")
+    assert "origen" not in chat.state
+
+
+def test_boton_de_otro_paso_en_confirmar_pueblo_repite_la_pregunta(canal: ChannelType) -> None:
+    chat = charla(canal)
+    chat.send("hola")
+    chat.press("menu_horarios")
+    chat.send("pozolengo")
+    chat.press("otro_dia", check=False).expect(text_contains="Pozoluengo", buttons=["Sí", "No"])
+    assert chat.state["step"] == "CONFIRMAR_PUEBLO"
+
+
+def test_boton_de_otro_paso_en_sel_origen_no_es_un_pueblo(
+    canal: ChannelType, caplog: pytest.LogCaptureFixture
+) -> None:
+    chat = charla(canal)
+    chat.send("hola")
+    chat.press("menu_horarios")
+    caplog.set_level(logging.INFO, logger="packs.bus")
+    turn = chat.press("dia:2026-09-24", check=False).expect(list_includes="Pozoluengo")
+    assert "No conozco" not in cuerpo(turn)
+    assert not [r for r in caplog.records if "[NO_RECONOCIDO]" in r.getMessage()]
+    assert chat.state["step"] == "SEL_ORIGEN"
+
+
+def test_dia_ya_pasado_repite_la_lista_de_dias(canal: ChannelType) -> None:
+    chat = charla(canal)
+    hasta_dias(chat)
+    chat.press("dia:2026-09-22", check=False).expect(
+        text_contains="Esa fecha ya ha pasado", list_includes="Hoy"
+    )
+    assert chat.state["step"] == "SEL_DIA"
+    chat.press("dia:2026-09-24")
+    chat.press("dia:2026-09-01", check=False).expect(text_contains="ya ha pasado")
+    assert chat.state["step"] == "SEL_DIA"
+
+
+# ── Logs sin texto libre ───────────────────────────────────────────────────────
+
+
+def test_los_logs_no_llevan_lo_que_escribe_el_cliente(
+    canal: ChannelType, caplog: pytest.LogCaptureFixture
+) -> None:
+    chat = charla(canal)
+    hasta_dias(chat)
+    caplog.set_level(logging.INFO, logger="packs.bus")
+    chat.send("Juan Pérez 666")
+    chat.press("otra_fecha")
+    chat.send("quedamos el viernes")
+    registros = [r.getMessage() for r in caplog.records if "[NO_RECONOCIDO]" in r.getMessage()]
+    assert registros and all("longitud=" in r for r in registros)
+    assert not any(t in " ".join(registros) for t in ("Juan", "viernes", "666"))
+
+
+# ── Resultado larguísimo: recorte con aviso y notas coherentes ──────────────────
+
+
+def test_resultado_recortado_solo_explica_las_notas_visibles(canal: ChannelType) -> None:
+    from datetime import time
+
+    from packs.bus.calendario import InfoDia
+    from packs.bus.messages import msg_resultado
+    from packs.bus.query import Consulta, Salida
+
+    salidas = tuple(
+        Salida(
+            hora_salida=time(6, 0),
+            hora_llegada=time(8, 0),
+            duracion_min=120,
+            parada_origen="POZ",
+            parada_destino="RIO",
+            lineas=("pozoluengo-riomayor",),
+            notas=(f"Nota {i} " + "x" * 60,),
+        )
+        for i in range(120)
+    )
+    info = InfoDia(date(2026, 9, 23), "miercoles", "miercoles", False, None, True, 9)
+    consulta = Consulta("con_salidas", salidas, info, (), (), False, None)
+    texto = msg_resultado(CONFIG, consulta, datos_demo().horarios, "A", "B", date(2026, 9, 23))
+    assert len(texto) <= 4096 and "salidas más" in texto
+    assert "Nota 119" not in texto

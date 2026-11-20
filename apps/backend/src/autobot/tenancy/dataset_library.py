@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid7
 
-from django.db import transaction
+from django.db import IntegrityError, connections, transaction
 
 from autobot.ops.audit import record
 from autobot.tenancy.models import DatasetLibraryVersion
@@ -98,6 +98,13 @@ def push(
     pack_obj = PACKS.get(pack)
     if pack_obj is None:
         raise LibraryError(f"No se encuentra el pack {pack!r}")
+    # Serialize concurrent uploads of the same entry: without it two pushes both read
+    # the same `prior` and the loser dies on the unique constraint.
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            [f"dataset_library:{pack}/{dataset}/{name}"],
+        )
     prior = latest(pack, dataset, name)
     new_digest = digest(files)
     if prior is not None:
@@ -107,18 +114,22 @@ def push(
             return None
     summary = _summarize(pack_obj, dataset, files)
     version = (prior.version + 1) if prior else 1
-    entry = DatasetLibraryVersion.objects.using("owner").create(
-        id=uuid7(),
-        pack=pack,
-        dataset=dataset,
-        name=name,
-        version=version,
-        files=dict(files),
-        sha256=new_digest,
-        summary=summary,
-        author=author,
-        comment=comment,
-    )
+    try:
+        with transaction.atomic(using="owner"):
+            entry = DatasetLibraryVersion.objects.using("owner").create(
+                id=uuid7(),
+                pack=pack,
+                dataset=dataset,
+                name=name,
+                version=version,
+                files=dict(files),
+                sha256=new_digest,
+                summary=summary,
+                author=author,
+                comment=comment,
+            )
+    except IntegrityError:
+        raise LibraryError("Hay una versión más reciente; vuelve a bajarla primero.") from None
     record(
         actor=author,
         action="dataset_library.push",

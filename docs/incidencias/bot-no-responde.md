@@ -1,8 +1,8 @@
 # El bot no responde a nadie
 
-**Síntoma:** los dos packs dejan de contestar. **Diagnóstico:** consulta `/health`, el
+**Síntoma:** los dos packs dejan de contestar. **Diagnóstico:** consulta `/health` (solo vivo) y `/health/internal` desde el servidor (BD y negocios), el
 estado de Compose y los últimos logs; anota hora y SHA sin copiar payloads ni ids de
-clientes. Un 502 público suele indicar que `web` no está sano; un 503 de `/health`
+clientes. Un 502 público suele indicar que `web` no está sano; un 503 de `/health/internal`
 indica fallo de BD. Si `web` responde pero la cola crece, sigue [cola y latido](cola-y-latido.md).
 
 **Pasos:** desde `/srv/autobot`, usa `docker compose ps`

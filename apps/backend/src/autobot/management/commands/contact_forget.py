@@ -4,6 +4,7 @@ docs/procedimientos/retencion-rgpd.md."""
 
 from django.core.management.base import BaseCommand, CommandParser
 
+from autobot.ops.audit import record
 from autobot.runtime import privacy
 
 
@@ -22,5 +23,15 @@ class Command(BaseCommand):
             str(options["external_id"]),
             str(options["channel"]) if options.get("channel") else None,
         )
+        tenant_id, contact_id = contact.tenant_id, contact.id
         privacy.forget(contact)
+        record(
+            actor="command:contact_forget",
+            action="contact.forget",
+            summary="Contacto olvidado (derecho de supresión)",
+            tenant_id=tenant_id,
+            target_type="contact",
+            target_id=str(contact_id),
+            details={"contact_id": str(contact_id)},
+        )
         self.stdout.write("Contacto borrado.")

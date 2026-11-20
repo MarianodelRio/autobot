@@ -1,11 +1,11 @@
 """Tenant reads: ficha, history, datasets, secrets status, activation, summary,
 notifications and on-demand health."""
 
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from django.http import HttpRequest
 from django.utils import timezone
-from ninja import Router, Schema
+from ninja import Query, Router, Schema
 
 from autobot.panel.services import setup as setup_service
 from autobot.panel.services import tenants as service
@@ -164,8 +164,13 @@ def tenant_detail(request: HttpRequest, slug: str) -> service.TenantDetail:
 
 
 @router.get("/tenants/{slug}/versions", response=list[service.VersionSummary])
-def tenant_versions(request: HttpRequest, slug: str) -> list[service.VersionSummary]:
-    return service.tenant_versions(slug)
+def tenant_versions(
+    request: HttpRequest,
+    slug: str,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    before: Annotated[int | None, Query(ge=1)] = None,
+) -> list[service.VersionSummary]:
+    return service.tenant_versions(slug, limit=limit, before=before)
 
 
 @router.get("/tenants/{slug}/versions/{version}", response=service.VersionDetail)
@@ -242,7 +247,7 @@ def tenant_owner_unlink(request: HttpRequest, slug: str) -> service.OwnerUnlinkO
     return service.tenant_owner_unlink(slug, actor=request.user.username)
 
 
-@router.get("/tenants/{slug}/export", response=service.ExportOut)
+@router.post("/tenants/{slug}/export", response=service.ExportOut)
 def tenant_export(request: HttpRequest, slug: str) -> service.ExportOut:
     return service.tenant_export(slug, actor=request.user.username)
 

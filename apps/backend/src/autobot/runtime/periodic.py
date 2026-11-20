@@ -22,10 +22,11 @@ from autobot.channels.demo.doors import door
 from autobot.ops.logging import bind, contextual
 from autobot.ops.state import record
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
-from autobot.runtime.jobs import PERIODIC, RUN_PERIODIC, app
+from autobot.runtime.jobs import PERIODIC, RUN_PERIODIC
 from autobot.runtime.models import DEMO_CHANNELS, Channel
 from autobot.runtime.outbound import defer_sends
 from autobot.runtime.process import apply_actions
+from autobot.runtime.queue import enqueue
 from autobot.tenancy.registry import LoadedTenant, get_registry
 from autobot.tenancy.tx import tenant_tx
 from core.pack import Pack, Periodic
@@ -76,12 +77,13 @@ def dispatch(pack: str, name: str, timestamp: int) -> int:
         periodic = _periodic(tenant.pack, name)
         offset_s = _offset_s(tenant.id, name, periodic.every_min) if periodic else 0
         try:
-            app.configure_task(
+            enqueue(
                 RUN_PERIODIC,
+                {"tenant_id": str(tenant.id), "name": name, "scheduled_at": timestamp},
                 queue=PERIODIC,
                 queueing_lock=f"periodic:{tenant.id}:{name}",
                 schedule_in={"seconds": offset_s},
-            ).defer(tenant_id=str(tenant.id), name=name, scheduled_at=timestamp)
+            )
         except AlreadyEnqueued:
             log.warning(
                 "periodic %s of tenant %s still pending: not queued again", name, tenant.slug

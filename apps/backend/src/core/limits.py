@@ -5,7 +5,9 @@ applies. Exceeding a limit is a programming error: `plan_sends(strict=True)` (te
 the conversation harness) raises; in production it truncates and logs. Problems that
 cannot be fixed by truncating (ids too long, empty or repeated; repeated button titles;
 no buttons, rows or rows in a section; several sections without title; empty body) always
-raise. Lengths are counted in characters (code points).
+raise. Lengths are counted in characters (code points), except the titles, labels and
+descriptions that WhatsApp limits (button, row, section, list button, description): those
+are counted in UTF-16 code units, as WhatsApp does, so an emoji outside the BMP counts 2.
 """
 
 import dataclasses
@@ -28,6 +30,26 @@ MAX_HEADER = 60
 MAX_FOOTER = 60
 MAX_ID_BYTES = 64  # Telegram callback_data
 
+
+def utf16_len(text: str) -> int:
+    """Length in UTF-16 code units (what WhatsApp counts in titles): an emoji outside
+    the BMP is 2."""
+    return len(text.encode("utf-16-le", "surrogatepass")) // 2
+
+
+def cut_utf16(text: str, limit: int) -> str:
+    """At most `limit` UTF-16 code units, never splitting a character (nor a surrogate
+    pair)."""
+    if len(text) * 2 <= limit or utf16_len(text) <= limit:
+        return text
+    size = 0
+    for i, char in enumerate(text):
+        size += 2 if ord(char) > 0xFFFF else 1
+        if size > limit:
+            return text[:i]
+    return text
+
+
 # Separator used when texts are merged together or into an interactive body.
 SEPARATOR = "\n\n"
 
@@ -42,9 +64,13 @@ def check(reply: Reply) -> tuple[list[str], list[str]]:
     fatal: list[str] = []
     long: list[str] = []
 
-    def length(what: str, value: str | None, limit: int) -> None:
-        if value is not None and len(value) > limit:
-            long.append(f"{what} has {len(value)} characters (max {limit})")
+    def length(what: str, value: str | None, limit: int, *, utf16: bool = False) -> None:
+        if value is None:
+            return
+        size = utf16_len(value) if utf16 else len(value)
+        if size > limit:
+            unit = "UTF-16 units" if utf16 else "characters"
+            long.append(f"{what} has {size} {unit} (max {limit})")
 
     def ids(what: str, values: list[str]) -> None:
         for value in values:
@@ -72,7 +98,7 @@ def check(reply: Reply) -> tuple[list[str], list[str]]:
             if len(reply.buttons) > MAX_BUTTONS:
                 long.append(f"{len(reply.buttons)} buttons (max {MAX_BUTTONS})")
             for b in reply.buttons:
-                length("button title", b.title, MAX_BUTTON_TITLE)
+                length("button title", b.title, MAX_BUTTON_TITLE, utf16=True)
             ids("button", [b.id for b in reply.buttons])
             titles = [b.title for b in reply.buttons]
             if len(set(titles)) != len(titles):
@@ -84,7 +110,7 @@ def check(reply: Reply) -> tuple[list[str], list[str]]:
             if not rows:
                 fatal.append("list has no rows")
             length("list body", reply.body, MAX_INTERACTIVE_BODY)
-            length("list button label", reply.button_label, MAX_LIST_BUTTON_LABEL)
+            length("list button label", reply.button_label, MAX_LIST_BUTTON_LABEL, utf16=True)
             length("header", reply.header, MAX_HEADER)
             length("footer", reply.footer, MAX_FOOTER)
             if len(rows) > MAX_LIST_ROWS:
@@ -94,10 +120,10 @@ def check(reply: Reply) -> tuple[list[str], list[str]]:
             for s in reply.sections:
                 if not s.rows:
                     fatal.append("list section has no rows")
-                length("section title", s.title, MAX_SECTION_TITLE)
+                length("section title", s.title, MAX_SECTION_TITLE, utf16=True)
             for r in rows:
-                length("row title", r.title, MAX_ROW_TITLE)
-                length("row description", r.description, MAX_ROW_DESCRIPTION)
+                length("row title", r.title, MAX_ROW_TITLE, utf16=True)
+                length("row description", r.description, MAX_ROW_DESCRIPTION, utf16=True)
             ids("row", [r.id for r in rows])
     return fatal, long
 
@@ -160,6 +186,14 @@ def _cut_optional(value: str | None, limit: int) -> str | None:
     return None if value is None else value[:limit]
 
 
+def _units(value: str, limit: int) -> str:
+    return cut_utf16(value, limit)
+
+
+def _units_optional(value: str | None, limit: int) -> str | None:
+    return None if value is None else cut_utf16(value, limit)
+
+
 def _truncate(reply: Reply) -> Reply:
     match reply:
         case Text():
@@ -168,7 +202,7 @@ def _truncate(reply: Reply) -> Reply:
             return Buttons(
                 body=_cut(reply.body, MAX_INTERACTIVE_BODY),
                 buttons=[
-                    Button(b.id, _cut(b.title, MAX_BUTTON_TITLE))
+                    Button(b.id, _units(b.title, MAX_BUTTON_TITLE))
                     for b in reply.buttons[:MAX_BUTTONS]
                 ],
                 header=_cut_optional(reply.header, MAX_HEADER),
@@ -181,17 +215,17 @@ def _truncate(reply: Reply) -> Reply:
                 rows = [
                     Row(
                         r.id,
-                        _cut(r.title, MAX_ROW_TITLE),
-                        _cut_optional(r.description, MAX_ROW_DESCRIPTION),
+                        _units(r.title, MAX_ROW_TITLE),
+                        _units_optional(r.description, MAX_ROW_DESCRIPTION),
                     )
                     for r in s.rows[:room]
                 ]
                 room -= len(rows)
                 if rows:
-                    sections.append(Section(_cut_optional(s.title, MAX_SECTION_TITLE), rows))
+                    sections.append(Section(_units_optional(s.title, MAX_SECTION_TITLE), rows))
             return List(
                 body=_cut(reply.body, MAX_INTERACTIVE_BODY),
-                button_label=_cut(reply.button_label, MAX_LIST_BUTTON_LABEL),
+                button_label=_units(reply.button_label, MAX_LIST_BUTTON_LABEL),
                 sections=sections,
                 header=_cut_optional(reply.header, MAX_HEADER),
                 footer=_cut_optional(reply.footer, MAX_FOOTER),

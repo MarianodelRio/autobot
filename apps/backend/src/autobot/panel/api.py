@@ -2,6 +2,9 @@
 `{"code", "message", "details"}`, except auth/CSRF failures, which keep django-ninja's
 own `{"detail": ...}` shape (the frontend only needs the status code there)."""
 
+import psycopg
+from django.core.exceptions import RequestDataTooBig
+from django.db.utils import DataError
 from django.http import Http404, HttpRequest, HttpResponse
 from ninja import NinjaAPI
 from ninja.errors import ValidationError as NinjaValidationError
@@ -9,6 +12,7 @@ from ninja.errors import ValidationError as NinjaValidationError
 from autobot.panel.auth import PanelAuth
 from autobot.panel.auth import router as auth_router
 from autobot.panel.errors import CODE_STATUS, ApiError
+from autobot.panel.errors import router as fallback_router
 from autobot.panel.routers.activity import router as activity_router
 from autobot.panel.routers.audit import router as audit_router
 from autobot.panel.routers.calendar import router as calendar_router
@@ -39,6 +43,7 @@ api.add_router("", demo_invites_router)
 api.add_router("", overview_router)
 api.add_router("", packs_router)
 api.add_router("", tenants_router)
+api.add_router("", fallback_router)  # last: only what nothing above matched
 
 
 @api.exception_handler(ApiError)
@@ -75,4 +80,25 @@ def _validation_error(request: HttpRequest, exc: NinjaValidationError) -> HttpRe
 def _not_found(request: HttpRequest, exc: Http404) -> HttpResponse:
     return api.create_response(
         request, {"code": "not_found", "message": "No encontrado.", "details": []}, status=404
+    )
+
+
+@api.exception_handler(DataError)
+@api.exception_handler(psycopg.DataError)
+def _data_error(request: HttpRequest, exc: Exception) -> HttpResponse:
+    # A value the database rejects (NUL byte, out of range, bad cast): the caller's
+    # input, never a 500. The driver's message can quote a value, so it is not echoed.
+    return api.create_response(
+        request,
+        {"code": "bad_request", "message": "Dato no válido.", "details": []},
+        status=400,
+    )
+
+
+@api.exception_handler(RequestDataTooBig)
+def _too_big(request: HttpRequest, exc: RequestDataTooBig) -> HttpResponse:
+    return api.create_response(
+        request,
+        {"code": "too_large", "message": "La petición es demasiado grande.", "details": []},
+        status=413,
     )

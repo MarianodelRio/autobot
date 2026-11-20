@@ -1,22 +1,22 @@
 """Operator actions on ambiguous sends and failed jobs. Used by the
 panel and by the `outbound_resolve`/`job_retry` commands; previously inline in admin.py."""
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any
 from uuid import UUID
 
 from django.db import transaction
 from django.utils import timezone
 from procrastinate import App
-from procrastinate.contrib.django.django_connector import DjangoConnector
 from procrastinate.contrib.django.models import ProcrastinateJob
 
 from autobot.channels.demo.doors import door
 from autobot.ops import audit
+from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE
 from autobot.runtime.locks import contact_hash
 from autobot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
+from autobot.runtime.queue import enqueue
+from autobot.runtime.queue import queue_app as _queue_app
 from autobot.tenancy.models import Tenant
 from autobot.tenancy.registry import get_registry
 
@@ -32,14 +32,8 @@ class Result:
 
 
 def queue_app() -> App:
-    return App(connector=DjangoConnector(alias=OWNER))
-
-
-def _deferrer(task: Any, *, tenant_id: Any, outbound_id: Any) -> Callable[[], None]:
-    """A closure over `task.defer`'s ids, for `transaction.on_commit`: calling
-    `task.defer` directly there would re-evaluate `tenant_id`/`outbound_id` against
-    whatever the loop variable holds by the time it runs, not the row being resolved."""
-    return lambda: task.defer(tenant_id=str(tenant_id), outbound_id=str(outbound_id))
+    """The app that queues through the `owner` connection (the panel's)."""
+    return _queue_app(OWNER)
 
 
 def can_mark_sent(message: OutboundMessage) -> tuple[bool, str]:
@@ -117,10 +111,16 @@ def resend(outbound_id: UUID, *, actor: str) -> Result:
         message.save(using=OWNER, update_fields=["status", "unknown_at"])
         contact = message.contact
         lock = contact_hash(message.tenant_id, contact.channel, contact.external_id)
-        task = queue_app().configure_task(name="send_message", queue="outbound", lock=f"out:{lock}")
-        # After commit: the worker runs on its own connection, so a job deferred here
-        # could start before this row's own save is visible to it.
-        transaction.on_commit(_deferrer(task, tenant_id=message.tenant_id, outbound_id=message.pk))
+        # Inside the transaction, through the same `owner` connection that saved the
+        # message: the job exists only if the status change commits (and is not visible
+        # to the worker before it does).
+        enqueue(
+            SEND_MESSAGE,
+            {"tenant_id": str(message.tenant_id), "outbound_id": str(message.pk)},
+            queue=OUTBOUND,
+            lock=f"out:{lock}",
+            alias=OWNER,
+        )
         audit.record(
             actor=actor,
             action="outbound.resend",

@@ -2,11 +2,12 @@
 against the real database. Transactional, because the tenant rows are written by
 fp_owner and the webhook reads them as fp_app."""
 
+import json
 from typing import Any
 
 import httpx
 import pytest
-from django.db import OperationalError
+from django.db import DataError, OperationalError
 from django.test import Client
 from procrastinate.exceptions import ProcrastinateException
 from procrastinate.jobs import JobDeferrer
@@ -71,7 +72,7 @@ def test_unknown_or_disabled_channels_are_404(tenants: Any) -> None:
 
 def test_oversized_bodies_are_400_without_saving(tenants: Any) -> None:
     tenants(wa_tenant())
-    assert post_wa(b'{"x": "' + b"a" * 64 * 1024 + b'"}') == 400
+    assert post_wa(b'{"x": "' + b"a" * 256 * 1024 + b'"}') == 400
     assert events() == []
 
 
@@ -85,30 +86,28 @@ def test_invalid_json_is_400_after_the_signature(tenants: Any) -> None:
 # ── 3. Authenticity and the IP limit ──────────────────────────────────────
 
 
-def test_invalid_signatures_are_401_and_limited_per_ip(tenants: Any) -> None:
+def test_invalid_signatures_are_401_then_429_but_a_valid_one_always_passes(tenants: Any) -> None:
     tenants(wa_tenant())
     body = fixture("whatsapp/text.json")
     for _ in range(20):
         assert post_wa(body, secret="wrong") == 401
-    assert post_wa(body) == 429  # even a valid one, from that IP
-    assert post_wa(body, ip="198.51.100.7") == 200  # other IPs are not affected
+    assert post_wa(body, secret="wrong") == 429  # the limit of (IP, tenant) is reached
+    assert post_wa(body) == 200  # a valid signature is never refused, from that IP too
+    assert post_wa(body, secret="wrong", ip="198.51.100.7") == 401  # other IPs: own count
     assert len(events()) == 1
-    blocked = Client().post(
-        "/webhooks/whatsapp/nobody000",
-        data=b"{}",
-        content_type="application/json",
-        REMOTE_ADDR="203.0.113.1",
-    )
-    assert blocked.status_code == 429  # before looking up the tenant
 
 
-def test_blocking_an_ip_on_whatsapp_does_not_block_it_on_telegram(tenants: Any) -> None:
+def test_a_tenant_with_a_wrong_secret_does_not_block_another_on_the_same_ip(tenants: Any) -> None:
     tenants(wa_tenant())
     tenants(tg_tenant())
     body = fixture("whatsapp/text.json")
-    for _ in range(20):
-        assert post_wa(body, secret="wrong", ip="198.51.100.9") == 401
-    assert post_wa(body, ip="198.51.100.9") == 429
+    for _ in range(21):
+        post_wa(body, secret="wrong", ip="198.51.100.9")
+    assert post_wa(body, secret="wrong", ip="198.51.100.9") == 429
+    # Telegram's tenant, same IP: its own count, and valid requests pass in any case
+    assert (
+        post_tg(fixture("telegram/message.json"), secret="w" * 31 + "x", ip="198.51.100.9") == 401
+    )
     assert post_tg(fixture("telegram/message.json"), ip="198.51.100.9") == 200
 
 
@@ -284,6 +283,12 @@ def test_health(tenants: Any) -> None:
     }
 
 
+def test_health_internal_is_hidden_behind_the_edge(tenants: Any) -> None:
+    tenants()
+    assert Client().get("/health/internal", headers={"X-Autobot-Edge": "public"}).status_code == 404
+    assert Client().get("/health", headers={"X-Autobot-Edge": "public"}).status_code == 200
+
+
 def test_health_without_database_is_503(tenants: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     tenants()
 
@@ -292,7 +297,8 @@ def test_health_without_database_is_503(tenants: Any, monkeypatch: pytest.Monkey
             raise OperationalError("down")
 
     monkeypatch.setattr("autobot.ops.views.connections", {"default": Broken()})
-    assert Client().get("/health").status_code == 503
+    # The public probe is liveness only (no database); the internal one reports it.
+    assert Client().get("/health").status_code == 200
     assert Client().get("/health/internal").status_code == 503
 
 
@@ -314,3 +320,44 @@ def test_only_webhooks_and_health_are_public() -> None:
     extra = [p for p in urls.urlpatterns if p not in urls.public]
     assert [str(p.pattern) for p in extra] == ["health/internal", "api/panel/"]
     assert Client().get("/admin/").status_code == 404
+
+
+# ── Hardening ─────────────────────────────────────────────────────────────
+
+
+def test_a_nul_in_a_signed_body_is_stored_clean_not_a_permanent_503(tenants: Any) -> None:
+    tenants(wa_tenant())
+    body = fixture("whatsapp/text.json").replace(b"Hola, quiero", b"Hola\\u0000, quiero")
+    assert b"\\u0000" in body
+    assert post_wa(body) == 200
+    (event,) = events()
+    assert "\\u0000" not in json.dumps(event.payload)
+
+
+def test_a_data_error_is_dropped_with_200_but_a_connection_error_is_503(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenants(wa_tenant())
+
+    def refuse(*args: object) -> None:
+        raise DataError("unsupported Unicode escape sequence")
+
+    monkeypatch.setattr(views, "accept", refuse)
+    assert post_wa(fixture("whatsapp/text.json")) == 200
+
+    def down(*args: object) -> None:
+        raise OperationalError("connection refused")
+
+    monkeypatch.setattr(views, "accept", down)
+    assert post_wa(fixture("whatsapp/text.json")) == 503
+
+
+def test_deeply_nested_json_is_400_not_500(tenants: Any) -> None:
+    tenants(wa_tenant())
+    assert post_wa(b"[" * 200_000) == 400
+
+
+def test_the_body_limit_is_256_kb(tenants: Any) -> None:
+    tenants(wa_tenant())
+    assert views.MAX_BODY == 256 * 1024
+    assert post_wa(b'{"x": "' + b"a" * (200 * 1024) + b'"}') == 200

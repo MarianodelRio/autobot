@@ -13,9 +13,10 @@ from django.utils import timezone
 from autobot.channels.adapters import endpoint
 from autobot.channels.base import Ambiguous, Rejected, RetryLater, SendOutcome, Sent
 from autobot.ops.logging import bind, contextual
-from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE, app
+from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE
 from autobot.runtime.locks import contact_hash
 from autobot.runtime.models import Contact, InboundEvent, OutboundMessage
+from autobot.runtime.queue import enqueue
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
 from core.proactive import ProactiveMessage
@@ -73,15 +74,19 @@ def defer_sends(tenant_id: UUID, messages: list[OutboundMessage]) -> None:
     """Queue `send_message` for each message, in order, with the contact's `out:<h>` lock:
     a contact's messages leave one at a time and in order.
 
-    Must be called inside the same `tenant_tx` that saved `messages`: the Django connector
-    inserts the job through that same connection, so the job commits atomically with the
-    message instead of in a separate `on_commit` step. That way a failure deferring it
-    rolls the message back too, instead of leaving it saved with nothing to send it."""
+    Must be called inside the same `tenant_tx` that saved `messages`: `enqueue` inserts the
+    job through that same Django connection (never through the worker's own pool, see
+    `autobot.runtime.queue`), so the job commits atomically with the message. A failure
+    deferring it rolls the message back too, instead of leaving it saved with nothing to
+    send it."""
     for message in messages:
         contact = message.contact
         lock = f"out:{contact_hash(tenant_id, contact.channel, contact.external_id)}"
-        app.configure_task(SEND_MESSAGE, queue=OUTBOUND, lock=lock).defer(
-            tenant_id=str(tenant_id), outbound_id=str(message.id)
+        enqueue(
+            SEND_MESSAGE,
+            {"tenant_id": str(tenant_id), "outbound_id": str(message.id)},
+            queue=OUTBOUND,
+            lock=lock,
         )
 
 
@@ -121,7 +126,12 @@ def send_message(tenant_id: UUID, outbound_id: UUID) -> None:
                 channel=message.channel,
                 event_id=str(message.inbound_event_id or ""),
             )
-        if message is None or message.status in (Status.SENT, Status.UNKNOWN, Status.FAILED):
+        if message is None:
+            # Enqueued atomically with the row, so this should never happen: if it does,
+            # the job has nothing to send and ops_check will see the stuck state.
+            log.error("send_message: outbound %s of tenant %s not found", outbound_id, tenant.id)
+            return
+        if message.status in (Status.SENT, Status.UNKNOWN, Status.FAILED):
             return  # done, or never resent blindly
         if message.status == Status.SENDING:
             message.status = Status.UNKNOWN

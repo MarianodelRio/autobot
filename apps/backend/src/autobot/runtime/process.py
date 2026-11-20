@@ -31,7 +31,7 @@ from autobot.ops.logging import bind, contextual
 from autobot.ops.state import record
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
 from autobot.runtime.identity import aliases_for, phone_group, phone_key
-from autobot.runtime.jobs import OUTBOUND, SEND_NOTIFICATION, defer_after_commit
+from autobot.runtime.jobs import OUTBOUND, RETRYABLE, SEND_NOTIFICATION
 from autobot.runtime.models import (
     DEMO_CHANNELS,
     Channel,
@@ -43,6 +43,7 @@ from autobot.runtime.models import (
     OutboundMessage,
 )
 from autobot.runtime.outbound import create_proactive, create_replies, defer_sends
+from autobot.runtime.queue import enqueue
 from autobot.tenancy.registry import LoadedTenant, get_registry
 from autobot.tenancy.schema import PHONE
 from autobot.tenancy.tx import tenant_tx
@@ -60,7 +61,7 @@ from core.limits import plan_sends
 from core.messages import IncomingMessage
 from core.pack import ContactInfo, PackResult
 from core.proactive import ProactiveMessage
-from core.replies import Text
+from core.replies import Reply, Text
 
 log = logging.getLogger(__name__)
 
@@ -116,7 +117,10 @@ def process_event(
     notices = effective.notices
     error = ""
     keep_conversation = False  # True: the conversation row is left as it was
-    command = global_command(message)
+    expects_free_text = tenant.pack is not None and (
+        tenant.pack.expects_free_text is not None and tenant.pack.expects_free_text(state)
+    )
+    command = global_command(message, free_text=expects_free_text)
     # A retried event was already counted on its first attempt.
     over_limit = contact_limiter.hit(str(contact.id)) if first_attempt else False
     if over_limit:
@@ -140,6 +144,55 @@ def process_event(
         )
 
     # ── tx2: persist ──────────────────────────────────────────────────────
+    try:
+        _persist(
+            tenant,
+            event_id,
+            contact,
+            conversation,
+            state,
+            result,
+            notices,
+            error,
+            keep_conversation=keep_conversation,
+            now=now,
+        )
+    except RETRYABLE:
+        raise  # a database hiccup: the job is retried
+    except Exception as e:
+        # Deterministic failure persisting the result (a reply over the channel limits,
+        # a bad action...): retrying would fail the same way and leave the person with no
+        # answer. Persist the recovery text instead and mark the event failed.
+        log.exception("event %s: persisting the result failed: recovery text sent", event_id)
+        _persist(
+            tenant,
+            event_id,
+            contact,
+            conversation,
+            {},
+            recovery_result(),
+            [],
+            f"persist: {type(e).__name__}",
+            keep_conversation=keep_conversation,
+            now=now,
+        )
+
+
+def _persist(
+    tenant: LoadedTenant,
+    event_id: UUID,
+    contact: Contact,
+    conversation: Conversation,
+    state: dict[str, Any],
+    result: PackResult,
+    notices: list[Reply],
+    error: str,
+    *,
+    keep_conversation: bool,
+    now: Any,
+) -> None:
+    """tx2: save the state, the replies, the actions and the event outcome, and queue the
+    sends, all in one transaction."""
     with tenant_tx(tenant.id):
         event = InboundEvent.objects.select_for_update().get(id=event_id)
         if event.status != Status.PENDING:
@@ -191,19 +244,28 @@ def _run_pack(
             calendars=calendars,
         )
         result = tenant.pack.handle_message(ctx, message)
-        record(tenant.id, event.channel, failed=False)
-        return result, ""
     except TransientError:
-        record(tenant.id, event.channel, failed=True)
+        _record_signal(tenant, event, failed=True)
         if not last_attempt:
             raise
         log.warning("event %s: transient error on the last attempt", event.id)
         return recovery_result(), "TransientError on the last attempt"
     except Exception as e:
-        record(tenant.id, event.channel, failed=True)
+        _record_signal(tenant, event, failed=True)
         # Sentry, once configured takes it from this log record.
         log.exception("event %s: unexpected error in pack %s", event.id, tenant.pack.name)
         return recovery_result(), type(e).__name__
+    # Outside the try: a failure of the health signal is not a failure of the pack.
+    _record_signal(tenant, event, failed=False)
+    return result, ""
+
+
+def _record_signal(tenant: LoadedTenant, event: InboundEvent, *, failed: bool) -> None:
+    """The tenant's health signal; it never breaks the conversation."""
+    try:
+        record(tenant.id, event.channel, failed=failed)
+    except Exception:
+        log.warning("could not record the health signal of tenant %s", tenant.slug, exc_info=True)
 
 
 def apply_actions(
@@ -340,12 +402,11 @@ def _notify_owner(
     )
     Notification.objects.bulk_create([row], ignore_conflicts=True)
     if Notification.objects.filter(id=row.id).exists():
-        defer_after_commit(
+        enqueue(
             SEND_NOTIFICATION,
+            {"tenant_id": str(tenant.id), "notification_id": str(row.id)},
             queue=OUTBOUND,
             lock=f"owner:{tenant.id}",
-            tenant_id=str(tenant.id),
-            notification_id=str(row.id),
         )
 
 
@@ -411,6 +472,10 @@ def _update_from_status(message: OutboundMessage, item: StatusItem) -> None:
             message.status = Sent.FAILED
             message.last_error = f"status failed: {item.error or '?'}"
     elif message.status != Sent.FAILED:
+        if message.status != Sent.SENT:
+            # Ambiguous (or retrying) and now proven: nothing left to resolve.
+            message.unknown_at = None
+            message.last_error = ""
         message.status = Sent.SENT
         message.sent_at = message.sent_at or timezone.now()
     message.provider_message_id = message.provider_message_id or item.provider_message_id
@@ -422,6 +487,7 @@ def _update_from_status(message: OutboundMessage, item: StatusItem) -> None:
         update_fields=[
             "status",
             "last_error",
+            "unknown_at",
             "sent_at",
             "provider_message_id",
             "pricing_category",

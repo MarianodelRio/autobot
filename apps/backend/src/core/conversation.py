@@ -60,10 +60,12 @@ def effective_state(
     return EffectiveState(dict(state))
 
 
-def global_command(message: IncomingMessage) -> GlobalCommand | None:
+def global_command(message: IncomingMessage, *, free_text: bool = False) -> GlobalCommand | None:
     """Commands the runtime resolves before the pack, on the normalized text:
     `menu`, `menú`, `inicio` and `/start` → menu; `baja` → opt_out; `alta` → opt_in.
-    The effective state's notices are sent with any command too."""
+    The effective state's notices are sent with any command too. With `free_text` (the
+    pack's current step waits for free text, e.g. a name) `baja`/`alta` are not
+    commands: they reach the pack as ordinary text. `menu` always works."""
     if message.type != "text" or message.text is None:
         return None
     words = message.text.split()
@@ -72,6 +74,8 @@ def global_command(message: IncomingMessage) -> GlobalCommand | None:
     text = normalize(message.text)
     if text in _MENU_WORDS:
         return "menu"
+    if free_text:
+        return None
     if text == "baja":
         return "opt_out"
     if text == "alta":

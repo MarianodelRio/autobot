@@ -63,8 +63,56 @@ def test_source_configuration_validates() -> None:
         {"special_event": {"active": True}},
         {"special_event": {"days": {"2026-15-12": ["10:00-14:00"]}}},
         {"special_event": {"days": {"2026-12-25": ["14:00-10:00"]}}},
+        {"business_name": "N" * 61},
+        {"contact_phone": "6" * 31},
+        {"booking_window_days": 91},
+        {"unknown_key": 1},
+        {
+            "services": {
+                "corte": {"name": "Corte", "duration_min": 30, "client_presence_min": 30, "x": 1}
+            }
+        },
+        {"special_event": {"active": False, "color": "red"}},
+        {"holidays": {"country": "XX"}},
+        {"holidays": {"country": "ES", "subdivision": "ZZ"}},
+        {
+            "holidays": {
+                "country": "ES",
+                "closed_dates": ["2026-05-15"],
+                "open_dates": ["2026-05-15"],
+            }
+        },
+        {"holidays": {"country": "ES", "closed_dates": ["not-a-date"]}},
+        {"holidays": {"country": "ES", "other": 1}},
+        {"texts": {"welcome": ""}},
+        {"texts": {"cancelled": "   "}},
+        {"texts": {"unknown_text": "hola"}},
     ],
 )
 def test_invalid_configuration_is_rejected(changes: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         configuration(**changes)
+
+
+def test_holiday_calendar_validates_and_closes_days() -> None:
+    from datetime import date
+
+    cfg = configuration(
+        holidays={
+            "country": "ES",
+            "subdivision": "MD",
+            "closed_dates": ["2026-05-15"],
+            "open_dates": ["2026-12-08"],
+        }
+    )
+    assert cfg.holidays is not None
+    assert cfg.spans(date(2026, 12, 25)) == []  # Christmas, a Friday
+    assert cfg.spans(date(2026, 12, 8)) != []  # a holiday listed in open_dates
+    assert cfg.spans(date(2026, 5, 15)) == []  # extra closing day
+    assert cfg.spans(date(2026, 12, 4)) != []  # an ordinary Friday
+    # Holidays only apply to ordinary opening, never to a special event's own days.
+    assert configuration().holidays is None
+
+
+def test_texts_are_trimmed() -> None:
+    assert configuration(texts={"welcome": "  Hola  "}).texts.welcome == "Hola"

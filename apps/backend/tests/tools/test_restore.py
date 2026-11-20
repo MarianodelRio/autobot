@@ -204,3 +204,26 @@ def test_restores_a_specific_snapshot_when_requested(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     log = (tmp_path / "docker.log").read_text()
     assert "restore abc123 --tag autobot" in log
+
+
+def test_skip_flag_is_explicit_and_loud_instead_of_faking_the_marker(tmp_path: Path) -> None:
+    """Drills on a machine that is not a VM (restore-test.sh, localprod.sh) skip the
+    bootstrap check out loud; nothing writes the marker for them."""
+    script, binaries = setup(tmp_path, bootstrapped=False)
+    result = invoke(script, binaries, tmp_path, AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK="true")
+    assert result.returncode == 0, result.stderr
+    assert "Skipping the bootstrap check" in result.stderr
+    assert not (tmp_path / "bootstrap-complete").exists()
+
+
+def test_the_real_marker_name_is_what_install_vm_writes() -> None:
+    install = (ROOT / "deploy/scripts/install-vm.sh").read_text()
+    restore = (ROOT / "deploy/scripts/restore.sh").read_text()
+    assert "bootstrap_marker=$state_dir/bootstrap-complete" in install
+    assert "/var/lib/autobot/bootstrap-complete" in restore
+    for name in ("restore-test.sh", "localprod.sh"):
+        assert "touch" not in "".join(
+            line
+            for line in (ROOT / "deploy/scripts" / name).read_text().splitlines()
+            if "bootstrap-complete" in line
+        )

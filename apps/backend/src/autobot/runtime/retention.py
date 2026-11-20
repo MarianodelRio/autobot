@@ -67,6 +67,9 @@ def cleanup(*, now: datetime | None = None) -> None:
         # A demo tenant's own cutoff is much shorter than a real client's annual one
         # (D4): nobody who only tried the demo should stay on file for a year.
         cutoff = demo_cutoff if tenant.is_demo else annual
+        expired = Q(last_activity_at__lte=cutoff) | Q(
+            last_activity_at__isnull=True, created_at__lte=cutoff
+        )
         operations: list[tuple[QuerySet[Any], dict[str, Any] | None]] = [
             (InboundEvent.objects.filter(received_at__lte=now - timedelta(days=90)), None),
             (
@@ -84,12 +87,15 @@ def cleanup(*, now: datetime | None = None) -> None:
             ),
             (Notification.objects.filter(created_at__lte=cutoff), None),
             (MetricEvent.objects.filter(created_at__lte=cutoff), None),
+            # A contact that opted out is NOT purged: the opt-out is the suppression
+            # that stops later reminders (a manual appointment for the same phone would
+            # create a fresh contact and message it). Only its name is cleared; the
+            # identifier stays as the minimal suppression record (see
+            # docs/procedimientos/retencion-rgpd.md). `contact_forget` still erases it.
+            (Contact.objects.filter(expired, opt_out=False), None),
             (
-                Contact.objects.filter(
-                    Q(last_activity_at__lte=cutoff)
-                    | Q(last_activity_at__isnull=True, created_at__lte=cutoff)
-                ),
-                None,
+                Contact.objects.filter(expired, opt_out=True).exclude(display_name=""),
+                {"display_name": ""},
             ),
         ]
         if tenant.pack is not None:
@@ -134,8 +140,13 @@ def cleanup(*, now: datetime | None = None) -> None:
     # SECURITY DEFINER (autobot/db/grants.py): fp_app has no DELETE on ops_alert or audit_event.
     with connection.cursor() as cursor:
         cursor.execute("SELECT purge_platform_history(%s)", [annual])
-    # procrastinate_jobs/_events grow without bound otherwise (X15); a job's events
-    # cascade with it. Procrastinate has no sync variant of this manager method.
+
+
+def cleanup_jobs() -> None:
+    """Delete finished Procrastinate jobs (and their events, by cascade) older than 30
+    days: the tables grow without bound otherwise (X15). Not conditioned by
+    `RETENTION_CLEANUP_ENABLED`: they hold only ids (never personal data), so there is
+    nothing to approve. Procrastinate has no sync variant of this manager method."""
     from autobot.runtime.jobs import app
 
     async_to_sync(app.job_manager.delete_old_jobs)(

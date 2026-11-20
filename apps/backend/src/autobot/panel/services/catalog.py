@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import psycopg
-from django.db import DatabaseError, connections
+from django.db import DatabaseError, connections, transaction
 from django.http import Http404
 
 from autobot.ops.audit import record
@@ -356,32 +356,48 @@ def _tenant_slugs() -> dict[str, str]:
     return {str(id): slug for id, slug in Tenant.objects.using("owner").values_list("id", "slug")}
 
 
+STATS_TIMEOUT = "2s"
+DETAIL_TIMEOUT = "5s"
+
+
 def _stats(
     name: str, metadata: dict[str, Any], columns: list[dict[str, Any]], slugs: dict[str, str]
 ) -> dict[str, Any]:
+    """Exact counts only where they are cheap: from `reltuples` up, the row count is the
+    planner's estimate and the per-client breakdown is skipped (a full GROUP BY over a
+    big table is what made this screen slow). Each query has its own
+    `statement_timeout`; a timeout degrades to the estimate instead of failing."""
     quote = _identifier
     estimated = metadata["estimate"]
     approx = estimated >= 100_000
+    count = int(max(estimated, 0))
     counts: list[dict[str, Any]] = []
-    with connections["owner"].cursor() as cursor:
-        if not approx:
-            cursor.execute(f"SELECT count(*) FROM public.{quote(name)}")
-            count = cursor.fetchone()[0]
-        else:
-            count = int(estimated)
-        if any(column["name"] == "tenant_id" for column in columns):
-            cursor.execute(
-                f"SELECT tenant_id, count(*) FROM public.{quote(name)} "
-                "GROUP BY tenant_id ORDER BY tenant_id"
-            )
-            counts = [
-                dict(
-                    tenant_id=str(id) if id is not None else None,
-                    tenant=slugs.get(str(id)) if id is not None else None,
-                    count=value,
+    try:
+        with transaction.atomic(using="owner"), connections["owner"].cursor() as cursor:
+            cursor.execute(f"SET LOCAL statement_timeout = '{STATS_TIMEOUT}'")
+            if not approx:
+                cursor.execute(f"SELECT count(*) FROM public.{quote(name)}")
+                count = cursor.fetchone()[0]
+    except DatabaseError:
+        approx = True
+    if not approx and any(column["name"] == "tenant_id" for column in columns):
+        try:
+            with transaction.atomic(using="owner"), connections["owner"].cursor() as cursor:
+                cursor.execute(f"SET LOCAL statement_timeout = '{STATS_TIMEOUT}'")
+                cursor.execute(
+                    f"SELECT tenant_id, count(*) FROM public.{quote(name)} "
+                    "GROUP BY tenant_id ORDER BY tenant_id"
                 )
-                for id, value in cursor.fetchall()
-            ]
+                counts = [
+                    dict(
+                        tenant_id=str(id) if id is not None else None,
+                        tenant=slugs.get(str(id)) if id is not None else None,
+                        count=value,
+                    )
+                    for id, value in cursor.fetchall()
+                ]
+        except DatabaseError:
+            counts = []
     return dict(row_count=count, approx=approx, bytes=metadata["bytes"], rows_by_tenant=counts)
 
 
@@ -442,7 +458,8 @@ def table_detail(name: str, *, actor: str) -> dict[str, Any]:
         details={"table": name},
     )
     try:
-        with connections["owner"].cursor() as cursor:
+        with transaction.atomic(using="owner"), connections["owner"].cursor() as cursor:
+            cursor.execute(f"SET LOCAL statement_timeout = '{DETAIL_TIMEOUT}'")
             cursor.execute(query)
             rows = [
                 [

@@ -190,6 +190,14 @@ def test_add_tester_publishes_and_clears_the_candidate(authed_client: Any, tenan
     assert AuditEvent.objects.using("owner").filter(action="tenant.setup_add_tester").exists()
 
 
+def test_add_tester_rejects_an_id_that_never_wrote(authed_client: Any, tenants: Any) -> None:
+    tenants(tg_tenant("tg", status="onboarding"))
+    ignored_message("tg", 999)
+    response = post(authed_client, "tenants/tg/setup/testers", {"id": "12345"})
+    assert response.status_code == 400
+    assert "12345" not in get_registry(force=True).by_slug["tg"].document.testers.main
+
+
 def test_add_tester_twice_is_rejected(authed_client: Any, tenants: Any) -> None:
     tenants(tg_tenant("tg", status="onboarding"))
     assert post(authed_client, "tenants/tg/setup/testers", {"id": "100000001"}).status_code == 400
@@ -514,7 +522,7 @@ def test_configure_webhook_sends_the_url_verify_token_and_app_token(
     assert form == {
         "object": "whatsapp_business_account",
         "callback_url": "https://api.example.org/webhooks/whatsapp/puba0000",
-        "verify_token": "V3RIFY-T0KEN",
+        "verify_token": "V3RIFY-T0KEN-1234",
         "fields": "messages",
     }
     assert "V3RIFY" not in response.content.decode()
@@ -540,3 +548,46 @@ def test_action_rejects_a_telegram_tenant(authed_client: Any, tenants: Any) -> N
     tenants(tg_tenant("tg"))
     response = post(authed_client, "tenants/tg/setup/action/whatsapp_subscription")
     assert response.status_code == 400
+
+
+# ── Reading never calls a provider; only «Comprobar» and activating do ───────
+
+
+def test_setup_and_checklist_reads_use_only_the_cached_health(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[int] = []
+
+    def tenant_health(tenant: Any, **kw: Any) -> list[Any]:
+        calls.append(1)
+        return []
+
+    monkeypatch.setattr(health, "tenant_health", tenant_health)
+    tenants(tg_tenant("tg", status="onboarding"))
+    for _ in range(2):
+        steps = {s["key"]: s for s in get(authed_client, "tenants/tg/setup").json()}
+        items = {i["key"]: i for i in get(authed_client, "tenants/tg/activation-checklist").json()}
+    assert calls == []
+    # Unchecked is "pending", never a silent "ok".
+    assert steps["health"]["state"] == "pending" and items["health"]["ok"] is False
+    assert steps["health"]["checkable"] is True
+
+    checked = post(authed_client, "tenants/tg/setup/check/health").json()
+    assert calls == [1] and checked["state"] == "ok"
+    steps = {s["key"]: s for s in get(authed_client, "tenants/tg/setup").json()}
+    assert calls == [1] and steps["health"]["state"] == "ok"
+
+
+def test_blocking_steps_match_the_activation_checklist(authed_client: Any, tenants: Any) -> None:
+    for doc in (tg_tenant("tg", status="onboarding"), wa_tenant("wa", status="onboarding")):
+        tenants(doc)
+        slug = doc["slug"]
+        steps = get(authed_client, f"tenants/{slug}/setup").json()
+        items = get(authed_client, f"tenants/{slug}/activation-checklist").json()
+        backend_blocking = {i["key"] for i in items if i["blocking"]}
+        ui_blocking = {s["key"] for s in steps if s["blocking"]}
+        # Every step the UI marks blocking is blocking in the backend, and the other
+        # way round (a Telegram channel has no templates step: it is always ok).
+        assert ui_blocking <= backend_blocking
+        assert backend_blocking - ui_blocking <= {"templates"} or slug == "wa"
+        assert slug != "wa" or ui_blocking == backend_blocking

@@ -41,9 +41,9 @@ def test_limite_30_dias_exacto_es_pasada() -> None:
     assert r.estado == "pasada"
 
 
-def test_31_dias_es_ok_proximo_anio() -> None:
+def test_31_dias_pregunta_por_el_proximo_anio() -> None:
     r = fechas.leer_fecha("27/08", HOY)
-    assert r.estado == "ok"
+    assert r.estado == "confirmar"
     assert r.fecha == date(2027, 8, 27)
 
 
@@ -76,10 +76,21 @@ def test_29_febrero_con_anio_no_bisiesto_es_inexistente() -> None:
     assert r.estado == "inexistente"
 
 
-def test_29_febrero_sin_anio_busca_proximo_bisiesto() -> None:
+def test_29_febrero_sin_anio_pregunta_por_el_proximo_bisiesto() -> None:
     r = fechas.leer_fecha("29/02", HOY)
-    assert r.estado == "ok"
+    assert r.estado == "confirmar"
     assert r.fecha == date(2028, 2, 29)
+
+
+def test_fecha_sin_anio_mas_cerca_por_delante_no_pregunta() -> None:
+    r = fechas.leer_fecha("5/1", date(2026, 12, 20))
+    assert r.estado == "ok" and r.fecha == date(2027, 1, 5)
+
+
+def test_una_hora_no_es_una_fecha() -> None:
+    assert fechas.leer_fecha("10 30", HOY).estado == "formato"
+    assert fechas.leer_fecha("10:30", HOY).estado == "formato"
+    assert fechas.leer_fecha("5/1.2027", HOY).estado == "formato"
 
 
 def test_lenguaje_natural_y_formatos_no_admitidos() -> None:

@@ -1,6 +1,37 @@
+{
+    servers {
+        timeouts {
+            read_header 10s
+            read_body 30s
+            write 60s
+            idle 2m
+        }
+    }
+}
+
 {$PUBLIC_HOST} {
+    # Access log to stdout (collected by Docker's json-file driver) without the query
+    # string (WhatsApp's webhook verification carries its verify token there) and
+    # without request headers (webhook signatures, cookies).
+    log {
+        output stdout
+        format filter {
+            wrap json
+            request>uri regexp \?.* ""
+            request>headers delete
+            resp_headers delete
+        }
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        -Server
+    }
+
+    # Webhook payloads are small; Django enforces the same 256 KB.
     request_body {
-        max_size 64KB
+        max_size 256KB
     }
 
     # /health/internal (the tenant/database detail deploy.sh needs) is deliberately

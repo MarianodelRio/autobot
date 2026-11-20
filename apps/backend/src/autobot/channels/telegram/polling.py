@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from django.db import InterfaceError, OperationalError, close_old_connections, connections
+from procrastinate.exceptions import ProcrastinateException
 
 from autobot.channels import views
 from autobot.channels.adapters import TELEGRAM
@@ -30,6 +32,12 @@ log = logging.getLogger(__name__)
 POLL_TIMEOUT_S = 25  # Telegram holds the request this long when there is nothing
 CLIENT_TIMEOUT_S = 35.0  # longer than the poll
 ERROR_PAUSE_S = 3.0
+# Saving an update fails like this when the database or the queue is unavailable (a
+# restart, a dropped connection): the update is not lost, the same offset is asked again
+# after a pause. Any other failure (a bug, a body the database refuses) would fail the
+# same way every time, so that update is skipped at once.
+TRANSIENT_ERRORS = (OperationalError, InterfaceError, ProcrastinateException)
+MAX_SAVE_ATTEMPTS = 5  # per update, so a failure that never ends does not block the rest
 ALLOWED_UPDATES = ["message", "callback_query"]
 DEMO_WEBHOOK_PATH = "webhooks/telegram-demo"
 NOTIFY_WEBHOOK_PATH = "webhooks/telegram-notify"
@@ -110,10 +118,16 @@ def poll(
     stop: Callable[[], bool] = lambda: False,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Fetch updates until `stop()`. The offset always moves on, even if an update
-    fails: a failure is logged and never blocks the next ones."""
+    """Fetch updates until `stop()`. The offset only moves past an update once it is
+    saved: if the database or the queue is down it is asked again after a pause (up to
+    `MAX_SAVE_ATTEMPTS` times; the connections are dropped so they are opened anew). An
+    update that fails for any other reason is logged and skipped, never blocking the next
+    ones. Stale connections are closed on every round, as a long-running worker does."""
     offset: int | None = None
+    failing: int | None = None  # the update_id that failed to be saved, and how often
+    failures = 0
     while not stop():
+        close_old_connections()
         params: dict[str, Any] = {"timeout": POLL_TIMEOUT_S, "allowed_updates": ALLOWED_UPDATES}
         if offset is not None:
             params["offset"] = offset
@@ -130,10 +144,25 @@ def poll(
         for update in updates if isinstance(updates, list) else []:
             if not isinstance(update, dict) or not isinstance(update.get("update_id"), int):
                 continue
-            offset = update["update_id"] + 1
+            update_id: int = update["update_id"]
             try:
                 source.accept(update)
+            except TRANSIENT_ERRORS as e:
+                failures = failures + 1 if failing == update_id else 1
+                failing = update_id
+                connections.close_all()
+                if failures < MAX_SAVE_ATTEMPTS:
+                    log.warning(
+                        "update of %s not saved (%s): asking for it again",
+                        source.name,
+                        type(e).__name__,
+                    )
+                    offset = update_id  # not past it: Telegram sends it again
+                    sleep(ERROR_PAUSE_S)
+                    break
+                log.error("update of %s dropped after %d attempts", source.name, failures)
             except Exception as e:
-                # Unlike the webhook (503, so Telegram retries), the offset has moved on:
-                # in local development this update is lost.
+                # Unlike the webhook (503, so Telegram retries), retrying would fail the
+                # same way: in local development this update is lost.
                 log.error("update of %s not saved: %s", source.name, type(e).__name__)
+            offset = update_id + 1

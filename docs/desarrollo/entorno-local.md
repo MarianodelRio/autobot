@@ -4,13 +4,15 @@ Requisitos: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta)
 
 ```bash
 cd apps/backend && uv sync && cd -
-make dev-bootstrap     # db, roles, migraciones, permisos, demos, web y los workers
+make local             # todo: requisitos, .env, db, roles, migraciones, permisos, demos, web y workers
 make check             # ruff, mypy, import-linter y tests contra la BD local
 ```
 
 `web` escucha en `http://127.0.0.1:8000`. `make up` reconstruye y levanta los servicios
 ya preparados; `make down` los para y `make shell` abre Django en `web`.
-`make dev-bootstrap` se puede repetir: conserva las versiones existentes y los cambios
+`make local` (`dev-bootstrap` es un alias; script `deploy/scripts/install-local.sh`, ADR-017)
+crea `.env` desde `.env.example` si falta (sin credenciales de terceros), comprueba al final
+`/health/internal` y los workers, y admite `--check`. Se puede repetir: conserva las versiones existentes y los cambios
 de los demos. `make dev-reset` exige escribir `RESET`, borra el volumen local y repite
 el bootstrap, incluida la creación de la base de pruebas.
 
@@ -21,9 +23,11 @@ panel con datos; `--days` y `--reset` se pasan con
 niega fuera de `local`.
 
 La imagen local instala las dependencias de desarrollo (`INSTALL_DEV=true`); la de
-producción mantiene `--no-dev`. Cada worker usa `watchfiles` y reinicia su proceso al
-cambiar Python en `apps/backend/src/`, respetando su cierre antes de
-sustituirlo. En local, `.env` es opcional. Si se necesita Calendar,
+producción mantiene `--no-dev`. `web` corre con gunicorn y `--reload` (hilos acotados como en
+producción, no `runserver`, que abre un hilo por petición sin límite). Cada worker
+corre bajo `deploy/compose/dev-worker.py`: reinicia su proceso al cambiar Python en
+`apps/backend/src/`, respetando su cierre antes de sustituirlo, y si el worker muere
+solo (p. ej. tras reiniciar la BD) el contenedor sale y Docker lo relanza. En local, `.env` es opcional. Si se necesita Calendar,
 `GOOGLE_SERVICE_ACCOUNT_FILE` apunta al fichero local de la cuenta de servicio (ruta
 relativa a `deploy/compose/`, por convención `../../var/google_sa.json`); vacío monta
 `/dev/null` y no crea ninguna credencial. Los secretos de los canales se importan
@@ -68,7 +72,7 @@ biblioteca independiente con `dataset_library` (ADR-013). Ver
 
 ## Reproducir producción en local (L1/L2)
 
-`make up`/`dev-bootstrap` son para desarrollo: código montado, `runserver`, sin Caddy
+`make up`/`make local` son para desarrollo: código montado, gunicorn con recarga, sin Caddy
 ni TLS. Para probar de verdad `deploy.sh`, `backup.sh` y `restore.sh` tal cual corren
 en el servidor (Caddy con TLS, `read_only` con tu UID real, gunicorn), sin tocar `make
 up`:

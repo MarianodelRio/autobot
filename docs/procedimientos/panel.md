@@ -33,7 +33,12 @@ webhook a pegar en el panel de Meta), secretos, plantillas (WhatsApp: el texto d
 cada una del pack y, al «Comprobar», su estado real en Meta), salud, un mensaje real
 de un tester, el dueño, el webhook de Telegram, el calendario de `salon` (D1-D4) y
 los horarios de `bus`; los pasos marcados «Comprobar» hacen una llamada real al
-proveedor (nunca al cargar la pestaña) y quedan auditados. El paso del tester lista
+proveedor (nunca al cargar la pestaña, ni al volver a ella: leer solo consulta la caché
+de salud, y una salud sin comprobar cuenta como pendiente) y quedan auditados. «Salud
+del canal» también se comprueba así; «Activar» fuerza siempre la comprobación. Lo que
+bloquea la activación lo decide el backend (`activation.checklist`): el webhook de
+Telegram no bloquea por sí mismo, pero un webhook sin registrar hace fallar «Salud
+del canal», que sí bloquea. «Añadir» un tester solo acepta a quien de verdad escribió. El paso del tester lista
 los últimos que escribieron sin estarlo, con «Añadir» para sumarlos a
 `testers.main` sin pasar por Configuración. Al final de la pestaña, el QR del canal
 (C13: tamaño y margen correctos, descarga en SVG/PNG, vista para imprimir) y, mientras
@@ -57,7 +62,8 @@ confirmación. Actividad usa la misma lista que Logs → Conversaciones, limitad
 este cliente. Cada consulta de una conversación desde Contactos queda auditada, y
 desde ahí también se puede «Exportar datos» (descarga un JSON) u «Olvidar contacto»
 (borrado irreversible, con confirmación) de ese contacto; «Exportar datos del
-negocio», en el menú «⋯» de la ficha, hace lo mismo a nivel de negocio (C16; ver
+negocio» (`POST`, pues audita), en el menú «⋯» de la ficha, hace lo mismo a nivel de
+negocio, con un tope de 50 000 filas (más allá, el comando `tenant_data_export`) (C16; ver
 `docs/procedimientos/retencion-rgpd.md`). El panel pide confirmación para pausar o
 reactivar.
 
@@ -115,7 +121,12 @@ tienen detalle.
 **Consola SQL:** editor de solo lectura (`fp_readonly`, solo
 `SELECT`/`WITH`/`VALUES`, `POST /api/panel/data/query`) con autocompletado del
 catálogo, ⌘↵ para ejecutar, «Copiar» (TSV) y «Descargar CSV», y selector de
-cliente o «Todos»; recuerda la última consulta en el navegador.
+cliente o «Todos»; recuerda la última consulta en el navegador. El selector es un
+filtro de comodidad, no una frontera de seguridad (una consulta puede cambiarlo con
+`set_config`). Límites: 2 consultas a la vez por proceso (la tercera recibe 429
+«consola ocupada»), 10 000 caracteres por celda y 5 MB por resultado (se marca como
+truncado), una sola sentencia (un `;` final o dentro de un literal/comentario vale) y
+cualquier dato rechazado por PostgreSQL (p. ej. un NUL) responde 400.
 
 ## Sistema
 
@@ -173,8 +184,11 @@ SSH.
 - Sesión de 12 horas, cookies `autobot_panel_session` y `autobot_panel_csrftoken`
   (nombres propios para no chocar con otra app en `127.0.0.1`). Toda escritura exige
   la cabecera `X-CSRFToken`.
-- 5 fallos de login en 15 minutos bloquean ese usuario 15 minutos (no la IP, que
-  siempre es la del contenedor `panel`). Los errores de login son siempre genéricos;
+- 5 fallos de login en 15 minutos bloquean ese usuario 15 minutos; además hay un tope de
+  20 intentos fallidos en 15 minutos por dirección (por el túnel, la del contenedor
+  `panel`, así que en la práctica es un tope global contra el rocío de usuarios). El
+  contador es atómico (`cache.add` por intento, reservado antes de comprobar) y cada
+  bloqueo queda en la auditoría como `auth.login_blocked`. Los errores de login son siempre genéricos;
   el motivo real (usuario, contraseña, OTP) solo queda en la auditoría
   (`auth.login_failed`), nunca en la respuesta.
 - `fp_app` (el rol de `web` y `worker`) no tiene ningún acceso a las tablas de Django

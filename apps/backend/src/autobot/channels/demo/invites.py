@@ -9,9 +9,14 @@ touching the server's `.env`.
 
 `doors.allowed()` checks the grant on every message (not just the one that redeemed
 the code), so access survives after the code stops appearing in later messages.
+
+Codes are 12 characters (about 59 bits) and a person who fails to redeem one
+`MAX_FAILED_REDEEMS` times in an hour is not checked again until the hour passes
+(worker/web memory): codes cannot be guessed by trying.
 """
 
 import logging
+import re
 import secrets as random_secrets
 import string
 
@@ -21,6 +26,7 @@ from django.utils import timezone
 
 from autobot.channels.base import InboundItem
 from autobot.channels.demo.doors import Door
+from autobot.channels.ratelimit import WindowLimiter
 from autobot.runtime.models import Channel, DemoAccessGrant, DemoInvite
 
 log = logging.getLogger(__name__)
@@ -28,15 +34,28 @@ log = logging.getLogger(__name__)
 # Avoids visually ambiguous characters (0/O, 1/I/L): read off a printed QR caption or
 # typed by hand from one phone to another.
 ALPHABET = "".join(c for c in string.ascii_uppercase + string.digits if c not in "0O1IL")
-CODE_LENGTH = 8
+CODE_LENGTH = 12
+# What a message must look like to be tried as a code: letters and digits only, at least
+# 10 characters (a shorter code was never issued). Anything else is chat, not a guess.
+MIN_CANDIDATE_LENGTH = 10
+MAX_CANDIDATE_LENGTH = 32
+CANDIDATE = re.compile(rf"[A-Za-z0-9]{{{MIN_CANDIDATE_LENGTH},{MAX_CANDIDATE_LENGTH}}}")
+MAX_FAILED_REDEEMS = 5
+failed_redeems = WindowLimiter(limit=MAX_FAILED_REDEEMS, window_s=3600)
 
 
 def generate_code() -> str:
     return "".join(random_secrets.choice(ALPHABET) for _ in range(CODE_LENGTH))
 
 
-def _candidate_code(door: Door, item: InboundItem) -> str | None:
-    """The invite code `item`'s message might be redeeming, or None."""
+def candidate_code(door: Door, item: InboundItem) -> str | None:
+    """The invite code `item`'s message might be redeeming, or None (also when what it
+    carries cannot be a code)."""
+    code = _raw_candidate(door, item)
+    return code if code and CANDIDATE.fullmatch(code) else None
+
+
+def _raw_candidate(door: Door, item: InboundItem) -> str | None:
     text = (item.message.text or "").strip()
     if not text:
         return None
@@ -61,9 +80,20 @@ def redeem(door: Door, item: InboundItem) -> bool:
     """Grant `item`'s identity access if its message carries a valid, unused invite
     code. Idempotent: redeeming again with the same identity only refreshes the
     grant's expiry."""
-    code = _candidate_code(door, item)
+    code = candidate_code(door, item)
     if not code:
         return False
+    key = f"{door.channel}:{item.external_id}"
+    if failed_redeems.blocked(key):
+        log.warning("demo invite redemption refused: too many failed attempts")
+        return False
+    if _redeem(door, item, code):
+        return True
+    failed_redeems.record(key)
+    return False
+
+
+def _redeem(door: Door, item: InboundItem, code: str) -> bool:
     now = timezone.now()
     with transaction.atomic():
         invite = (

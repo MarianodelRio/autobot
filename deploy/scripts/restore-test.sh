@@ -101,10 +101,10 @@ export AUTOBOT_BACKUP_CONFIG="$test_root/backup.env"
 # same way the first real backup would (so backup.sh's id check doesn't trip).
 RESTIC_REPOSITORY="$test_root/repository" RESTIC_PASSWORD_FILE="$test_root/restic-password" \
   "$RESTIC_BIN" init
-# T1: restore.sh refuses to run on a target that was never bootstrapped; this
-# machine wasn't (it's the developer's own), so fake the marker like a real one.
-touch "$test_root/bootstrap-complete"
-export AUTOBOT_BOOTSTRAP_MARKER="$test_root/bootstrap-complete"
+# T1: restore.sh refuses to run on a target that was never bootstrapped (the marker
+# is written only by install-vm.sh). This machine is the developer's own, so skip
+# that one check explicitly instead of faking the marker.
+export AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK=true
 
 docker build -q -t autobot:restore-test -f apps/backend/Dockerfile apps/backend >/dev/null
 docker tag autobot:restore-test "ghcr.io/example-owner/autobot:$sha"
@@ -117,12 +117,26 @@ compose_args=(-f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml
   docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
     python manage.py migrate --noinput >/dev/null
   docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
+    python manage.py apply_grants >/dev/null
+  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
     python manage.py tenant_config validate --all >/dev/null
   docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
     python manage.py seed_demos >/dev/null
   docker compose --project-name "$source_project" "${compose_args[@]}" exec -T db \
     psql -U postgres -d autobot -v ON_ERROR_STOP=1 -q -c \
     "INSERT INTO contact (id, tenant_id, channel, external_id, created_at) VALUES ('00000000-0000-7000-8000-000000000001', (SELECT id FROM tenant WHERE slug='demo-autobuses'), 'test', 'local-fixture', now())" >/dev/null
+  # A channel secret encrypted with the source's SECRETS_ENCRYPTION_KEY: after the
+  # restore, the key that travelled in the backed-up .env must still decrypt it.
+  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
+    python manage.py shell -c "
+from autobot.tenancy.crypto import encrypt
+from autobot.tenancy.models import Tenant, TenantSecret
+tenant = Tenant.objects.using('owner').get(slug='demo-autobuses')
+TenantSecret.objects.using('owner').update_or_create(
+    tenant=tenant,
+    defaults={'channel_type': 'telegram', 'ciphertext': encrypt({'token': 'restore-fixture'}), 'updated_by': 'restore-test'},
+)
+" >/dev/null
 )
 counts() {
   local project=$1 dir=$2
@@ -147,4 +161,48 @@ if [[ $grants != 'f|f' ]]; then
   echo "Permissions were not reapplied after restore: $grants" >&2
   exit 1
 fi
-echo "Local restore verified: $after"
+
+# Verify the restore for real, not just the rows: start the restored `web` on the
+# restored database (no workers, no Caddy) and check that (a) /health/internal
+# answers with every tenant readable and (b) the SECRETS_ENCRYPTION_KEY restored
+# from the backed-up .env decrypts the restored tenant_secret rows. Both are what
+# would fail on a real recovery if the key or the registry did not survive.
+web_port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+target_compose() {
+  (cd "$target_dir" && AUTOBOT_WEB_HOST_PORT="$web_port" SHA="$sha" \
+    docker compose --project-name "$target_project" "${compose_args[@]}" "$@")
+}
+target_compose up -d --no-deps web >/dev/null
+healthy=false
+for ((i=0; i<30; i++)); do
+  if response=$(curl --silent --fail --max-time 2 "http://127.0.0.1:$web_port/health/internal" 2>/dev/null) &&
+    python3 -c 'import json, sys
+r = json.load(sys.stdin)
+assert r["status"] == "ok" and r["tenants"]["unreadable"] == 0 and r["tenants"]["loaded"] >= 1' <<<"$response" 2>/dev/null; then
+    healthy=true
+    break
+  fi
+  sleep 2
+done
+if [[ $healthy != true ]]; then
+  echo "Restored web did not report healthy with every tenant readable: ${response:-no answer}" >&2
+  target_compose logs --tail=50 web >&2 || true
+  exit 1
+fi
+decrypted=$(target_compose run --rm -T web python manage.py shell -c "
+from autobot.tenancy.crypto import decrypt
+from autobot.tenancy.models import TenantSecret
+count = 0
+for secret in TenantSecret.objects.using('owner'):
+    decrypt(bytes(secret.ciphertext))
+    count += 1
+print('decrypted', count)
+") || {
+  echo 'The restored encryption key could not decrypt the restored tenant_secret rows' >&2
+  exit 1
+}
+if [[ $decrypted != 'decrypted '[1-9]* ]]; then
+  echo "Expected at least one decryptable tenant_secret after the restore, got: $decrypted" >&2
+  exit 1
+fi
+echo "Local restore verified: $after; $decrypted secret(s) decrypted; /health/internal ok"

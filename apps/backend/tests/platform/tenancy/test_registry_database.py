@@ -73,9 +73,8 @@ def test_health_catches_initial_registry_failure(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr("autobot.tenancy.registry.sources_from_database", fail)
     response = Client().get("/health")
-    assert response.status_code == 503
-    assert response.json() == {"status": "error"}  # public: no detail
-    assert b"private database failure" not in response.content
+    assert response.status_code == 200  # public: liveness only, no database
+    assert response.json() == {"status": "ok"}
 
     internal = Client().get("/health/internal")
     assert internal.status_code == 503

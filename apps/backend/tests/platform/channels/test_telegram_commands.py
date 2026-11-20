@@ -14,6 +14,7 @@ from pytest_django import Settings
 from autobot.channels import views
 from autobot.channels.demo.doors import door
 from autobot.channels.telegram import polling
+from autobot.ops.models import AuditEvent
 from autobot.runtime.models import Channel, DemoEvent, InboundEvent, OwnerEvent
 from tests.helpers.integration import jobs, tg_tenant
 from tests.platform.tenancy.helpers import TG_SECRETS
@@ -241,6 +242,8 @@ def test_set_a_tenant_bot_webhook(tenants: Any, monkeypatch: pytest.MonkeyPatch)
     assert where == f"{TG_SECRETS['bot_token']}/setWebhook"
     assert params["url"] == "https://api.example.org/webhooks/telegram/pubtg0000"
     assert params["secret_token"] == TG_SECRETS["webhook_secret"]
+    audit = AuditEvent.objects.using("owner").get(action="tenant.webhook_register")
+    assert audit.actor == "command:telegram_set_webhook" and audit.tenant_id is not None
 
 
 def test_set_the_notify_bot_webhook(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None:
@@ -294,3 +297,50 @@ def test_set_webhook_errors(
     settings.DEMO_TELEGRAM_WEBHOOK_SECRET = ""
     with pytest.raises(CommandError, match="DEMO_TELEGRAM_WEBHOOK_SECRET"):
         set_webhook(api, monkeypatch, "demo")
+
+
+def test_an_update_not_saved_because_the_database_is_down_is_asked_again(
+    tenants: Any,
+) -> None:
+    from django.db import OperationalError
+
+    tenants(tg_tenant())
+    seen: list[int] = []
+    outage = [True]
+
+    def accept(update: dict[str, Any]) -> bool:
+        seen.append(update["update_id"])
+        if outage:
+            outage.pop()
+            raise OperationalError("server closed the connection")
+        return True
+
+    bot = polling.Source("demo bot", polling.source(None).secrets, accept, "webhooks/telegram-demo")
+    pauses: list[float] = []
+    api = BotApi(updates(message(40), message(41)), updates(message(40), message(41)), updates())
+    polling.poll(bot, api.client, stop=lambda: not api.answers, sleep=pauses.append)
+    assert seen == [40, 40, 41]  # 40 was asked again, and nothing was lost
+    assert pauses == [3.0]
+    assert "offset" not in api.calls[0][1]
+    assert api.calls[1][1]["offset"] == 40  # not moved past the update that failed
+    assert api.calls[2][1]["offset"] == 42
+
+
+def test_an_update_that_never_saves_is_dropped_after_a_few_attempts(tenants: Any) -> None:
+    from django.db import OperationalError
+
+    tenants(tg_tenant())
+    seen: list[int] = []
+
+    def accept(update: dict[str, Any]) -> bool:
+        seen.append(update["update_id"])
+        if update["update_id"] == 50:
+            raise OperationalError("down")
+        return True
+
+    bot = polling.Source("demo bot", polling.source(None).secrets, accept, "webhooks/telegram-demo")
+    batch = updates(message(50), message(51))
+    api = BotApi(*[batch] * polling.MAX_SAVE_ATTEMPTS, updates())
+    polling.poll(bot, api.client, stop=lambda: not api.answers, sleep=lambda s: None)
+    assert seen.count(50) == polling.MAX_SAVE_ATTEMPTS and seen[-1] == 51
+    assert api.calls[-1][1]["offset"] == 52

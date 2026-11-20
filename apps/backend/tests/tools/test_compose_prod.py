@@ -43,3 +43,14 @@ def test_app_services_mount_the_container_snapshot_read_only() -> None:
         service = PROD["services"][name]
         assert "../../var/state/ops:/run/ops:ro" in service["volumes"]
         assert service["environment"]["OPS_STATE_DIR"] == "/run/ops"
+
+
+def test_init_roles_does_not_grant_table_permissions() -> None:
+    # Table permissions belong to apply_grants (grants.py); init-roles.sh runs on every
+    # deploy and would reopen what grants.py restricts.
+    script = (ROOT / "deploy" / "postgres" / "init-roles.sh").read_text()
+    code = "\n".join(line for line in script.splitlines() if not line.lstrip().startswith("#"))
+    assert "TO fp_app" in code  # CONNECT / schema USAGE only
+    assert "ON ALL TABLES" not in code
+    assert "ON ALL SEQUENCES" not in code
+    assert "GRANT SELECT, INSERT" not in code

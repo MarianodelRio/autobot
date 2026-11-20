@@ -24,10 +24,9 @@ from autobot.runtime.jobs import (
     PERIODIC,
     SEND_NOTIFICATION,
     SEND_OWNER_SUMMARY,
-    app,
-    defer_after_commit,
 )
 from autobot.runtime.models import Channel, MetricEvent, Notification, OutboundMessage
+from autobot.runtime.queue import enqueue
 from autobot.tenancy.registry import LoadedTenant, get_registry
 from autobot.tenancy.tx import tenant_tx
 from core.dates import MONTHS_ES
@@ -67,6 +66,10 @@ def _add_months(at: datetime, months: int) -> datetime:
     return at.replace(year=year, month=month)
 
 
+def summary_key(tenant_id: UUID, start: datetime) -> str:
+    return f"summary:{tenant_id}:{start.year}-{start.month:02d}"
+
+
 def dispatch_owner_summaries(now: datetime) -> int:
     """Queue `send_owner_summary` for every tenant due for its automatic monthly
     summary. Returns how many were queued. Runs hourly; `_due`'s `>=` lets a worker
@@ -78,9 +81,12 @@ def dispatch_owner_summaries(now: datetime) -> int:
             continue
         start, _ = previous_month(now, tenant.info.timezone)
         try:
-            app.configure_task(
-                SEND_OWNER_SUMMARY, queue=PERIODIC, queueing_lock=f"summary:{tenant.id}"
-            ).defer(tenant_id=str(tenant.id), year=start.year, month=start.month)
+            enqueue(
+                SEND_OWNER_SUMMARY,
+                {"tenant_id": str(tenant.id), "year": start.year, "month": start.month},
+                queue=PERIODIC,
+                queueing_lock=f"summary:{tenant.id}",
+            )
         except AlreadyEnqueued:
             continue
         queued += 1
@@ -89,15 +95,21 @@ def dispatch_owner_summaries(now: datetime) -> int:
 
 def _due(tenant: LoadedTenant, now: datetime) -> bool:
     """Only an active, non-degraded tenant, with
-    `owner.summary_monthly` and a connected chat, on its own day 1 past noon local
-    time."""
+    `owner.summary_monthly` and a connected chat, from its own day 1 past noon local
+    time and any later day of the month, while the previous month's summary has not been
+    created yet (a missed day 1, e.g. a worker outage, is recovered; the idempotency key
+    stops a second one)."""
     owner = tenant.document.owner
     if tenant.document.status != "active" or tenant.is_degraded:
         return False
     if owner is None or not owner.summary_monthly or links.owner_chat(tenant.id) is None:
         return False
     local = now.astimezone(tenant.info.timezone)
-    return local.day == 1 and local.hour >= SUMMARY_LOCAL_HOUR
+    if local.day == 1 and local.hour < SUMMARY_LOCAL_HOUR:
+        return False
+    start, _ = previous_month(now, tenant.info.timezone)
+    with tenant_tx(tenant.id):
+        return not Notification.objects.filter(idem_key=summary_key(tenant.id, start)).exists()
 
 
 def send_owner_summary(tenant_id: UUID, year: int, month: int) -> None:
@@ -129,12 +141,11 @@ def send_owner_summary(tenant_id: UUID, year: int, month: int) -> None:
         )
         Notification.objects.bulk_create([row], ignore_conflicts=True)
         if Notification.objects.filter(id=row.id).exists():
-            defer_after_commit(
+            enqueue(
                 SEND_NOTIFICATION,
+                {"tenant_id": str(tenant_id), "notification_id": str(row.id)},
                 queue=OUTBOUND,
                 lock=f"owner:{tenant_id}",
-                tenant_id=str(tenant_id),
-                notification_id=str(row.id),
             )
 
 

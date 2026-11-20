@@ -15,6 +15,7 @@ the others:
 Messages never contain secret values.
 """
 
+import json
 import logging
 import threading
 import time
@@ -123,6 +124,8 @@ class TenantSource:
     secrets_error: str | None = None
     version: int | None = None
     document_error: str | None = None
+    # ADR-013: where each dataset's copy came from, {name: (entry name, version, sha256)}.
+    dataset_origins: Mapping[str, tuple[str, int, str]] = field(default_factory=dict)
 
 
 def load_registry(sources: Iterable[TenantSource], packs: Mapping[str, Pack]) -> Registry:
@@ -144,6 +147,22 @@ def load_registry(sources: Iterable[TenantSource], packs: Mapping[str, Pack]) ->
     return registry
 
 
+ORIGIN_SUFFIX = ".origin.json"
+
+
+def _read_origin(path: Path) -> tuple[str, int, str] | None:
+    """The library provenance written next to an exported dataset (ADR-013); anything
+    malformed is ignored, since provenance is informative only."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        name, version, sha = raw["name"], raw["version"], raw["sha256"]
+    except OSError, UnicodeError, ValueError, KeyError, TypeError:
+        return None
+    if isinstance(name, str) and isinstance(version, int) and isinstance(sha, str):
+        return (name[:64], version, sha[:64])
+    return None
+
+
 def source_from_dir(directory: Path, secrets: Mapping[str, Any] | None = None) -> TenantSource:
     document = directory / "document.yaml"
     if not document.is_file():
@@ -151,6 +170,7 @@ def source_from_dir(directory: Path, secrets: Mapping[str, Any] | None = None) -
     try:
         raw = yaml.safe_load(document.read_text(encoding="utf-8"))
         datasets: dict[str, dict[str, str]] = {}
+        origins: dict[str, tuple[str, int, str]] = {}
         root = directory / "datasets"
         if root.is_dir():
             for dataset in sorted(root.iterdir()):
@@ -165,7 +185,13 @@ def source_from_dir(directory: Path, secrets: Mapping[str, Any] | None = None) -
                             encoding="utf-8"
                         )
                 datasets[dataset.name] = files
-        return TenantSource(directory.name, raw, datasets=datasets, secrets=secrets)
+            for name in datasets:
+                origin = _read_origin(root / f"{name}{ORIGIN_SUFFIX}")
+                if origin is not None:
+                    origins[name] = origin
+        return TenantSource(
+            directory.name, raw, datasets=datasets, secrets=secrets, dataset_origins=origins
+        )
     except READ_ERRORS as error:
         return TenantSource(
             directory.name,
@@ -319,13 +345,20 @@ def sources_from_database(alias: str = "default") -> tuple[int, list[TenantSourc
             .values("tenant_id", "version", "document")
         )
         datasets: dict[UUID, dict[str, dict[str, str]]] = {}
+        origins: dict[UUID, dict[str, tuple[str, int, str]]] = {}
         for row in (
             TenantDatasetVersion.objects.using(alias)
             .order_by("tenant_id", "name", "-version")
             .distinct("tenant_id", "name")
-            .values("tenant_id", "name", "files")
+            .values("tenant_id", "name", "files", "source_name", "source_version", "source_sha")
         ):
             datasets.setdefault(row["tenant_id"], {})[row["name"]] = row["files"]
+            if row["source_name"] and row["source_version"] is not None and row["source_sha"]:
+                origins.setdefault(row["tenant_id"], {})[row["name"]] = (
+                    row["source_name"],
+                    row["source_version"],
+                    row["source_sha"],
+                )
         secrets = {
             row["tenant_id"]: bytes(row["ciphertext"])
             for row in TenantSecret.objects.using(alias).values("tenant_id", "ciphertext")
@@ -351,6 +384,7 @@ def sources_from_database(alias: str = "default") -> tuple[int, list[TenantSourc
                 secrets=raw_secrets,
                 secrets_error=secrets_error,
                 version=doc_row["version"],
+                dataset_origins=origins.get(tenant_id, {}),
             )
         )
     return revision, sources

@@ -8,3 +8,7 @@ Type=oneshot
 User=deploy
 WorkingDirectory=/srv/autobot
 ExecStart=/srv/autobot/deploy/scripts/backup.sh
+# oneshot units have no start timeout by default: a hung restic or pg_dump would hold
+# the backup lock for good and every later hourly run would just find it taken. The
+# weekly `restic check --read-data-subset` is the slowest run; 2h leaves it room.
+TimeoutStartSec=2h

@@ -19,6 +19,7 @@ dependencies = [
     "sentry-sdk>=2,<3",
     "django-ninja>=1.7,<2",
     "qrcode>=8.2,<9",
+    "holidays>=0.109",
 ]
 
 [dependency-groups]
@@ -61,10 +62,10 @@ explicit_package_bases = true
 files = ["src", "tests", "manage.py"]
 
 [tool.django-stubs]
-django_settings_module = "config.settings"
+django_settings_module = "config.settings_dev"
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "config.settings"
+DJANGO_SETTINGS_MODULE = "config.settings_dev"
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "--strict-markers"

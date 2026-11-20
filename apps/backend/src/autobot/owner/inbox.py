@@ -13,14 +13,16 @@ from django.db import connections, transaction
 from django.utils import timezone
 
 from autobot.channels.adapters import TELEGRAM
-from autobot.channels.base import InboundItem, Sent
+from autobot.channels.base import InboundItem, RetryLater, Sent
 from autobot.channels.ratelimit import WindowLimiter
 from autobot.ops.logging import bind, contextual
 from autobot.owner import links, menu, texts
-from autobot.runtime.jobs import HANDLE_OWNER_EVENT, INBOUND, app
+from autobot.runtime.jobs import HANDLE_OWNER_EVENT, INBOUND
 from autobot.runtime.locks import owner_chat_lock
 from autobot.runtime.models import OwnerEvent
 from autobot.runtime.notifications import bot_secrets, deliver
+from autobot.runtime.queue import enqueue
+from core.errors import TransientError
 from core.replies import Reply, Text
 
 log = logging.getLogger(__name__)
@@ -50,9 +52,12 @@ def store_owner_event(item: InboundItem) -> bool:
         row = cursor.fetchone()
         if row is None:
             return False
-        app.configure_task(
-            HANDLE_OWNER_EVENT, queue=INBOUND, lock=owner_chat_lock(int(item.external_id))
-        ).defer(event_id=str(row[0]))
+        enqueue(
+            HANDLE_OWNER_EVENT,
+            {"event_id": str(row[0])},
+            queue=INBOUND,
+            lock=owner_chat_lock(int(item.external_id)),
+        )
     return True
 
 
@@ -74,18 +79,20 @@ def handle_owner_event(event_id: UUID) -> None:
     text_in = (item.message.text or "").strip()
     body: str | None = None
     linked_slug: str | None = None
-    if text_in.startswith("/start"):
-        code = text_in.removeprefix("/start").strip()
-        if code:
-            result = links.start_link(code, chat_id)
-            if result.status == "invalid":
-                _finish_and_reply(event, chat_id, texts.invite_invalid())
-                return
-            if result.status == "taken":
-                body = texts.chat_taken()
+    code = _start_code(text_in)
+    if code:
+        result = links.start_link(code, chat_id)
+        if result.status == "invalid":
+            if NOT_LINKED_LIMIT.hit(str(chat_id)):
+                _finish(event)  # someone guessing codes: no answer without limit
             else:
-                assert result.tenant is not None
-                body, linked_slug = texts.linked(result.tenant), result.tenant.slug
+                _finish_and_reply(event, chat_id, texts.invite_invalid())
+            return
+        if result.status == "taken":
+            body = texts.chat_taken()
+        else:
+            assert result.tenant is not None
+            body, linked_slug = texts.linked(result.tenant), result.tenant.slug
 
     tenants = links.tenants_of_chat(chat_id)
     if not tenants:
@@ -102,6 +109,15 @@ def handle_owner_event(event_id: UUID) -> None:
 
     slug = linked_slug or (tenants[0].slug if len(tenants) == 1 else None)
     _finish_and_reply(event, chat_id, menu.menu_reply(chat, body), slug=slug)
+
+
+def _start_code(text: str) -> str | None:
+    """The code of `/start <code>` or `/start@bot <code>` (Telegram adds the bot's name in
+    groups and when the command is picked from a menu), or None."""
+    words = text.split(maxsplit=1)
+    if not words or words[0].split("@")[0].lower() != "/start" or len(words) < 2:
+        return None
+    return words[1].strip() or None
 
 
 def _acknowledge(payload: dict[str, Any]) -> None:
@@ -126,5 +142,10 @@ def _finish_and_reply(
         bind(tenant=slug)
     reply = Text(body) if isinstance(body, str) else body
     outcome = deliver(reply, str(chat_id), event.id)
+    if isinstance(outcome, RetryLater):  # certainly not sent: reopen and retry the job
+        OwnerEvent.objects.filter(id=event.id, status=OwnerEvent.Status.DONE).update(
+            status=OwnerEvent.Status.PENDING
+        )
+        raise TransientError("owner bot reply not sent")
     if not isinstance(outcome, Sent):
         log.warning("owner bot reply not sent: %s", type(outcome).__name__)

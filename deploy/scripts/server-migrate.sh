@@ -6,6 +6,11 @@
 # from var/server.env (deploy/env/server.env.example) -- the same domain and
 # backup repository are kept, only the machine changes.
 #
+# TO must have been prepared with `install-vm.sh --restore-target` (ADR-017) run on
+# that VM: users, Docker, timers, SSH hardening and the bootstrap marker, but no
+# .env, no deploy and no workers. Its own CI deploy key (printed by that script)
+# replaces the one of FROM in GitHub at the `finish` step.
+#
 # Idempotent per step; every destructive or externally-visible step asks for
 # confirmation first (CLAUDE.md: infrastructure changes need explicit approval).
 # `--only=STEP` re-runs one step (useful after fixing something mid-migration).
@@ -48,11 +53,46 @@ confirm() {
   [[ $reply == y || $reply == Y ]]
 }
 
-# Step 2+3: TO must already be bootstrapped (server-init.sh --only=base/harden-ssh/
-# secrets, with var/server.env pointed at it) before this runs. This step only
-# rehearses the restore (never marks TO as deployed: restore.sh skips that when
+# FROM and TO can be aliases of the same machine (an alias in ~/.ssh/config, an IP,
+# a DNS name): comparing the strings is not enough, so also compare /etc/machine-id.
+# Everything destructive below (`down -v` on TO) is only safe if TO is really another
+# machine and has never been deployed to.
+if [[ $from == "$to" ]]; then
+  echo 'FROM and TO are the same host; refusing' >&2
+  exit 2
+fi
+guard_distinct_hosts() {
+  local from_id to_id
+  from_id=$(ssh_deploy "$from" 'cat /etc/machine-id') || { echo "Cannot reach FROM ($from)" >&2; return 1; }
+  to_id=$(ssh_deploy "$to" 'cat /etc/machine-id') || { echo "Cannot reach TO ($to)" >&2; return 1; }
+  if [[ -z $from_id || $from_id == "$to_id" ]]; then
+    echo "FROM and TO are the same machine (same machine-id); refusing" >&2
+    return 1
+  fi
+}
+# TO must be an empty target: no recorded deployment and no application container
+# running. A rehearsal restores into it and then `down -v` wipes its database volume,
+# which on a deployed machine would destroy the live database.
+guard_empty_target() {
+  if ssh_deploy "$to" 'test -f /srv/autobot/var/.deployed-sha'; then
+    echo "TO ($to) already has a deployment (var/.deployed-sha); refusing to touch its volumes" >&2
+    return 1
+  fi
+  local running
+  running=$(ssh_deploy "$to" \
+    "docker ps -q --filter label=com.docker.compose.project=autobot --filter label=com.docker.compose.service=web --filter label=com.docker.compose.service=worker-inbound --filter label=com.docker.compose.service=worker-outbound")
+  if [[ -n $running ]]; then
+    echo "TO ($to) has application containers running; refusing to touch its volumes" >&2
+    return 1
+  fi
+}
+
+# Step 2+3: TO must already be installed (install-vm.sh --restore-target, run on
+# TO) before this runs. This step only rehearses the restore (never marks TO as deployed: restore.sh skips that when
 # AUTOBOT_RESTORE_DB_ONLY=true) and compares per-tenant counts.
 step_rehearse() {
+  guard_distinct_hosts
+  guard_empty_target
   # restore.sh installs the snapshot's .env and runs ensure-env.sh itself.
   ssh_deploy "$to" 'AUTOBOT_RESTORE_DB_ONLY=true /srv/autobot/deploy/scripts/restore.sh --confirm-empty-target'
   # Via `db`'s own postgres superuser, like restore-test.sh: RLS would otherwise
@@ -65,11 +105,14 @@ step_rehearse() {
   echo 'Compare the two tables above by hand before continuing.'
   # DB_ONLY never wrote var/.deployed-sha, so compose.prod.yaml's ${SHA:?} has
   # nothing to read; `down` never uses the image, so any well-formed value does.
+  # Checked again right before the destructive part, not just at the start.
+  guard_empty_target
   ssh_deploy "$to" 'SHA=0000000000000000000000000000000000000000 /srv/autobot/deploy/scripts/compose.sh down -v'
 }
 
 # Step 4: freeze and do the final backup on FROM.
 step_freeze() {
+  guard_distinct_hosts
   confirm "Freeze $from and stop it for the cutover? Real traffic stops here." || return 1
   ssh_deploy "$from" 'touch /srv/autobot/var/.frozen'
   if command -v gh >/dev/null 2>&1; then
@@ -117,9 +160,17 @@ step_finish() {
   if command -v gh >/dev/null 2>&1; then
     gh secret set DEPLOY_HOST --env production --body "$to"
     ssh-keyscan -H "$to" | gh secret set DEPLOY_KNOWN_HOSTS --env production
+    # TO generated its own CI key (install-vm.sh): the one in GitHub still belongs
+    # to FROM and would be rejected by TO.
+    if ssh_admin "$to" 'sudo test -f /root/autobot-ci-deploy-key'; then
+      ssh_admin "$to" 'sudo cat /root/autobot-ci-deploy-key' | gh secret set DEPLOY_SSH_KEY --env production
+      ssh_admin "$to" 'sudo shred -u /root/autobot-ci-deploy-key'
+    else
+      echo "TO's CI key file (/root/autobot-ci-deploy-key) is gone: rerun 'install-vm.sh --only ci-key --rotate-ci-key' on TO and set DEPLOY_SSH_KEY by hand" >&2
+    fi
     gh workflow enable deploy.yml
   else
-    echo 'gh not found; update DEPLOY_HOST/DEPLOY_KNOWN_HOSTS and re-enable deploy.yml by hand' >&2
+    echo 'gh not found; update DEPLOY_HOST/DEPLOY_KNOWN_HOSTS/DEPLOY_SSH_KEY and re-enable deploy.yml by hand' >&2
   fi
   ssh_admin "$to" 'sudo systemctl start autobot-backup.timer'
   echo "FROM ($from) stays frozen (var/.frozen) and stopped; keep it for 7 days, then decommission it."

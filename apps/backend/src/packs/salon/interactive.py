@@ -7,6 +7,9 @@ from core.ui import button, buttons_msg, list_msg, paginate, row, section, trunc
 from packs.salon.config import SalonConfig
 
 FOOTER = "Cualquier texto te llevará de vuelta al menú principal"
+# Steps that wait for a choice: free text re-shows the step, it does not leave it.
+FOOTER_STEP = "Elige una opción o escribe menú"
+FOOTER_NAME = "Escribe tu nombre o pulsa Cancelar"
 
 
 def back(text: str) -> Buttons:
@@ -46,7 +49,7 @@ def listing(
         "Ver opciones",
         [section(None, paginate(rows, page, more_id=f"{prefix}:{page + 1}", back_id=back_id))],
         header=header,
-        footer=FOOTER,
+        footer=FOOTER_STEP,
     )
 
 
@@ -60,5 +63,22 @@ def services(cfg: SalonConfig) -> List:
         "¿Qué servicio quieres?",
         "Ver servicios",
         [section(None, [*rows, row("back_to_menu", "↩️ Volver al menú")])],
-        footer=FOOTER,
+        footer=FOOTER_STEP,
+    )
+
+
+def name_prompt(text: str, known_name: str | None = None) -> Buttons:
+    """Asks for the name; `Cancelar` leaves without booking, `Usar {name}` takes the known one."""
+    buttons = []
+    if known_name:
+        buttons.append(button("use_name", f"Usar {known_name}"))
+    buttons.append(button("back_to_menu", "❌ Cancelar"))
+    return buttons_msg(text, buttons, footer=FOOTER_NAME)
+
+
+def confirm_cancel(label: str) -> Buttons:
+    return buttons_msg(
+        f"¿Cancelar {label}?",
+        [button("cancel_yes", "Sí, cancelar"), button("cancel_no", "No")],
+        footer=FOOTER_STEP,
     )

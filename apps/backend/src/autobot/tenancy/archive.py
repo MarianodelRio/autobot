@@ -1,5 +1,6 @@
 """Portable UTF-8 tenant directories and tar streams, without exported secrets."""
 
+import json
 import sys
 import tarfile
 from collections.abc import Iterator, Mapping
@@ -10,7 +11,7 @@ from tempfile import TemporaryDirectory
 import yaml
 from django.core.management.base import CommandError
 
-from autobot.tenancy.registry import TenantSource, _dataset_path, source_from_dir
+from autobot.tenancy.registry import ORIGIN_SUFFIX, TenantSource, _dataset_path, source_from_dir
 from autobot.tenancy.store import StoreError, current_sources
 
 
@@ -113,6 +114,13 @@ def write_source(directory: Path, source: TenantSource) -> None:
         if not _dataset_path(name) or len(PurePosixPath(name).parts) != 1:
             raise CommandError("El dataset tiene un nombre no válido")
         write_files(directory / "datasets" / name, files)
+        origin = source.dataset_origins.get(name)
+        if origin is not None:
+            # ADR-013: keep where the copy came from, so a re-import does not lose it.
+            (directory / "datasets" / f"{name}{ORIGIN_SUFFIX}").write_text(
+                json.dumps({"name": origin[0], "version": origin[1], "sha256": origin[2]}),
+                encoding="utf-8",
+            )
 
 
 def command_error(error: StoreError) -> CommandError:

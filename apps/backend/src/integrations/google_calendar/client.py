@@ -1,6 +1,8 @@
 """Google Calendar client; no cache, globals or personal-data logs."""
 
 import base64
+import json
+import logging
 import re
 import secrets as random_secrets
 import threading
@@ -27,6 +29,36 @@ from core.text import fold, strip_html
 # (X14: `inbound` has its own worker, but a long wait here still delays that
 # contact's retries and the alert from catching on).
 TIMEOUT_S = 5
+
+log = logging.getLogger(__name__)
+
+# A 403 with one of these reasons is Google asking to slow down, not a denial: it is
+# retried with backoff like a 429 (and, after the last attempt, is transient).
+_RATE_LIMIT_REASONS = frozenset(
+    {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded", "dailyLimitExceeded"}
+)
+# The longest horizon of `list_future_events` (the salon migration): a recurring event
+# expanded with `singleEvents` would otherwise never end.
+FUTURE_HORIZON = timedelta(days=730)
+
+
+def _reasons(exc: HttpError) -> set[str]:
+    """The `reason`s of a Google API error (never its message, which may hold data)."""
+    found: set[str] = set()
+    details = getattr(exc, "error_details", None)
+    if isinstance(details, list):
+        found.update(str(d["reason"]) for d in details if isinstance(d, dict) and d.get("reason"))
+    try:
+        body = json.loads(exc.content)
+        errors = body.get("error", {}).get("errors", [])
+        found.update(str(e["reason"]) for e in errors if isinstance(e, dict) and e.get("reason"))
+    except ValueError, AttributeError, TypeError:
+        pass
+    return found
+
+
+def _is_rate_limited(exc: HttpError) -> bool:
+    return int(exc.resp.status) == 403 and bool(_reasons(exc) & _RATE_LIMIT_REASONS)
 
 
 class CalendarTransientError(TransientError):
@@ -129,12 +161,21 @@ class CalendarClient:
         sleep: Callable[[float], None] = time.sleep,
         observe: Callable[[str], None] | None = None,
     ) -> None:
-        self._observe = observe or (lambda status: None)
+        self._observer = observe
         self._calendar_id = calendar_id
         self._credentials_file = credentials_file
         self._api = api
         self._sleep = sleep
         self._tz = ZoneInfo(timezone)
+
+    def _observe(self, status: str) -> None:
+        """The health signal must never break a Calendar call: its failures are only logged."""
+        if self._observer is None:
+            return
+        try:
+            self._observer(status)
+        except Exception:
+            log.warning("calendar observer failed", exc_info=True)
 
     @property
     def api(self) -> Any:
@@ -147,6 +188,7 @@ class CalendarClient:
 
     def _call(self, operation: str, **kwargs: Any) -> Any:
         for attempt in range(3):
+            base_delay = 0.2
             try:
                 request = getattr(self.api.events(), operation)(
                     calendarId=self._calendar_id, **kwargs
@@ -156,7 +198,9 @@ class CalendarClient:
                 return result
             except HttpError as exc:
                 status = int(exc.resp.status)
-                if status not in (429, 500, 502, 503, 504):
+                if _is_rate_limited(exc):
+                    base_delay = 1.0  # asked to slow down: wait longer than for a glitch
+                if status not in (429, 500, 502, 503, 504) and not _is_rate_limited(exc):
                     # An event-level 404/410 can mean either a missing event or no
                     # access, so it is no evidence of recovery from a prior denial.
                     if status not in (404, 410) or operation == "list":
@@ -178,7 +222,7 @@ class CalendarClient:
                 # finds the reservation already made instead of duplicating it.
                 pass
             if attempt < 2:
-                self._sleep(0.2 * (2**attempt))
+                self._sleep(base_delay * (2**attempt))
         self._observe("error")
         raise CalendarTransientError("Calendar temporarily unavailable")
 
@@ -220,9 +264,10 @@ class CalendarClient:
         return self._list(start, end)
 
     def list_future_events(self, start: datetime) -> list[Event]:
+        """From `start` to `FUTURE_HORIZON` later (bounded: recurring events expand)."""
         if start.tzinfo is None:
             raise ValueError("Calendar window needs an aware datetime")
-        return self._list(start, None)
+        return self._list(start, start + FUTURE_HORIZON)
 
     def _list(self, start: datetime, end: datetime | None) -> list[Event]:
         events: list[Event] = []
@@ -263,13 +308,29 @@ class CalendarClient:
             raw = self._call("insert", body=dict(event) | {"id": gcal_id}, fields=_EVENT_FIELDS)
         except HttpError as exc:
             if exc.resp.status == 409:
-                existing = self.get_event(gcal_id)
-                if existing is not None:
-                    return existing
+                return self._resolve_conflict(event, gcal_id)
             raise CalendarPermanentError(f"Calendar insert refused ({exc.resp.status})") from None
         result = self._event(raw)
         if result.gcal_id != gcal_id or result.status == "cancelled":
             raise CalendarPermanentError("Calendar did not confirm insertion")
+        return result
+
+    def _resolve_conflict(self, event: Mapping[str, Any], gcal_id: str) -> Event:
+        """A 409 on insert: the id exists. A live event is the reservation already made
+        (a retried insert); a `cancelled` one (Google keeps deleted ids) is reactivated
+        with the new content; anything else is an error."""
+        try:
+            raw = self._call("get", eventId=gcal_id, fields=_EVENT_FIELDS)
+        except HttpError:
+            raise CalendarPermanentError("Calendar insert conflict could not be resolved") from None
+        if raw.get("status") != "cancelled":
+            return self._event(raw)
+        body = {k: v for k, v in dict(event).items() if k != "id"} | {"status": "confirmed"}
+        result = self._event(
+            self._request("patch", eventId=gcal_id, body=body, fields=_EVENT_FIELDS)
+        )
+        if result.status == "cancelled":
+            raise CalendarPermanentError("Calendar event could not be reactivated")
         return result
 
     def patch_description(self, gcal_id: str, fields: dict[str, str]) -> Event:
@@ -318,6 +379,11 @@ class CalendarClient:
                 raise CalendarPermanentError(
                     f"Calendar delete refused ({exc.resp.status})"
                 ) from None
+            if exc.resp.status == 404:
+                # A 404 is also what a calendar we lost access to answers: a listing
+                # tells "the event is already gone" from "we cannot see the calendar"
+                # (raises, and records the denial).
+                self.check_access()
         if self.get_event(gcal_id) is not None:
             raise CalendarPermanentError("Calendar did not confirm cancellation")
 

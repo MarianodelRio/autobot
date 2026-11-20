@@ -4,6 +4,12 @@
 # SELECT/INSERT/UPDATE/DELETE and no DDL; fp_readonly is the panel's read-only SQL
 # console, with only SELECT and no BYPASSRLS.
 #
+# This script only manages roles, passwords, per-role timeouts, CONNECT and schema USAGE.
+# Table, sequence and function permissions are declared and applied only by
+# `manage.py apply_grants` (autobot/db/grants.py): granting them here too would reopen,
+# on every deploy, what grants.py restricts (audit_event, tenant_secret, ops_alert...).
+# Run apply_grants after this script on a fresh database or a restore.
+#
 # Runs as the PostgreSQL superuser. The postgres image runs it on the first start of an
 # empty volume (/docker-entrypoint-initdb.d); it is idempotent, so it can also be run by
 # hand or in CI with PGHOST/PGPASSWORD set. POSTGRES_TEST_DB (local and CI only) creates
@@ -36,6 +42,17 @@ ALTER ROLE fp_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION N
   PASSWORD :'app_pw';
 ALTER ROLE fp_readonly WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
   PASSWORD :'ro_pw';
+-- Per-role timeouts (they apply to new sessions). fp_app has no idle_session_timeout:
+-- Procrastinate keeps a LISTEN connection open and web connections are persistent.
+-- fp_owner has no statement_timeout: migrations may be long.
+ALTER ROLE fp_app SET lock_timeout = '10s';
+ALTER ROLE fp_app SET statement_timeout = '60s';
+ALTER ROLE fp_app SET idle_in_transaction_session_timeout = '60s';
+ALTER ROLE fp_owner SET idle_in_transaction_session_timeout = '5min';
+ALTER ROLE fp_readonly SET statement_timeout = '10s';
+ALTER ROLE fp_readonly SET idle_in_transaction_session_timeout = '15s';
+ALTER ROLE fp_readonly SET idle_session_timeout = '5min';
+ALTER ROLE fp_readonly CONNECTION LIMIT 10;
 -- The application roles only reach their own databases.
 REVOKE CONNECT, TEMPORARY ON DATABASE postgres, template1 FROM PUBLIC;
 SQL
@@ -55,12 +72,11 @@ ALTER SCHEMA public OWNER TO fp_owner;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO fp_app;
 GRANT USAGE ON SCHEMA public TO fp_readonly;
--- Tables and sequences that fp_owner creates (Django's and Procrastinate's migrations).
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO fp_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO fp_app;
+-- Older versions of this script left default privileges that handed fp_app every new
+-- table; drop them (idempotent). Existing table grants are narrowed by apply_grants.
 ALTER DEFAULT PRIVILEGES FOR ROLE fp_owner IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO fp_app;
+  REVOKE ALL ON TABLES FROM fp_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE fp_owner IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO fp_app;
+  REVOKE ALL ON SEQUENCES FROM fp_app;
 SQL
 done

@@ -6,7 +6,9 @@ NGROK_DOMAIN ?= $(shell sed -n 's/^NGROK_DOMAIN=//p' .env 2>/dev/null)
 # apps/backend is self-contained (its own pyproject.toml, uv.lock, .venv, tests/);
 # backend tooling runs from inside it, while targets whose relative paths (datos/,
 # tenants/, var/) are anchored at the repo root run from here with --project.
-BACKEND = cd apps/backend &&
+# DJANGO_SETTINGS_MODULE: local tools run with ENVIRONMENT=local (config.settings alone
+# treats an unset ENVIRONMENT as prod).
+BACKEND = cd apps/backend && DJANGO_SETTINGS_MODULE=config.settings_dev
 PYTEST = $(BACKEND) uv run pytest
 
 ##@ Ayuda
@@ -16,7 +18,7 @@ help: ## Enseña esta ayuda
 
 ##@ Desarrollo
 
-.PHONY: up down status db-roles logs shell telegram-poll chat dev-bootstrap dev-reset dev-activity tenant-import ngrok
+.PHONY: up down status db-roles logs shell telegram-poll chat local dev-bootstrap dev-reset dev-activity tenant-import ngrok
 
 up: ## Tras el bootstrap, levanta los contenedores
 	docker compose up -d --build
@@ -52,21 +54,17 @@ chat: ## Chat de prueba por terminal con un pack (PACK=salon|bus [CHANNEL=telegr
 
 export DIR
 
-dev-bootstrap: ## Prepara BD, roles, migra, siembra demos y levanta web/workers
-	docker compose up -d --wait db
-	$(MAKE) db-roles
-	docker compose build web
-	docker compose run --rm -T web python manage.py migrate --database owner --noinput
-	docker compose run --rm -T web python manage.py apply_grants
-	docker compose run --rm -T web python manage.py seed_demos
-	docker compose run --rm -T web python manage.py panel_user exists panel \
-		|| docker compose run --rm web python manage.py panel_user create panel
-	docker compose up -d --no-build --remove-orphans web worker-inbound worker-outbound victorialogs
+# Un solo comando para dejarlo todo funcionando en local, desde cero o desde un estado
+# previo, sin borrar datos (deploy/scripts/install-local.sh; ADR-017).
+local: ## Deja todo el entorno local funcionando (requisitos, .env, BD, migraciones, demos, servicios, salud)
+	bash deploy/scripts/install-local.sh
 
-dev-reset: ## Exige escribir RESET, borra el volumen local y repite el bootstrap
+dev-bootstrap: local ## Alias de `make local`
+
+dev-reset: ## Exige escribir RESET, borra el volumen local y repite `make local`
 	@read -r -p "Borrar la BD local y reiniciar (escribe RESET): " answer; test "$$answer" = RESET
 	docker compose down -v
-	$(MAKE) dev-bootstrap
+	$(MAKE) local
 
 dev-activity: ## Crea actividad falsa en local para ver el panel con datos
 	docker compose exec web python manage.py seed_dev_activity
@@ -185,15 +183,15 @@ localprod-down: ## Para y borra los contenedores y el registro local de localpro
 
 ##@ Instalación y traslado
 
-.PHONY: server-init server-migrate
+.PHONY: install-vm server-migrate
 
-# A15: idempotente, ver docs/procedimientos/servidor.md y ADR-012. Lee var/server.env
-# (deploy/env/server.env.example); CHECK=1 solo valida en local, sin tocar nada remoto.
-server-init: ## Instala Autobot en una VPS nueva desde var/server.env ([CHECK=1] [ONLY=paso])
-	bash deploy/scripts/server-init.sh $(if $(CHECK),--check,) $(if $(ONLY),--only=$(ONLY),)
+# ADR-017: se ejecuta DENTRO de la VM (clon del repo + sudo), no desde el portátil; el
+# make está aquí solo para documentarlo y para probarlo en la VM. Idempotente.
+install-vm: ## Instala/repara la VM de producción; ejecutar dentro de la VM (ARGS="--public-host ... --google-sa ...")
+	sudo bash deploy/scripts/install-vm.sh $(ARGS)
 
 # T4: FROM y TO son alias de ~/.ssh/config o IPs; TO ya debe tener el bootstrap
-# hecho (server-init ONLY=base/harden-ssh/secrets). Ver docs/plan-lanzamiento.md.
+# hecho (install-vm.sh --restore-target, dentro de TO). Ver docs/plan-lanzamiento.md.
 server-migrate: ## Traslada el despliegue de FROM a TO (T4) (FROM= TO= [ONLY=paso])
 	bash deploy/scripts/server-migrate.sh $(FROM) $(TO) $(if $(ONLY),--only=$(ONLY),)
 

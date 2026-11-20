@@ -68,7 +68,15 @@ def send_notification(
     with tenant_tx(tenant_id):
         row = Notification.objects.select_for_update().filter(id=notification_id).first()
         bind(tenant=tenant.slug, channel="notification", event_id="")
-        if row is None or row.status != Notification.Status.PENDING:
+        if row is None:
+            # Enqueued atomically with the row (see runtime/queue.py): never expected.
+            log.error(
+                "send_notification: notification %s of tenant %s not found",
+                notification_id,
+                tenant_id,
+            )
+            return
+        if row.status != Notification.Status.PENDING:
             return
         owner = tenant.document.owner
         # owner.notify only gates per-event notices; the summary has its own toggle

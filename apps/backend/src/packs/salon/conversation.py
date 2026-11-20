@@ -1,5 +1,7 @@
 """Salon state machine on PackContext; JSON state, no channel or database imports."""
 
+import re
+from collections.abc import Mapping
 from datetime import date, time
 from typing import Any
 
@@ -9,7 +11,7 @@ from core.errors import PermanentError, TransientError
 from core.messages import IncomingMessage
 from core.pack import PackContext, PackResult
 from core.replies import Reply, Text
-from core.text import fold
+from core.text import fold, normalize
 from core.ui import button, buttons_msg, row
 from packs.salon import booking
 from packs.salon import interactive as ui
@@ -17,6 +19,52 @@ from packs.salon.messages import booking_text, owner_notice
 from packs.salon.ownership import belongs
 from packs.salon.parser import parse_name, parse_service_title
 from packs.salon.slots import split_periods
+
+# Words that are never a name: they leave the booking and go back to the menu.
+_ESCAPE_WORDS = frozenset(
+    {
+        "cancelar",
+        "cancela",
+        "cancelo",
+        "volver",
+        "vuelve",
+        "atras",
+        "salir",
+        "sal",
+        "no",
+        "nada",
+        "menu",
+        "inicio",
+        "hola",
+        "buenas",
+        "adios",
+        "gracias",
+        "ayuda",
+        "stop",
+    }
+)
+# Steps that wait for a choice among options shown: text there re-shows the step.
+_CHOICE_STEPS = frozenset(
+    {
+        "BOOK_SERVICE",
+        "BOOK_DAY",
+        "BOOK_PERIOD",
+        "BOOK_HOUR",
+        "MOVE_SELECT",
+        "CANCEL_SELECT",
+        "CANCEL_CONFIRM",
+    }
+)
+
+
+def clean_name(raw: str) -> str:
+    """The name as it will be stored: no markup characters or line breaks, one space."""
+    return " ".join(re.sub(r"[*_`~\r\n\t]", " ", raw).split())
+
+
+def expects_free_text(state: Mapping[str, Any]) -> bool:
+    """The name step: `alta`/`baja` there are a name, not opt-in/out commands."""
+    return state.get("step") == "BOOK_NAME"
 
 
 class Turn:
@@ -39,12 +87,16 @@ class Turn:
             self.state["days"] = [
                 d.isoformat()
                 for d in booking.available_days(
-                    self.ctx, self.state["service"], event=self.event_mode()
+                    self.ctx,
+                    self.state["service"],
+                    event=self.event_mode(),
+                    exclude=self.state.get("move_source"),
                 )
             ]
         self.state["step"] = "BOOK_DAY"
         if not self.state.get("days"):
-            return self.result(ui.back(self.cfg.texts.no_slots), reset=True)
+            text = f"{self.cfg.texts.no_days}\n📞 {self.cfg.contact_phone}"
+            return self.result(ui.back(text), reset=True)
         rows = [
             row(f"day_{d}", format_date_es(date.fromisoformat(d)).capitalize())
             for d in self.state["days"]
@@ -59,13 +111,20 @@ class Turn:
         day = date.fromisoformat(self.state["day"])
         if refresh:
             available, ranges = booking.availability(
-                self.ctx, day, self.state["service"], event=self.event_mode()
+                self.ctx,
+                day,
+                self.state["service"],
+                event=self.event_mode(),
+                exclude=self.state.get("move_source"),
             )
             self.state["all_slots"] = [slot.strftime("%H:%M") for slot in available]
             self.state["ranges"] = ranges
         slots = [time.fromisoformat(s) for s in self.state.get("all_slots", [])]
         if not slots:
-            return self.days(refresh=True)
+            result = self.days(refresh=True)
+            if self.state.get("days"):  # the chosen day filled up; others remain
+                result.replies.insert(0, Text(self.cfg.texts.no_slots))
+            return result
         morning, afternoon = split_periods(
             slots, self.state.get("ranges", self.cfg.spans(day, event=self.event_mode()))
         )
@@ -79,7 +138,7 @@ class Turn:
                         button("period_afternoon", "Tarde"),
                         button("back_to_day", "📅 Cambiar día"),
                     ],
-                    footer=ui.FOOTER,
+                    footer=ui.FOOTER_STEP,
                 )
             )
         selected = morning if period == "morning" else afternoon if period == "afternoon" else slots
@@ -136,6 +195,8 @@ class Turn:
         if event is not None:
             if not self.owns(event):
                 return self.result(ui.back(self.cfg.texts.missing), reset=True)
+            if event.start < self.ctx.clock.now():
+                return self.result(ui.back(self.cfg.texts.past_booking), reset=True)
             service_key, _ = parse_service_title(
                 event.summary, {k: s.name for k, s in self.cfg.services.items()}
             )
@@ -158,6 +219,22 @@ class Turn:
             )
         )
         return result
+
+    def ask_cancel(self, gcal_id: str) -> PackResult:
+        """A tap on an appointment never cancels it by itself: ask first."""
+        event = booking.calendar(self.ctx).get_event(gcal_id)
+        if not self.owns(event):
+            return self.result(ui.back(self.cfg.texts.missing), reset=True)
+        assert event is not None
+        if event.start < self.ctx.clock.now():
+            return self.result(ui.back(self.cfg.texts.past_booking), reset=True)
+        service_key, _ = parse_service_title(
+            event.summary, {k: s.name for k, s in self.cfg.services.items()}
+        )
+        service_name = self.cfg.services[service_key].name if service_key else "tu cita"
+        label = f"{service_name} del {format_date_es(event.start.date())} a las {event.start:%H:%M}"
+        self.state = {"step": "CANCEL_CONFIRM", "target": gcal_id, "label": label}
+        return self.result(ui.confirm_cancel(label))
 
     def proactive(self, value: str) -> PackResult:
         operation, _, gcal_id = value.partition(":")
@@ -192,6 +269,7 @@ class Turn:
                 name,
                 event=self.event_mode(),
                 operation="move" if moving else "booking",
+                exclude=moving,
             )
         except booking.SlotTaken:
             result = self.hours(refresh=True)
@@ -246,25 +324,26 @@ class Turn:
         value = message.payload or ""
         step = self.state.get("step", "MENU")
         if message.type == "unsupported":
+            if step == "BOOK_NAME":
+                return self._name_prompt(self.cfg.texts.name_text_only)
             result = self._redisplay()
-            result.replies.insert(0, Text(self.cfg.texts.name_text_only))
+            result.replies.insert(0, Text(self.cfg.texts.unsupported))
             return result
         if value == "back_to_menu":
             return self.menu()
         if step == "BOOK_NAME":
-            if value == "use_name":
-                name = self.ctx.contact.display_name or ""
-            elif message.type == "text":
-                name = message.text or ""
-            else:
-                return self.result(ui.back(self.cfg.texts.name_text_only))
-            name = name.strip().replace("\n", " ").replace("\r", "")
-            if not 2 <= len(name) <= 100:
-                return self.result(ui.back("Escribe un nombre de entre 2 y 100 caracteres."))
-            if "[cfg]" in fold(name):
-                return self.result(ui.back("Escribe un nombre de entre 2 y 100 caracteres."))
-            return self.create(name)
+            return self._name_step(message, value)
+        if step == "CANCEL_CONFIRM":
+            if value == "cancel_yes" and isinstance(self.state.get("target"), str):
+                return self.cancel(self.state["target"])
+            if value == "cancel_no":
+                return self.result(ui.back(self.cfg.texts.cancel_kept), reset=True)
         if message.type == "text":
+            if step in _CHOICE_STEPS:
+                # Not a menu word: keep the contact's progress and show the step again.
+                result = self._redisplay()
+                result.replies.insert(0, Text(self.cfg.texts.list_hint))
+                return result
             return self.menu()
         if step == "MENU" and value in ("menu_cancel", "menu_move"):
             return self.appointments(value.removeprefix("menu_"))
@@ -306,11 +385,13 @@ class Turn:
                 return self.menu()
             gcal_id = self.state["appointments"][index]
             if mode == "cancel":
-                return self.cancel(gcal_id)
+                return self.ask_cancel(gcal_id)
             source = booking.calendar(self.ctx).get_event(gcal_id)
             if not self.owns(source):
                 return self.result(ui.back(self.cfg.texts.missing), reset=True)
             assert source is not None
+            if source.start < self.ctx.clock.now():
+                return self.result(ui.back(self.cfg.texts.past_booking), reset=True)
             _, title_name = parse_service_title(
                 source.summary, {k: s.name for k, s in self.cfg.services.items()}
             )
@@ -366,17 +447,43 @@ class Turn:
             return self._name_prompt()
         return self.menu()
 
-    def _name_prompt(self) -> PackResult:
+    def _known_name(self) -> str | None:
         assert self.ctx.contact is not None
-        if self.ctx.contact.display_name and 2 <= len(self.ctx.contact.display_name) <= 100:
-            return self.result(
-                buttons_msg(
-                    self.cfg.texts.name_prompt,
-                    [button("use_name", f"Usar {self.ctx.contact.display_name}")],
-                    footer=ui.FOOTER,
-                )
-            )
-        return self.result(ui.back(self.cfg.texts.name_prompt))
+        known = clean_name(self.ctx.contact.display_name or "")
+        return known if self._name_problem(known) is None else None
+
+    @staticmethod
+    def _name_problem(name: str) -> str | None:
+        """Why `name` cannot be used (None if it can). `[cfg]` would forge a calendar
+        configuration event; escape words are the contact trying to leave."""
+        if not 2 <= len(name) <= 100 or "[cfg]" in fold(name):
+            return "Escribe un nombre de entre 2 y 100 caracteres."
+        if not any(c.isalpha() for c in name):
+            return "El nombre debe incluir al menos una letra. Escríbelo de nuevo."
+        return None
+
+    def _name_prompt(self, notice: str | None = None) -> PackResult:
+        text = self.cfg.texts.name_prompt
+        return self.result(
+            ui.name_prompt(f"{notice}\n\n{text}" if notice else text, self._known_name())
+        )
+
+    def _name_step(self, message: IncomingMessage, value: str) -> PackResult:
+        if value == "use_name":
+            raw = self._known_name() or ""
+            if not raw:
+                return self._name_prompt()
+        elif message.type == "text":
+            raw = message.text or ""
+        else:
+            return self._name_prompt(self.cfg.texts.name_text_only)
+        name = clean_name(raw)
+        if normalize(name) in _ESCAPE_WORDS:
+            return self.menu()
+        problem = self._name_problem(name)
+        if problem:
+            return self._name_prompt(problem)
+        return self.create(name)
 
     def _redisplay(self) -> PackResult:
         """Re-show the current step's own prompt, instead of dropping the contact's
@@ -395,6 +502,8 @@ class Turn:
             return self._name_prompt()
         if step in ("MOVE_SELECT", "CANCEL_SELECT"):
             return self.appointments(step.removesuffix("_SELECT").lower(), refresh=False)
+        if step == "CANCEL_CONFIRM":
+            return self.result(ui.confirm_cancel(self.state["label"]))
         return self.menu()
 
 
@@ -411,6 +520,8 @@ def valid_state(turn: Turn) -> bool:
             and all(isinstance(item, str) for item in state["appointments"])
             and all(isinstance(item, str) for item in state["appointment_labels"])
         )
+    if step == "CANCEL_CONFIRM":
+        return isinstance(state.get("target"), str) and isinstance(state.get("label"), str)
     if step not in ("BOOK_DAY", "BOOK_PERIOD", "BOOK_HOUR", "BOOK_NAME"):
         return False
     try:

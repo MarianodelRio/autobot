@@ -62,7 +62,12 @@ test("lists versions, author and comment", async () => {
   stub({ version: 3 });
   const user = userEvent.setup();
   provider(
-    <HistorySection slug="demo" current={{ name: "Actual" }} dirty={false} />,
+    <HistorySection
+      slug="demo"
+      current={{ name: "Actual" }}
+      dirty={false}
+      onRolledBack={() => {}}
+    />,
   );
   await user.click(screen.getByRole("button", { name: "Historial" }));
   await screen.findByText("Versión 2");
@@ -75,7 +80,12 @@ test("viewing changes shows a legible diff against the current document", async 
   stub({ version: 3 });
   const user = userEvent.setup();
   provider(
-    <HistorySection slug="demo" current={{ name: "Actual" }} dirty={false} />,
+    <HistorySection
+      slug="demo"
+      current={{ name: "Actual" }}
+      dirty={false}
+      onRolledBack={() => {}}
+    />,
   );
   await user.click(screen.getByRole("button", { name: "Historial" }));
   await user.click(
@@ -94,7 +104,12 @@ test("rolling back asks for confirmation and invalidates the tenant", async () =
   );
   const user = userEvent.setup();
   provider(
-    <HistorySection slug="demo" current={{ name: "Actual" }} dirty={false} />,
+    <HistorySection
+      slug="demo"
+      current={{ name: "Actual" }}
+      dirty={false}
+      onRolledBack={() => {}}
+    />,
   );
   await user.click(screen.getByRole("button", { name: "Historial" }));
   await user.click(
@@ -111,7 +126,12 @@ test("rolling back with unsaved changes warns before confirming", async () => {
   vi.stubGlobal("confirm", confirmSpy);
   const user = userEvent.setup();
   provider(
-    <HistorySection slug="demo" current={{ name: "Actual" }} dirty={true} />,
+    <HistorySection
+      slug="demo"
+      current={{ name: "Actual" }}
+      dirty
+      onRolledBack={() => {}}
+    />,
   );
   await user.click(screen.getByRole("button", { name: "Historial" }));
   await user.click(

@@ -28,7 +28,7 @@ def test_tenant_export_scopes_to_the_tenant_and_audits(authed_client: Any, tenan
     Contact.objects.using("owner").create(
         tenant_id=tenant_id("b"), channel="main", external_id="222", display_name="Otro"
     )
-    response = get(authed_client, "tenants/a/export")
+    response = post(authed_client, "tenants/a/export")
     assert response.status_code == 200, response.content
     body = response.json()
     assert body["tenant"] == "a"
@@ -102,3 +102,16 @@ def test_contact_export_of_an_unknown_contact_is_404(authed_client: Any) -> None
     import uuid
 
     assert get(authed_client, f"contacts/{uuid.uuid4()}/export").status_code == 404
+
+
+def test_tenant_export_is_post_only_and_capped(
+    authed_client: Any, tenants: Any, monkeypatch: Any
+) -> None:
+    from autobot.panel.services import tenants as tenant_service
+
+    tenants(wa_tenant("a"))
+    assert get(authed_client, "tenants/a/export").status_code == 405
+    monkeypatch.setattr(tenant_service, "MAX_EXPORT_ROWS", -1)
+    response = post(authed_client, "tenants/a/export")
+    assert response.status_code == 413
+    assert response.json()["code"] == "too_large"

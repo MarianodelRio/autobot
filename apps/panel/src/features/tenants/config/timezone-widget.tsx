@@ -6,20 +6,25 @@ const ZONES: string[] =
     ? Intl.supportedValuesOf("timeZone")
     : ["Europe/Madrid"];
 
-export function TimezoneWidget({
+export function TimezoneSelect({
   id,
   value,
   required,
   disabled,
-  readonly,
   onChange,
-}: WidgetProps) {
+}: {
+  id?: string;
+  value: string | undefined;
+  required?: boolean;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
   const options = value && !ZONES.includes(value) ? [value, ...ZONES] : ZONES;
   return (
     <select
       id={id}
       required={required}
-      disabled={disabled || readonly}
+      disabled={disabled}
       value={value ?? ""}
       onChange={(event) => onChange(event.target.value)}
       className={cn(
@@ -34,5 +39,24 @@ export function TimezoneWidget({
         </option>
       ))}
     </select>
+  );
+}
+
+export function TimezoneWidget({
+  id,
+  value,
+  required,
+  disabled,
+  readonly,
+  onChange,
+}: WidgetProps) {
+  return (
+    <TimezoneSelect
+      id={id}
+      value={value}
+      required={required}
+      disabled={disabled || readonly}
+      onChange={onChange}
+    />
   );
 }

@@ -26,8 +26,9 @@ candado; solo publica la nueva instantánea cuando termina de construirla. Un fa
 de BD conserva la anterior, salvo en la primera carga, que propaga el error.
 
 `registry_scope` fija de forma perezosa el primer registro leído durante una petición
-o trabajo, incluidos ámbitos anidados. Así `/health` puede capturar también el fallo
-de primera carga y devolver 503. `loaded_registry` sirve a la redacción de logs sin
+o trabajo, incluidos ámbitos anidados. Así `/health/internal` puede capturar también el
+fallo de primera carga y devolver 503 (`/health`, público, solo indica que el proceso vive
+y no toca la BD; `/health/internal` devuelve 404 si llega `X-Autobot-Edge`). `loaded_registry` sirve a la redacción de logs sin
 consultas y conserva los secretos de la instantánea fijada durante cada trabajo.
 
 Los webhooks principales responden también 503 si falla la primera carga de config:
@@ -39,8 +40,18 @@ el proveedor conserva el evento para reintentarlo, igual que si falla su persist
 valida un registro candidato antes de crear versiones, actualizar el espejo, incrementar
 la revisión y auditar en la misma transacción `owner`. Las versiones anteriores no se
 modifican. Los conflictos de versión y los cambios de los seis campos protegidos se
-rechazan; volver atrás crea otra versión y mantiene esos campos vigentes. Los errores
-contienen rutas y tipos de validación, sin reproducir los valores recibidos.
+rechazan; volver atrás crea otra versión que restaura solo el contenido editable
+(`name`, `timezone` y `config`) y conserva lo vigente de la identidad, el estado, el canal
+completo (ids de Meta, teléfono público, umbral), los testers, el dueño y la demo: volver
+a una versión anterior a conectar WhatsApp no desconecta el número. Pausar y dar de baja
+no revalidan la configuración, para poder sacar de servicio un negocio degradado. Dos
+negocios no pueden compartir `config.calendar_id` (se ignora a los dados de baja). Los
+errores contienen rutas y tipos de validación, sin reproducir los valores recibidos.
+
+La procedencia de cada dataset (`source_name/version/sha`, ADR-013) viaja en la
+exportación como `datasets/<nombre>.origin.json` y se conserva al importar. Las subidas
+a la biblioteca toman un candado consultivo por entrada y una carrera pierde con un
+error limpio.
 
 Las altas pueden adoptar un espejo sin versiones; `bus` copia el dataset de su plantilla
 si no se proporcionan otros. La importación con el mismo hash no crea versiones ni

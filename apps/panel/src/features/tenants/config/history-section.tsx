@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { type ApiError, api, unwrap } from "@/api/client";
@@ -21,23 +26,33 @@ export function HistorySection({
   slug,
   current,
   dirty,
+  onRolledBack,
 }: {
   slug: string;
   current: Record<string, unknown>;
   dirty: boolean;
+  /** Called after a successful rollback so the editor drops its draft and reloads. */
+  onRolledBack: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<number | null>(null);
   const [comment, setComment] = useState("");
   const client = useQueryClient();
-  const versions = useQuery({
+  const versions = useInfiniteQuery({
     queryKey: ["tenant-versions", slug],
-    queryFn: () =>
+    initialPageParam: undefined as number | undefined,
+    queryFn: ({ pageParam }) =>
       unwrap(
-        api.GET("/tenants/{slug}/versions", { params: { path: { slug } } }),
+        api.GET("/tenants/{slug}/versions", {
+          params: { path: { slug }, query: { before: pageParam } },
+        }),
       ),
+    // The backend returns 50 at a time, newest first: a full page may have more.
+    getNextPageParam: (last) =>
+      last.length >= 50 ? last[last.length - 1]?.version : undefined,
     enabled: open,
   });
+  const items = versions.data?.pages.flat() ?? [];
   const version = useQuery({
     queryKey: ["tenant-version", slug, preview],
     queryFn: () =>
@@ -63,6 +78,7 @@ export function HistorySection({
       setOpen(false);
       void client.invalidateQueries({ queryKey: ["tenant", slug] });
       void client.invalidateQueries({ queryKey: ["tenant-versions", slug] });
+      onRolledBack();
     },
     onError: (error: ApiError) =>
       toast.error(error.message || "No se pudo restaurar."),
@@ -104,7 +120,7 @@ export function HistorySection({
               />
             ) : (
               <ul className="space-y-3">
-                {versions.data.map((item) => (
+                {items.map((item) => (
                   <li
                     key={item.version}
                     className="space-y-1 border-b pb-3 last:border-b-0"
@@ -175,6 +191,16 @@ export function HistorySection({
                   </li>
                 ))}
               </ul>
+            )}
+            {versions.hasNextPage && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={versions.isFetchingNextPage}
+                onClick={() => void versions.fetchNextPage()}
+              >
+                Cargar más versiones
+              </Button>
             )}
           </div>
         </SheetContent>

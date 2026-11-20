@@ -41,7 +41,7 @@ SECRETS = WhatsAppSecrets.model_validate(
     {
         "app_secret": "app-secret-012345678901234567890",
         "access_token": "token-123",
-        "verify_token": "verify-me",
+        "verify_token": "verify-me-0123456789",
     }
 )
 OUTBOUND_ID = UUID("01920000-0000-7000-8000-0000000000b1")
@@ -90,9 +90,23 @@ def test_verify_checks_the_hmac_of_the_raw_body(header: str | None, ok: bool) ->
 @pytest.mark.parametrize(
     ("params", "answer"),
     [
-        ({"hub.mode": "subscribe", "hub.verify_token": "verify-me", "hub.challenge": "42"}, "42"),
+        (
+            {
+                "hub.mode": "subscribe",
+                "hub.verify_token": "verify-me-0123456789",
+                "hub.challenge": "42",
+            },
+            "42",
+        ),
         ({"hub.mode": "subscribe", "hub.verify_token": "wrong", "hub.challenge": "42"}, None),
-        ({"hub.mode": "unsubscribe", "hub.verify_token": "verify-me", "hub.challenge": "42"}, None),
+        (
+            {
+                "hub.mode": "unsubscribe",
+                "hub.verify_token": "verify-me-0123456789",
+                "hub.challenge": "42",
+            },
+            None,
+        ),
         ({}, None),
     ],
 )

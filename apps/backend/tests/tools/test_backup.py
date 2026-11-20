@@ -35,7 +35,11 @@ def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
     binaries = tmp_path / "bin"
     binaries.mkdir()
     docker = binaries / "docker"
-    docker.write_text(f"#!/usr/bin/env bash\nprintf '{DUMP_CONTENT}'\n")
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        "[[ $* != *pg_restore* || ${RESTORE_LIST_FAIL:-} != 1 ]] || exit 1\n"
+        f"printf '{DUMP_CONTENT}'\n"
+    )
     docker.chmod(0o755)
     restic = binaries / "restic"
     restic.write_text(
@@ -43,6 +47,7 @@ def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
         'printf \'%s\\n\' "$*" >>"$TEST_LOG"\n'
         "[[ ${RESTIC_FAIL:-} != 1 ]] || exit 1\n"
         "[[ $1 != cat || ${RESTIC_UNINITIALIZED:-} != 1 ]] || exit 1\n"
+        "[[ $1 != check || ${RESTIC_CHECK_FAIL:-} != 1 ]] || exit 1\n"
         "if [[ $1 == cat ]]; then\n"
         "  id=${RESTIC_REPO_ID:-repo-id-fixture}\n"
         '  printf \'{\\n  "version": 2,\\n  "id": "%s"\\n}\\n\' "$id"\n'
@@ -200,3 +205,39 @@ def test_missing_config_fails_before_writing_status(tmp_path: Path) -> None:
     result = invoke(script, binaries, config)
     assert result.returncode == 1
     assert not (tmp_path / "var" / "state" / "ops" / "backup.json").exists()
+
+
+def test_a_corrupt_dump_is_never_uploaded(tmp_path: Path) -> None:
+    script, binaries, config = setup(tmp_path)
+    result = invoke(script, binaries, config, RESTORE_LIST_FAIL="1")
+    assert result.returncode == 1
+    assert "pg_restore --list" in result.stderr
+    log = (tmp_path / "restic.log").read_text()
+    assert "backup --tag" not in log
+    assert backup_status(tmp_path)["ok"] is False
+
+
+def test_not_enough_free_space_fails_before_dumping(tmp_path: Path) -> None:
+    script, binaries, config = setup(tmp_path)
+    result = invoke(script, binaries, config, AUTOBOT_BACKUP_MIN_FREE_BYTES=str(10**18))
+    assert result.returncode == 1
+    assert "Not enough free disk space" in result.stderr
+    assert "backup --tag" not in (tmp_path / "restic.log").read_text()
+
+
+def test_restic_check_runs_once_a_week_and_failure_fails_the_backup(tmp_path: Path) -> None:
+    script, binaries, config = setup(tmp_path)
+    first = invoke(script, binaries, config)
+    assert first.returncode == 0, first.stderr
+    log = (tmp_path / "restic.log").read_text().splitlines()
+    assert any(line.startswith("check --read-data-subset=") for line in log)
+    (tmp_path / "restic.log").unlink()
+    second = invoke(script, binaries, config)
+    assert second.returncode == 0, second.stderr
+    assert not any(
+        line.startswith("check") for line in (tmp_path / "restic.log").read_text().splitlines()
+    )
+    (tmp_path / "var" / ".last-restic-check").unlink()
+    failing = invoke(script, binaries, config, RESTIC_CHECK_FAIL="1")
+    assert failing.returncode != 0
+    assert not (tmp_path / "var" / ".last-restic-check").exists()
