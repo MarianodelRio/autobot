@@ -290,3 +290,253 @@ def test_setup_includes_the_whatsapp_webhook_url(authed_client: Any, tenants: An
         for v in step["values"]
         if "webhook" in v["label"].lower()
     )
+
+
+# ── WhatsApp: acciones de alta por la Graph API (ADR-016, C18) ──────────────
+
+WA_STEPS = ("whatsapp_webhook", "whatsapp_number", "whatsapp_subscription")
+
+
+def graph(monkeypatch: pytest.MonkeyPatch, *answers: Any) -> list[httpx.Request]:
+    """Each answer is a fixture name (200), a `(status, fixture name)` pair, or an
+    exception to raise. Returns the requests Meta received."""
+    queue = list(answers)
+    seen: list[httpx.Request] = []
+    original = httpx.Client
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        answer = queue.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        status, name = answer if isinstance(answer, tuple) else (200, answer)
+        body = json.loads(fixture(f"whatsapp/{name}")) if name else {"success": True}
+        return httpx.Response(status, json=body)
+
+    monkeypatch.setattr(
+        "httpx.Client", lambda **kw: original(transport=httpx.MockTransport(handle), **kw)
+    )
+    return seen
+
+
+@pytest.fixture
+def wa(tenants: Any, settings: Settings) -> str:
+    settings.PUBLIC_URL = "https://api.example.org"
+    tenants(wa_tenant("a"))
+    return "a"
+
+
+def step_of(client: Any, slug: str, key: str) -> dict[str, Any]:
+    return next(s for s in get(client, f"tenants/{slug}/setup").json() if s["key"] == key)
+
+
+def test_whatsapp_steps_offer_actions_without_calling_meta(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = graph(monkeypatch)
+    body = get(authed_client, f"tenants/{wa}/setup").json()
+    keys = [s["key"] for s in body]
+    assert keys[keys.index("secrets") + 1 : keys.index("secrets") + 4] == list(WA_STEPS)
+    steps = {s["key"]: s for s in body}
+    assert all(steps[k]["state"] == "pending" and not steps[k]["blocking"] for k in WA_STEPS)
+    assert steps["whatsapp_number"]["action"]["needs_pin"] is True
+    assert steps["whatsapp_subscription"]["action"]["confirm"] is True
+    assert steps["whatsapp_webhook"]["action"]["confirm"] is False
+    assert seen == []
+
+
+def test_whatsapp_steps_are_absent_for_telegram(authed_client: Any, tenants: Any) -> None:
+    tenants(tg_tenant("tg"))
+    keys = {s["key"] for s in get(authed_client, "tenants/tg/setup").json()}
+    assert not keys & set(WA_STEPS)
+
+
+def test_whatsapp_steps_without_ids_say_what_is_missing(authed_client: Any, tenants: Any) -> None:
+    doc = wa_tenant("a")
+    doc["channel"]["waba_id"] = None
+    tenants(doc)
+    step = step_of(authed_client, "a", "whatsapp_subscription")
+    assert step["action"] is None
+    assert "waba_id" in step["detail"]
+
+
+def test_check_number_registered_is_ok_with_its_status(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = graph(monkeypatch, "graph_number_registered.json")
+    body = post(authed_client, f"tenants/{wa}/setup/check/whatsapp_number").json()
+    assert body["state"] == "ok"
+    values = {v["label"]: v["value"] for v in body["values"]}
+    assert values["Nombre visible"] == "APPROVED"
+    assert values["Calidad"] == "GREEN"
+    assert "600" not in json.dumps(body)  # never the phone number Meta reports
+    assert "status,platform_type" in seen[0].url.params["fields"]
+    assert seen[0].headers["Authorization"] == "Bearer EAAB-T0KEN"
+
+
+def test_check_number_unregistered_is_an_error(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph(monkeypatch, "graph_number_unregistered.json")
+    body = post(authed_client, f"tenants/{wa}/setup/check/whatsapp_number").json()
+    assert body["state"] == "error"
+    assert "Registrar número" in body["detail"]
+
+
+def test_check_subscription_ok_and_missing(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph(monkeypatch, "graph_subscribed_apps.json", (200, ""))
+    path = f"tenants/{wa}/setup/check/whatsapp_subscription"
+    assert post(authed_client, path).json()["state"] == "ok"
+    # `{"success": true}` has no `data`: an invalid answer, never a silent ok.
+    assert post(authed_client, path).json()["state"] == "error"
+
+
+def test_check_webhook_uses_the_app_token(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = graph(monkeypatch, "graph_app_subscriptions.json")
+    body = post(authed_client, f"tenants/{wa}/setup/check/whatsapp_webhook").json()
+    assert body["state"] == "ok"
+    assert seen[0].url.path.endswith("/1/subscriptions")
+    assert seen[0].headers["Authorization"] == "Bearer 1|" + "S3CR3T-APP-" + "x" * 21
+
+
+def test_check_webhook_with_another_url_is_an_error(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    settings.PUBLIC_URL = "https://other.example.org"
+    graph(monkeypatch, "graph_app_subscriptions.json")
+    body = post(authed_client, f"tenants/{wa}/setup/check/whatsapp_webhook").json()
+    assert body["state"] == "error"
+
+
+def test_check_with_a_meta_error_does_not_echo_it(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph(monkeypatch, (400, "graph_error.json"))
+    body = post(authed_client, f"tenants/{wa}/setup/check/whatsapp_number").json()
+    assert body["state"] == "error"
+    assert "META-SECRET-DETAIL" not in json.dumps(body)
+
+
+def test_register_skips_the_post_when_already_registered(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = graph(monkeypatch, "graph_number_registered.json")
+    response = post(authed_client, f"tenants/{wa}/setup/action/whatsapp_number", {"pin": "123456"})
+    assert response.status_code == 200, response.content
+    assert "Ya estaba registrado" in response.json()["detail"]
+    assert [r.method for r in seen] == ["GET"]
+    event = AuditEvent.objects.using("owner").get(action="tenant.setup_action")
+    assert event.details == {"step": "whatsapp_number", "outcome": "already"}
+
+
+def test_register_posts_the_pin_and_never_audits_it(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = graph(monkeypatch, "graph_number_unregistered.json", (200, ""))
+    response = post(authed_client, f"tenants/{wa}/setup/action/whatsapp_number", {"pin": "654321"})
+    assert response.status_code == 200, response.content
+    assert response.json()["state"] == "ok"
+    assert seen[1].method == "POST"
+    assert seen[1].url.path.endswith("/register")
+    assert json.loads(seen[1].content) == {"messaging_product": "whatsapp", "pin": "654321"}
+    event = AuditEvent.objects.using("owner").get(action="tenant.setup_action")
+    assert "654321" not in json.dumps(event.details) + event.summary
+
+
+@pytest.mark.parametrize("pin", ["12345", "1234567", "abcdef", "12 456", None])
+def test_register_rejects_a_bad_pin_without_calling_meta(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch, pin: str | None
+) -> None:
+    seen = graph(monkeypatch)
+    payload = {} if pin is None else {"pin": pin}
+    response = post(authed_client, f"tenants/{wa}/setup/action/whatsapp_number", payload)
+    assert response.status_code == 400
+    assert seen == []
+
+
+def test_an_ambiguous_write_is_unknown_and_not_retried(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = graph(monkeypatch, httpx.ReadTimeout("slow"))
+    response = post(authed_client, f"tenants/{wa}/setup/action/whatsapp_subscription")
+    assert response.status_code == 502
+    assert "desconocido" in response.json()["message"]
+    assert len(seen) == 1
+    event = AuditEvent.objects.using("owner").get(action="tenant.setup_action")
+    assert event.details == {"step": "whatsapp_subscription", "outcome": "unknown"}
+
+
+def test_a_refused_write_does_not_echo_metas_body(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph(monkeypatch, (400, "graph_error.json"))
+    response = post(authed_client, f"tenants/{wa}/setup/action/whatsapp_webhook")
+    assert response.status_code == 502
+    text = response.content.decode()
+    assert "META-SECRET-DETAIL" not in text and "fbtrace" not in text
+    assert "tres secretos" in response.json()["message"]
+
+
+def test_an_auth_error_says_the_token_has_no_access(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph(monkeypatch, (401, "graph_error.json"))
+    response = post(authed_client, f"tenants/{wa}/setup/action/whatsapp_subscription")
+    assert response.status_code == 502
+    assert "sin acceso" in response.json()["message"]
+
+
+def test_subscribe_posts_to_the_waba(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = graph(monkeypatch, (200, ""))
+    response = post(authed_client, f"tenants/{wa}/setup/action/whatsapp_subscription")
+    assert response.status_code == 200, response.content
+    assert seen[0].method == "POST"
+    assert seen[0].url.path.endswith("/2/subscribed_apps")
+    assert seen[0].headers["Authorization"] == "Bearer EAAB-T0KEN"
+
+
+def test_configure_webhook_sends_the_url_verify_token_and_app_token(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = graph(monkeypatch, (200, ""))
+    response = post(authed_client, f"tenants/{wa}/setup/action/whatsapp_webhook")
+    assert response.status_code == 200, response.content
+    request = seen[0]
+    assert request.url.path.endswith("/1/subscriptions")
+    assert request.headers["Authorization"].startswith("Bearer 1|S3CR3T-APP-")
+    form = dict(httpx.QueryParams(request.content.decode()))
+    assert form == {
+        "object": "whatsapp_business_account",
+        "callback_url": "https://api.example.org/webhooks/whatsapp/puba0000",
+        "verify_token": "V3RIFY-T0KEN",
+        "fields": "messages",
+    }
+    assert "V3RIFY" not in response.content.decode()
+
+
+def test_configure_webhook_without_public_url_is_a_clear_error(
+    authed_client: Any, wa: str, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    settings.PUBLIC_URL = ""
+    seen = graph(monkeypatch)
+    response = post(authed_client, f"tenants/{wa}/setup/action/whatsapp_webhook")
+    assert response.status_code == 502
+    assert "PUBLIC_URL" in response.json()["message"]
+    assert seen == []
+
+
+def test_action_on_a_step_without_action_is_rejected(authed_client: Any, wa: str) -> None:
+    assert post(authed_client, f"tenants/{wa}/setup/action/templates").status_code == 400
+    assert post(authed_client, f"tenants/{wa}/setup/action/nope").status_code == 400
+
+
+def test_action_rejects_a_telegram_tenant(authed_client: Any, tenants: Any) -> None:
+    tenants(tg_tenant("tg"))
+    response = post(authed_client, "tenants/tg/setup/action/whatsapp_subscription")
+    assert response.status_code == 400

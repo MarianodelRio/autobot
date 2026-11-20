@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { errorMessage } from "@/lib/errors";
 
 type SetupStep = components["schemas"]["SetupStepOut"];
+type SetupAction = components["schemas"]["SetupAction"];
 type Detail = components["schemas"]["TenantDetail"];
 
 const STEP_LEVEL: Record<SetupStep["state"], StatusDotLevel> = {
@@ -73,6 +74,105 @@ function TesterCandidates({ slug, step }: { slug: string; step: SetupStep }) {
   );
 }
 
+const PIN = /^[0-9]{6}$/;
+
+function StepActionButton({
+  slug,
+  step,
+  action,
+}: {
+  slug: string;
+  step: SetupStep;
+  action: SetupAction;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pin, setPin] = useState("");
+  const client = useQueryClient();
+  const run = useMutation({
+    mutationFn: () =>
+      unwrap(
+        api.POST("/tenants/{slug}/setup/action/{step}", {
+          params: { path: { slug, step: step.key } },
+          body: action.needs_pin ? { pin } : {},
+        }),
+      ),
+    onSuccess: (result) => {
+      setOpen(false);
+      setPin("");
+      client.setQueryData<SetupStep[]>(["tenant-setup", slug], (previous) =>
+        previous?.map((item) => (item.key === step.key ? result : item)),
+      );
+      toast.success(result.detail);
+    },
+  });
+  const error = run.isError && (
+    <p role="alert" className="text-sm text-status-critical">
+      {errorMessage(run.error, "No se pudo completar la acción.")}
+    </p>
+  );
+  if (!action.needs_pin && !action.confirm)
+    return (
+      <>
+        <Button size="sm" disabled={run.isPending} onClick={() => run.mutate()}>
+          {action.label}
+        </Button>
+        {error}
+      </>
+    );
+  const pinId = `setup-pin-${step.key}`;
+  return (
+    <>
+      <Button
+        size="sm"
+        onClick={() => {
+          run.reset();
+          setOpen(true);
+        }}
+      >
+        {action.label}
+      </Button>
+      <Dialog
+        open={open}
+        onOpenChange={(value) => {
+          setOpen(value);
+          if (!value) setPin("");
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{action.label}</DialogTitle>
+            <DialogDescription>
+              {action.needs_pin
+                ? "El PIN de verificación en dos pasos del número (6 dígitos). No se guarda en ningún sitio: apúntalo y guárdalo tú en un lugar seguro."
+                : "Esto activa de verdad la recepción de mensajes del número real del negocio. ¿Seguro que quieres hacerlo ahora?"}
+            </DialogDescription>
+          </DialogHeader>
+          {action.needs_pin && (
+            <>
+              <Label htmlFor={pinId}>PIN de 6 dígitos</Label>
+              <Input
+                id={pinId}
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={6}
+                value={pin}
+                onChange={(event) => setPin(event.target.value)}
+              />
+            </>
+          )}
+          <Button
+            disabled={run.isPending || (action.needs_pin && !PIN.test(pin))}
+            onClick={() => run.mutate()}
+          >
+            {action.needs_pin ? action.label : "Sí, continuar"}
+          </Button>
+          {error}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
   const client = useQueryClient();
   const check = useMutation({
@@ -105,6 +205,9 @@ function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
           >
             Comprobar
           </Button>
+        )}
+        {step.action && (
+          <StepActionButton slug={slug} step={step} action={step.action} />
         )}
       </div>
       <p className="text-sm text-muted-foreground">{step.why}</p>

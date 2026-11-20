@@ -50,6 +50,10 @@ class AddTesterIn(Schema):
     id: str
 
 
+class SetupActionIn(Schema):
+    pin: str | None = None
+
+
 class StatusIn(Schema):
     action: str
     confirm_slug: str | None = None
@@ -187,6 +191,13 @@ def tenant_setup(request: HttpRequest, slug: str) -> list[setup_service.SetupSte
 @router.post("/tenants/{slug}/setup/check/{step}", response=setup_service.SetupStepOut)
 def tenant_setup_check(request: HttpRequest, slug: str, step: str) -> setup_service.SetupStepOut:
     return setup_service.tenant_setup_check(slug, step, actor=request.user.username)
+
+
+@router.post("/tenants/{slug}/setup/action/{step}", response=setup_service.SetupStepOut)
+def tenant_setup_action(
+    request: HttpRequest, slug: str, step: str, payload: SetupActionIn
+) -> setup_service.SetupStepOut:
+    return setup_service.tenant_setup_action(slug, step, payload.pin, actor=request.user.username)
 
 
 @router.post("/tenants/{slug}/setup/testers", response=setup_service.SetupStepOut)

@@ -56,13 +56,33 @@ de este modelo y de cómo migrarlo en el futuro: `docs/procedimientos/alta-whats
 - SIM sin WhatsApp activo.
 - Gmail y Business Portfolio del negocio.
 - Verificación de empresa (2–5 días hábiles; necesaria para el nombre visible).
-- App de tipo Business con el producto WhatsApp y el número registrado.
-- App suscrita a la WABA (`POST /<WABA_ID>/subscribed_apps`) y campo `messages` suscrito.
+- Acceso del operador: Meta separa ahora la **cuenta de WhatsApp** (el número) de la
+  **cuenta de mensajería** (plantillas y facturación). Al operador hay que asignarle
+  las dos, más la app, y darle **control total** del Business Portfolio: sin él no
+  puede usar la configuración de WhatsApp de la app ni crear el System User.
+- App de tipo Business con el producto WhatsApp.
+- Número añadido y verificado con el código (SMS o llamada) en WhatsApp Manager.
 - System User con token permanente (`whatsapp_business_messaging`,
   `whatsapp_business_management`).
-- Webhook de la app: `https://api.<dominio>/webhooks/whatsapp/<public_id>` con el
-  `verify_token` del tenant.
-- Plantillas del pack creadas y aprobadas (de 1 a 48 h). `bus` no usa plantillas.
+- Método de pago en la cuenta de mensajería: sin él Meta no envía mensajes
+  facturables (desde el 1/10/2026, también las respuestas de servicio que pasen de
+  las gratuitas).
+- Ids del canal y los tres secretos cargados en el panel.
+- Desde la pestaña «Alta» del negocio (ADR-016), con «Comprobar» antes y después:
+  - **Webhook de la app** → «Configurar webhook»: configura
+    `https://api.<dominio>/webhooks/whatsapp/<public_id>` con el `verify_token` del
+    negocio y el campo `messages`. Meta verifica la URL en ese momento, así que el
+    servidor tiene que ser accesible y el negocio tener sus tres ids y tres secretos.
+  - **Número registrado** → «Registrar número»: registra el número en la Cloud API
+    con un PIN de verificación en dos pasos de 6 dígitos. El PIN no se guarda en
+    ningún sitio: apúntalo y guárdalo tú. Si ya estaba registrado, no se repite.
+  - **App suscrita a la cuenta** → «Suscribir app» (`subscribed_apps`): pide
+    confirmación, porque a partir de ahí el número real entrega sus mensajes a la
+    plataforma.
+  - Si una acción responde «Resultado desconocido», pulsa «Comprobar» antes de
+    repetirla: nunca se reintenta sola.
+- Plantillas del pack creadas y aprobadas en WhatsApp Manager (de 1 a 48 h); su
+  estado se consulta en la pestaña «Alta». `bus` no usa plantillas.
 
 Desde el 1/10/2026 Meta cobra también las respuestas dentro de la ventana de 24 h al
 precio *utility* del país; la tarifa se consulta en la cuenta de cada negocio.

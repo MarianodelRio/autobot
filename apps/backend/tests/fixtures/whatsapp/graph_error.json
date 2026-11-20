@@ -1,0 +1,9 @@
+{
+  "error": {
+    "message": "(#100) META-SECRET-DETAIL for +34600000000",
+    "type": "OAuthException",
+    "code": 100,
+    "error_subcode": 2388001,
+    "fbtrace_id": "AbCdEfGhIjK"
+  }
+}

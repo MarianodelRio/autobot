@@ -789,6 +789,13 @@ C1–C11 hechos el 2026-11-17, con sus tests (backend y panel en verde).
   campo por campo en vez de un volcado de `jsondiffpatch` (se retira esa dependencia).
 - [ ] **C18 (M) [Aprobación]** «Conectar WhatsApp» desde el panel por API: `subscribed_apps`,
   registro del número, plantillas y estado. Es lo que más ahorra sin cambiar de modelo.
+  Hecho el 2026-11-20 (ADR-016), aprobado por la persona: tres pasos nuevos en la
+  pestaña «Alta» para WhatsApp, cada uno con «Comprobar» y su acción por la Graph
+  API — webhook de la app (`/{app_id}/subscriptions`), registro del número con PIN
+  (no se guarda; no se repite si ya está registrado) y `subscribed_apps` (con
+  confirmación). No bloqueantes; una escritura ambigua nunca se reintenta. Sigue
+  pendiente: crear las plantillas desde el panel (hoy, en WhatsApp Manager) y probarlo
+  contra un número real. Fuera a propósito: añadir y verificar el número con código.
 
 **Biblioteca de horarios.** Los horarios se suben por terminal a una biblioteca y, al
 crear un cliente, se elige uno desde el panel. Sustituye al plan anterior de publicar

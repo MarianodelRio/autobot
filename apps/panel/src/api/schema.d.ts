@@ -830,6 +830,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{slug}/setup/action/{step}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tenant Setup Action */
+        post: operations["autobot_panel_routers_tenants_tenant_setup_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{slug}/setup/check/{step}": {
         parameters: {
             query?: never;
@@ -1834,8 +1851,29 @@ export interface components {
             /** Email */
             email: string | null;
         };
+        /** SetupAction */
+        SetupAction: {
+            /**
+             * Confirm
+             * @default false
+             */
+            confirm: boolean;
+            /** Label */
+            label: string;
+            /**
+             * Needs Pin
+             * @default false
+             */
+            needs_pin: boolean;
+        };
+        /** SetupActionIn */
+        SetupActionIn: {
+            /** Pin */
+            pin?: string | null;
+        };
         /** SetupStepOut */
         SetupStepOut: {
+            action?: components["schemas"]["SetupAction"] | null;
             /** Blocking */
             blocking: boolean;
             /**
@@ -3377,6 +3415,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupStepOut"][];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_tenants_tenant_setup_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                step: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupActionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStepOut"];
                 };
             };
         };

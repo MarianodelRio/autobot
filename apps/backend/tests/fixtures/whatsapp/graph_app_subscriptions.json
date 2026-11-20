@@ -1,0 +1,12 @@
+{
+  "data": [
+    {
+      "object": "whatsapp_business_account",
+      "callback_url": "https://api.example.org/webhooks/whatsapp/puba0000",
+      "active": true,
+      "fields": [
+        {"name": "messages", "version": "v23.0"}
+      ]
+    }
+  ]
+}

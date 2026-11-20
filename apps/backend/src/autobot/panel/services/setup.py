@@ -2,7 +2,7 @@
 C1-C15 and D1-D4 already built, instead of a new hook per pack or channel.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from ninja import Schema
@@ -11,7 +11,10 @@ from autobot.ops.audit import record
 from autobot.panel.errors import ApiError
 from autobot.tenancy import activation
 from autobot.tenancy.registry import LoadedTenant, get_registry
-from autobot.tenancy.schema import TelegramChannel, WhatsAppChannel
+from autobot.tenancy.schema import TelegramChannel, WhatsAppChannel, WhatsAppSecrets
+
+if TYPE_CHECKING:
+    from autobot.channels.whatsapp.registration import NumberStatus
 
 
 class SetupValue(Schema):
@@ -26,6 +29,12 @@ class TesterCandidate(Schema):
     received_at: str
 
 
+class SetupAction(Schema):
+    label: str
+    needs_pin: bool = False
+    confirm: bool = False
+
+
 class SetupStepOut(Schema):
     key: str
     label: str
@@ -36,6 +45,7 @@ class SetupStepOut(Schema):
     values: list[SetupValue] = []
     checkable: bool = False
     tester_candidates: list[TesterCandidate] = []
+    action: SetupAction | None = None
 
 
 def _tenant(slug: str) -> LoadedTenant:
@@ -149,6 +159,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
             )
         )
     if isinstance(channel, WhatsAppChannel):
+        steps.extend(_whatsapp_steps(tenant, channel))
         steps.append(
             SetupStepOut(
                 key="templates",
@@ -377,6 +388,8 @@ def tenant_setup_check(slug: str, step: str, *, actor: str) -> SetupStepOut:
         result = _check_calendar(tenant, current)
     elif step == "templates":
         result = _check_templates(tenant, current)
+    elif step in _WHATSAPP_STEPS:
+        result = _check_whatsapp(tenant, current)
     else:  # pragma: no cover - current.checkable already restricts this
         raise ApiError("bad_request", "Ese paso no se puede comprobar", 400)
 
@@ -422,7 +435,6 @@ def _check_calendar(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut
 
 def _check_templates(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:
     from autobot.ops.health import Issue, whatsapp_template_statuses
-    from autobot.tenancy.schema import WhatsAppSecrets
 
     if tenant.pack is None or not isinstance(tenant.secrets, WhatsAppSecrets):
         return current.model_copy(
@@ -448,4 +460,158 @@ def _check_templates(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOu
             "detail": detail,
             "values": _template_values(tenant, result),
         }
+    )
+
+
+# ── WhatsApp: finish connecting the number from the panel (ADR-016) ───────────
+
+_WHATSAPP_STEPS: dict[str, tuple[str, str, SetupAction]] = {
+    "whatsapp_webhook": (
+        "Webhook de la app",
+        "Sin el webhook configurado en la app de Meta, ningún mensaje llega a la plataforma.",
+        SetupAction(label="Configurar webhook"),
+    ),
+    "whatsapp_number": (
+        "Número registrado",
+        "Un número sin registrar en la Cloud API no puede enviar ni recibir mensajes.",
+        SetupAction(label="Registrar número", needs_pin=True),
+    ),
+    "whatsapp_subscription": (
+        "App suscrita a la cuenta",
+        "Sin la app suscrita a la cuenta de WhatsApp, Meta no le entrega los mensajes.",
+        SetupAction(label="Suscribir app", confirm=True),
+    ),
+}
+
+
+def _whatsapp_ready(tenant: LoadedTenant) -> tuple[WhatsAppChannel, WhatsAppSecrets] | str:
+    """The channel and its secrets, or a detail saying what is missing."""
+    channel = tenant.document.channel
+    if not isinstance(channel, WhatsAppChannel):
+        return "Este canal no es WhatsApp."
+    missing = [
+        name for name in ("app_id", "waba_id", "phone_number_id") if not getattr(channel, name)
+    ]
+    secrets = tenant.secrets
+    if not isinstance(secrets, WhatsAppSecrets):
+        missing.append("secretos legibles")
+    if missing or not isinstance(secrets, WhatsAppSecrets):
+        return f"Falta: {', '.join(missing)}."
+    return channel, secrets
+
+
+def _whatsapp_steps(tenant: LoadedTenant, channel: WhatsAppChannel) -> list[SetupStepOut]:
+    ready = _whatsapp_ready(tenant)
+    steps = []
+    for key, (label, why, action) in _WHATSAPP_STEPS.items():
+        values = []
+        if key == "whatsapp_webhook":
+            url = f"{settings.PUBLIC_URL}/webhooks/whatsapp/{channel.public_id}"
+            values = [SetupValue(label="URL del webhook", value=url)]
+        steps.append(
+            SetupStepOut(
+                key=key,
+                label=label,
+                why=why,
+                state="pending",
+                blocking=False,
+                detail=ready
+                if isinstance(ready, str)
+                else "Pulsa «Comprobar» para consultarlo en Meta.",
+                values=values,
+                checkable=True,
+                action=None if isinstance(ready, str) else action,
+            )
+        )
+    return steps
+
+
+def _check_whatsapp(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:
+    from autobot.channels.whatsapp import registration as meta
+
+    ready = _whatsapp_ready(tenant)
+    if isinstance(ready, str):
+        return current.model_copy(update={"state": "error", "detail": ready})
+    channel, secrets = ready
+    try:
+        if current.key == "whatsapp_webhook":
+            ok = meta.app_webhook_status(channel, secrets, meta.webhook_url(channel))
+            detail = (
+                "Configurado con esta URL y el campo «messages»."
+                if ok
+                else "No está configurado con esta URL: pulsa «Configurar webhook»."
+            )
+            return current.model_copy(update={"state": _error_unless(ok), "detail": detail})
+        if current.key == "whatsapp_number":
+            return _number_result(current, meta.number_status(channel, secrets))
+        ok = meta.app_subscribed(channel, secrets)
+        detail = "Suscrita." if ok else "No está suscrita: pulsa «Suscribir app»."
+        return current.model_copy(update={"state": _error_unless(ok), "detail": detail})
+    except meta.RegistrationError as error:
+        return current.model_copy(update={"state": "error", "detail": error.message})
+
+
+def _error_unless(ok: bool) -> str:
+    return "ok" if ok else "error"
+
+
+def _number_result(current: SetupStepOut, status: NumberStatus) -> SetupStepOut:
+    values = [
+        *current.values,
+        SetupValue(label="Estado en Meta", value=status.status or "—", copiable=False),
+        SetupValue(label="Nombre visible", value=status.name_status or "—", copiable=False),
+        SetupValue(label="Calidad", value=status.quality_rating or "—", copiable=False),
+    ]
+    if not status.registered:
+        state, detail = "error", "No está registrado en la Cloud API: pulsa «Registrar número»."
+    elif status.status not in (None, "CONNECTED"):
+        state, detail = "error", "Registrado, pero Meta no lo da por conectado."
+    else:
+        state, detail = "ok", "Registrado en la Cloud API."
+    return current.model_copy(update={"state": state, "detail": detail, "values": values})
+
+
+def tenant_setup_action(slug: str, step: str, pin: str | None, *, actor: str) -> SetupStepOut:
+    """Runs one step's write against Meta, outside any transaction, and audits the
+    outcome (never the PIN). An ambiguous write is reported, never retried."""
+    from autobot.channels.whatsapp import registration as meta
+
+    tenant = _tenant(slug)
+    if not isinstance(tenant.document.channel, WhatsAppChannel):
+        raise ApiError("bad_request", "El canal no es WhatsApp", 400)
+    current = {item.key: item for item in tenant_setup(slug)}.get(step)
+    ready = _whatsapp_ready(tenant)
+    if current is None or current.action is None or isinstance(ready, str):
+        raise ApiError("bad_request", "Ese paso no tiene acción", 400)
+    channel, secrets = ready
+    try:
+        if step == "whatsapp_webhook":
+            meta.configure_app_webhook(channel, secrets, meta.webhook_url(channel))
+            outcome, detail = "done", "Webhook configurado: Meta ha verificado la URL."
+        elif step == "whatsapp_number":
+            if pin is None or not meta.PIN.fullmatch(pin):
+                raise ApiError("bad_request", "El PIN debe tener exactamente 6 dígitos.", 400)
+            if meta.register_number(channel, secrets, pin):
+                outcome, detail = "done", "Número registrado en la Cloud API."
+            else:
+                outcome, detail = "already", "Ya estaba registrado: no se ha repetido el registro."
+        else:
+            meta.subscribe_app(channel, secrets)
+            outcome, detail = "done", "App suscrita: el número ya puede recibir mensajes."
+    except meta.RegistrationError as error:
+        _record_action(tenant, step, error.outcome, actor)
+        raise ApiError("unavailable", error.message, 502) from None
+    _record_action(tenant, step, outcome, actor)
+    return current.model_copy(update={"state": "ok", "detail": detail})
+
+
+def _record_action(tenant: LoadedTenant, step: str, outcome: str, actor: str) -> None:
+    record(
+        actor=actor,
+        action="tenant.setup_action",
+        tenant_id=tenant.id,
+        target_type="tenant",
+        target_id=str(tenant.id),
+        summary=f"Acción de alta: {step}",
+        details={"step": step, "outcome": outcome},
     )

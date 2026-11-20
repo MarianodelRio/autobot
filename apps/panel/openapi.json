@@ -2532,8 +2532,58 @@
         "title": "ServiceAccountOut",
         "type": "object"
       },
+      "SetupAction": {
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "needs_pin": {
+            "default": false,
+            "title": "Needs Pin",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "SetupAction",
+        "type": "object"
+      },
+      "SetupActionIn": {
+        "properties": {
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin"
+          }
+        },
+        "title": "SetupActionIn",
+        "type": "object"
+      },
       "SetupStepOut": {
         "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SetupAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "blocking": {
             "title": "Blocking",
             "type": "boolean"
@@ -5771,6 +5821,62 @@
           }
         ],
         "summary": "Tenant Setup",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
+    "/tenants/{slug}/setup/action/{step}": {
+      "post": {
+        "operationId": "autobot_panel_routers_tenants_tenant_setup_action",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step",
+            "required": true,
+            "schema": {
+              "title": "Step",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupActionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStepOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Tenant Setup Action",
         "tags": [
           "tenants"
         ]
