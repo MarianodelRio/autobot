@@ -67,7 +67,9 @@ API del panel como por los comandos de operación.
 ## El bot de demo y el bot de avisos
 
 El **bot de demo** tiene dos puertas (un bot de Telegram y un número de WhatsApp de la
-plataforma, no de ningún cliente) con listas cerradas de acceso. La primera respuesta
+plataforma, no de ningún cliente). Se entra con un código de invitación creado desde
+la pestaña «Demo» del panel, o estando en la lista cerrada de esa puerta
+(`DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS`). La primera respuesta
 de cualquier puerta es un selector de negocios de demo; a partir de ahí la conversación
 es la del pack real de ese negocio ([ADR-006](adr/ADR-006-bot-de-demo.md)).
 

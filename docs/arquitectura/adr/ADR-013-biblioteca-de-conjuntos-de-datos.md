@@ -65,6 +65,12 @@ elige una entrada ya validada.
   `bus-formatear` siguen, ahora sobre `var/datos/<nombre>/` sin más cambio que el
   nombre con el que se identifica el conjunto.
 
+  *Actualización (2026-11-20):* al implementarlo, `bus-bajar` y `.publicado/` no
+  desaparecieron. `bus-bajar` baja ahora una entrada de la biblioteca (no de un
+  cliente) y deja una copia en `var/datos/<nombre>/.publicado/timetable`, que es la
+  base del diff de `bus-revision`. Sí desaparecieron `tenant_dataset`, `bus-publicar` y
+  `tools/bus/data.py`.
+
 ## Alternativas consideradas
 
 - **Referencia en vez de copia:** el cliente apuntaría a la fila de la biblioteca en

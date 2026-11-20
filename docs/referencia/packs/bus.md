@@ -21,7 +21,7 @@ directorio con esta estructura:
 | Archivo | Campos y formato |
 |---|---|
 | `paradas.yaml` | `localidades: {id: {nombre, alias?}}`; `paradas: {COD: {nombre, localidad}}`, con código de tres mayúsculas; `no_vendibles` son pares de ids sin billete en ambos sentidos; `pendientes` registra códigos `Pnn`. Una localidad pendiente lleva `pendiente`, `ver`, `minutos` y, opcionalmente, `aviso`. |
-| `observaciones.yaml` | Mapa `id: {letra, tipo, ambitos, texto}`. `tipo` es `condicion` o `aviso`; `ambitos` usa `parada`, `viaje` o `linea`. Una condición nueva necesita lógica explícita en el motor. |
+| `observaciones.yaml` | Mapa `id: {letra, tipo, ambitos, texto}`. `tipo` es `condicion` o `aviso`; `ambitos` usa `parada`, `viaje` o `linea`. Las condiciones que el motor sabe aplicar son `a_demanda`, `solo_viernes_lectivo` y `solo_si_viajeros`; cualquier otro id con `tipo: condicion` es un error de validación (un dataset antiguo con un id distinto se corrige renombrándolo a uno de estos). Una condición nueva necesita lógica explícita en el motor. |
 | `calendario.yaml` | `vigencia: DD/MM/AAAA - DD/MM/AAAA`; `festivos` es fecha → nombre y `festivos_locales` es localidad → (fecha → nombre); `curso` declara `inicio_clases`, `fin_clases`, `vacaciones` (`DD/MM/AAAA - DD/MM/AAAA`) y `no_lectivos`; `sin_servicio_todas_las_lineas` usa `DD/MM`; `pendientes` es opcional. |
 | `lineas/<id>.yaml` | Una línea por fichero con id `a-z0-9-`: `nombre`, `nombre_corto?` (≤24), `telefono_demanda?`, `avisos?`, `no_circula?`, `temporadas`, `dias`, `horarios` y `pendientes?`. |
 

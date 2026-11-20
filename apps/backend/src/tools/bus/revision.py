@@ -606,7 +606,7 @@ def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
         "--base",
         type=Path,
         default=None,
-        help="Directorio base (por defecto datos/<slug>/.publicado/timetable)",
+        help="Directorio base (por defecto var/datos/<nombre>/.publicado/timetable)",
     )
     parser.add_argument("--solo-html", action="store_true", help="No genera el PDF, solo el HTML")
     args = parser.parse_args(argv)

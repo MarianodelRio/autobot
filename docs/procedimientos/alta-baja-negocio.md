@@ -36,7 +36,7 @@
 Para editar, `tenant_config export <slug> <dir>` crea un directorio nuevo o vacío,
 sin secretos. Después de editar, `tenant_config import <dir> --comment "Motivo"`
 crea otra versión; en el panel, la ficha del cliente edita la config con formulario
-o YAML (diff y comentario obligatorio) y guarda cada versión en su historial. Los
+o YAML (diff y comentario opcional) y guarda cada versión en su historial. Los
 seis campos de identidad y estado no se cambian por importación.
 Pausar o reactivar: `tenant_status <slug> pause|resume`, o el mismo botón en la
 ficha del cliente. Para cambiar los datasets de un cliente ya dado de alta, ver
