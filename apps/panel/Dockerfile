@@ -2,7 +2,7 @@
 # Multi-stage image, built from the REPO ROOT (`docker build -f apps/panel/Dockerfile .`):
 # the SPA with Node, the documentation site with Zensical, and both served by a minimal
 # non-root Caddy. The context is filtered by apps/panel/Dockerfile.dockerignore.
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 # The repo this build came from, for the commit links on the system page. Empty for a
 # local dev build.
