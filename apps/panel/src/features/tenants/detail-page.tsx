@@ -210,6 +210,7 @@ export function TenantDetailPage({
     <div>
       <PageHeader
         title={d.name}
+        help="procedimientos/panel/#clientes"
         description={
           <span className="flex flex-wrap items-center gap-2">
             <span>

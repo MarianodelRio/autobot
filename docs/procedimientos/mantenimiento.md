@@ -1,55 +1,149 @@
 # Mantenimiento periódico
 
-**Síntoma:** llega la revisión mensual/trimestral o salta una alerta de seguridad.
-**Diagnóstico:** revisa fecha del último backup, uso de disco, CI, dependencias,
-versión de Graph API, estado del número de WhatsApp y plantillas aprobadas.
+Revisiones recurrentes de la plataforma en producción, cómo liberar disco y cómo subir de
+versión mayor PostgreSQL. Lo que ya comprueba el CI en cada commit (tests, auditoría de
+dependencias, validez de compose y Caddy, simulacro de copia y restauración) no se repite
+aquí: ver [despliegue.md](despliegue.md).
 
-**Pasos:** cada mes ejecuta la auditoría de dependencias de CI, actualiza la imagen
-base por Dependabot y planifica un reinicio de VPS tras parches de kernel. Cada seis
-meses verifica la versión soportada de Graph API antes de cambiarla. Cada trimestre
-revisa calidad del número, plantillas, restaura un snapshot en entorno temporal con
-[el procedimiento de restauración](restaurar.md) y registra RTO. Antes de desplegar cualquier actualización, ejecuta
-`make check` y valida el SHA publicado en GHCR. Las pruebas reales o cambios de
-canal requieren intervención humana.
+## Objetivo, cuándo y requisitos
+
+- **Objetivo:** que backups, disco, dependencias y cuentas de canal sigan sanos sin que
+  salte una alerta.
+- **Cuándo:** mensual, semestral y trimestral según la tabla; y ante una alerta de disco.
+- **Requisitos:** acceso SSH como `deploy` (clave de operación), panel por túnel
+  (`make panel-tunnel`). Las pruebas reales o los cambios de canal requieren intervención
+  humana.
+
+## Calendario
+
+| Cuándo | Qué |
+|---|---|
+| Mensual | Mirar en el panel (Sistema) la fecha del último backup, disco, TLS y despliegues. Aceptar o rechazar las PR de Dependabot (imagen base, Actions, dependencias). Si hubo parches de kernel, planificar un reinicio de la VPS como `admin` |
+| Cada seis meses | Verificar la versión soportada de Graph API antes de cambiar `WHATSAPP_GRAPH_VERSION` |
+| Trimestral | Calidad del número y plantillas de WhatsApp en Meta; simulacro de restauración ([restaurar.md](restaurar.md)) anotando el RTO; revisar la retención de paquetes de GHCR |
 
 **Backups:** cada backup valida el volcado (`pg_restore --list`) antes de subirlo y
 comprueba el espacio libre; el primero de cada semana ISO ejecuta `restic check
 --read-data-subset=5%` y, si falla, el backup falla sin avisar a Healthchecks. Si salta,
-revisa el repositorio (`restic check` completo) antes de fiarte de él.
+haz un `restic check` completo antes de fiarte del repositorio.
 
-**Verificación:** CI verde, backup/restauración reciente documentados, alertas
-resueltas y `tenant_health` sin degradaciones tras el mantenimiento.
+**Verificación:** CI verde, alertas resueltas, backup reciente (`ok`) en el panel y
+`make tenant-health SLUG=<slug>` sin degradaciones tras el mantenimiento.
+
+## Disco lleno
+
+**Qué lo dispara.** `ops_check` (cada cinco minutos, `apps/backend/src/autobot/ops/check.py`)
+mide el uso de `/` y abre:
+
+- `disk` (aviso, 🟠) por encima del **85 %**.
+- `disk_critical` (🔴) por encima del **95 %**.
+
+También se ve en el panel, Sistema. Con un disco lleno, PostgreSQL deja de escribir, el
+backup falla por falta de espacio (`backup.sh` exige el doble del último volcado, o 512 MiB)
+y el despliegue no puede descargar imágenes.
+
+**Pasos** (en la VPS, como `deploy`, en `/srv/autobot`; nada de esto toca datos de
+clientes):
+
+1. Mide qué ocupa: `df -h /`, `docker system df` y `du -sh var/* var/backups/* 2>/dev/null`.
+2. **Imágenes Docker viejas:** `deploy/scripts/prune.sh` (lo mismo que el timer diario:
+   `docker image prune --all --force --filter 'until=24h'`). Conserva las que usa algún
+   contenedor y las de las últimas 24 h; un rollback más allá vuelve a descargar la
+   imagen. Si espera por el candado, es que hay un despliegue en curso.
+3. **Volcados locales:** `var/backups/pre-migrate.dump` (lo borra `prune.sh` a los 7
+   días) y cualquier volcado manual que dejaras (`ls -la var/backups`). Contienen datos de
+   clientes en claro: bórralos con `rm` en cuanto no hagan falta. `autobot.dump` es
+   temporal y lo borra el propio `backup.sh`; si sobrevive, el último backup falló.
+4. **Logs de VictoriaLogs:** guarda 31 días con tope de 5 GiB y descarta el día más antiguo
+   al llegar. Si aun así pesa, baja el tope (`-retention.maxDiskSpaceUsageBytes` en
+   `deploy/compose/compose.yaml`) con un commit y despliegue; no borres su volumen.
+5. **Logs de contenedores:** están limitados a 5 ficheros de 20 MB por contenedor
+   (`compose.prod.yaml`); no suelen ser la causa. Compruébalo con `docker system df -v`.
+6. **Caché del repositorio restic local** y otros restos de `/var/cache` del usuario
+   `deploy`: `du -sh ~/.cache 2>/dev/null`; `restic cache --cleanup` borra lo obsoleto.
+7. Si no basta, amplía el disco en el proveedor (acción de infraestructura: aprobación
+   humana explícita).
+
+**Verificación:** `df -h /` por debajo del 85 %, la alerta `disk` se resuelve sola en el
+siguiente `ops_check` y el siguiente backup termina bien (`make backup-now`).
 
 ## Subir de versión mayor de PostgreSQL
 
-`db` está fijada por dígest (`deploy/compose/compose.yaml`) a una versión mayor
-concreta (actualmente 18). A diferencia de una actualización menor (mismo dígest de
-mayor, solo cambia el parche), una mayor **no es un simple cambio de imagen**: el
-formato de los ficheros de datos de PostgreSQL no es compatible entre versiones
-mayores, así que `pgdata` del volumen antiguo no arranca con el binario nuevo.
+`db` está fijada por dígest en `deploy/compose/compose.yaml` a una versión mayor concreta
+(hoy 18). Una mayor **no es un cambio de imagen**: el formato de los datos no es
+compatible entre mayores, y el volumen `autobot_pgdata` de la versión anterior no arranca
+con el binario nuevo. Una menor (mismo número mayor, otro dígest) sí es solo un cambio de
+imagen y la despliega `deploy.sh` como cualquier otra.
 
-**Pasos:** esto no lo hace `deploy.sh`; es un simulacro de restauración (`docs/procedimientos/restaurar.md`) sobre un proyecto Compose vacío con el `db` ya
-actualizado:
+!!! warning "Qué NO hace `deploy.sh`"
+    `deploy.sh` descarga imágenes, hace `up -d --wait db`, migra y arranca; **no
+    restaura volcados**. Con un volumen de la versión anterior, `db` no arrancaría y el
+    despliegue abortaría. `restore.sh` tampoco sirve para esto: se niega a actuar sobre
+    una instalación con `var/.deployed-sha` o con volumen de base de datos. Y `backup.sh`
+    solo deja el volcado en restic (borra su copia local al terminar). Es un cambio de
+    infraestructura sobre datos de producción: requiere aprobación humana explícita, una
+    ventana de mantenimiento y no está ensayado de punta a punta en producción.
 
-1. Backup reciente comprobado (`make backup-now` o esperar al timer) y simulacro de
-   restauración aparte, con la versión **actual**, para tener una referencia de
-   conteos por tenant antes de tocar nada.
-2. En una rama o checkout aparte, sube el dígest de `db` en `compose.yaml` a la
-   versión mayor deseada.
-3. Simulacro de restauración con ese checkout contra un proyecto Compose nuevo (vacío):
-   `deploy/scripts/restore.sh --confirm-empty-target` crea el volumen con la versión
-   nueva y `pg_restore` reconstruye el esquema y los datos desde el volcado lógico
-   (`pg_dump`/`pg_restore`, no son los ficheros binarios del volumen antiguo, así que
-   el salto de versión mayor no es un problema para ellos). Compara los conteos por
-   tenant con el paso 1.
-4. Si coincide, repite el corte real: backup final, parar `web`/`worker-*`/`caddy`
-   en producción, desplegar el checkout con el dígest nuevo (que recrea `db` desde
-   cero y restaura desde el volcado más reciente, no desde el volumen antiguo) y
-   verificar `/health` y los conteos antes de levantar `worker-*`.
-5. Actualiza el dígest fijado también en `docs/arquitectura/adr/ADR-005-vps-docker-compose.md`
-   si el ADR lo menciona, y en este procedimiento si cambia el número de versión mayor
-   citado arriba.
+**Requisitos:** aprobación; backup reciente comprobado en restic; el cambio de dígest ya
+en `main` con CI verde (publica la imagen); espacio libre para dos copias de la base.
 
-**Verificación:** igual que un simulacro de restauración normal (`restaurar.md`):
-`/health` 200, conteos por tenant iguales y un flujo por el bot de demo. Conserva el
-volumen antiguo sin borrar hasta confirmar el corte real.
+**Ensayo previo (portátil, sin servidor):** con el dígest nuevo en tu árbol de trabajo,
+`make restore-test` (crea una base con la versión nueva, la respalda y la restaura) y, si
+quieres el flujo de despliegue completo, `make localprod-up`.
+
+**Pasos** (en la VPS, como `deploy`, en `/srv/autobot`):
+
+1. `make backup-now` desde el portátil y confirma en restic que hay un snapshot nuevo.
+2. Para el tráfico: `deploy/scripts/compose.sh stop caddy worker-inbound worker-outbound
+   web panel`. Los webhooks que lleguen ahora fallarán y los canales los reintentarán.
+3. Volcado lógico, con la `db` aún en marcha y comprobado:
+
+    ```bash
+    (umask 077 && deploy/scripts/compose.sh exec -T db \
+      pg_dump -U postgres -d autobot -Fc > var/backups/major-upgrade.dump)
+    deploy/scripts/compose.sh exec -T db pg_restore --list \
+      < var/backups/major-upgrade.dump > /dev/null
+    ```
+
+4. `deploy/scripts/compose.sh down` (sin `-v`) y aparta el volumen antiguo: copia
+   `autobot_pgdata` a `autobot_pgdata_old` con un contenedor temporal
+   (`docker run --rm -v autobot_pgdata:/from:ro -v autobot_pgdata_old:/to <imagen> cp -a
+   /from/. /to/`) y borra `autobot_pgdata` con `docker volume rm`. Si no hay espacio para la
+   copia, no sigas: amplía el disco antes.
+5. Despliega el SHA que lleva el dígest nuevo (`make deploy` desde el portátil). `deploy.sh`
+   crea la `db` nueva y vacía (la imagen ejecuta `init-roles.sh`), migra el esquema y
+   arranca la aplicación sobre una base sin datos de clientes.
+6. Inmediatamente, vuelve a parar `caddy`, los workers, `web` y `panel` (paso 2) y restaura
+   el volcado, igual que hace `restore.sh`:
+
+    ```bash
+    deploy/scripts/compose.sh exec -T db sh -c \
+      'PGPASSWORD="$FP_OWNER_PASSWORD" exec pg_restore -h 127.0.0.1 -U fp_owner -d autobot --clean --if-exists --no-owner --no-acl' \
+      < var/backups/major-upgrade.dump
+    deploy/scripts/compose.sh exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh
+    deploy/scripts/manage.sh apply_grants
+    ```
+
+7. Levanta `deploy/scripts/compose.sh up -d web panel caddy`, comprueba `/health` y los
+   conteos por negocio contra los de antes de empezar (`contact` por tenant, como en
+   [restaurar.md](restaurar.md)) y solo entonces
+   `deploy/scripts/compose.sh up -d worker-inbound worker-outbound`.
+8. Cuando todo esté verificado: borra `var/backups/major-upgrade.dump` (datos en claro;
+   `prune.sh` no lo limpia) y, pasados unos días, `docker volume rm autobot_pgdata_old`.
+   Actualiza el número de versión en este procedimiento y en
+   [../arquitectura/adr/ADR-005-vps-docker-compose.md](../arquitectura/adr/ADR-005-vps-docker-compose.md)
+   si lo citan.
+
+**Si algo sale mal antes del paso 8:** vuelve a la versión anterior restaurando el volumen
+guardado (`autobot_pgdata_old` a `autobot_pgdata`) y desplegando el SHA anterior
+(`make deploy SHA=<anterior>`), o restaura el snapshot de restic con
+[restaurar.md](restaurar.md).
+
+**Verificación:** `/health` 200, conteos por negocio iguales, un flujo por el bot de demo,
+el siguiente backup termina bien y `SELECT version()` en el panel (Datos) da la mayor
+nueva.
+
+## Dónde está el código
+
+`deploy/scripts/prune.sh`, `deploy/scripts/backup.sh`, `deploy/compose/compose.yaml`,
+`apps/backend/src/autobot/ops/check.py` (`DISK_WARNING_PCT`, `DISK_CRITICAL_PCT`).

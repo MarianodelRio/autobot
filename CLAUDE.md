@@ -16,17 +16,19 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 - Si algo espera una acción manual, se deja anotado y se sigue con otra cosa independiente. Nunca se inventan credenciales ni ids, ni se simulan aprobaciones o verificaciones reales.
 - Se trabaja directamente sobre `main`; sin ramas ni PR salvo que la persona lo pida. CI debe quedar en verde.
 - Commit o push solo cuando la persona lo pida.
+- La documentación es un sitio Zensical (`mkdocs.yml`): `make docs` lo sirve en local y `make docs-check` lo construye en modo estricto (lo ejecuta CI). Una página nueva se añade al `nav` de `mkdocs.yml`; nada de enlaces Markdown a ficheros fuera de `docs/` (los ficheros de código se citan en backticks).
 - Una decisión de arquitectura nueva o que cambie una existente se registra como ADR en `docs/arquitectura/adr/` (o se pregunta antes).
 
 ## Arquitectura
 
-- Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `worker`, `db`, `panel`, `victorialogs`).
-- Dos apps desplegables en `apps/`, cada una autocontenida: `apps/backend/` (`pyproject.toml`, `uv.lock`, `Dockerfile`, código en `src/` — `core/`, `integrations/`, `packs/`, `autobot/`, `config/`, `tools/` — y tests en `tests/`) y `apps/panel/` (frontend). El despliegue vive en `deploy/`: `deploy/compose/` (compose por entorno), `deploy/scripts/`, `deploy/systemd/`, `deploy/caddy/`, `deploy/postgres/` (ver ADR-010). Los ficheros de ejecución, locales y del servidor, van en `var/` (ignorado por git).
+Visión completa en [`docs/arquitectura/vision-general.md`](docs/arquitectura/vision-general.md); aquí solo las reglas.
+
+- Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `worker-inbound`, `worker-outbound`, `db`, `panel`, `victorialogs`). Dos apps autocontenidas en `apps/` (`backend/`, `panel/`); el despliegue vive en `deploy/` (ADR-010). Los ficheros de ejecución, locales y del servidor, van en `var/` (ignorado por git). Mapa del código: [`docs/arquitectura/mapa-del-codigo.md`](docs/arquitectura/mapa-del-codigo.md).
 - `core/` e `integrations/` no importan Django; `packs/*` solo importan `core` (nunca Django, `integrations` ni otro pack). Lo comprueba `import-linter`.
 - Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de demo solo en `channels/demo/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio.
-- Config y datasets de cada negocio en PostgreSQL, versionados (ADR-009); nada en git ni en la imagen. Importación/exportación de la config con `tenant_config`. Los datasets de un pack (hoy, los horarios de `bus`) se suben por terminal a una biblioteca independiente de cualquier cliente (`dataset_library`, ADR-013) y el cliente se queda con una copia de la entrada elegida, nunca una referencia viva; `var/tenants/` y `var/datos/` están ignorados. Secretos de canal cifrados en la base de datos; secretos de la plataforma en `.env` del servidor. Nunca en git.
-- Cada pack nuevo incluye su plantilla en `apps/backend/src/packs/<pack>/template/` (de ahí sale su negocio de demo) y su escenario de conversación en `apps/backend/tests/packs/<pack>/`.
-- Panel interno (`apps/panel/`) en TypeScript, Biome y Vitest. Su API (`/api/panel/`) solo es accesible por túnel SSH (ADR-008); el frontend nunca es la única barrera de validación ni de permisos.
+- Config y datasets de cada negocio en PostgreSQL, versionados (ADR-009); nada en git ni en la imagen. Los datasets de un pack se suben por terminal a una biblioteca independiente de cualquier cliente y el cliente se queda con una copia, nunca una referencia viva (ADR-013); `var/tenants/` y `var/datos/` están ignorados. Secretos de canal cifrados en la base de datos; secretos de la plataforma en `.env` del servidor. Nunca en git.
+- Cada pack nuevo incluye su plantilla en `apps/backend/src/packs/<pack>/template/` (de ahí sale su negocio de demo) y su escenario de conversación en `apps/backend/tests/packs/<pack>/`. Guía: [`docs/desarrollo/anadir-un-pack.md`](docs/desarrollo/anadir-un-pack.md).
+- El panel (`apps/panel/`, TypeScript, Biome y Vitest) solo es accesible por túnel SSH (ADR-008); el frontend nunca es la única barrera de validación ni de permisos.
 
 ## Reglas obligatorias
 
@@ -45,4 +47,9 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 ## Referencias
 
-- Decisiones: `docs/arquitectura/adr/`. Operación: `docs/incidencias/` y `docs/procedimientos/`. Configuración de cada pack: `docs/referencia/packs/`. Comandos: `docs/referencia/comandos.md`. Variables de entorno: `docs/referencia/variables-entorno.md`. Índice completo: `docs/README.md`.
+Índice del sitio: [`docs/README.md`](docs/README.md).
+
+- Decisiones: `docs/arquitectura/adr/` (índice en `README.md`). Conceptos: `docs/arquitectura/`.
+- Desarrollo: `docs/desarrollo/` (entorno local, tests, añadir un pack, migraciones y RLS, documentación).
+- Operación: `docs/procedimientos/`; incidencias por síntoma: `docs/incidencias/`.
+- Referencia: `docs/referencia/` (comandos, variables de entorno, packs, alertas, glosario).

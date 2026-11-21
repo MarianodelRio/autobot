@@ -62,7 +62,7 @@ export function SystemPage() {
   });
   return (
     <div className="space-y-6">
-      <PageHeader title="Sistema" />
+      <PageHeader title="Sistema" help="procedimientos/despliegue/" />
       {query.isPending ? (
         <p>Cargando sistema…</p>
       ) : query.isError ? (

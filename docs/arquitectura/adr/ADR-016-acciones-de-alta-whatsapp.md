@@ -1,6 +1,6 @@
 # ADR-016 — Acciones de alta de WhatsApp desde la pestaña «Alta»
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

@@ -30,7 +30,7 @@ export function LogsTabs({
 }) {
   return (
     <div className="space-y-6">
-      <PageHeader title="Logs" />
+      <PageHeader title="Logs" help="procedimientos/panel/#logs" />
       <Tabs
         value={search.tab}
         onValueChange={(value) => onTabChange(value as LogsTab)}

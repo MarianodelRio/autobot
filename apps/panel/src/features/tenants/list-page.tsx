@@ -43,6 +43,7 @@ export function TenantListPage() {
     <div>
       <PageHeader
         title="Clientes"
+        help="procedimientos/panel/#clientes"
         actions={
           <a
             className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"

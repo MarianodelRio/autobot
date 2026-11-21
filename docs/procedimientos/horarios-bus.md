@@ -1,46 +1,67 @@
 # Actualizar horarios de `bus`
 
-**Síntoma:** la empresa comunica cambios o el bot muestra un horario antiguo.
-**Diagnóstico:** identificar línea, temporada, fecha de entrada en vigor y fuente
-aprobada; consultar `docs/referencia/packs/bus.md` para el formato del dataset.
+Cómo cambiar los horarios de un cliente `bus`: se editan en tu portátil, se validan, se
+suben a una biblioteca independiente de cualquier cliente (ADR-013) y cada cliente aplica la
+versión nueva desde el panel. Léelo cuando la empresa comunique cambios o el bot muestre un
+horario antiguo. El formato del dataset está en [../referencia/packs/bus.md](../referencia/packs/bus.md).
 
-**ADR-013:** los horarios se suben por terminal a una biblioteca de conjuntos de
-datos, independiente de cualquier cliente. Cada cliente usa una entrada con nombre
-propio (p. ej. `linea-cordoba`); varios clientes pueden usar la misma. El alta de un
-`bus` nuevo elige la entrada en el propio asistente; para un cliente ya existente, se
-elige la nueva versión y se aplica desde su ficha.
+!!! warning "Aprobaciones"
+    Subir a producción (`PROD=1`) y aplicar a un cliente es actuar sobre datos de
+    producción: requiere aprobación humana explícita. Además, la confirmación de la empresa
+    es real; no se simula.
 
-1. `make bus-bajar NOMBRE=<nombre>` descarga la versión vigente de esa entrada a
-   `var/datos/<nombre>/timetable/` (y a `.publicado/timetable/`, la base que usa
-   `bus-revision` para el diff). Con `PROD=1`, la baja del servidor por SSH. Si la
-   entrada no existe todavía (un conjunto nuevo), partir de una copia conocida y
-   saltar este paso.
-2. Editar solo `var/datos/<nombre>/timetable/`. No se versiona ni se copia a la
-   imagen.
+## Objetivo, cuándo y requisitos
+
+- **Objetivo:** que el bot de un cliente use el horario vigente y aprobado.
+- **Cuándo:** cambio de línea, temporada o fecha de entrada en vigor; o un horario antiguo
+  en el bot. Identifica antes línea, temporada, fecha y fuente aprobada.
+- **Requisitos:** en el portátil, `uv` y la clave SSH de operación (alias `autobot`, o
+  `HOST=<alias>`); el panel por túnel (`make panel-tunnel`).
+
+Cada cliente usa una entrada con nombre propio de la biblioteca (por ejemplo
+`linea-cordoba`); varios clientes pueden usar la misma. Subir una versión **no cambia los
+horarios de ningún cliente**; cada uno la aplica por separado. Los datasets viven en
+`var/datos/<nombre>/`, ignorado por git.
+
+## Pasos
+
+Todos los `make` se ejecutan en el portátil, en la raíz del repo. Con `PROD=1` operan sobre
+el servidor por SSH (como `deploy`); sin él, sobre tu BD local.
+
+1. **Bajar la versión vigente:** `make bus-bajar NOMBRE=<nombre> [PROD=1] [VERSION=<n>]`
+   descarga la entrada a `var/datos/<nombre>/timetable/` (y a `.publicado/timetable/`, la
+   base del diff). Si la entrada no existe todavía, parte de una copia conocida y salta este
+   paso.
+2. **Editar** solo `var/datos/<nombre>/timetable/`. No se versiona ni entra en la imagen.
 3. `make bus-formatear NOMBRE=<nombre>` y `make bus-validar NOMBRE=<nombre>`.
-4. `make bus-revision NOMBRE=<nombre>` genera `var/revision/<nombre>/horarios.html` y
-   `.pdf`, con el diff respecto a `.publicado/timetable`. `ARGS="--solo-html"` omite
-   el PDF; `ARGS="--base /ruta/export-anterior"` elige otra copia de comparación.
-5. Entregar el PDF a la empresa (o a quien aprueba la línea) y conservar su
-   confirmación real. Hasta entonces los cambios permanecen locales. No se simula esa
-   aprobación.
-6. `make bus-subir NOMBRE=<nombre> COMMENT="Motivo aprobado"` valida, prueba la
-   subida sin escribir y sube una versión nueva a la biblioteca, rechazando si otra
-   persona subió una entre medias (`--base-sha`, resuelto automáticamente). Añadir
-   `PROD=1` para subir al servidor. Con el mismo contenido no crea versión nueva.
-   **Esto no cambia los horarios de ningún cliente.**
-7. Por cada cliente que use esa entrada: en su ficha → Configuración → Horarios,
-   pulsar «Aplicar» cuando el panel avise de la versión nueva. Crea una versión
-   auditada del dataset de ese cliente y la recarga del registro la aplica en como
-   máximo dos segundos, sin commit ni despliegue.
-8. Comprobar los horarios con las consultas de prueba del negocio.
+4. `make bus-revision NOMBRE=<nombre> [ARGS="--solo-html"]` genera
+   `var/revision/<nombre>/horarios.html` y `.pdf` con el diff respecto a `.publicado`;
+   `--solo-html` omite el PDF y `--base <ruta>` elige otra copia de comparación.
+5. **Aprobación:** entrega el PDF a la empresa (o a quien aprueba la línea) y conserva su
+   confirmación. Hasta entonces los cambios quedan en local.
+6. **Subir:** `make bus-subir NOMBRE=<nombre> DIR=<dir> COMMENT="Motivo aprobado" [PROD=1]`
+   valida, prueba la subida sin escribir y sube una versión nueva a la biblioteca; rechaza
+   si otra persona subió una entre medias (`--base-sha`, resuelto solo). Con el mismo
+   contenido no crea versión.
+7. **Aplicar a cada cliente** que use la entrada: panel, ficha, Configuración, Horarios,
+   «Aplicar» cuando avise de la versión nueva. Crea una versión auditada del dataset de ese
+   cliente; la recarga del registro la aplica en como máximo dos segundos, sin commit ni
+   despliegue.
+8. Comprueba el resultado con las consultas de prueba del negocio.
 
-Si la entrada en vigor es futura, preparar y revisar las copias locales, pero esperar
-hasta esa fecha para subir y aplicar: el dataset se aplica solo al aplicarlo desde la
-ficha. Los cambios de código o de la plantilla inicial sí llevan commit, con sus
-tests, por separado.
+Si la entrada en vigor es futura, prepara y revisa las copias locales, pero espera a esa
+fecha para subir y aplicar. Los cambios de código o de la plantilla inicial sí llevan
+commit, con sus tests, por separado.
 
-**Verificación:** validador sin errores, confirmación de la empresa, versión
-auditada en la biblioteca y en cada cliente que la aplicó, y conversación de prueba
-con el horario nuevo. La comprobación real con cada empresa sigue pendiente de sus
-credenciales y de la persona operadora.
+## Verificación
+
+- Validador sin errores y confirmación de la empresa conservada.
+- Versión nueva en la biblioteca y versión auditada en cada cliente que la aplicó (panel,
+  Configuración, Horarios).
+- Una conversación de prueba con el horario nuevo responde lo esperado.
+
+## Dónde está el código
+
+`apps/backend/src/tools/bus/` (`library`, `validar`, `formatear`, `revision`),
+`apps/backend/src/autobot/management/commands/dataset_library.py`, objetivos `bus-*` del
+`Makefile`.

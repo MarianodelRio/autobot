@@ -100,9 +100,25 @@ fix: ## Aplica ruff y biome, y regenera la API del panel
 	pnpm -C apps/panel fix
 	$(MAKE) api
 
-api: ## Regenera el esquema OpenAPI del panel y sus tipos TypeScript
+api: ## Regenera el esquema OpenAPI del panel, sus tipos TypeScript y docs/referencia/api-panel.md
 	$(BACKEND) uv run python manage.py export_openapi ../panel/openapi.json
+	cd apps/backend && PYTHONPATH=src uv run python -m tools.docs.openapi_md
 	pnpm -C apps/panel gen:api
+
+##@ Documentación
+
+.PHONY: docs docs-check
+
+# Zensical reads mkdocs.yml at the repo root and must run from there: the snippets
+# (`--8<--`) resolve their paths against the working directory. The tool lives in the
+# backend's `docs` dependency group (ADR-018).
+DOCS = uv run --project apps/backend --group docs zensical
+
+docs: ## Sirve la documentación en local con recarga (http://localhost:8100)
+	$(DOCS) serve -f mkdocs.yml -a localhost:8100
+
+docs-check: ## Construye la documentación en modo estricto (los enlaces rotos fallan)
+	$(DOCS) build --strict -f mkdocs.yml
 
 ##@ Panel
 

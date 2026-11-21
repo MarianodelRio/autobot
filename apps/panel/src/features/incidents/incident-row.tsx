@@ -9,12 +9,15 @@ export function IncidentRow({
   meta,
   actions,
   logsLink,
+  runbook,
 }: {
   severity: Status;
   text: string;
   meta: ReactNode;
   actions?: ReactNode;
   logsLink?: { tenant?: string; start: string; end: string };
+  /** `/docs/...` page that explains what to do, from the API. */
+  runbook?: string | null;
 }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 border-b py-3 last:border-b-0">
@@ -39,6 +42,13 @@ export function IncidentRow({
             >
               Ver logs
             </Link>
+          </Button>
+        )}
+        {runbook && (
+          <Button size="sm" variant="outline" asChild>
+            <a href={runbook} target="_blank" rel="noopener">
+              Ver runbook
+            </a>
           </Button>
         )}
         {actions}

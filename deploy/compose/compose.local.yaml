@@ -70,7 +70,9 @@ services:
   # image, to test its own Caddy and build (not pnpm panel-dev's Vite proxy).
   panel:
     build:
-      context: ../../apps/panel
+      # Repo root: the image also builds the documentation site (ADR-018).
+      context: ../..
+      dockerfile: apps/panel/Dockerfile
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:

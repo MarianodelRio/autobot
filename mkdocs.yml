@@ -1,0 +1,154 @@
+# Documentation site (Zensical, reads this MkDocs-compatible file). `make docs` serves it
+# locally; `make docs-check` builds it in strict mode (broken links fail). The panel image
+# builds it and serves it under /docs/ (ADR-018).
+site_name: Autobot
+site_description: Documentación de la plataforma Autobot
+site_url: http://localhost:8080/docs/
+docs_dir: docs
+site_dir: var/docs-site
+copyright: Documentación interna de Autobot
+
+theme:
+  name: material
+  language: es
+  font: false
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Modo oscuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Modo claro
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+# Mermaid is vendored (mermaid 12.3.0, MIT): the theme only downloads it from unpkg when
+# `window.mermaid` is missing, and the panel's CSP forbids external scripts. To update it,
+# replace the file with dist/mermaid.min.js of the new npm version.
+extra_javascript:
+  - assets/javascripts/mermaid.min.js
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+
+plugins:
+  - search:
+      lang: es
+
+nav:
+  - Inicio: README.md
+  - Conceptos:
+      - arquitectura/vision-general.md
+      - arquitectura/mapa-del-codigo.md
+      - arquitectura/vida-de-un-mensaje.md
+      - arquitectura/efectos-e-idempotencia.md
+      - arquitectura/cola-y-workers.md
+      - arquitectura/tenants-y-rls.md
+      - arquitectura/canales.md
+      - arquitectura/packs.md
+      - arquitectura/config-y-registro.md
+      - arquitectura/bot-de-demo.md
+      - arquitectura/bot-de-duenos.md
+      - arquitectura/panel.md
+      - arquitectura/observabilidad.md
+      - arquitectura/seguridad-y-secretos.md
+  - Desarrollo:
+      - desarrollo/entorno-local.md
+      - desarrollo/tests.md
+      - desarrollo/anadir-un-pack.md
+      - desarrollo/panel.md
+      - desarrollo/migraciones-y-rls.md
+      - desarrollo/demo-local.md
+      - desarrollo/documentacion.md
+  - Operación:
+      - procedimientos/despliegue.md
+      - procedimientos/servidor.md
+      - procedimientos/traslado.md
+      - procedimientos/panel.md
+      - procedimientos/alta-baja-negocio.md
+      - procedimientos/alta-whatsapp-meta.md
+      - procedimientos/demo.md
+      - procedimientos/horarios-bus.md
+      - procedimientos/rotar-secretos.md
+      - procedimientos/retencion-rgpd.md
+      - procedimientos/mantenimiento.md
+      - procedimientos/restaurar.md
+  - Incidencias:
+      - incidencias/README.md
+      - incidencias/bot-no-responde.md
+      - incidencias/negocio-o-canal.md
+      - incidencias/cola-y-latido.md
+      - incidencias/contenedor-caido.md
+      - incidencias/calendar.md
+      - incidencias/envios-unknown.md
+      - incidencias/volver-atras.md
+      - incidencias/perdida-total.md
+      - incidencias/incidente-seguridad.md
+      - incidencias/plantilla.md
+  - Referencia:
+      - referencia/comandos.md
+      - referencia/variables-entorno.md
+      - referencia/packs/salon.md
+      - referencia/packs/bus.md
+      - referencia/alertas.md
+      - referencia/auditoria.md
+      - referencia/estados-de-negocio.md
+      - referencia/api-panel.md
+      - referencia/glosario.md
+  - Decisiones:
+      - arquitectura/adr/README.md
+      - arquitectura/adr/ADR-001-monolito-modular.md
+      - arquitectura/adr/ADR-002-multitenancy-rls.md
+      - arquitectura/adr/ADR-003-packs.md
+      - arquitectura/adr/ADR-004-entrada-idempotente.md
+      - arquitectura/adr/ADR-005-vps-docker-compose.md
+      - arquitectura/adr/ADR-006-bot-de-demo.md
+      - arquitectura/adr/ADR-007-bot-de-duenos.md
+      - arquitectura/adr/ADR-008-panel.md
+      - arquitectura/adr/ADR-009-config-en-bd.md
+      - arquitectura/adr/ADR-010-estructura-del-repo.md
+      - arquitectura/adr/ADR-011-borrado-total-de-un-cliente.md
+      - arquitectura/adr/ADR-012-instalacion-y-traslado.md
+      - arquitectura/adr/ADR-013-biblioteca-de-conjuntos-de-datos.md
+      - arquitectura/adr/ADR-014-pestana-de-alta.md
+      - arquitectura/adr/ADR-015-varios-peluqueros.md
+      - arquitectura/adr/ADR-016-acciones-de-alta-whatsapp.md
+      - arquitectura/adr/ADR-017-instalador-de-la-vm-y-entorno-local.md
+      - arquitectura/adr/ADR-018-documentacion-en-el-panel.md
+      - arquitectura/adr/plantilla.md

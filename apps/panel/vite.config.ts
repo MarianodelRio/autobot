@@ -23,6 +23,9 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": { target: "http://127.0.0.1:8000", changeOrigin: false },
+      // The documentation site: `make docs` serves it on :8100 under /docs/, the same
+      // path as in the production image (ADR-018).
+      "/docs": { target: "http://localhost:8100", changeOrigin: false },
     },
   },
   test: {

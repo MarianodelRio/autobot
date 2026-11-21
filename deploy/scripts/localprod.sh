@@ -61,7 +61,7 @@ build_and_push() {
   local sha=$1
   docker build -q -t "$image_base/autobot:$sha" -f "$root/apps/backend/Dockerfile" "$root/apps/backend" >/dev/null
   docker push -q "$image_base/autobot:$sha" >/dev/null
-  docker build -q -t "$image_base/autobot-panel:$sha" "$root/apps/panel" >/dev/null
+  docker build -q -t "$image_base/autobot-panel:$sha" -f "$root/apps/panel/Dockerfile" "$root" >/dev/null
   docker push -q "$image_base/autobot-panel:$sha" >/dev/null
 }
 

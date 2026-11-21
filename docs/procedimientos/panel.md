@@ -1,12 +1,19 @@
 # Panel interno
 
-El Django Admin se eliminó (ADR-008); el panel que lo sustituye es una API propia
-(`/api/panel/`, django-ninja) y una SPA (React, `apps/panel/`) servidas por el contenedor
-`panel` (su propia Caddy, sirve `/` y hace de proxy de `/api/*` hacia `web:8000`). Las
-secciones son Resumen, Clientes, Incidencias, Logs, Datos y Sistema: si algo falla,
-Incidencias; para investigar, Logs. Los comandos de `manage.py`
-(`docs/referencia/comandos.md`) también permiten resolver incidencias sin pasar por
-la API:
+Guía de uso del panel interno: qué hay en cada pantalla, cómo se da de alta a un operador
+y cómo se accede. Léela cuando vayas a operar clientes, incidencias o la demo desde el
+panel. El diseño (API, capas, seguridad) está en [../arquitectura/panel.md](../arquitectura/panel.md).
+
+El panel es una API propia (`/api/panel/`, django-ninja) y una SPA (React, `apps/panel/`)
+servidas por el contenedor `panel` (su propia Caddy: sirve `/` y hace de proxy de `/api/*`
+hacia `web:8000`). Solo se alcanza por túnel SSH: `make panel-tunnel` en el portátil y
+luego `http://127.0.0.1:18000`.
+
+Las secciones de la barra lateral son Resumen, Clientes, Incidencias, Demo, Logs, Datos y
+Sistema. Si algo falla, Incidencias; para investigar, Logs. La documentación también está
+en el panel, en Docs (barra lateral). Los comandos de `manage.py`
+([../referencia/comandos.md](../referencia/comandos.md)) permiten resolver incidencias sin
+pasar por la API, con `make prod-manage CMD="..."` desde el portátil:
 
 - **Envíos ambiguos o fallidos** (ver [envíos sin confirmar](../incidencias/envios-unknown.md)): `outbound_resolve <id> (--mark-sent|--resend)
   --confirm`.
@@ -24,7 +31,8 @@ cada 30 segundos.
 ## Clientes
 
 La lista se puede filtrar por pack y estado o buscar por nombre y slug. La ficha
-tiene seis pestañas: Resumen, Alta, Configuración, Actividad, Contactos y Avisos.
+tiene seis pestañas: Resumen, Alta, Configuración, Actividad, Contactos y Avisos (ver
+[Avisos](#avisos-del-cliente)).
 Resumen muestra los indicadores del mes, la salud del canal con «Comprobar
 ahora» y las alertas abiertas; el resumen del dueño se carga a petición, pues
 puede consultar Calendar. Alta (ADR-014) reúne en un solo sitio, paso a paso, lo que
@@ -67,11 +75,47 @@ negocio, con un tope de 50 000 filas (más allá, el comando `tenant_data_export
 `docs/procedimientos/retencion-rgpd.md`). El panel pide confirmación para pausar o
 reactivar.
 
-El alta de un negocio nuevo (`/clientes/nuevo`) pasa por pack, datos básicos (nombre,
-slug derivado y comprobado, zona horaria y canal), configuración precargada con la
-plantilla del pack y revisión; crea el cliente en estado `onboarding` y abre su
-pestaña Alta, con la lista de lo que falta para activarlo. El asistente
-guarda su progreso en `sessionStorage` del navegador, nunca en el servidor.
+### Asistente de alta de un cliente
+
+`Clientes → Nuevo cliente` (`/clientes/nuevo`, `apps/panel/src/features/onboarding/`) crea
+un negocio en estado `onboarding` en cinco pasos:
+
+1. **Pack:** elige uno de los packs instalados (`salon`, `bus`...).
+2. **Datos básicos:** nombre, slug (derivado del nombre, editable; se valida el formato y
+   que esté libre), zona horaria y canal.
+3. **Configuración:** formulario (o YAML, con diff) precargado con la plantilla del pack.
+4. **Datasets:** solo para packs que los necesitan (`bus`): se elige una entrada de la
+   biblioteca ([horarios-bus.md](horarios-bus.md)); si no hay ninguna, avisa de que hay que
+   subirla antes con `make bus-subir`.
+5. **Revisión:** resumen y YAML final; «Crear cliente» lo crea y abre su pestaña Alta con
+   lo que falta para activarlo ([alta-baja-negocio.md](alta-baja-negocio.md)).
+
+El asistente guarda su progreso en `sessionStorage` del navegador, nunca en el servidor.
+
+### Avisos del cliente
+
+La pestaña Avisos (`features/tenants/notifications-tab.tsx`, `GET /tenants/{slug}/notifications`,
+`autobot/panel/services/tenants.py`) lista los últimos 50 mensajes que la plataforma envió al
+**dueño** del negocio (resumen mensual, avisos de citas...), con su texto, su estado de
+envío y cuándo se crearon. Sirve para comprobar que el dueño recibe lo que debe; no incluye
+los mensajes a clientes finales (eso está en Actividad).
+
+### Cuenta de servicio de Google Calendar
+
+En Configuración de un cliente `salon`, la tarjeta «Calendario de Google»
+(`routers/calendar.py`, `GET /calendar/service-account`) muestra el email de la **cuenta de
+servicio de la plataforma** con botón de copiar (nunca su clave privada). Es el email con el
+que el negocio debe compartir su calendario («Hacer cambios y ver todos los detalles de
+eventos»). Avisa si el servidor no tiene cuenta configurada o si el `calendar_id` parece un
+Gmail personal.
+
+## Demo
+
+La pantalla Demo (`features/demo-invites`) gestiona las invitaciones al bot de demo: «Crear
+invitación» (nota de para quién es, usos y caducidad o «No caduca») y la lista de códigos
+con su estado (Activa, Agotada, Caducada, Revocada), usos y «Revocar». Cada código tiene su
+enlace `t.me/<bot>?start=<código>` y su QR si `DEMO_TELEGRAM_BOT_USERNAME` está
+configurada. Detalle y límites en [demo.md](demo.md).
 
 ## Incidencias
 
@@ -156,21 +200,21 @@ despliegues, con el SHA enlazado al commit en GitHub.
 
 ## Alta del operador
 
-Un solo rol: usuario de Django (`is_staff=True`) con un dispositivo TOTP confirmado.
-No hay registro propio ni recuperación por email; la única forma de arreglarlo es por
-SSH.
+Un solo rol: usuario de Django (`is_staff=True`) con un dispositivo TOTP confirmado. No hay
+registro propio ni recuperación por email; la única forma de arreglarlo es por SSH. Todos
+los comandos se lanzan desde el portátil, con la clave de operación y el alias `autobot`
+(o `HOST=<alias>`), y se ejecutan en la VPS como `deploy` (`manage.sh`):
 
 - **Alta inicial:** `make prod-manage TTY=1 CMD="panel_user create <usuario>"`. Pide la
-  contraseña dos veces (con los validadores de Django) y muestra **una sola vez** la
-  URI `otpauth://` y su QR en ASCII: escanéalo con una app de autenticación
-  (Google Authenticator, Authy...) antes de cerrar la sesión SSH. Si se pierde, no hay
-  forma de recuperarlo: usa `reset-totp`.
+  contraseña dos veces (con los validadores de Django) y muestra **una sola vez** la URI
+  `otpauth://` y su QR en ASCII: escanéalo con una app de autenticación antes de cerrar la
+  sesión SSH.
 - **Recuperar el TOTP** (móvil perdido, app reinstalada):
   `make prod-manage TTY=1 CMD="panel_user reset-totp <usuario>"`. Borra el dispositivo
   anterior y muestra uno nuevo, también una sola vez.
 - **Cambiar la contraseña:** `make prod-manage TTY=1 CMD="panel_user set-password <usuario>"`.
-- `panel_user exists <usuario>` sale con código 0 si existe y 1 si no; lo usa
-  `make dev-bootstrap` en local para no pedir el alta en cada arranque.
+- `panel_user exists <usuario>` sale con código 0 si existe y 1 si no; lo usa `make local`
+  en local para no pedir el alta en cada arranque.
 
 ## Sesión y acceso
 
@@ -202,3 +246,8 @@ pausar o reactivar negocios, sustituir sus secretos de canal y eliminarlos por c
 (menú «⋯» de la ficha, deshabilitado si el negocio está activo: lo da de baja y lo
 borra en la misma operación; ver `retencion-rgpd.md`). Cada cambio queda auditado con
 el usuario del panel.
+
+## Dónde está el código
+
+`apps/panel/src/` (`features/`, `components/nav-sections.ts`), `apps/backend/src/autobot/panel/`
+(`routers/`, `services/`), `apps/backend/src/autobot/management/commands/panel_user.py`.

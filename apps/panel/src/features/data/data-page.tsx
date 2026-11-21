@@ -12,7 +12,7 @@ export function DataPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Datos" />
+      <PageHeader title="Datos" help="procedimientos/panel/#datos" />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Card>
           <CardHeader>

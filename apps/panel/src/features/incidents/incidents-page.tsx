@@ -110,6 +110,7 @@ function OpenAlerts({ alerts }: { alerts: Alert[] }) {
         <IncidentRow
           key={alert.id}
           severity={alert.severity as Status}
+          runbook={alert.runbook}
           text={alert.text}
           meta={
             <>
@@ -359,6 +360,7 @@ export function IncidentsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Incidencias"
+        help="incidencias/"
         actions={
           query.data && (
             <span className="text-sm text-muted-foreground">

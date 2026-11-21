@@ -1,105 +1,116 @@
 # Entorno local
 
-Requisitos: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta).
+Cómo montar y usar el entorno de desarrollo: qué hay que tener instalado, qué hace `make local`, cuándo usar `make check` o `make test-fast` y cómo reproducir producción en el portátil. Léelo la primera vez que clones el repo. La lista completa de objetivos y comandos está en [Comandos](../referencia/comandos.md); aquí solo se explica cuándo usar cada uno.
+
+## Requisitos
+
+| Herramienta | Para qué | Versión |
+|---|---|---|
+| [uv](https://docs.astral.sh/uv/) | Backend, tests y herramientas | Instala Python 3.14 por su cuenta |
+| Docker (con el plugin `compose` v2) y `curl` | `make local` levanta `db`, `web`, workers y logs | Un daemon accesible para tu usuario |
+| Node 24 | Solo para el panel (`apps/panel/`) | La del `Dockerfile` del panel (`node:24-alpine`) |
+| pnpm | Solo para el panel | Fijada en `packageManager` de `apps/panel/package.json`; se activa con `corepack enable` |
+
+`install-local.sh` comprueba Docker, `docker compose` y `curl`, y se detiene si falta alguno. No comprueba Node ni pnpm: solo se necesitan si trabajas en el panel o ejecutas `make fix`, `make api` o `make panel-*`.
+
+## Arranque
 
 ```bash
 cd apps/backend && uv sync && cd -
-make local             # todo: requisitos, .env, db, roles, migraciones, permisos, demos, web y workers
-make check             # ruff, mypy, import-linter y tests contra la BD local
+make local
 ```
 
-`web` escucha en `http://127.0.0.1:8000`. `make up` reconstruye y levanta los servicios
-ya preparados; `make down` los para y `make shell` abre Django en `web`.
-`make local` (`dev-bootstrap` es un alias; script `deploy/scripts/install-local.sh`, ADR-017)
-crea `.env` desde `.env.example` si falta (sin credenciales de terceros), comprueba al final
-`/health/internal` y los workers, y admite `--check`. Se puede repetir: conserva las versiones existentes y los cambios
-de los demos. `make dev-reset` exige escribir `RESET`, borra el volumen local y repite
-el bootstrap, incluida la creación de la base de pruebas.
+`make local` (alias `make dev-bootstrap`) ejecuta `deploy/scripts/install-local.sh` ([ADR-017](../arquitectura/adr/ADR-017-instalador-de-la-vm-y-entorno-local.md)). En orden:
 
-`make dev-activity` crea actividad falsa y realista (mensajes, respuestas, avisos,
-alertas abiertas y resueltas, un trabajo fallido y muestras de sistema) para ver el
-panel con datos; `--days` y `--reset` se pasan con
-`docker compose exec web python manage.py seed_dev_activity --days 7 --reset`. Se
-niega fuera de `local`.
+1. Comprueba los requisitos y crea `.env` desde `.env.example` si falta, solo con valores locales y sin credenciales de terceros.
+2. Levanta `db`, reaplica los roles de PostgreSQL y construye la imagen de `web`.
+3. Aplica las migraciones como `fp_owner`, ejecuta `apply_grants` y siembra los negocios de demo (`seed_demos`).
+4. Si no existe el usuario `panel`, pide crearlo (`panel_user create`). Sin terminal interactivo, lo deja anotado.
+5. Levanta `web`, `worker-inbound`, `worker-outbound` y `victorialogs`, y espera hasta 60 s a que `/health/internal` responda bien y los dos workers estén en marcha.
 
-La imagen local instala las dependencias de desarrollo (`INSTALL_DEV=true`); la de
-producción mantiene `--no-dev`. `web` corre con gunicorn y `--reload` (hilos acotados como en
-producción, no `runserver`, que abre un hilo por petición sin límite). Cada worker
-corre bajo `deploy/compose/dev-worker.py`: reinicia su proceso al cambiar Python en
-`apps/backend/src/`, respetando su cierre antes de sustituirlo, y si el worker muere
-solo (p. ej. tras reiniciar la BD) el contenedor sale y Docker lo relanza. En local, `.env` es opcional. Si se necesita Calendar,
-`GOOGLE_SERVICE_ACCOUNT_FILE` apunta al fichero local de la cuenta de servicio (ruta
-relativa a `deploy/compose/`, por convención `../../var/google_sa.json`); vacío monta
-`/dev/null` y no crea ninguna credencial. Los secretos de los canales se importan
-cifrados a la BD.
+Se puede repetir sin miedo: conserva las versiones de configuración existentes y los cambios hechos en los demos. Cuando termina, `web` escucha en `http://127.0.0.1:8000`.
 
-Para importar un negocio: `make tenant-import DIR=<directorio> SECRETS=<yaml-privado>`
-(`SECRETS` es opcional). `HOST` usa por defecto el alias SSH `autobot` de
-`~/.ssh/config`; se puede cambiar con `HOST=<servidor>`.
+Las opciones del script se pasan con `ARGS=`:
 
-`make status` muestra los servicios locales y `make logs SERVICE=worker-inbound` (o `worker-outbound`) sigue sus logs
-(sin `SERVICE`, los de todos los servicios). `make tenant-health SLUG=<slug>` comprueba
-el negocio desde `web`; este último necesita las credenciales de los servicios que usa.
+```bash
+make local ARGS=--check              # solo comprueba si web responde sana; no cambia nada
+make local ARGS=--skip-panel-user    # no pregunta por el usuario del panel
+```
+
+`make dev-reset` pide escribir `RESET`, borra el volumen local de PostgreSQL y repite `make local`. Es lo único que destruye datos locales.
+
+## Día a día
+
+- `make up` reconstruye y levanta los servicios ya preparados; `make down` los para; `make status` los lista.
+- `make logs SERVICE=worker-inbound` sigue los logs de un servicio (sin `SERVICE`, de todos). `make shell` abre una shell de Django en `web`.
+- `make chat PACK=salon` o `PACK=bus` abre un chat por terminal con la plantilla de demo de un pack, sin canal real, sin BD y sin contenedores (`CHANNEL=telegram` aplica los límites de ese canal).
+- `make tenant-health SLUG=<slug>` comprueba el pack y el canal de un negocio desde `web`; necesita las credenciales de los servicios que use.
+- `make tenant-import DIR=<directorio> [SECRETS=<yaml>]` importa un negocio exportado contra la BD local.
+
+La imagen local instala las dependencias de desarrollo (`INSTALL_DEV=true`); la de producción usa `--no-dev`. En local, `web` corre con gunicorn y `--reload`, con hilos acotados como en producción. Cada worker corre bajo `deploy/compose/dev-worker.py`: reinicia su proceso cuando cambia Python en `apps/backend/src/`, esperando a que termine lo que está haciendo, y si muere solo Docker lo relanza.
+
+`.env` es opcional en local. Para usar Google Calendar, `GOOGLE_SERVICE_ACCOUNT_FILE` apunta al fichero de la cuenta de servicio, con ruta relativa a `deploy/compose/` (por convención `../../var/google_sa.json`). Vacío, monta `/dev/null` y no crea ninguna credencial. Las variables están en [Variables de entorno](../referencia/variables-entorno.md).
+
+### Actividad falsa para el panel
+
+`make dev-activity` crea actividad realista (mensajes, respuestas, avisos, alertas abiertas y resueltas, un trabajo fallido y muestras de sistema) para ver el panel con datos. Se niega a ejecutarse fuera de `local`. El objetivo no admite argumentos; para cambiar los días o limpiar lo creado, ejecuta el comando directamente:
+
+```bash
+docker compose exec web python manage.py seed_dev_activity --days 7 --reset
+```
+
+## Calidad: `make check` o `make test-fast`
+
+| Objetivo | Qué ejecuta | Necesita |
+|---|---|---|
+| `make check` | `ruff check`, `ruff format --check`, `mypy`, `lint-imports` y toda la suite de pytest | La BD local levantada (`make local`) |
+| `make test` | Solo la suite completa de pytest | La BD local levantada |
+| `make test-fast` | `pytest -m "not db"`: solo los tests que no tocan PostgreSQL | Nada, ni siquiera Docker |
+| `make fix` | `ruff --fix`, `ruff format`, `biome --write` y `make api` | Node y pnpm |
+
+Usa `make test-fast` mientras iteras y `make check` antes de dar un cambio por terminado: es lo que exige CI. Cómo se organizan los tests, en [Tests](tests.md). El frontend tiene su propia puerta, `make panel-check` ([Panel](panel.md)).
 
 ## QR público de un negocio
 
-Para generar el QR sin contenedores, credenciales ni acceso de red:
+Se genera sin contenedores, credenciales ni red, a partir de un documento exportado:
 
 ```bash
 uv run --project apps/backend python apps/backend/manage.py tenant_config export <slug> var/datos/<slug>
 make qr FILE=var/datos/<slug>/document.yaml
 make qr FILE=var/datos/<slug>/document.yaml ARGS="--output /ruta/qr.svg"
-# Equivalente: PYTHONPATH=apps/backend/src uv run python -m tools.ops.qr var/datos/<slug>/document.yaml
 ```
 
-El canal debe declarar `display_phone` internacional (WhatsApp) o `bot_username`
-(Telegram). El QR apunta al canal del negocio y se guarda como SVG con fondo blanco,
-apto para imprimir. Los archivos de `var/qr/` son generados y no se suben a git.
+El canal debe declarar `display_phone` internacional (WhatsApp) o `bot_username` (Telegram). El QR apunta al canal del negocio y se guarda como SVG con fondo blanco, apto para imprimir. Lo generado en `var/qr/` no se sube a git. `var/tenants/` y `var/datos/` tampoco.
 
-## Registro y configuración
+## Reproducir producción en local (`localprod`)
 
-El registro de web y worker se carga desde las versiones de PostgreSQL. Consulta
-`config_revision` como máximo cada dos segundos y recarga cuando cambia; cada petición
-y trabajo conserva el mismo registro durante su ejecución. Un fallo al comprobar la
-revisión mantiene el último registro válido; `/health` responde 503 si no puede hacer
-la primera carga.
-
-La configuración y los secretos de negocio no se copian del repositorio ni se montan
-desde un YAML. `tenant_config import/export/validate`, `seed_demos` y `tenant_status`
-gestionan las versiones en PostgreSQL; los datasets de un pack se suben a una
-biblioteca independiente con `dataset_library` (ADR-013). Ver
-[comandos](../referencia/comandos.md). La publicación no requiere commits ni reinicios.
-
-## Reproducir producción en local
-
-`make up`/`make local` son para desarrollo: código montado, gunicorn con recarga, sin Caddy
-ni TLS. Para probar de verdad `deploy.sh`, `backup.sh` y `restore.sh` tal cual corren
-en el servidor (Caddy con TLS, `read_only` con tu UID real, gunicorn), sin tocar `make
-up`:
+`make up` y `make local` son para desarrollar: código montado, gunicorn con recarga, sin Caddy ni TLS. Para probar tal cual los scripts que corren en el servidor (`deploy.sh`, `backup.sh`, `restore.sh`, con Caddy y TLS, `read_only` y tu UID real) existen los objetivos `localprod-*`:
 
 ```bash
-make localprod-up       # construye las imágenes, las sube a un registro Docker
-                         # local y despliega con el deploy.sh real
+make localprod-up       # construye las imágenes, las sube a un registro Docker local y despliega con el deploy.sh real
 make localprod-backup   # backup.sh real contra restic en var/localprod/restic
-make localprod-restore  # restore.sh real; pide confirmación, sustituye el volumen
+make localprod-restore  # restore.sh real; pide confirmación y sustituye el volumen
 make localprod-down     # para y borra los contenedores y el registro
 ```
 
-Proyecto (`autobot-localprod`), puertos (8443/8081 Caddy, 18000 web, 18080 panel) y
-volúmenes son todos distintos de `make up`: los dos pueden estar levantados a la vez.
-`var/localprod/` (la copia de este checkout que despliega, incluidos cambios sin
-commitear) está en `var/`, que git ignora. `https://localhost:8443` usa el certificado
-interno de Caddy (`curl -k`). Dos trampas que este ensayo ya encontró y `localprod.sh` evita:
+Proyecto (`autobot-localprod`), puertos (8443 y 8081 de Caddy, 18000 de `web`, 18080 del panel) y volúmenes son distintos de los de `make up`, así que pueden estar levantados a la vez. `var/localprod/` guarda la copia de este checkout que despliega, incluidos los cambios sin commitear. `https://localhost:8443` usa el certificado interno de Caddy (`curl -k`).
 
-- Docker crea `var/state/{caddy-data,caddy-config,ops}` como `root` si no existen en el primer
-  `up`; el script los crea antes, igual que `bootstrap-server.sh`.
-- Un `docker compose down` contra `compose.prod.yaml` sin `SHA` no aborta: resuelve el
-  proyecto por `COMPOSE_PROJECT_NAME` del `.env` e ignora `--project-name`, así que un
-  `down -v` podía borrar el volumen de BD del entorno de desarrollo normal. El script fija
-  siempre un `SHA` real antes de cualquier `down`; haz lo mismo si lanzas `down` a mano.
+!!! warning "Un `down` sin `SHA` puede borrar tu BD de desarrollo"
+    Un `docker compose down` contra `compose.prod.yaml` sin `SHA` no aborta: resuelve el proyecto por `COMPOSE_PROJECT_NAME` de `.env` e ignora `--project-name`, así que un `down -v` puede borrar el volumen de la BD de desarrollo. `localprod.sh` fija siempre un `SHA` real antes de cualquier `down`; haz lo mismo si lo lanzas a mano.
 
-Las acciones de producción se ejecutan con `make prod-manage HOST=<servidor> CMD="..."`;
-`TTY=1` permite confirmaciones interactivas. `make tenant-push HOST=<servidor> SLUG=<slug>`
-transfiere el documento y los datasets de la BD local por SSH; `SECRETS=<yaml-privado>`
-añade solo los secretos del slug seleccionado al tar temporal. Los exports ordinarios
-no incluyen secretos. Nunca se versionan `var/tenants/` ni `var/datos/`.
+Docker crea `var/state/{caddy-data,caddy-config,ops}` como `root` si no existen en el primer `up`. `localprod.sh` los crea antes, igual que `bootstrap-server.sh`.
+
+## Dónde está el código
+
+- `Makefile`: objetivos de desarrollo, calidad y `localprod-*`.
+- `deploy/scripts/install-local.sh`: lo que hace `make local`.
+- `deploy/scripts/localprod.sh`: el ensayo de producción en local.
+- `deploy/compose/compose.yaml` y `compose.local.yaml`: servicios locales; `dev-worker.py`, el reinicio de workers.
+- `apps/backend/src/tools/ops/qr.py`: el generador de QR.
+
+## Relacionado
+
+- [Comandos](../referencia/comandos.md) y [Variables de entorno](../referencia/variables-entorno.md).
+- [Registro y configuración](../arquitectura/config-y-registro.md): cómo `web` y los workers cargan la configuración de los negocios desde PostgreSQL.
+- [Tests](tests.md), [Panel](panel.md) y [Bot de demo en local](demo-local.md).
+- [Servidor](../procedimientos/servidor.md): la puesta en marcha en producción.

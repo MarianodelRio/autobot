@@ -1,6 +1,6 @@
 # ADR-003 — Packs con máquina de estados propia
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

@@ -1,6 +1,6 @@
 # ADR-006 — Bot de demo con dos puertas y negocios de demostración
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

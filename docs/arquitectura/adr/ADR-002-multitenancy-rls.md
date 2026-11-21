@@ -1,6 +1,6 @@
 # ADR-002 — Multitenancy con Row-Level Security
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

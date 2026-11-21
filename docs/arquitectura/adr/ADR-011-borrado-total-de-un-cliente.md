@@ -1,6 +1,6 @@
 # ADR-011 — Borrado total de un cliente
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

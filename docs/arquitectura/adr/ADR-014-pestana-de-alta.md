@@ -1,6 +1,6 @@
 # ADR-014 — Pestaña «Alta» guiada por pasos
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

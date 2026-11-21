@@ -14,6 +14,7 @@ from procrastinate.contrib.django.models import ProcrastinateEvent, Procrastinat
 from autobot.ops import actions
 from autobot.ops.audit import record
 from autobot.ops.models import OpsAlert
+from autobot.ops.runbooks import runbook_url
 from autobot.panel.errors import ApiError
 from autobot.panel.routers.audit import page
 from autobot.runtime.models import OutboundMessage
@@ -39,6 +40,8 @@ class AlertOut(Schema):
     auto_resolves: bool
     resolved_at: datetime | None
     resolved_by: str | None
+    # `/docs/...` page that explains what to do; None when the alert has no runbook.
+    runbook: str | None
 
 
 class OutboundIncidentOut(Schema):
@@ -105,6 +108,7 @@ def tenant_slugs() -> dict[UUID, str]:
 def alert_row(a: OpsAlert, slugs: dict[UUID, str]) -> dict[str, Any]:
     return {
         "tenant": slugs.get(a.tenant_id) if a.tenant_id else None,
+        "runbook": runbook_url(a.kind),
         **{
             name: getattr(a, name)
             for name in (

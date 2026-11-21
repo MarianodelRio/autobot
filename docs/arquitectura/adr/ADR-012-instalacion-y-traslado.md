@@ -1,12 +1,12 @@
 # ADR-012 — Instalación y traslado del servidor desde la máquina del operador
 
-**Estado:** aceptada; la instalación desde el portátil (`server-init.sh`) fue sustituida por el ADR-017 (`install-vm.sh`, dentro de la VM). Cuentas, bootstrap en dos fases, `server-migrate.sh` y `restic init` manual siguen vigentes.
+**Estado:** vigente salvo la instalación desde el portátil (`server-init.sh`), sustituida por el [ADR-017](ADR-017-instalador-de-la-vm-y-entorno-local.md). Siguen vigentes las cuentas `deploy` y `admin`, el bootstrap en dos fases, `server-migrate.sh` y `restic init` manual
 
 ## Contexto
 
 ADR-005 fija una sola VPS con Docker Compose, pero no quién administra el acceso de
 `root`/`sudo` ni cómo se repite la instalación en una máquina nueva (traslado de
-proveedor, ampliación de recursos, o la primera instalación de verdad). Hace falta que `make server-init` deje una VM limpia
+proveedor, ampliación de recursos, o la primera instalación de verdad). Hace falta que la instalación deje una VM limpia
 funcionando de forma idempotente y que `make server-migrate` traslade todo a otra VM
 sin que las dos envíen mensajes a la vez. `bootstrap-server.sh` ya resuelve
 los errores bloqueantes del primer despliegue, pero no decide cómo se repite el
@@ -30,14 +30,10 @@ después de que termine.
   sesión es segura. `--harden-ssh` (cierra `root` y contraseña, activa `ufw`) es una
   invocación aparte, deliberadamente manual: solo tiene sentido una vez verificado,
   desde una sesión nueva, que `deploy@` y `admin@` aceptan la clave del operador.
-- **`server-init.sh` (`make server-init`)**, ejecutado por la persona desde su
-  máquina, con `var/server.env` (no en git): valida en local (DNS, ficheros,
-  `gh auth status`), sube el bootstrap y ejecuta `--base` por SSH, pide confirmar
-  antes de `--harden-ssh`, sube los secretos fusionando el `.env` existente (nunca
-  lo sustituye), inicializa restic a mano y comprueba su id antes de activar el
-  timer, crea el entorno `production` y sus secretos con `gh`, lanza el primer
-  despliegue con comprobación estricta de HTTPS, y por último crea el usuario del
-  panel y registra los webhooks. Cada paso comprueba primero si ya está hecho.
+- **Instalación de la VM.** La hacía `server-init.sh` desde el portátil; está retirado
+  y lo sustituye `install-vm.sh`, que se ejecuta dentro de la VM
+  ([ADR-017](ADR-017-instalador-de-la-vm-y-entorno-local.md)). Los pasos sobre el
+  servidor siguen en [servidor.md](../../procedimientos/servidor.md).
 - **`server-migrate.sh` (`make server-migrate FROM= TO=`)**: ensaya la
   restauración en el destino con `AUTOBOT_RESTORE_DB_ONLY=true` sin marcarlo como
   desplegado; en el corte, congela el origen (`var/.frozen`, que `deploy.sh` y
@@ -59,17 +55,16 @@ después de que termine.
   llegaría) para una barrera que no es real, porque `deploy` ya puede hacerse
   `root` con el grupo `docker`. Descartada a favor de la cuenta `admin` separada.
 - **Deploy key SSH para clonar el repo**: innecesaria mientras el repo sea público;
-  un secreto más que gestionar y un paso más en `server-init.sh` sin beneficio.
+  un secreto más que gestionar sin beneficio.
 - **`restic init` automático** (lo que hacía `backup.sh` hasta esta revisión):
   oculta en silencio la pérdida del repositorio correcto si el destino está mal
-  configurado. Descartado; ahora es un paso manual de `server-init.sh`.
+  configurado. Descartado; es un paso manual.
 
 ## Consecuencias
 
 - Una cuenta más que crear y mantener (`admin`), pero sin clave ni contraseña
   propias: es la misma clave del operador, solo que entra por otra cuenta.
-- El primer `restic init` de cada servidor es un paso manual explícito (dentro de
-  `server-init.sh`, con confirmación), no algo que un backup descubre por sí solo.
+- El primer `restic init` de cada servidor es un paso manual explícito, no algo que un backup descubre por sí solo.
 - Si el repositorio pasa a privado, hay que añadir de nuevo una deploy key de solo
   lectura al clonado de `bootstrap-server.sh --base`.
 

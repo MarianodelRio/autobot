@@ -231,6 +231,7 @@ export function DemoInvitesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Invitaciones de demo"
+        help="procedimientos/demo/"
         description="Acceso a la demo por código, sin tocar el .env del servidor."
       />
       <CreateInviteForm />

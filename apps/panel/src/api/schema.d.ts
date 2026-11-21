@@ -1090,6 +1090,8 @@ export interface components {
             resolved_at: string | null;
             /** Resolved By */
             resolved_by: string | null;
+            /** Runbook */
+            runbook: string | null;
             /** Sent Count */
             sent_count: number;
             /** Severity */

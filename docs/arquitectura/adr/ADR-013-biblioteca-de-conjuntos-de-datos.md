@@ -1,6 +1,6 @@
 # ADR-013 — Biblioteca de conjuntos de datos
 
-**Estado:** aceptada
+**Estado:** vigente; modifica el [ADR-009](ADR-009-config-en-bd.md) en los datasets
 
 ## Contexto
 
@@ -9,7 +9,7 @@ cliente: `tenant_dataset export`/`import` los sube o baja uno a uno, por termina
 panel solo los muestra. Esto causaba dos errores concretos en la primera versión:
 
 - **Datos de demo heredados.** Al dar de alta un `bus` sin pasar datasets explícitos, `store.create_tenant`
-  copia en silencio los del *template* de la demo (`store.py`, antes de este ADR):
+  copia en silencio los del *template* de la demo (`autobot/tenancy/store/`, antes de este ADR):
   un cliente real se queda con tres líneas inventadas entre Posadas y Córdoba sin que
   nadie lo note.
 - **Bloqueo circular.** Si cambias los pueblos de la config antes de subir el dataset real (o al

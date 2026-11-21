@@ -1,6 +1,6 @@
 # ADR-017 — Instalador de la VM desde dentro y un solo comando para local
 
-**Estado:** aceptada (sustituye la parte de `server-init.sh` del ADR-012)
+**Estado:** vigente; sustituye la parte de `server-init.sh` del [ADR-012](ADR-012-instalacion-y-traslado.md)
 
 ## Contexto
 

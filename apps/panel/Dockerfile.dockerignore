@@ -1,0 +1,25 @@
+# Context is the repo root: allow-list what the panel image needs, nothing else.
+# Never .env, var/, .git, node_modules or .venv.
+*
+!apps/panel/
+!docs/
+!mkdocs.yml
+!apps/backend/src/
+!apps/backend/pyproject.toml
+!apps/backend/uv.lock
+
+# Inside the allowed folders
+**/node_modules
+**/dist
+**/.tanstack
+**/__pycache__
+**/.venv
+**/.env
+**/.env.*
+**/var
+**/*.pem
+**/*.key
+**/google_sa.json
+**/secrets.yaml
+apps/panel/Dockerfile
+apps/panel/Dockerfile.dockerignore

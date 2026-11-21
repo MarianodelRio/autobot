@@ -1,157 +1,144 @@
 # Alta y baja de un negocio
 
+Cómo dar de alta un negocio nuevo (documento, canal, secretos, dueño y activación) y cómo
+darlo de baja y borrarlo. Léelo cuando entre o salga un cliente. El formato de la
+configuración de cada pack está en [../referencia/packs/salon.md](../referencia/packs/salon.md)
+y [../referencia/packs/bus.md](../referencia/packs/bus.md); la explicación no técnica del
+canal WhatsApp, en [alta-whatsapp-meta.md](alta-whatsapp-meta.md).
+
+!!! warning "Aprobaciones"
+    Actuar sobre datos de producción y activar el canal real de un negocio requieren
+    aprobación humana explícita. Las acciones sobre producción las ejecuta la persona
+    operadora; nunca un agente.
+
+## Objetivo, cuándo y requisitos
+
+- **Objetivo:** un negocio en estado `active` atendiendo por su canal, con dueño conectado;
+  o dado de baja y borrado en un máximo de 30 días.
+- **Cuándo:** firma o fin de un contrato.
+- **Requisitos:** el pack elegido; el canal (WhatsApp o Telegram) con sus ids y secretos;
+  para `salon`, el calendario de Google compartido con la cuenta de servicio; para `bus`,
+  una entrada en la biblioteca de datasets ([horarios-bus.md](horarios-bus.md)); el panel
+  por túnel (`make panel-tunnel`).
+
 ## Alta
 
-1. Preparar un directorio con `document.yaml` y los datasets necesarios en
-   `datasets/<nombre>/`.
-   Usar un UUIDv7 propio, `public_id` aleatorio y `status: onboarding`. Completar la
-   config según `docs/referencia/packs/<pack>.md`; en el panel, `Clientes → Nuevo cliente` hace
-   lo mismo con un asistente.
-2. Declarar el canal y sus ids. Los secretos se pasan en un YAML privado de formato
-   `slug: {campos...}`: WhatsApp usa `app_secret`, `access_token` y `verify_token`;
-   Telegram, `bot_token` y `webhook_secret` (32 caracteres o más). Nunca van en el documento.
-3. `manage.py tenant_config import <dir> --secrets <yaml> --comment "Alta"` publica
-   la configuración en la BD del entorno. Cifra los secretos y valida el conjunto antes
-   de guardar nada. Si el directorio incluye `datasets/<nombre>/`, esos datasets se
-   publican junto al documento; si no los incluye y el pack los necesita (`bus`), la
-   importación falla y hay que elegir una entrada de la biblioteca (ADR-013) con
-   `manage.py dataset_library pull/push` y pasarla en `datasets/timetable/`, o dar de
-   alta desde el panel, que la elige en el propio asistente.
-4. En `salon`, el negocio comparte su calendario con la cuenta de servicio y declara
-   su `calendar_id`. Las plantillas de WhatsApp deben estar creadas y aprobadas.
-5. `manage.py owner_invite <slug>` genera el enlace privado y de un solo uso para el
-   dueño; en el panel, la ficha del cliente (Configuración → Dueño y testers) tiene
-   el mismo botón «Invitar al dueño», con el enlace mostrado una sola vez.
-   `owner.notify` y `owner.summary_monthly` se cambian en la configuración
-   versionada, exportando y volviendo a importar, o directamente en ese formulario.
-   `owner_unlink` desconecta el chat.
-6. La persona registra el webhook con `telegram_set_webhook <slug>` si procede (o con
-   «Registrar webhook» en la misma pestaña del panel) y ejecuta `tenant_health <slug>`.
-   Con `onboarding`, solo se atiende a `testers.main`.
-7. Antes de activar: documento válido, ids y secretos completos, salud sin errores
-   críticos, plantillas aprobadas y al menos un mensaje real de un tester por `main`.
-   En el panel, la ficha del cliente muestra esas comprobaciones y «Activar» pide
-   escribir el slug.
+Lo normal es el panel (todo lo que sigue se ejecuta ahí, sin terminal). El resto de la
+sección explica qué hace cada paso y cómo hacerlo por terminal.
 
-Para editar, `tenant_config export <slug> <dir>` crea un directorio nuevo o vacío,
-sin secretos. Después de editar, `tenant_config import <dir> --comment "Motivo"`
-crea otra versión; en el panel, la ficha del cliente edita la config con formulario
-o YAML (diff y comentario opcional) y guarda cada versión en su historial. Los
-seis campos de identidad y estado no se cambian por importación.
-Pausar o reactivar: `tenant_status <slug> pause|resume`, o el mismo botón en la
-ficha del cliente. Para cambiar los datasets de un cliente ya dado de alta, ver
-[horarios de `bus`](horarios-bus.md): se sube una versión nueva a la biblioteca con
-`dataset_library`/`make bus-subir` y se aplica desde su ficha, nunca se publica
-directamente sobre el cliente.
+1. **Crear el negocio.** Panel: `Clientes → Nuevo cliente`, asistente de cinco pasos
+   ([panel.md](panel.md#asistente-de-alta-de-un-cliente)); queda en `onboarding` y abre la
+   pestaña Alta. Por terminal (portátil, BD local): prepara un directorio con
+   `document.yaml` (UUIDv7 propio, `public_id` aleatorio, `status: onboarding`) y los
+   datasets en `datasets/<nombre>/`, e impórtalo en tu BD local con `make tenant-import DIR=<dir>
+   [SECRETS=<yaml>]` (valida el conjunto antes de guardar nada).
+2. **Declarar el canal y los secretos.** Los ids van en el documento; los secretos, en un
+   YAML privado `slug: {campos...}` que nunca va en el documento ni en git: WhatsApp usa
+   `app_secret`, `access_token` y `verify_token`; Telegram, `bot_token` y `webhook_secret`
+   (32 caracteres o más). En el panel: Configuración, Canal, «Cambiar credenciales».
+3. **Publicar en producción.** Por terminal, desde el portátil:
+   `make tenant-push SLUG=<slug> [SECRETS=<yaml>] [HOST=<alias>]` exporta la BD local y la
+   importa por SSH en el servidor (`tenant_config import`, que cifra los secretos y valida
+   todo antes de guardar nada). Si el pack necesita datasets (`bus`) y no se incluyen, la
+   importación falla: elige una entrada de la biblioteca (ADR-013) con
+   [horarios-bus.md](horarios-bus.md), o da de alta desde el panel, que la elige en el
+   asistente.
+4. **`salon`:** el negocio comparte su calendario con la cuenta de servicio
+   (panel, Configuración, tarjeta «Calendario de Google», muestra el email) y declara su
+   `calendar_id`. Las plantillas de WhatsApp deben estar creadas y aprobadas.
+5. **Dueño.** Panel: ficha, Configuración, «Invitar al dueño» (enlace de un solo uso,
+   mostrado una vez). Por terminal: `make prod-manage CMD="owner_invite <slug>"`.
+   `owner.notify` y `owner.summary_monthly` se cambian en la configuración versionada.
+   `make prod-manage CMD="owner_unlink <slug>"` desconecta el chat.
+6. **Webhook de Telegram** (si procede): «Registrar webhook» en el panel o
+   `make prod-manage CMD="telegram_set_webhook <slug>"`. Después, «Comprobar ahora» en el
+   panel o `make prod-manage CMD="tenant_health <slug>"`. Con `onboarding`, solo se atiende
+   a `testers.main`.
+7. **Activar.** Antes: documento válido, ids y secretos completos, salud sin errores
+   críticos, plantillas aprobadas y al menos un mensaje real de un tester por `main`. En el
+   panel, la pestaña Alta muestra esas comprobaciones y «Activar» pide escribir el slug.
 
-Los cambios se aplican sin commit ni despliegue, en la siguiente comprobación de revisión
-(como máximo dos segundos). Las acciones sobre producción las ejecuta la persona.
-
-### Checklist de un número de WhatsApp
+### WhatsApp: checklist del número
 
 La app de Meta, la WABA y el número están en el Business Portfolio del negocio, con el
-operador como administrador; una app y un número por negocio. Explicación no técnica
-de este modelo y de cómo migrarlo en el futuro: `docs/procedimientos/alta-whatsapp-meta.md`.
+operador como administrador; una app y un número por negocio.
 
-- SIM sin WhatsApp activo.
-- Gmail y Business Portfolio del negocio.
-- Verificación de empresa (2–5 días hábiles; necesaria para el nombre visible).
-- Acceso del operador: Meta separa ahora la **cuenta de WhatsApp** (el número) de la
-  **cuenta de mensajería** (plantillas y facturación). Al operador hay que asignarle
-  las dos, más la app, y darle **control total** del Business Portfolio: sin él no
-  puede usar la configuración de WhatsApp de la app ni crear el System User.
-- App de tipo Business con el producto WhatsApp.
-- Número añadido y verificado con el código (SMS o llamada) en WhatsApp Manager.
+- SIM sin WhatsApp activo; Gmail y Business Portfolio del negocio.
+- Verificación de empresa (2-5 días hábiles; necesaria para el nombre visible).
+- Acceso del operador: Meta separa la **cuenta de WhatsApp** (el número) de la **cuenta de
+  mensajería** (plantillas y facturación). Asigna las dos, más la app, y **control total**
+  del Business Portfolio: sin él no se puede usar la configuración de WhatsApp de la app
+  ni crear el System User.
+- App de tipo Business con el producto WhatsApp; número añadido y verificado en WhatsApp
+  Manager.
 - System User con token permanente (`whatsapp_business_messaging`,
   `whatsapp_business_management`).
-- Método de pago en la cuenta de mensajería: sin él Meta no envía mensajes
-  facturables (desde el 1/10/2026, también las respuestas de servicio que pasen de
-  las gratuitas).
+- Método de pago en la cuenta de mensajería (sin él Meta no envía mensajes facturables).
 - Ids del canal y los tres secretos cargados en el panel.
-- Desde la pestaña «Alta» del negocio (ADR-016), con «Comprobar» antes y después:
-  - **Webhook de la app** → «Configurar webhook»: configura
-    `https://api.<dominio>/webhooks/whatsapp/<public_id>` con el `verify_token` del
-    negocio y el campo `messages`. Meta verifica la URL en ese momento, así que el
-    servidor tiene que ser accesible y el negocio tener sus tres ids y tres secretos.
-  - **Número registrado** → «Registrar número»: registra el número en la Cloud API
-    con un PIN de verificación en dos pasos de 6 dígitos. El PIN no se guarda en
-    ningún sitio: apúntalo y guárdalo tú. Si ya estaba registrado, no se repite.
-  - **App suscrita a la cuenta** → «Suscribir app» (`subscribed_apps`): pide
-    confirmación, porque a partir de ahí el número real entrega sus mensajes a la
-    plataforma.
-  - Si una acción responde «Resultado desconocido», pulsa «Comprobar» antes de
-    repetirla: nunca se reintenta sola.
-- Plantillas del pack creadas y aprobadas en WhatsApp Manager (de 1 a 48 h); su
-  estado se consulta en la pestaña «Alta». `bus` no usa plantillas.
+- Pestaña «Alta» del negocio (ADR-016), con «Comprobar» antes y después:
+    - **Webhook de la app** → «Configurar webhook»: configura
+      `https://api.<dominio>/webhooks/whatsapp/<public_id>` con el `verify_token` del
+      negocio y el campo `messages`. Meta verifica la URL en ese momento: el servidor debe
+      ser accesible y el negocio tener sus tres ids y tres secretos.
+    - **Número registrado** → «Registrar número»: registra el número en la Cloud API con
+      un PIN de verificación en dos pasos de 6 dígitos. El PIN no se guarda: apúntalo. Si
+      ya estaba registrado, no se repite.
+    - **App suscrita a la cuenta** → «Suscribir app» (`subscribed_apps`): pide
+      confirmación, porque a partir de ahí el número real entrega sus mensajes a la
+      plataforma.
+    - Si una acción responde «Resultado desconocido», pulsa «Comprobar» antes de repetirla:
+      nunca se reintenta sola.
+- Plantillas del pack creadas y aprobadas en WhatsApp Manager (de 1 a 48 h); su estado se
+  consulta en la pestaña «Alta». `bus` no usa plantillas.
 
-Desde el 1/10/2026 Meta cobra también las respuestas dentro de la ventana de 24 h al
-precio *utility* del país; la tarifa se consulta en la cuenta de cada negocio.
+Coste: desde el 1/10/2026 Meta cobra también las respuestas dentro de la ventana de 24 h.
+El resumen mensual al dueño estima el coste con `PRICE_EUR`
+(`apps/backend/src/autobot/runtime/costs.py`); es una estimación interna, no la tarifa
+real de la cuenta, que está en WhatsApp Business Manager de cada negocio. Telegram no
+tiene coste por mensaje.
 
-### Precios aproximados de mensajería (resumen mensual)
+## Editar, pausar y cambiar datasets
 
-El "coste aproximado de mensajería" del resumen al dueño
-(ADR-007, `autobot/runtime/costs.py:PRICE_EUR`) suma
-todos los mensajes que Meta marca como facturables (`billable=True` en el webhook de
-estados) en el periodo, agrupados por la categoría que indica el propio webhook
-(`pricing_category`), con esta tabla de precios aproximados en euros por mensaje, para
-España:
+- Editar la configuración: panel, Configuración (formulario o YAML, con diff y comentario;
+  cada versión queda en el Historial). Por terminal: `tenant_config export <slug> <dir>`
+  crea un directorio nuevo o vacío, sin secretos; tras editar, `tenant_config import <dir>
+  --comment "Motivo"` crea otra versión. Los seis campos de identidad y estado no se
+  cambian por importación.
+- Pausar o reactivar: botón en la ficha, o `make prod-manage CMD="tenant_status <slug>
+  pause"` (o `resume`).
+- Datasets de un cliente ya dado de alta: [horarios-bus.md](horarios-bus.md). Nunca se
+  publican directamente sobre el cliente.
 
-| Categoría | Precio aprox. |
-|---|---|
-| `marketing` | 0,0585 € |
-| `utility` | 0,0166 € |
-| `authentication` | 0,0166 € |
-| `service` (ventana de 24 h) | 0,0166 € |
-
-Ya no se calcula ninguna franja gratuita por nuestra cuenta: desde el 1/10/2026 Meta
-aplica sus propias franjas (1.000 mensajes `service` gratis al mes por número, entradas
-gratuitas por anuncio, etc.) y marca esos mensajes como `billable=False`, así que
-simplemente no cuentan. Una categoría que no esté en la tabla (por ejemplo, una nueva
-que añada Meta) se valora al precio más alto de la tabla, para que el coste nunca se
-quede corto en silencio.
-
-**No es la tarifa real de ninguna cuenta.** Meta publica el rate card exacto, por
-país y moneda, en el panel de facturación de WhatsApp Business Manager de cada
-negocio, y cambia como máximo una vez por trimestre (el día 1). Estos valores son
-una estimación interna sin contrastar contra ese panel, comprobada por última vez
-el 29/10/2026 ("service" a la tarifa de `utility`, sin confirmar); revísalos si Meta
-anuncia un cambio de tarifas y, sobre todo, antes de presentar el coste del resumen
-como una cifra fiable. Telegram no tiene coste por mensaje y no entra en este cálculo.
-
-## Negocio de demo de un pack nuevo
-
-Cada pack nuevo trae su propio negocio de demostración, para enseñarlo por las dos
-puertas del bot de demo sin usar ningún negocio real (ver `docs/procedimientos/demo.md`).
-
-1. Crear `apps/backend/src/packs/<pack>/template/document.yaml` con un UUIDv7 fijo,
-   `demo.description` y `status: paused`, sin `channel` ni `testers`.
-2. Completar la config con datos ficticios y añadir los datasets necesarios en
-   `template/datasets/<nombre>/`.
-3. Declarar `Pack.template` y `Pack.template_blank`: los campos de config que deben
-   vaciarse al iniciar un negocio real. En `salon` son calendario, teléfono y nombre.
-4. Escribir el escenario de conversación sobre la plantilla y ejecutar `make check`.
-5. Hacer commit de la plantilla y sus tests. `manage.py seed_demos` crea los demos que todavía no tienen versiones; después los
-   cambios operativos se hacen sobre el demo de la BD, sin sobrescribirlo con la plantilla.
-   Un calendario de demo debe pertenecer a la persona operadora y estar compartido con
-   la cuenta de servicio antes de probar reservas reales.
+Los cambios se aplican sin commit ni despliegue, en la siguiente comprobación de revisión
+(como máximo dos segundos).
 
 ## Baja
 
-La persona operadora registra la fecha efectiva de baja y ejecuta el borrado en un
-máximo de 30 días; `synced_at` no es una fecha de baja.
+La persona operadora registra la fecha efectiva de baja y ejecuta el borrado en un máximo de
+30 días; `synced_at` no es una fecha de baja. Todos los comandos, desde el portátil:
 
-1. `manage.py tenant_status <slug> offboard` pide escribir el slug y publica la baja.
-   Los webhooks tardíos se contestan con 200 sin guardar nada.
-2. `manage.py tenant_data_export <slug> --output <ruta-privada>`, si se acordó con el negocio.
-3. `manage.py tenant_purge <slug>` exige de nuevo el slug y comprueba que sigue dado de
-   baja. Si el canal es Telegram, retira primero el webhook; si falla, sigue y lo
-   comunica. Borra contactos, conversaciones, eventos, mensajes, avisos, métricas,
-   sesiones y eventos de demo, el enlace del dueño, secretos, versiones de documento y
-   datasets, sus alertas y su auditoría, y la propia fila del tenant: el slug queda
-   libre. Un webhook tardío de ese canal recibirá 404 a partir de entonces. Se audita
-   atómicamente, con una sola entrada `tenant.purge` sin datos del negocio. El panel
-   ofrece el mismo borrado desde la ficha del cliente (menú «⋯» → «Eliminar cliente»,
-   deshabilitado si el negocio está activo).
+1. `make prod-manage TTY=1 CMD="tenant_status <slug> offboard"` pide escribir el slug y
+   publica la baja. Los webhooks tardíos se contestan con 200 sin guardar nada.
+2. Si se acordó con el negocio, exporta sus datos desde el panel (menú «⋯», «Exportar
+   datos del negocio»); detalle en [retencion-rgpd.md](retencion-rgpd.md).
+3. `make prod-manage TTY=1 CMD="tenant_purge <slug>"` (o el panel, menú «⋯», «Eliminar
+   cliente», deshabilitado si el negocio está activo) exige escribir de nuevo el slug y
+   comprueba que sigue dado de baja. Si el canal es Telegram, retira primero el webhook; si
+   falla, sigue y lo comunica. Borra todo lo del negocio (contactos, mensajes, secretos,
+   versiones, auditoría y su fila: el slug queda libre; el alcance exacto está en
+   [retencion-rgpd.md](retencion-rgpd.md)), y deja una entrada `tenant.purge` sin datos del
+   negocio. Un webhook tardío de ese canal recibirá 404.
 4. El negocio revoca el acceso del operador a Meta y deja de compartir el calendario.
-5. Retirar las copias locales de importación o guardarlas cifradas fuera del repositorio.
-   Las copias antiguas de la BD caducan con la retención de backups; ver RGPD.
+5. Retira las copias locales de importación o guárdalas cifradas fuera del repositorio. Las
+   copias de la BD caducan con la retención de backups.
+
+## Verificación
+
+- Alta: el negocio aparece `active` en el panel, la salud del canal está en verde y un
+  mensaje real por el canal recibe respuesta.
+- Baja: el negocio ya no aparece en la lista del panel y no quedan secretos ni datasets.
+
+## Relacionado
+
+Pack nuevo y su negocio de demo: [../desarrollo/anadir-un-pack.md](../desarrollo/anadir-un-pack.md).
+Comandos: [../referencia/comandos.md](../referencia/comandos.md).

@@ -1,20 +1,40 @@
 # syntax=docker/dockerfile:1
-# Multi-stage image: build the SPA with Node, serve it with a minimal non-root Caddy.
+# Multi-stage image, built from the REPO ROOT (`docker build -f apps/panel/Dockerfile .`):
+# the SPA with Node, the documentation site with Zensical, and both served by a minimal
+# non-root Caddy. The context is filtered by apps/panel/Dockerfile.dockerignore.
 FROM node:24-alpine AS build
 WORKDIR /app
 # The repo this build came from, for the commit links on the system page. Empty for a
 # local dev build.
 ARG VITE_GITHUB_REPO=
 ENV VITE_GITHUB_REPO=$VITE_GITHUB_REPO
-COPY package.json pnpm-lock.yaml ./
+COPY apps/panel/package.json apps/panel/pnpm-lock.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
-COPY . .
+COPY apps/panel/ ./
 RUN pnpm build
+
+# Documentation site (ADR-018). Zensical comes from the `docs` dependency group of
+# apps/backend/pyproject.toml, pinned by uv.lock (zensical==0.1.3), the same as
+# `make docs-check`.
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
+
+FROM python:3.14-slim AS docs
+COPY --from=uv /uv /uvx /usr/local/bin/
+ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_CACHE_DIR=/tmp/uv-cache
+WORKDIR /repo
+COPY apps/backend/pyproject.toml apps/backend/uv.lock apps/backend/
+COPY mkdocs.yml ./
+COPY docs/ docs/
+# Code that the docs embed with `--8<--` snippets.
+COPY apps/backend/src/ apps/backend/src/
+RUN uv run --project apps/backend --only-group docs --frozen zensical build --strict -f mkdocs.yml \
+    && test -f var/docs-site/index.html
 
 FROM caddy:2.11.7-alpine AS runtime
 RUN adduser -S -D -H -u 10001 -s /sbin/nologin app
 COPY --from=build /app/dist /srv
-COPY Caddyfile /etc/caddy/Caddyfile
+COPY --from=docs /repo/var/docs-site /srv/docs
+COPY apps/panel/Caddyfile /etc/caddy/Caddyfile
 # The filesystem is read-only; Caddy needs somewhere writable for its config/data dirs.
 ENV XDG_CONFIG_HOME=/tmp/config XDG_DATA_HOME=/tmp/data
 USER app

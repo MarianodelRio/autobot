@@ -40,7 +40,11 @@ export function TableDetailPage({ table }: { table: string }) {
           ← Datos
         </Link>
       </div>
-      <PageHeader title={detail.name} description={detail.description} />
+      <PageHeader
+        title={detail.name}
+        description={detail.description}
+        help="procedimientos/panel/#datos"
+      />
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         <Badge variant="outline">Escrita por: {detail.written_by}</Badge>
         <Badge variant="outline">Retención: {detail.retention}</Badge>

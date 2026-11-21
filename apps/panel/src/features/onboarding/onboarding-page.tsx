@@ -132,6 +132,7 @@ export function OnboardingPage({
     <div className="space-y-5">
       <PageHeader
         title="Nuevo cliente"
+        help="procedimientos/alta-baja-negocio/"
         description={`Paso ${draft.step} de ${needsDatasets ? 5 : 4}`}
       />
       {draft.step === 1 && (

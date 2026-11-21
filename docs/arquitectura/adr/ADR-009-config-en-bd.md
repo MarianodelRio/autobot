@@ -1,6 +1,6 @@
 # ADR-009 — Config y datasets de los negocios en PostgreSQL, versionados
 
-**Estado:** aceptada
+**Estado:** vigente; los datasets los modifica el [ADR-013](ADR-013-biblioteca-de-conjuntos-de-datos.md)
 
 ## Contexto
 

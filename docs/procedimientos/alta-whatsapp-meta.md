@@ -1,11 +1,20 @@
 # Cómo se monta el canal WhatsApp de un negocio (explicación no técnica)
 
-Esta guía explica, en lenguaje sencillo, cómo se relacionan las cuentas de Meta de
-cada negocio con la persona operadora, qué tiene que hacer cada parte, y cómo
-cambiaría esto si la persona operadora se da de alta como autónoma o empresa en el
-futuro. Complementa el checklist técnico de `alta-baja-negocio.md`; esta guía es la
-que se usa para explicárselo a un negocio que no tiene ni idea de Meta ni de
-desarrollo.
+Explica, en lenguaje sencillo, cómo se relacionan las cuentas de Meta de cada negocio con la
+persona operadora, qué hace cada parte y cómo cambiaría si la persona operadora se da de alta
+como autónoma o empresa. Es la guía para explicárselo a un negocio que no sabe nada de Meta
+ni de desarrollo. Los pasos técnicos del alta (checklist, panel, comandos) están en
+[alta-baja-negocio.md](alta-baja-negocio.md#whatsapp-checklist-del-numero).
+
+- **Objetivo:** que el negocio y la persona operadora entiendan quién es dueño de qué y qué
+  tiene que hacer cada uno.
+- **Cuándo:** antes del alta de un negocio con WhatsApp, y al plantearse el modelo
+  centralizado.
+- **Requisitos y aprobaciones:** ninguno técnico. Activar el canal real del negocio requiere
+  aprobación humana explícita ([alta-baja-negocio.md](alta-baja-negocio.md)).
+- **Pasos:** las secciones 2 (qué hace el negocio) y 3 (qué hace la persona operadora).
+- **Verificación:** el operador entra en Meta con su cuenta y ve la app, la WABA y el número
+  del negocio; el negocio no necesita volver a tocar nada.
 
 ## 1. El modelo actual: una "casita" de Meta por negocio
 

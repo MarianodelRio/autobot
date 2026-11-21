@@ -1,98 +1,85 @@
-# Visión general de la arquitectura
+# Visión general
 
-Resumen de cómo encajan las piezas. Para el motivo de cada decisión, ver las ADR
-enlazadas; para el detalle de la config y el registro, ver
-[config-y-registro.md](config-y-registro.md).
+Esta página es la puerta de entrada a la arquitectura: qué es Autobot, qué contenedores lo componen, cómo se organiza el código en capas y qué reglas de import se cumplen. Léela primero; cada concepto tiene su propia página, enlazada abajo. Para encontrar un fichero concreto, usa el [mapa del código](mapa-del-codigo.md).
 
-## Flujo de un mensaje entrante
+## Qué es
 
-```mermaid
-flowchart LR
-    W[Webhook<br/>WhatsApp/Telegram] -->|verifica firma, guarda| IE[inbound_event]
-    IE -->|misma transacción| Q[Cola Procrastinate<br/>inbound]
-    Q --> PE[process_event]
-    PE --> PK[Pack.handle_message<br/>ctx, msg → PackResult]
-    PK --> OM[outbound_message]
-    OM -->|cola outbound| SM[send_message]
-    SM -->|adaptador de canal| ENV[Envío al proveedor]
-```
+Autobot es una plataforma multi-negocio. Atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram) con un bot. La lógica de cada tipo de negocio vive en un **pack**; hoy hay dos: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). La plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa.
 
-El webhook guarda primero y contesta 200 después; el procesamiento ocurre en un
-worker, fuera de la petición HTTP ([ADR-004](adr/ADR-004-entrada-idempotente.md)).
-Las cuatro colas corren sobre PostgreSQL/Procrastinate
-([ADR-001](adr/ADR-001-monolito-modular.md)) en dos workers: `worker-inbound`
-(`inbound` y `periodic`) y `worker-outbound` (`outbound`), para que una caída de
-Google Calendar (la llaman los packs desde `inbound` y la barrida de `salon` desde
-`periodic`) no frene los envíos. Los dos workers escuchan además la cola `ops`
-(`ops_check`, ADR-005), para que la caída de uno de ellos no silencie también su
-propia alerta.
+Además hay un **bot de demo** (para enseñar los packs a posibles clientes), un **bot de avisos** (notificaciones y asistente para el dueño del negocio) y un **panel** interno para operar la plataforma.
 
-Defensas del webhook (`autobot/channels/views.py`): cuerpo de 256 KB como máximo; la
-firma se comprueba antes de leer el JSON; las firmas inválidas se cuentan por (IP,
-negocio) en la ruta de cada negocio y por (IP, bot) en la puerta de demo y el bot de
-avisos, porque las IPs de Meta y Telegram son compartidas: un negocio con el secreto mal
-configurado nunca bloquea a otro, y una petición con firma válida nunca recibe 429. Lo
-que la base de datos no puede guardar (NUL, sustitutos UTF-16 sueltos) se elimina de
-todos los textos del payload al interpretarlo (`channels/payload.py`); si aun así la base
-rechaza un cuerpo firmado (`DataError`) se responde 200 y se descarta con un log sin
-datos, y solo los fallos de conexión o de cola dan 503 para que el proveedor reintente.
-Las reacciones, `request_welcome`, los avisos de sistema de WhatsApp y los mensajes de
-servicio de Telegram se ignoran sin responder; los medios no soportados sí se contestan.
-Los errores de límite de tasa de Meta (4, 17, 32, 613, 80007, 130429, 131056), incluso con
-HTTP 4xx, se reintentan con espera; 131047 y 131049 no.
+## Contenedores
 
-## Capas y sus reglas
-
-`import-linter` vigila estas reglas en CI:
-
-- **`core/` e `integrations/`**: no importan Django ni nada del resto del proyecto.
-  Utilidades y contratos genéricos sin lógica de negocio (`core/ui`, `core/text`,
-  `core/dates`, `core/limits`, `core/pack`) y los puertos externos (`integrations/google_calendar`).
-- **`packs/<pack>/`**: solo importan `core`. Cada pack trae su propia máquina de
-  estados (`handle_message(ctx, msg) -> PackResult`), su config (pydantic), su
-  plantilla de demo (`packs/<pack>/template/`) y nunca toca la BD ni las APIs
-  directamente ([ADR-003](adr/ADR-003-packs.md)).
-- **`autobot/`**: el único paquete que importa Django. Resuelve lo común a todos los
-  packs (webhooks, cola, multitenancy, panel, observabilidad) y llama a cada pack solo
-  a través de `packs.registry`.
-- **`config/`**: settings de Django y WSGI.
-
-## Procesos y contenedores
+Es un monolito modular Django 5.2 con PostgreSQL 18 y Procrastinate, en una VPS con Docker Compose ([ADR-001](adr/ADR-001-monolito-modular.md), [ADR-005](adr/ADR-005-vps-docker-compose.md)). El compose base está en `deploy/compose/compose.yaml`; `compose.local.yaml` y `compose.prod.yaml` lo completan. Esta es la lista de referencia de contenedores:
 
 | Contenedor | Qué hace |
 |---|---|
-| `caddy` | HTTPS automático; expone solo los webhooks de WhatsApp/Telegram (negocio, demo y bot de avisos) y `/health` |
-| `web` | Sirve los webhooks (verifica, guarda, encola) y la API del panel (`/api/panel/`, solo por túnel SSH) |
-| `worker-inbound` | Procrastinate: las colas `inbound` (webhooks), `periodic` (barridas) y `ops` (vigilancia) |
-| `worker-outbound` | Procrastinate: las colas `outbound` (envíos) y `ops` (vigilancia) |
-| `db` | PostgreSQL 18, con Row-Level Security forzada ([ADR-002](adr/ADR-002-multitenancy-rls.md)) |
-| `panel` | SPA estática (Vite) con su propia Caddy interna; proxy de `/api/` hacia `web`; solo por túnel SSH ([ADR-008](adr/ADR-008-panel.md)) |
-| `victorialogs` | Almacén de logs técnicos, 31 días, sin puerto publicado; se consulta desde la pantalla Logs del panel |
+| `caddy` | Solo en producción. HTTPS automático; expone únicamente los webhooks (negocio, demo y bot de avisos) y `/health` |
+| `web` | Sirve los webhooks (verifica, guarda, encola) y la API del panel (`/api/panel/`) |
+| `worker-inbound` | Procrastinate: colas `inbound`, `periodic` y `ops` |
+| `worker-outbound` | Procrastinate: colas `outbound` y `ops` |
+| `db` | PostgreSQL 18 con Row-Level Security forzada |
+| `panel` | SPA estática con su propia Caddy interna, proxy de `/api/` hacia `web`; solo accesible por túnel SSH ([ADR-008](adr/ADR-008-panel.md)) |
+| `victorialogs` | Almacén de logs técnicos (31 días), sin puerto publicado |
 
-## Dónde vive la config
+Hay dos workers para que una caída de Google Calendar (que llaman los packs desde `inbound` y `periodic`) no frene los envíos. Los detalles están en [cola y workers](cola-y-workers.md).
 
-La config y los datasets de cada negocio viven en PostgreSQL, versionados e inmutables
-([ADR-009](adr/ADR-009-config-en-bd.md)): nada en git ni en la imagen. Cada proceso
-mantiene un registro en memoria que recarga cuando `config_revision` cambia, consultando
-como mucho cada 2 segundos. Los secretos de canal van cifrados en la propia base con
-Fernet. El único servicio de escritura es `autobot.tenancy.store`, usado tanto por la
-API del panel como por los comandos de operación.
+```mermaid
+flowchart LR
+    P[Meta / Telegram] -->|HTTPS| C[caddy]
+    C --> W[web]
+    W -->|inbound_event + job| DB[(db<br/>PostgreSQL + Procrastinate)]
+    DB --> WI[worker-inbound]
+    WI -->|handle_message| PK[packs]
+    WI -->|outbound_message + job| DB
+    DB --> WO[worker-outbound]
+    WO -->|adaptador de canal| P
+    WI -->|Calendar| G[Google Calendar]
+    OP[Operador] -.túnel SSH.-> PA[panel]
+    PA -->|/api/| W
+    W --> DB
+    W & WI & WO --> VL[victorialogs]
+    PA -.logs.-> VL
+```
 
-## El bot de demo y el bot de avisos
+## Capas y reglas de import
 
-El **bot de demo** tiene dos puertas (un bot de Telegram y un número de WhatsApp de la
-plataforma, no de ningún cliente). Se entra con un código de invitación creado desde
-la pestaña «Demo» del panel, o estando en la lista cerrada de esa puerta
-(`DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS`). La primera respuesta
-de cualquier puerta es un selector de negocios de demo; a partir de ahí la conversación
-es la del pack real de ese negocio ([ADR-006](adr/ADR-006-bot-de-demo.md)).
+El código del backend (`apps/backend/src/`) tiene cuatro capas. `import-linter` comprueba en CI estas reglas (contratos en `apps/backend/pyproject.toml`):
 
-El **bot de avisos** (`NOTIFY_BOT_TOKEN`) envía las notificaciones de cada negocio
-(citas, cambios, resumen mensual) y además es el asistente del dueño: puede
-preguntarle cómo va el mes o pedir el contacto del operador. El dueño se vincula con
-un enlace de un solo uso (`manage.py owner_invite <slug>`), sin exponer su `chat_id`
-en ninguna config ([ADR-007](adr/ADR-007-bot-de-duenos.md)).
+- **`core/`**: contratos y utilidades genéricas sin lógica de negocio. No importa Django ni nada del resto del proyecto.
+- **`integrations/`**: puertos hacia servicios externos (`google_calendar`). Solo importa `core`, sin Django.
+- **`packs/<pack>/`**: la lógica de cada negocio. Solo importa `core`: nunca Django, `integrations`, `autobot` ni otro pack. No toca la base de datos ni las APIs directamente ([ADR-003](adr/ADR-003-packs.md)).
+- **`autobot/`**: el único paquete que usa Django. Resuelve lo común (webhooks, cola, multitenancy, panel, observabilidad) y llama a cada pack solo a través de `packs.registry`.
 
-## Decisiones de arquitectura
+`config/` contiene los settings de Django y las URLs, y `tools/` los scripts de operación. A `core/` solo sube lo que usan los dos packs.
 
-Índice completo en [adr/README.md](adr/README.md).
+## Los conceptos
+
+**Vida de un mensaje.** Del webhook a la respuesta: se verifica, se guarda en `inbound_event`, se encola, un worker llama al pack y la respuesta sale por la cola de envíos. El webhook guarda primero y contesta 200 después ([ADR-004](adr/ADR-004-entrada-idempotente.md)). Ver [vida de un mensaje](vida-de-un-mensaje.md).
+
+**Efectos e idempotencia.** Todo efecto externo (enviar un mensaje, crear una cita) es idempotente y nunca se reintenta a ciegas un resultado ambiguo (`unknown`). Ver [efectos e idempotencia](efectos-e-idempotencia.md).
+
+**Cola y workers.** Las colas corren sobre PostgreSQL con Procrastinate; los trabajos reciben solo ids. Ver [cola y workers](cola-y-workers.md).
+
+**Tenants y RLS.** Cada dato de cliente lleva `tenant_id` y Row-Level Security; el tenant se fija con `tenant_tx`. Ver [tenants y RLS](tenants-y-rls.md).
+
+**Canales.** WhatsApp y Telegram se aíslan tras un adaptador común; sus diferencias, y las defensas de los webhooks, viven ahí. Ver [canales](canales.md).
+
+**Packs.** Cada pack trae su máquina de estados, su config y su plantilla de demo, y responde con un `PackResult`. Ver [packs](packs.md).
+
+**Config y registro.** La config y los datasets de cada negocio viven en PostgreSQL, versionados e inmutables ([ADR-009](adr/ADR-009-config-en-bd.md)); cada proceso mantiene un registro en memoria que recarga cuando cambia la revisión. Ver [config y registro](config-y-registro.md).
+
+**Bot de demo.** Dos puertas (un bot de Telegram y un número de WhatsApp de la plataforma) con un selector de negocios de demo; después la conversación es la del pack real ([ADR-006](adr/ADR-006-bot-de-demo.md)). Ver [bot de demo](bot-de-demo.md).
+
+**Bot de dueños.** El bot de avisos envía las notificaciones de cada negocio y atiende al dueño, vinculado con un enlace de un solo uso ([ADR-007](adr/ADR-007-bot-de-duenos.md)). Ver [bot de dueños](bot-de-duenos.md).
+
+**Panel.** Frontend en TypeScript más API `/api/panel/`, solo por túnel SSH. Ver [panel](panel.md).
+
+**Observabilidad.** Logs estructurados hacia VictoriaLogs, alertas de operación y comprobaciones periódicas. Ver [observabilidad](observabilidad.md).
+
+**Seguridad y secretos.** Secretos de canal cifrados en la base; secretos de la plataforma en el `.env` del servidor. Ver [seguridad y secretos](seguridad-y-secretos.md).
+
+## Relacionado
+
+- Decisiones y su motivo: [índice de ADR](adr/README.md).
+- Dónde está cada cosa: [mapa del código](mapa-del-codigo.md).

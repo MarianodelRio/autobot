@@ -62,7 +62,7 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `RESTIC_REPOSITORY`, `RESTIC_PASSWORD_FILE`
 y `HEALTHCHECKS_BACKUP_PING_URL` no van en `.env`: viven en `var/backup.env` en el
-servidor (ver [`deploy/env/backup.env.example`](../../deploy/env/backup.env.example) y
+servidor (ver `deploy/env/backup.env.example` y
 [procedimientos/servidor.md](../procedimientos/servidor.md)).
 
 ## Variables de los scripts de `deploy/scripts/`
@@ -83,10 +83,11 @@ No las lee Django: solo cambian el comportamiento del script en sí (pruebas loc
 | `AUTOBOT_PRUNE_LOCK_WAIT` | `prune.sh` | Segundos que espera el candado compartido con `deploy.sh` antes de omitir el prune | `60` |
 | `AUTOBOT_HTTPS_CHECK_TIMEOUT` / `AUTOBOT_HTTPS_CHECK_INTERVAL` | `deploy.sh` | Reintentos de la comprobación HTTPS tras desplegar | `60` / `5` (segundos) |
 | `AUTOBOT_HTTPS_INSECURE` | `deploy.sh`, `localprod.sh` | Si es `true`, la comprobación HTTPS tras desplegar acepta un certificado no verificable (la CA interna de Caddy en `localprod`); nunca en producción | `false` |
-| `AUTOBOT_SERVER_ENV` | `server-migrate.sh` | Ruta de `server.env` (ver [`deploy/env/server.env.example`](../../deploy/env/server.env.example)) | `var/server.env` |
+| `AUTOBOT_SERVER_ENV` | `server-migrate.sh` | Ruta de `server.env` (plantilla en `deploy/env/server.env.example`; solo contiene `PUBLIC_HOST`) | `var/server.env` |
 | `AUTOBOT_DEPLOY_LOCK_HELD` | `deploy.sh`, `ssh-deploy.sh` | Interna: `ssh-deploy.sh` la fija en `1` al tomar el candado de despliegue, para que `deploy.sh` no vuelva a pedirlo | sin definir |
 | `AUTOBOT_DEPLOY_LOCK_TIMEOUT` | `deploy.sh`, `ssh-deploy.sh` | Segundos que espera el candado de despliegue (`var/.deploy.lock`) antes de decir que hay otro despliegue en marcha; los tests lo acortan | `10` |
 | `AUTOBOT_RESTORE_TEST_SKIP_BUILD` | `restore-test.sh` | Si es `true`, no construye la imagen del backend: usa la `autobot:restore-test` ya construida (el CI la construye antes con caché compartida) | `false` |
+| `AUTOBOT_INSTALL_LIB_ONLY` | `install-vm.sh` | Si es `1`, el script solo define sus funciones y se detiene antes de leer argumentos; lo usan los tests (`apps/backend/tests/tools/test_install_vm.py`) | sin definir |
 | `AUTOBOT_LIB_FUNCTIONS_ONLY` | `lib.sh` | Si es `1`, `lib.sh` solo define sus funciones (`compose_in`, `ensure_state_dirs`), sin comprobar el usuario ni cambiar de directorio; lo usan `localprod.sh` y `restore-test.sh` | sin definir |
 | `AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK` | `restore.sh` | Omite la comprobación del marcador de bootstrap; solo para ensayos en una máquina que no es una VM (`restore-test.sh`, `localprod.sh`) | `false` |
 | `AUTOBOT_BACKUP_MIN_FREE_BYTES` | `backup.sh` | Espacio libre mínimo exigido antes de volcar la base de datos (si el último volcado ×2 es mayor, se usa eso) | `536870912` (512 MiB) |
@@ -97,3 +98,16 @@ el id del repositorio de restic contra el que se hizo el primer backup; `backup.
 niega si `restic cat config` devuelve un id distinto. `var/.frozen` congela el
 origen o el destino durante un traslado: `deploy.sh` y `restore.sh` se niegan a
 tocar un host con ese fichero presente.
+
+## Secretos del entorno `production` de GitHub
+
+No son variables de entorno de la app: son *secrets* del entorno `production` del repositorio
+que lee el workflow de despliegue (`.github/workflows/deploy.yml`) para conectarse por SSH
+a la VPS como `deploy`. Los sube `install-vm.sh` (paso `github`) y los actualiza
+`server-migrate.sh` en un traslado; ver [servidor](../procedimientos/servidor.md).
+
+| Secreto | Qué contiene |
+|---|---|
+| `DEPLOY_HOST` | Host o IP de la VPS |
+| `DEPLOY_SSH_KEY` | Clave privada de CI, solo para ejecutar `deploy/scripts/deploy.sh` |
+| `DEPLOY_KNOWN_HOSTS` | Clave de host de la VPS, para fijar su identidad (`StrictHostKeyChecking=yes`) |

@@ -1,6 +1,6 @@
 # ADR-010 — Estructura del repositorio: apps autocontenidas, compose por entorno y `var/`
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

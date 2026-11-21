@@ -1,6 +1,6 @@
 # ADR-005 — Una VPS con Docker Compose
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

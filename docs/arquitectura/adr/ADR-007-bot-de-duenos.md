@@ -1,6 +1,6 @@
 # ADR-007 — El bot de avisos se convierte en el asistente del dueño
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

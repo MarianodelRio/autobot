@@ -1,6 +1,6 @@
 # ADR-008 — Panel interno: arquitectura, acceso y observabilidad
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

@@ -1,48 +1,87 @@
 # Restauración y simulacro trimestral
 
-**Síntoma:** pérdida de datos/servidor o fecha de simulacro. **Diagnóstico:** comprueba
-en restic el último snapshot con tag `autobot`, su fecha y el ping del backup.
-Revisa que dispones de la contraseña y las credenciales S3 fuera del repositorio.
-No restaures sobre una instalación con volumen de BD existente.
+Cómo restaurar un backup de restic en una VPS vacía, ya sea por una pérdida real o en el
+simulacro trimestral. Léelo también para entender qué guarda y qué no guarda el backup. Si
+has perdido la máquina original, sigue [../incidencias/perdida-total.md](../incidencias/perdida-total.md),
+que añade las revisiones manuales de después; para volver a un SHA anterior sin perder
+datos, [../incidencias/volver-atras.md](../incidencias/volver-atras.md); para un traslado
+planificado, [traslado.md](traslado.md).
 
-**Dependencia con GHCR:** `restore.sh` necesita descargar la imagen del SHA del
-snapshot (`${AUTOBOT_IMAGE}:${SHA}`); si la política de retención de paquetes de GHCR
-ya la borró, falla al levantar `web`/`worker-*`, aunque el volcado de la BD sea
-correcto. La política de retención de GHCR debe cubrir, como mínimo, el snapshot más
-antiguo que `backup.sh` conserva (`--keep-daily 7 --keep-weekly 4 --keep-monthly 6`:
-hasta 6 meses); configúrala al crear el repositorio (`docs/procedimientos/servidor.md`).
+!!! warning "Aprobaciones"
+    Restaurar y borrar la VPS temporal del simulacro son acciones sobre infraestructura y
+    datos de producción: requieren aprobación humana explícita y las ejecuta una persona.
+    No restaures sobre una instalación con volumen de BD existente: `restore.sh` se niega.
 
-**Pasos:** prepara una VPS temporal con `sudo deploy/scripts/install-vm.sh --restore-target`
-(`docs/procedimientos/servidor.md`): `restore.sh` se niega sin
-`/var/lib/autobot/bootstrap-complete`, que escribe ese instalador al terminar la base y el
-endurecimiento de SSH (nada más lo crea). Crea `var/backup.env` y `var/restic-password`
-como `deploy` con modo 0600 (el repositorio ya queda clonado en `/srv/autobot`). Ejecuta `deploy/scripts/restore.sh --confirm-empty-target`.
-El script hace checkout del SHA del snapshot, restaura `.env`, `google_sa.json`, el
-`Caddyfile` y, si estaban en el snapshot, el estado de Caddy (certificados/cuenta
-ACME) y `deploys.jsonl` (ninguno es obligatorio). Reaplica los roles de
-PostgreSQL (`init-roles.sh`) y los permisos (`manage.py apply_grants`) después de
-restaurar el volcado, porque `pg_restore --no-acl` los pierde. Levanta
-`web`, `panel`, `victorialogs` y `caddy`, pero no los workers: con los tokens reales,
-enviarían mensajes antes de verificar los datos o cambiar el DNS. Una vez
-restaurado, `var/.deployed-sha` ya existe, así que un segundo
-`restore.sh --confirm-empty-target` se niega («Existing deployment»); para arrancar
-los workers después de verificar, usa en su lugar
-`deploy/scripts/compose.sh up -d worker-inbound worker-outbound` (toma el `SHA` y el
-`.env` ya restaurados de `lib.sh`, igual que `manage.sh`). `AUTOBOT_RESTORE_START_WORKERS=true`
-solo sirve dentro de la misma ejecución de `restore.sh`, cuando no hace falta
-verificar antes de arrancarlos (por ejemplo, en `make restore-test`).
-Si falla tras crear el volumen, conserva `var/.restore-incomplete` y vuelve a
-ejecutar el mismo comando tras arreglar la causa; el script solo admite ese reintento
-controlado. Si el snapshot era inválido y aún no se creó volumen, corrige la fuente
-antes de repetir. No apuntes DNS hasta verificar. Para prueba puramente local ejecuta
-`make restore-test` con Docker y restic; crea dos proyectos temporales, compara
-conteos por tenant (restaura con `AUTOBOT_RESTORE_DB_ONLY=true`), y después arranca solo
-`web` sobre la copia restaurada para comprobar que `/health/internal` responde sin
-negocios ilegibles y que la `SECRETS_ENCRYPTION_KEY` restaurada descifra `tenant_secret`.
-En una máquina que no es VM salta la comprobación del marcador con
-`AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK=true` (avisándolo), no la falsifica.
+## Objetivo, cuándo y requisitos
 
-**Verificación:** `/health` responde 200, compara por tenant los conteos de `contact`,
-`inbound_event` y `outbound_message` con el origen o informe previo; comprueba un
-flujo por el bot de demo. Anota SHA, snapshot, hora de inicio/fin y duración; la
-meta es menos de dos horas. Borra la VPS temporal tras el simulacro autorizado.
+- **Objetivo:** dejar una VPS con la base de datos, `.env`, certificados y el SHA del
+  snapshot, lista para verificar antes de arrancar los workers.
+- **Cuándo:** pérdida de datos o de servidor; simulacro trimestral (meta: menos de 2 horas).
+- **Requisitos:** la contraseña de restic y las credenciales S3 (fuera del repositorio);
+  un snapshot reciente con tag `autobot` (comprueba su fecha y el ping de Healthchecks);
+  una VPS Ubuntu 24.04 nueva.
+- **Imagen en GHCR:** `restore.sh` descarga `${AUTOBOT_IMAGE}:<sha del snapshot>`. Si la
+  retención de paquetes de GHCR ya la borró, falla al levantar `web`, aunque el volcado sea
+  correcto. La retención debe cubrir el snapshot más antiguo que `backup.sh` conserva
+  (`--keep-daily 7 --keep-weekly 4 --keep-monthly 6`: hasta 6 meses).
+- **Qué guarda el backup:** volcado de la BD, `.env`, `var/google_sa.json`, `.deployed-sha`,
+  `Caddyfile`, estado de Caddy y `deploys.jsonl`. No guarda los logs técnicos ni
+  `pre-migrate.dump`.
+
+## Pasos
+
+1. **Prepara la VPS** (dentro de ella, con `sudo`): `sudo deploy/scripts/install-vm.sh
+   --restore-target` ([servidor.md](servidor.md)). `restore.sh` se niega sin
+   `/var/lib/autobot/bootstrap-complete`, que ese instalador escribe al terminar la base y
+   el endurecimiento de SSH.
+2. **Credenciales de backup**, como `deploy` en `/srv/autobot`: crea `var/backup.env`
+   (plantilla `deploy/env/backup.env.example`) y `var/restic-password`, ambos con modo
+   0600.
+3. **Restaura**, como `deploy`: `deploy/scripts/restore.sh --confirm-empty-target`. El
+   script:
+    1. Hace checkout del SHA del snapshot y restaura `.env`, `google_sa.json`, el
+       `Caddyfile` y, si estaban, el estado de Caddy y `deploys.jsonl`.
+    2. Ejecuta `ensure-env.sh` (recalcula `DEPLOY_UID` para esta máquina).
+    3. Levanta `db` y restaura el volcado con `pg_restore --clean`.
+    4. Reaplica los roles (`init-roles.sh`) y los permisos (`apply_grants`), que
+       `pg_restore --no-acl` pierde.
+    5. Levanta `web`, `panel`, `victorialogs` y `caddy`, **pero no los workers**: con los
+       tokens reales enviarían mensajes antes de verificar los datos o cambiar el DNS.
+    6. Escribe `var/.deployed-sha`.
+4. **Si falla** después de crear el volumen, conserva `var/.restore-incomplete`: arregla
+   la causa y vuelve a ejecutar el mismo comando (único reintento admitido). Si el snapshot
+   era inválido y aún no se creó el volumen, corrige la fuente antes de repetir.
+5. **Verifica** (sección siguiente) antes de tocar el DNS.
+6. **Arranca los workers**: como `restore.sh` ya no puede repetirse (`Existing deployment`),
+   usa `deploy/scripts/compose.sh up -d worker-inbound worker-outbound`.
+   `AUTOBOT_RESTORE_START_WORKERS=true` solo sirve dentro de la misma ejecución, cuando no
+   hace falta verificar antes (por ejemplo, `make restore-test`).
+7. **Apunta el DNS** a la nueva IP si cambió, y despliega con normalidad desde ahí
+   ([despliegue.md](despliegue.md)).
+8. **Simulacro:** anota SHA, snapshot, hora de inicio y fin y duración, y borra la VPS
+   temporal (con autorización).
+
+### Simulacro local, sin servidor
+
+`make restore-test` (necesita Docker y restic; el CI lo ejecuta también). Crea dos proyectos
+temporales, restaura con `AUTOBOT_RESTORE_DB_ONLY=true`, compara conteos por tenant, y
+arranca solo `web` para comprobar que `/health/internal` responde sin negocios ilegibles y
+que la `SECRETS_ENCRYPTION_KEY` restaurada descifra `tenant_secret`. En una máquina que no es
+VM, `restore.sh` salta la comprobación del marcador con
+`AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK=true`, avisando en voz alta.
+
+## Verificación
+
+- `https://<PUBLIC_HOST>/health` (o `curl --resolve` contra la VPS nueva antes del DNS)
+  devuelve 200.
+- Por tenant, los conteos de `contact`, `inbound_event` y `outbound_message` coinciden con
+  el origen o con el informe previo (en el panel, Datos, o `psql` en el contenedor `db`
+  como `postgres`).
+- Un flujo por el bot de demo funciona.
+- `deploy/scripts/compose.sh ps` muestra los servicios esperados; los workers, solo tras
+  verificar.
+
+## Dónde está el código
+
+`deploy/scripts/restore.sh`, `deploy/scripts/backup.sh`, `deploy/scripts/restore-test.sh`,
+`deploy/scripts/install-vm.sh` (`--restore-target`), `deploy/env/backup.env.example`.

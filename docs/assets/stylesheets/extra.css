@@ -1,0 +1,49 @@
+/* Look close to the panel (apps/panel): Geist fonts served from this site (no CDN)
+   and its indigo accent. Fonts are the @fontsource/geist-* latin woff2 files. */
+@font-face {
+  font-family: "Geist";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("../fonts/geist-sans-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url("../fonts/geist-sans-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("../fonts/geist-mono-latin-400-normal.woff2") format("woff2");
+}
+
+:root {
+  --md-text-font: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --md-code-font: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #09090b;
+  --md-default-fg-color: #fafafa;
+  --md-default-fg-color--light: #a1a1aa;
+  --md-default-fg-color--lighter: #52525b;
+  --md-default-fg-color--lightest: #27272a;
+  --md-code-bg-color: #18181b;
+  --md-code-fg-color: #fafafa;
+  --md-primary-fg-color: #18181b;
+  --md-primary-bg-color: #fafafa;
+  --md-accent-fg-color: #818cf8;
+  --md-typeset-a-color: #818cf8;
+  --md-footer-bg-color: #18181b;
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #4f46e5;
+  --md-accent-fg-color: #4f46e5;
+  --md-typeset-a-color: #4f46e5;
+}

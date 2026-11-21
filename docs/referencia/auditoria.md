@@ -1,0 +1,116 @@
+# Registro de auditoría
+
+Catálogo de las acciones que se anotan en el registro de auditoría (`audit_event`): quién las
+hace, qué se guarda y qué se rechaza. Léelo cuando revises el registro desde el panel
+(Logs, pestaña Operador) o añadas una acción nueva. El diseño de seguridad está en
+[seguridad y secretos](../arquitectura/seguridad-y-secretos.md).
+
+## Qué se guarda
+
+Cada escritura del panel y de los comandos de operación llama a
+`apps/backend/src/autobot/ops/audit.py` (`record`, `record_tenant`). Un evento guarda:
+
+| Campo | Contenido |
+|---|---|
+| `actor` | Quién: el usuario del panel, o `command:<nombre>` si lo hizo un comando de `manage.py`. |
+| `action` | La clave de la acción (tabla siguiente). |
+| `summary` | Frase corta en español. |
+| `tenant_id` | Negocio afectado, si lo hay (sin RLS por diseño, ADR-009). |
+| `target_type`, `target_id` | Qué objeto se tocó (`tenant`, `contact`, `outbound_message`, `job`, `ops_alert`, `dataset`, `demo_invite`, `bot`…). |
+| `details` | Datos extra en JSON, sin secretos. |
+
+La escritura se hace con el rol `owner` en su propia transacción. Dentro de la misma
+transacción que la acción cuando esta puede borrar datos (`contact.forget`), para que nunca
+haya un borrado sin rastro.
+
+## Qué se rechaza
+
+- **Claves con forma de secreto.** Si `details`, a cualquier nivel, contiene una de las
+  claves `token`, `secret`, `password`, `access_token`, `app_secret`, `verify_token`,
+  `bot_token`, `webhook_secret` u `otp`, `record` lanza `ValueError` y no escribe nada. Es
+  una red de seguridad contra errores de programación: los valores de los secretos nunca
+  deben llegar hasta aquí (en `tenant.secrets` solo se guardan los **nombres** de los campos).
+- **Caracteres NUL**: se eliminan del texto, porque PostgreSQL los rechaza y una auditoría no
+  debe fallar (ni deshacer la acción) por texto libre.
+
+El registro lo puede borrar solo la retención nocturna o `tenant_purge`
+([retención RGPD](../procedimientos/retencion-rgpd.md)).
+
+## Acciones
+
+### Negocios (`tenant.*`)
+
+| Acción | Cuándo | Detalles |
+|---|---|---|
+| `tenant.create` | Se crea un negocio. | `version`, `comment` |
+| `tenant.publish` | Se publica la configuración (panel o `tenant_config import`). | `version`, `comment` |
+| `tenant.rollback` | Se recupera una versión anterior de la configuración. | `version`, `comment` |
+| `tenant.status` | Pausa, reanudación o baja. | `version`, `comment` |
+| `tenant.secrets` | Se sustituyen los secretos de canal, o se recifran (`tenant_secrets_reencrypt`). | solo `fields` (nombres) o `reencrypted` |
+| `tenant.export` | Exportación de todos los datos de un negocio (panel o `tenant_data_export`). | |
+| `tenant.purge` | Borrado total tras la baja (`tenant_purge`). | `slug`; sin `tenant_id`, porque el negocio ya no existe |
+| `tenant.owner_invite` | Se genera el enlace de invitación del dueño. | |
+| `tenant.owner_unlink` | Se desconecta al dueño, o se cancela su invitación. | |
+| `tenant.webhook_register`, `tenant.webhook_delete` | Se registra o borra el webhook de Telegram de un bot. Para los bots de plataforma (`demo`, `notify`) no hay `tenant_id` y el objeto es `bot`. | |
+| `tenant.setup_add_tester` | Se añade un tester desde la pestaña Alta. | |
+| `tenant.setup_check` | Se comprueba un paso de la pestaña Alta. | `step`, `state` |
+| `tenant.setup_action` | Se ejecuta una acción de la pestaña Alta. | `step`, `outcome` |
+
+### Contactos (`contact.*`)
+
+| Acción | Cuándo | Detalles |
+|---|---|---|
+| `contact.view` | Se abre la ficha de un contacto en el panel. | `contact_id` |
+| `contact.export` | Exportación de los datos de un contacto (panel o `contact_export`). | `contact_id` |
+| `contact.forget` | Borrado de un contacto (panel o `contact_forget`). | `contact_id` |
+
+### Envíos y trabajos
+
+| Acción | Cuándo | Detalles |
+|---|---|---|
+| `outbound.mark_sent` | El operador marca como enviado un envío `unknown`. | |
+| `outbound.resend` | El operador autoriza reenviar con riesgo de duplicado. | |
+| `job.retry` | El operador reintenta un trabajo fallido idempotente. | |
+
+Ver [envíos unknown](../incidencias/envios-unknown.md).
+
+### Alertas y actividad
+
+| Acción | Cuándo |
+|---|---|
+| `alert.resolve` | Una persona resuelve una alerta manual (ver [alertas](alertas.md)). |
+| `activity.view` | Se abre el contenido de un mensaje o evento en Actividad. |
+
+### Datos y consola SQL (`data.*`)
+
+| Acción | Cuándo | Detalles |
+|---|---|---|
+| `data.query` | Se ejecuta una consulta en la consola SQL. Se anota **antes** de ejecutarla. | `sql` |
+| `data.table` | Se consulta una tabla del catálogo de datos. Se anota antes de leer. | `table` |
+
+### Conjuntos de datos
+
+| Acción | Cuándo | Detalles |
+|---|---|---|
+| `dataset.import` | Se importa un dataset a un negocio (copia de una entrada de la biblioteca). | `name`, `version`, `comment` |
+| `dataset_library.push` | Se sube una versión a la biblioteca (`dataset_library push`). Sin `tenant_id`. | `version`, `comment` |
+
+Ver [horarios de bus](../procedimientos/horarios-bus.md).
+
+### Demo y acceso al panel
+
+| Acción | Cuándo |
+|---|---|
+| `demo_invite.create`, `demo_invite.revoke` | Se crea o se revoca una invitación de demo. |
+| `auth.login` | Inicio de sesión correcto en el panel. |
+| `auth.login_failed` | Contraseña o código TOTP incorrectos. |
+| `auth.login_blocked` | Intento bloqueado por demasiados fallos (`scope`: `ip` o `user`). |
+
+## Dónde está el código
+
+- `apps/backend/src/autobot/ops/audit.py` (`FORBIDDEN_KEYS`, `record`, `record_tenant`).
+- `apps/backend/src/autobot/tenancy/store/` (acciones de configuración y secretos),
+  `autobot/ops/actions.py` y `autobot/ops/tenant_actions.py` (operador),
+  `autobot/panel/` (servicios y routers), `autobot/management/commands/`.
+- Prueba de coherencia: `apps/backend/tests/repo/test_docs.py` exige que cada acción usada en
+  el código esté en esta página.

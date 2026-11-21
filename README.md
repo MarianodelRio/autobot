@@ -1,40 +1,36 @@
 # Autobot
 
-Plataforma de automatización para pequeños negocios: atiende a sus clientes por
-WhatsApp o Telegram, gestiona reservas sobre la agenda que ya usan (peluquerías) o
-responde consultas de horarios (autobuses), y avisa al dueño por Telegram con un
-resumen mensual. Una sola plataforma para 5–15 negocios, en una VPS con Docker Compose.
+Plataforma de automatización para pequeños negocios: atiende a sus clientes por WhatsApp o Telegram, gestiona reservas sobre la agenda que ya usan (peluquerías) o responde consultas de horarios (autobuses), y avisa al dueño por Telegram. Una sola plataforma para 5-15 negocios, en una VPS con Docker Compose. Visión de conjunto en [docs/arquitectura/vision-general.md](docs/arquitectura/vision-general.md).
 
-**Estado:** la plataforma está probada en local contra servicios reales (demo por
-Telegram y WhatsApp, bot de avisos, panel, Google Calendar); nada está desplegado
-todavía en producción. Pasos para ponerla en marcha en [docs/procedimientos/servidor.md](docs/procedimientos/servidor.md).
+**Estado:** probada en local contra servicios reales (demo por Telegram y WhatsApp, bot de avisos, panel, Google Calendar); nada está desplegado todavía en producción. Pasos para ponerla en marcha en [docs/procedimientos/servidor.md](docs/procedimientos/servidor.md).
+
+## Requisitos
+
+- [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta).
+- Docker con `compose` v2 y `curl`.
+- Node 24 y pnpm (`corepack enable`), solo para trabajar en el panel.
 
 ## Arranque rápido
 
-Requisito: [uv](https://docs.astral.sh/uv/) (instala Python 3.14 por su cuenta).
-
 ```bash
-make local           # todo el entorno local: db, roles, migraciones, permisos, demos, web y workers
-make check           # ruff, mypy, import-linter y tests contra la BD local
-make help             # todos los objetivos, por sección
+cd apps/backend && uv sync && cd -
+make local     # entorno local completo: db, migraciones, demos, web y workers
+make check     # ruff, mypy, import-linter y tests (necesita la BD local)
+make docs      # documentación como sitio, en http://localhost:8100
+make help      # todos los objetivos
 ```
-
-Detalle en [docs/desarrollo/entorno-local.md](docs/desarrollo/entorno-local.md).
 
 ## Mapa del repo
 
 ```
-apps/backend/   Backend Django (autocontenido: src/, tests/, pyproject.toml, Dockerfile)
+apps/backend/   Backend Django (src/, tests/, pyproject.toml, Dockerfile)
 apps/panel/     Panel interno (React, TypeScript, Vite)
-deploy/         Compose por entorno, scripts de operación, systemd, Caddy, PostgreSQL
-docs/           Documentación (ver docs/README.md)
-var/            Ficheros de ejecución, ignorados por git (local y servidor)
+deploy/         Compose por entorno, scripts, systemd, Caddy, PostgreSQL
+docs/           Documentación (docs/README.md); sitio con mkdocs.yml
+var/            Ficheros de ejecución, ignorados por git
 CLAUDE.md       Reglas para trabajar en el repo
-Makefile        Todos los comandos de desarrollo y operación (`make help`)
 ```
 
 ## Documentación
 
-Índice completo por intención en [docs/README.md](docs/README.md). Reglas para
-trabajar en el repo (idioma, forma de trabajo, arquitectura, reglas obligatorias):
-[CLAUDE.md](CLAUDE.md).
+Índice por intención en [docs/README.md](docs/README.md). Se publica como sitio con `make docs` (o `make docs-check` para validar enlaces) y, desplegado, el panel la sirve en `/docs/`. Reglas de trabajo: [CLAUDE.md](CLAUDE.md).

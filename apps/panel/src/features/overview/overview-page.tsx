@@ -65,7 +65,7 @@ export function OverviewContent({ data }: { data: Overview }) {
   const { status, tenants, month, system } = data;
   return (
     <div className="space-y-6">
-      <PageHeader title="Resumen" />
+      <PageHeader title="Resumen" help="procedimientos/panel/#resumen" />
       <div
         role="status"
         className={`rounded-lg border-l-4 bg-card p-4 ${colors[status.level]}`}

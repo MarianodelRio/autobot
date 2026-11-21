@@ -1,5 +1,45 @@
 # Retención y derechos de datos
 
+Cómo se limpian los datos con el tiempo y cómo atender una petición de exportación u
+olvido de un contacto, o la baja total de un negocio. Léelo cuando un cliente o un
+contacto ejerza sus derechos, al dar de baja un negocio o antes de activar la limpieza
+automática.
+
+!!! warning "Aprobación humana explícita"
+    Actuar sobre datos de producción (exportar, olvidar, purgar, activar la limpieza)
+    requiere aprobación humana explícita y lo ejecuta una persona (`CLAUDE.md`). Ningún
+    agente lo hace. `contact_forget` y `tenant_purge` son irreversibles.
+
+## Objetivo, cuándo y requisitos
+
+- **Objetivo:** cumplir los plazos de retención y atender derechos de acceso y supresión
+  con auditoría, sin dejar datos personales de más.
+- **Cuándo:** petición de un contacto o de un negocio; baja de un cliente (máximo 30 días
+  desde la baja efectiva hasta el borrado); decisión de activar la limpieza nocturna.
+- **Requisitos:** aprobación humana; SSH como `deploy` (clave de operación) o el panel por
+  túnel (`make panel-tunnel`); un terminal privado.
+
+## Cómo se ejecutan los comandos en producción
+
+Los comandos de `manage.py` de esta página usan la conexión `owner` (`fp_owner`, con
+`BYPASSRLS`), que solo tiene el contenedor `web`. Se ejecutan con `manage.sh`, que lanza
+un contenedor `web` efímero con la imagen desplegada:
+
+```bash
+# desde el portátil (TTY=1 si el comando pide escribir el slug)
+make prod-manage TTY=1 CMD="contact_forget <slug> <external_id> --channel main"
+# o en la VPS, como deploy, en /srv/autobot
+deploy/scripts/manage.sh contact_forget <slug> <external_id> --channel main
+```
+
+!!! note "Exportaciones: usa el panel"
+    `contact_export` y `tenant_data_export` exigen `--output <fichero>`, y el contenedor
+    efímero de producción es de solo lectura y se destruye al terminar: el fichero se
+    perdería. En producción exporta desde el panel (descarga en tu navegador; ver más abajo);
+    los comandos de exportación quedan para local.
+
+## Limpieza automática
+
 La limpieza nocturna se programa a las 03:00 UTC y permanece inerte con
 `RETENTION_CLEANUP_ENABLED=false` (valor predeterminado). Solo el operador, tras la
 aprobación humana explícita, puede establecer `true` y reiniciar `worker-inbound` (ejecuta la cola `periodic`).
@@ -26,16 +66,20 @@ nombres de tarea, nunca datos personales. Un periódico propio (`jobs_cleanup`, 
 UTC) borra los trabajos terminados de más de 30 días y **no** depende de
 `RETENTION_CLEANUP_ENABLED`, que solo gobierna los datos de clientes.
 
-Los comandos siguientes son síncronos, requieren el alias de operación `owner` y no
-encolan identificadores personales. Deben ejecutarse en un terminal privado por un
-operador autorizado. Sustituya los argumentos por el negocio y contacto correspondientes:
+## Exportar, olvidar y purgar
+
+Los comandos son síncronos, usan el alias `owner` y no encolan identificadores
+personales. Sustituye los argumentos por el negocio y el contacto correspondientes:
 
 ```sh
-uv run python manage.py contact_export SLUG EXTERNAL_ID --channel main --output /ruta/privada/contacto.json
-uv run python manage.py contact_forget SLUG EXTERNAL_ID --channel main
-uv run python manage.py tenant_data_export SLUG --output /ruta/privada/negocio.json
-uv run python manage.py tenant_purge SLUG
+manage.py contact_export SLUG EXTERNAL_ID --channel main --output /ruta/privada/contacto.json
+manage.py contact_forget SLUG EXTERNAL_ID --channel main
+manage.py tenant_data_export SLUG --output /ruta/privada/negocio.json
+manage.py tenant_purge SLUG
 ```
+
+(`manage.py` se invoca con `manage.sh` o `make prod-manage` como arriba; en local,
+`cd apps/backend && uv run python manage.py ...`.)
 
 Cada exportación y cada borrado deja un evento de auditoría (`actor` `command:<nombre>`, solo
 ids internos, nunca el identificador del contacto), igual que sus equivalentes del panel.
@@ -78,7 +122,7 @@ transacción. El panel ofrece el mismo borrado desde la ficha del cliente (menú
 
 Para dar de baja un negocio, el operador registra la fecha real de baja y una
 fecha límite de borrado de como máximo 30 días en el registro operativo de la baja.
-Ejecuta `tenant_status <slug> offboard` confirmando el slug y realiza la exportación acordada y ejecuta `tenant_purge` dentro de
+Ejecuta `tenant_status <slug> offboard` (con `manage.sh`, como arriba) confirmando el slug y realiza la exportación acordada y ejecuta `tenant_purge` dentro de
 ese plazo; comprueba que el negocio ya no aparece (`GET /tenants/<slug>` o la lista
 del panel da 404) y que no quedan secretos ni datasets antes de retirar las copias
 locales y los accesos externos. No se retira la entrada del registro antes del borrado: `worker-inbound`
@@ -88,3 +132,17 @@ backups corresponde a restic (`deploy/scripts/backup.sh`); estos comandos no mod
 
 Fuentes útiles (AEPD, consultadas el 2026-11-09): [contratos de encargo](https://www.aepd.es/es/node/813)
 y [pymes y Facilita](https://www.aepd.es/derechos-y-deberes/cumple-tus-deberes/directrices-de-aplicacion/pymes).
+
+## Verificación
+
+- El evento de auditoría existe (panel, Logs, pestaña Operador: `contact.export`,
+  `contact.forget`, `tenant.export` o `tenant.purge`).
+- Tras `tenant_purge`, el negocio no aparece en la lista del panel y no quedan secretos ni
+  datasets.
+- La limpieza nocturna sigue apagada salvo autorización expresa
+  (`RETENTION_CLEANUP_ENABLED`).
+
+## Dónde está el código
+
+`apps/backend/src/autobot/management/commands/` (`contact_export`, `contact_forget`,
+`tenant_data_export`, `tenant_purge`, `tenant_status`), `deploy/scripts/manage.sh`.

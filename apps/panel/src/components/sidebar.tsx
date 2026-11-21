@@ -11,7 +11,7 @@ import {
   Sidebar as SidebarRoot,
 } from "@/components/ui/sidebar";
 import { useLogout } from "@/features/auth/use-logout";
-import { NAV_SECTIONS } from "./nav-sections";
+import { DOCS_LINK, NAV_SECTIONS } from "./nav-sections";
 
 export function AppSidebar({
   username,
@@ -45,6 +45,14 @@ export function AppSidebar({
               )}
             </SidebarMenuItem>
           ))}
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <a href={DOCS_LINK.href} target="_blank" rel="noopener">
+                <DOCS_LINK.icon />
+                <span>{DOCS_LINK.title}</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter>

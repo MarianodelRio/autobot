@@ -1,6 +1,8 @@
 # ADR-015 — Varios peluqueros en `salon`
 
-**Estado:** aceptada
+**Estado:** Aceptada — pendiente de implementar
+
+> Nota: el código aún no lo implementa (`SalonConfig` tiene un solo `calendar_id` y `periodic.py` y `check.py` siguen mirando `name == "calendar_sweep"`).
 
 ## Contexto
 

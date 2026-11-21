@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Database,
   LayoutDashboard,
   QrCode,
@@ -24,3 +25,8 @@ export const NAV_SECTIONS: NavSection[] = [
   { title: "Datos", to: "/datos", icon: Database },
   { title: "Sistema", to: "/sistema", icon: Server },
 ];
+
+// Documentation site, served by the panel's Caddy under /docs/ (ADR-018). A plain link
+// that opens in a new tab, not a route. In `make panel-dev`, Vite proxies /docs to
+// `make docs` (see vite.config.ts).
+export const DOCS_LINK = { title: "Docs", href: "/docs/", icon: BookOpen };

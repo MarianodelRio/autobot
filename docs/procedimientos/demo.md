@@ -1,121 +1,125 @@
-# Bot de demo
+# Bot de demo en el servidor
 
-**Qué es:** la plataforma, no ningún cliente, enseña Autobot con dos puertas (un bot
-de Telegram y un número de WhatsApp) y negocios de demostración normales en
-plantillas en `apps/backend/src/packs/<pack>/template/` (`demo-peluqueria`, `demo-autobuses`).
-Los tests validan estas plantillas directamente; `manage.py seed_demos` las siembra
-en PostgreSQL solo la primera vez y conserva los cambios posteriores de cada demo. La primera respuesta de
-cualquier puerta pide elegir negocio; desde ahí la conversación es la del pack real de
-ese negocio. Solo una lista cerrada de personas, o quien canjee un código de invitación
-vigente, puede usar cada puerta (ver ADR-006).
+Operación del bot de demo en producción: encender o apagar sus dos puertas (Telegram y
+WhatsApp), dar acceso a personas y renovar el calendario de `demo-autobuses`. La plataforma,
+no ningún cliente, enseña Autobot con un bot de Telegram y un número de WhatsApp, y con
+negocios de demostración normales (`demo-peluqueria`, `demo-autobuses`) sembrados desde las
+plantillas de cada pack. Cómo funciona por dentro: [../arquitectura/bot-de-demo.md](../arquitectura/bot-de-demo.md)
+(ADR-006). La demo en local (ngrok, bot propio de desarrollo) está en
+[../desarrollo/demo-local.md](../desarrollo/demo-local.md).
+
+La primera respuesta de cualquier puerta pide elegir negocio; desde ahí la conversación es la
+del pack real de ese negocio. La persona puede cambiar de negocio escribiendo `/negocio`
+(también `/start` o `negocio`), que vuelve a mostrar la lista. Solo entra una lista cerrada
+de personas o quien canjee un código de invitación vigente.
+
+## Objetivo, cuándo y requisitos
+
+- **Objetivo:** tener las puertas de demo encendidas con los accesos correctos.
+- **Cuándo:** montar la demo por primera vez, dar o quitar acceso a alguien, rotar un token,
+  o renovar el calendario anual.
+- **Requisitos:** SSH como `deploy` a la VPS; los valores de `DEMO_*` (ver
+  [../referencia/variables-entorno.md](../referencia/variables-entorno.md)); un bot de
+  Telegram y, para WhatsApp, un número y una app de Meta de la plataforma.
+- **Aprobaciones:** la puerta WhatsApp añade una ruta y verificación de firma de webhook:
+  cambio de infraestructura que requiere aprobación humana explícita. Activar un canal real
+  también.
 
 ## Encender y apagar
 
+Las variables van en el `.env` del servidor (como `deploy`, en `/srv/autobot`). Para que
+las lean `web` y los workers, recréalos
+([despliegue.md](despliegue.md#cambiar-env-sin-desplegar)):
+
+```bash
+# en la VPS, como deploy, en /srv/autobot
+deploy/scripts/compose.sh up -d --no-deps web worker-inbound worker-outbound
+```
+
 | Qué | Cómo |
 |---|---|
-| La puerta Telegram | `DEMO_TELEGRAM_TOKEN`, `DEMO_TELEGRAM_WEBHOOK_SECRET` en `.env` del servidor (vacíos = apagada) y reiniciar `web`, `worker-inbound` y `worker-outbound` |
-| La puerta WhatsApp | `DEMO_WHATSAPP_PHONE_NUMBER_ID`, `_WABA_ID`, `_APP_SECRET`, `_ACCESS_TOKEN`, `_VERIFY_TOKEN` en `.env` del servidor (los cinco, o apagada) y reiniciar |
-| Un negocio de demo | `tenant_status <slug> pause` o `resume`, sobre el demo ya sembrado en BD |
-| Quién entra en Telegram | `DEMO_TELEGRAM_USERS` (ids de Telegram separados por comas) y reiniciar |
-| Quién entra en WhatsApp | `DEMO_WHATSAPP_USERS` (teléfonos con prefijo de país o BSUID, separados por comas) y reiniciar |
-| Demo local | un túnel de ngrok hacia `web` (puerto 8000) y un webhook real, con un bot de Telegram (y, si procede, una app de WhatsApp) de desarrollo propio — ver más abajo |
+| Puerta Telegram | `DEMO_TELEGRAM_TOKEN` y `DEMO_TELEGRAM_WEBHOOK_SECRET` (vacíos = apagada); recrear, y registrar el webhook (abajo) |
+| Puerta WhatsApp | `DEMO_WHATSAPP_PHONE_NUMBER_ID`, `_WABA_ID`, `_APP_SECRET`, `_ACCESS_TOKEN` y `_VERIFY_TOKEN` (los cinco, o apagada); recrear |
+| Un negocio de demo | `make prod-manage CMD="tenant_status <slug> pause"` o `resume` |
+| Quién entra en Telegram | `DEMO_TELEGRAM_USERS` (ids de Telegram, separados por comas); recrear |
+| Quién entra en WhatsApp | `DEMO_WHATSAPP_USERS` (teléfonos con prefijo de país o BSUID, separados por comas); recrear |
+| Enlace del bot con QR en el panel | `DEMO_TELEGRAM_BOT_USERNAME` |
 
 ## Alta de la puerta WhatsApp
 
-Checklist igual al de un negocio real (`alta-baja-negocio.md`), pero sobre el número
-de demo de la plataforma, no de ningún cliente:
+Checklist igual al de un negocio real ([alta-baja-negocio.md](alta-baja-negocio.md)), pero
+sobre el número de demo de la plataforma:
 
 1. Business Portfolio, app y número de la plataforma (no el de ningún cliente).
 2. System User con token permanente (`whatsapp_business_messaging`,
    `whatsapp_business_management`).
-3. Plantillas `confirmacion_cita` y `recordatorio_cita` (las del pack `salon`) creadas
-   y aprobadas en el número de demo.
+3. Plantillas `confirmacion_cita` y `recordatorio_cita` (las del pack `salon`) creadas y
+   aprobadas en el número de demo.
 4. Webhook de la app: `https://api.<dominio>/webhooks/whatsapp-demo`, con
    `DEMO_WHATSAPP_VERIFY_TOKEN` como `verify_token` de la suscripción.
-5. Variables `DEMO_WHATSAPP_*` en el `.env` del servidor; reiniciar `web`, `worker-inbound` y `worker-outbound`.
-6. Cambio de infraestructura (ruta nueva en `Caddyfile` y verificación de firma del
-   webhook): requiere aprobación humana explícita antes de desplegar, como cualquier
-   cambio de este tipo.
+5. Variables `DEMO_WHATSAPP_*` en el `.env` del servidor y recrear `web` y los workers (arriba).
+6. Aprobación humana explícita antes de desplegar cualquier cambio de ruta o de firma.
 
 ## Puerta Telegram en el servidor
 
-Desde `/srv/autobot`, `docker compose exec web python manage.py telegram_set_webhook
-demo` registra `https://api.<dominio>/webhooks/telegram-demo` con
-`DEMO_TELEGRAM_WEBHOOK_SECRET`.
+Con `DEMO_TELEGRAM_*` ya en `.env` y los contenedores recreados, desde el portátil:
 
-## Puerta Telegram en local (ngrok)
+```bash
+make prod-manage CMD="telegram_set_webhook demo"
+```
 
-Mismo mecanismo que el servidor (webhook), sobre un túnel de
-[ngrok](https://ngrok.com) hacia `web`, en vez de una URL de dominio propio:
+Registra `https://api.<dominio>/webhooks/telegram-demo` con `DEMO_TELEGRAM_WEBHOOK_SECRET`.
+`telegram_set_webhook demo --delete` lo retira.
 
-1. `make dev-bootstrap` prepara la BD y siembra los demos. `make ngrok` abre el túnel
-   hacia el puerto 8000 con el `NGROK_DOMAIN` de `.env` (tu dominio reservado; también
-   se puede pasar en la línea de comandos). Para que el demo de `salon` reserve de
-   verdad, fija `DEMO_SALON_CALENDAR_ID` en `.env` antes de sembrar.
-2. En `.env`: `PUBLIC_URL=<la URL https de ngrok>`, `DEMO_TELEGRAM_TOKEN` (bot de
-   desarrollo propio, distinto del de producción), `DEMO_TELEGRAM_USERS` y
-   `DEMO_TELEGRAM_WEBHOOK_SECRET` (aleatorio, p. ej. `openssl rand -hex 32`).
-3. `docker compose restart web worker-inbound worker-outbound` y después `docker compose exec web python
-   manage.py telegram_set_webhook demo`.
-4. Si la URL de ngrok cambia (reinicio sin dominio reservado), repetir los pasos 2-3
-   con la URL nueva.
+## Puertas en local
 
-Para un bot sin webhook (p. ej. grabar fixtures de un negocio real antes de darlo de
-alta), `manage.py telegram_poll <slug>` (`make telegram-poll SLUG=<slug>`) sigue
-disponible (reintenta un update si la base de datos cae un momento, y no avanza el
-*offset* hasta guardarlo); un bot con webhook no admite polling a la vez (`telegram_set_webhook
-demo --delete` se lo quita, nunca a un bot que use el servidor).
-
-## Puerta WhatsApp en local (ngrok)
-
-Mismo checklist que [el alta de la puerta WhatsApp](#alta-de-la-puerta-whatsapp), con
-una app de WhatsApp **de desarrollo** (nunca la de producción) y la URL de ngrok en
-vez del dominio propio:
-
-1. `make ngrok` abre el túnel hacia el puerto 8000 (con `NGROK_DOMAIN` de `.env`).
-2. En la app de WhatsApp de desarrollo, el webhook de la suscripción es
-   `<URL de ngrok>/webhooks/whatsapp-demo`, con `DEMO_WHATSAPP_VERIFY_TOKEN` como
-   `verify_token`.
-3. En `.env`: `PUBLIC_URL=<la URL https de ngrok>` y las cinco `DEMO_WHATSAPP_*`
-   (`_PHONE_NUMBER_ID`, `_WABA_ID`, `_APP_SECRET`, `_ACCESS_TOKEN`, `_VERIFY_TOKEN`) de
-   la app de desarrollo.
-4. `docker compose restart web worker-inbound worker-outbound`.
-5. Si la URL de ngrok cambia, repetir los pasos 2-3 con la URL nueva.
+Para probar con un bot de desarrollo propio y un túnel de ngrok, sigue
+[../desarrollo/demo-local.md](../desarrollo/demo-local.md). Nunca uses en local los tokens
+de producción.
 
 ## Añadir o quitar personas
 
-**Por invitación (preferido):** desde el panel, pestaña «Demo», «Crear invitación»
-(nota, usos y caducidad). La persona entra con `/start <código>` en Telegram (el panel
-da el enlace `t.me/<bot>?start=<código>` y su QR si `DEMO_TELEGRAM_BOT_USERNAME` está
-configurada; sin ella, solo el código) o enviando el código tal cual por WhatsApp. No
-hace falta tocar el `.env` ni reiniciar nada. Los códigos tienen 12 caracteres (los
-de menos de 10 no se canjean) y quien falla 5 canjes en una hora no puede canjear más
-hasta que pase (memoria del proceso; reiniciar `web`/`worker-inbound` lo borra). Revocar un código impide canjearlo de
-nuevo, pero no retira el acceso ya concedido con él; para eso, editar la lista cerrada
-(abajo) sigue siendo la única vía.
+**Por invitación (preferido):** en el panel, pantalla Demo, «Crear invitación» (nota, usos y
+caducidad). La persona entra con `/start <código>` en Telegram (el panel da el enlace
+`t.me/<bot>?start=<código>` y su QR si `DEMO_TELEGRAM_BOT_USERNAME` está configurada; sin
+ella, solo el código) o enviando el código tal cual por WhatsApp. No hace falta tocar el
+`.env` ni reiniciar nada. Los códigos tienen 12 caracteres (los de menos de 10 no se
+canjean) y quien falla 5 canjes en una hora no puede canjear más hasta que pase (memoria del
+proceso; reiniciar `web` o `worker-inbound` lo borra). Revocar un código impide canjearlo de
+nuevo, pero no retira el acceso ya concedido; para eso, edita la lista cerrada.
 
-**Por lista cerrada:** edita `DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS` en el `.env`
-del servidor y reinicia `web`, `worker-inbound` y `worker-outbound`.
+**Por lista cerrada:** edita `DEMO_TELEGRAM_USERS` o `DEMO_WHATSAPP_USERS` en el `.env` del
+servidor y recrea `web` y los workers.
 
 ## Renovación anual del calendario de `demo-autobuses`
 
-El dataset de `demo-autobuses` declara una `vigencia` (ver `docs/referencia/packs/bus.md`). Es la
-entrada `demo` de la biblioteca (ADR-013; `seed_demos` la sube la primera vez). Cada
-verano, antes de que caduque: bajar con `make bus-bajar NOMBRE=demo`, editar
-`var/datos/demo/timetable/calendario.yaml`, formatear, validar y revisar con los
-targets `bus-*`, y subir con `make bus-subir NOMBRE=demo COMMENT="Renovación anual de
-demo"`. Para actuar sobre el servidor, añadir `PROD=1` tanto al bajar como al subir.
-Por último, aplicar la versión nueva desde la ficha de `demo-autobuses` → Configuración
-→ Horarios → «Aplicar» (y la de cualquier otro cliente que use la misma entrada). Es un
-dataset ficticio y no tiene una empresa que deba aprobar el PDF.
+El dataset de `demo-autobuses` declara una `vigencia` (formato en
+[../referencia/packs/bus.md](../referencia/packs/bus.md)) y es la entrada `demo` de la
+biblioteca (ADR-013; `seed_demos` la sube la primera vez). Cada verano, antes de que caduque,
+desde el portátil:
 
-Actualizar también `apps/backend/src/packs/bus/template/datasets/timetable/calendario.yaml` para
-los demos que se creen en el futuro, ejecutar `make check` y hacer commit de ese cambio
-de plantilla. `seed_demos` conserva las versiones de los demos ya existentes.
+1. `make bus-bajar NOMBRE=demo PROD=1`.
+2. Edita `var/datos/demo/timetable/calendario.yaml`.
+3. `make bus-formatear NOMBRE=demo`, `make bus-validar NOMBRE=demo` y
+   `make bus-revision NOMBRE=demo`.
+4. `make bus-subir NOMBRE=demo COMMENT="Renovación anual de demo" PROD=1`.
+5. Aplica la versión nueva en el panel: ficha de `demo-autobuses`, Configuración, Horarios,
+   «Aplicar» (y en cualquier otro cliente que use la misma entrada). Es un dataset ficticio:
+   no hay empresa que apruebe el PDF.
+6. Actualiza también `apps/backend/src/packs/bus/template/datasets/timetable/calendario.yaml`
+   para los demos futuros, ejecuta `make check` y haz commit. `seed_demos` conserva las
+   versiones de los demos ya existentes.
 
-## Diagnóstico
+## Verificación
 
-Ver también `docs/incidencias/negocio-o-canal.md` (una puerta o negocio de demo no
-responde), `docs/incidencias/calendar.md` (el calendario de `demo-peluqueria` sin
-acceso) y `docs/procedimientos/rotar-secretos.md` (rotar un secreto de cualquiera de las
-dos puertas).
+- Un mensaje desde una persona autorizada recibe la lista de negocios; `/negocio` vuelve a
+  mostrarla.
+- `make prod-manage CMD="telegram_set_webhook demo"` termina sin error y el panel (Sistema,
+  Estado) muestra la integración de demo encendida.
+- Una invitación nueva se canjea una vez y deja de funcionar al agotarse.
+
+## Relacionado
+
+[../incidencias/negocio-o-canal.md](../incidencias/negocio-o-canal.md) (una puerta o negocio
+de demo no responde), [../incidencias/calendar.md](../incidencias/calendar.md) (calendario de
+`demo-peluqueria` sin acceso), [rotar-secretos.md](rotar-secretos.md).

@@ -1,6 +1,6 @@
 # ADR-001 — Monolito modular Django + Procrastinate
 
-**Estado:** aceptada
+**Estado:** vigente
 
 ## Contexto
 

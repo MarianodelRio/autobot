@@ -27,6 +27,7 @@ const alert = {
   auto_resolves: false,
   resolved_at: null,
   resolved_by: null,
+  runbook: "/docs/incidencias/calendar/",
 };
 
 const outbound = {
@@ -139,6 +140,18 @@ function posted(fetcher: ReturnType<typeof stubFetch>, suffix: string) {
       String((call[0] as Request).url).endsWith(suffix),
   );
 }
+
+test("an alert with a runbook links to it in the docs", async () => {
+  vi.stubGlobal("fetch", stubFetch());
+  renderPage();
+
+  const link = await screen.findByRole(
+    "link",
+    { name: "Ver runbook" },
+    { timeout: 8000 },
+  );
+  expect(link.getAttribute("href")).toBe("/docs/incidencias/calendar/");
+}, 10_000);
 
 test("resolves an alert that does not auto-resolve", async () => {
   const user = userEvent.setup();

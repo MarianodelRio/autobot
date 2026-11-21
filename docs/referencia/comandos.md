@@ -5,7 +5,7 @@ o cambia un comando amplía esta tabla en el mismo commit.
 
 ## `make`
 
-Las secciones siguen las del `Makefile` (`make help`). Las de desarrollo y calidad se
+Las secciones siguen las del `Makefile` (`make help`). Las de desarrollo, calidad y documentación se
 ejecutan en tu máquina; localprod ensaya la producción en local; las dos últimas operan
 sobre el servidor de producción (instalación dentro de la VM, el resto por SSH o GitHub).
 
@@ -13,14 +13,14 @@ sobre el servidor de producción (instalación dentro de la VM, el resto por SSH
 
 | Comando | Qué hace |
 |---|---|
-| `make help` | Lista los objetivos por sección (Ayuda, Desarrollo, Calidad, Panel, Negocios, Bus, Entorno local completo, Instalación y traslado, Producción); objetivo por defecto |
+| `make help` | Lista los objetivos por sección (Ayuda, Desarrollo, Calidad, Documentación, Panel, Negocios, Bus, Entorno local completo, Instalación y traslado, Producción); objetivo por defecto |
 
 ### Desarrollo
 
 | Comando | Qué hace |
 |---|---|
 | `make up` | Construye y levanta los contenedores de desarrollo (`docker compose up -d --build`) |
-| `make local` | Un solo comando para dejar todo el entorno local funcionando, desde cero o desde un estado previo y sin borrar datos (`deploy/scripts/install-local.sh`, ADR-017): comprueba requisitos, crea `.env` desde `.env.example` si falta, levanta db, roles, build, migra, `apply_grants`, `seed_demos`, crea el usuario del panel (si hay terminal) y levanta web/workers comprobando su salud; opciones `--check`, `--skip-panel-user` |
+| `make local` | Un solo comando para dejar todo el entorno local funcionando, desde cero o desde un estado previo y sin borrar datos (`deploy/scripts/install-local.sh`, ADR-017): comprueba requisitos, crea `.env` desde `.env.example` si falta, levanta db, roles, build, migra, `apply_grants`, `seed_demos`, crea el usuario del panel (si hay terminal) y levanta web/workers comprobando su salud; opciones `--check` y `--skip-panel-user`, que se pasan con `ARGS` (`make local ARGS="--check"`) |
 | `make dev-bootstrap` | Alias de `make local` |
 | `make dev-reset` | Exige escribir `RESET`, elimina el volumen local y repite `make local` |
 | `make tenant-import DIR=<dir> [SECRETS=<yaml>]` | Importa un directorio contra la BD local desde el host; acepta rutas con espacios |
@@ -40,9 +40,17 @@ sobre el servidor de producción (instalación dentro de la VM, el resto por SSH
 |---|---|
 | `make test` | `uv run pytest` |
 | `make test-fast` | `pytest -m "not db"`, sin base de datos levantada |
+| `make check-prod-config` | Ejecuta `apps/backend/src/tools/ops/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
 | `make check` | Puerta de calidad del backend: `ruff check`, `ruff format --check`, `mypy`, `import-linter`, `pytest` |
 | `make fix` | `ruff check --fix` y `ruff format` en el backend, `biome check --write` en `apps/panel/`, y `make api` |
 | `make api` | Regenera `apps/panel/openapi.json` (esquema de la API del panel) y `apps/panel/src/api/schema.d.ts` (tipos TypeScript) |
+
+### Documentación
+
+| Comando | Qué hace |
+|---|---|
+| `make docs` | Sirve este sitio en local con Zensical (`mkdocs.yml`), con recarga al editar |
+| `make docs-check` | Construye el sitio en modo estricto: un enlace roto o una página que falta falla. Se ejecuta en CI |
 
 ### Panel
 
@@ -58,7 +66,6 @@ sobre el servidor de producción (instalación dentro de la VM, el resto por SSH
 |---|---|
 | `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
 | `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
-| `make check-prod-config` | Ejecuta `apps/backend/src/tools/ops/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
 | `make tenant-push SLUG=<slug> [SECRETS=<yaml>]` | Exporta la BD local y la importa por SSH. El YAML privado aporta solo la entrada del slug; el temporal se borra al salir |
 
 ### Bus
@@ -98,7 +105,7 @@ sobre el servidor de producción (instalación dentro de la VM, el resto por SSH
 | `make prod-manage CMD="..." [TTY=1]` | Ejecuta el comando con la imagen desplegada mediante SSH; `TTY=1` para comandos interactivos, sin TTY para streams binarios |
 | `make prod-compose ARGS="..." [TTY=1]` | Ejecuta un comando de `docker compose` (p. ej. `exec`, `logs`) contra el servidor por SSH, con `SHA` y `--env-file` ya puestos |
 
-`HOST ?= autobot` usa el alias de `~/.ssh/config`; se puede sobrescribir en cada
+Los objetivos con opciones libres (`make local`, `make install-vm`, `make qr`, `make bus-revision`, `make prod-compose`) las reciben en `ARGS="..."`; `make` no pasa `--flags` sueltos. `HOST ?= autobot` usa el alias de `~/.ssh/config`; se puede sobrescribir en cada
 comando. `NGROK_DOMAIN` no tiene valor por defecto: `make ngrok` lo lee de `.env` y
 también se puede pasar en la línea de comandos.
 
