@@ -2,7 +2,7 @@
 # Multi-stage image: dependencies with uv, then a minimal non-root runtime.
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
-FROM python:3.14-slim AS build
+FROM python:3.15-slim AS build
 COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -13,7 +13,7 @@ COPY pyproject.toml uv.lock ./
 ARG INSTALL_DEV=false
 RUN if [ "$INSTALL_DEV" = true ]; then uv sync --locked; else uv sync --locked --no-dev; fi
 
-FROM python:3.14-slim AS runtime
+FROM python:3.15-slim AS runtime
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY --from=build /opt/venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH \
