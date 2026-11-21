@@ -1,6 +1,6 @@
 import dataclasses
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -91,13 +91,7 @@ def test_idem_keys() -> None:
         IdemKeys(None).event("booking")
 
 
-def test_pack_result_defaults_mean_no_change() -> None:
-    result = PackResult()
-    assert result.replies == [] and result.actions == [] and result.state is None
-    assert PackResult().replies is not result.replies
-
-
-def test_pack_declaration() -> None:
+def test_pack_declaration_defaults() -> None:
     class ToyConfig(BaseModel):
         greeting: str = "Hola"
 
@@ -115,8 +109,21 @@ def test_pack_declaration() -> None:
     assert pack.conversation_timeout_min == 30
     assert not pack.needs_calendar and pack.load_data is None
     assert pack.periodic[0].max_delay_min == 60
+    # A result means "no change" by default, and its lists are not shared between results.
+    result = PackResult()
+    assert result.replies == [] and result.actions == [] and result.state is None
+    assert PackResult().replies is not result.replies
 
 
 def test_system_clock_is_a_clock_in_the_tenant_zone() -> None:
-    clock: Clock = SystemClock(ZoneInfo("Europe/Madrid"))
-    assert clock.now().tzinfo == ZoneInfo("Europe/Madrid")
+    madrid = ZoneInfo("Europe/Madrid")
+    tokyo = ZoneInfo("Asia/Tokyo")
+    clock: Clock = SystemClock(madrid)
+    now = clock.now()
+    assert now.tzinfo == madrid
+    assert abs(now - datetime.now(UTC)) < timedelta(seconds=5)
+    # The same instant, shown with each zone's own offset.
+    other = SystemClock(tokyo).now()
+    assert other.tzinfo == tokyo
+    assert other.utcoffset() == timedelta(hours=9)
+    assert other.utcoffset() != now.utcoffset()

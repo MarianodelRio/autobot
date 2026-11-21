@@ -37,15 +37,12 @@ def parse_external_id(text: str | None) -> str | None:
 def parse_phone(text: str | None) -> str | None:
     """
     Extract phone number from 'Telefono:' field.
-    Falls back to 'Tel:' for backwards compatibility.
     Returns None if the stripped digit count is outside 7–15 (E.164 range).
     """
     if not text:
         return None
     text = _strip_html(text)
     match = re.search(r"tel[eé]fono\s*:\s*(\+?[\d\s\-]{6,})", text, re.IGNORECASE)
-    if not match:
-        match = re.search(r"tel\s*:\s*(\+?[\d\s\-]{6,})", text, re.IGNORECASE)
     if match:
         # Strip formatting, then remove leading '+' to normalise to digits-only
         # (WhatsApp sends numbers without '+'; this avoids mismatches with
@@ -135,20 +132,10 @@ def parse_service_title(
 
     left_norm = _norm(left_orig)
 
-    # import local: evita ciclos y permite patch en tests
-
-    _LEGACY_ALIASES = [
-        ("corte y barba", "corte_barba"),
-        ("corte+barba", "corte_barba"),
-        ("corte barba", "corte_barba"),
-        ("corte_barba", "corte_barba"),
-    ]
-
     candidates = []
     for key, svc in services.items():
         candidates.append((_norm(svc), key))
         candidates.append((_norm(key.replace("_", " ")), key))
-    candidates.extend((alias, key) for alias, key in _LEGACY_ALIASES if key in services)
     candidates = [(pat, key) for pat, key in candidates if pat]
     candidates.sort(key=lambda t: -len(t[0]))
 

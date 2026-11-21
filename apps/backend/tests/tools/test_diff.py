@@ -1,8 +1,8 @@
-"""packs/bus/tests/test_diff.py — altas, bajas y cambios de hora, de observaciones, de
+"""tests/tools/test_diff.py — altas, bajas y cambios de hora, de observaciones, de
 temporadas y de días, en lenguaje de negocio.
 
-Construye Modelo/Linea/Viaje/Paso/Temporada a mano: diff.py es puro y no toca
-disco ni invoca formato.validar()."""
+Construye Modelo/Linea/Viaje/Paso/Temporada a mano: `tools/bus/diff.py` es puro y no toca
+disco ni invoca `formato.validar()`."""
 
 from __future__ import annotations
 
@@ -10,12 +10,11 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
-from packs.bus import diff
-from packs.bus.formato import Modelo
 from packs.bus.modelo import (
     Calendario,
     Linea,
     Localidad,
+    Modelo,
     Observacion,
     Parada,
     Paso,
@@ -23,6 +22,7 @@ from packs.bus.modelo import (
     Temporada,
     Viaje,
 )
+from tools.bus import diff
 
 PARADAS = {
     "AAA": Parada(codigo="AAA", nombre="Pueblo A", localidad="pueblo-a"),
@@ -401,7 +401,7 @@ def test_linea_eliminada() -> None:
     assert mensajes == ["Línea eliminada: Línea Vieja."]
 
 
-# ── llegada>salida y bus: (ciclo C1) ────────────────────────────────────────
+# ── llegada>salida y bus: ────────────────────────────────────────
 
 
 def _comparar_un_viaje(v_ant: Viaje, v_act: Viaje) -> list[str]:

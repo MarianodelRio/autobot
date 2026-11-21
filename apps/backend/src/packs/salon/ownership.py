@@ -2,15 +2,9 @@
 
 from collections.abc import Sequence
 
+from core.phone import phone_key
 from packs.salon.parser import parse_external_id, parse_phone
 from packs.salon.ports import CalEvent
-
-
-def phone_key(value: str | None) -> str:
-    import re
-
-    digits = re.sub(r"\D", "", value or "")
-    return "34" + digits if len(digits) == 9 else digits
 
 
 def belongs(

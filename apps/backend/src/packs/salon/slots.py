@@ -4,8 +4,12 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Protocol
 
-from packs.salon.parser import parse_cfg
+from core.dates import minutes_of, parse_hhmm
+from packs.salon.parser import parse_cfg, parse_phone
 from packs.salon.ports import CalEvent
+
+# With a single span, slots from this time on count as afternoon.
+AFTERNOON_START = time(14)
 
 
 class ServiceRules(Protocol):
@@ -22,17 +26,12 @@ class SlotRules(Protocol):
     def min_notice_min(self) -> int: ...
 
 
-def read_time(value: str) -> time:
-    hour, minute = value.split(":")
-    return time(int(hour), int(minute))
-
-
 def generate_slots(start: str, end: str, presence_min: int = 30, step_min: int = 30) -> list[time]:
     if min(presence_min, step_min) <= 0:
         raise ValueError("slot lengths must be positive")
-    begin, finish = read_time(start), read_time(end)
-    minute = begin.hour * 60 + begin.minute
-    last = finish.hour * 60 + finish.minute
+    begin, finish = parse_hhmm(start), parse_hhmm(end)
+    minute = minutes_of(begin)
+    last = minutes_of(finish)
     slots: list[time] = []
     while minute + presence_min <= last:
         slots.append(time(minute // 60, minute % 60))
@@ -53,8 +52,6 @@ def overlaps(start: datetime, end: datetime, slot_start: datetime, slot_end: dat
 
 
 def classify(event: CalEvent) -> str:
-    from packs.salon.parser import parse_phone
-
     if event.private.get("fp_key"):
         return "bot"
     if parse_cfg(event.summary):
@@ -106,5 +103,5 @@ def split_periods(
     slots: Sequence[time], spans: Sequence[tuple[str, str]]
 ) -> tuple[list[time], list[time]]:
     ranges = sorted(spans)
-    boundary = read_time(ranges[1][0]) if len(ranges) > 1 else time(14)
+    boundary = parse_hhmm(ranges[1][0]) if len(ranges) > 1 else AFTERNOON_START
     return [s for s in slots if s < boundary], [s for s in slots if s >= boundary]

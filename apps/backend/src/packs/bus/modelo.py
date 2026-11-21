@@ -1,14 +1,17 @@
-"""packs/bus/modelo.py — entidades inmutables del modelo de horarios.
+"""packs/bus/modelo.py — entidades del modelo de horarios.
 
-Estos objetos son el resultado de cargar y validar
-`horarios/` con `packs/bus/formato.py`. No se construyen a mano en
-ningún otro sitio.
+Estos objetos son el resultado de cargar y validar `horarios/` con
+`packs/bus/formato/`. No se construyen a mano en ningún otro sitio (salvo en
+tests).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from functools import cached_property
+
+from core.dates import MONTH_NUMBER
 
 
 @dataclass(frozen=True)
@@ -16,7 +19,7 @@ class Localidad:
     id: str
     nombre: str
     alias: tuple[str, ...] = ()
-    # Localidad pendiente (P15/P32): aldea sin hora de paso propia. `ver` es la
+    # Localidad pendiente: aldea sin hora de paso propia. `ver` es la
     # localidad en cuyo lugar se consulta; `minutos` la distancia hasta ella;
     # `aviso` la observación (viaje) opcional que relaciona viajes con la aldea.
     pendiente: str | None = None
@@ -83,8 +86,8 @@ class Viaje:
 @dataclass(frozen=True)
 class Calendario:
     """Festivos y periodo escolar (`horarios/calendario.yaml`).
-    Validado por `formato.py` como el resto de `horarios/`; `calendario.py`
-    (fase 2) solo hace lógica pura sobre este objeto ya validado."""
+    Validado por `formato/` como el resto de `horarios/`; `calendario.py`
+    solo hace lógica pura sobre este objeto ya validado."""
 
     vigencia_inicio: date
     vigencia_fin: date
@@ -94,9 +97,9 @@ class Calendario:
     vacaciones: tuple[tuple[date, date], ...] = ()
     no_lectivos: tuple[date, ...] = ()
     pendientes: tuple[str, ...] = ()
-    # Días (mes, día) de todos los años sin servicio en ninguna línea (P03g).
+    # Días (mes, día) de todos los años sin servicio en ninguna línea.
     sin_servicio_todas_las_lineas: frozenset[tuple[int, int]] = frozenset()
-    # localidad (id) -> {fecha: nombre} de festivos locales (P03e).
+    # localidad (id) -> {fecha: nombre} de festivos locales.
     festivos_locales: dict[str, dict[date, str]] = field(default_factory=dict)
 
 
@@ -115,7 +118,37 @@ class Linea:
     # Título corto para la lista de líneas del bot (WhatsApp: 24 caracteres).
     nombre_corto: str | None = None
 
+    @cached_property
+    def meses_no_circula(self) -> frozenset[int]:
+        """Números de mes (1-12) de `no_circula`, calculados una vez. Un nombre
+        que no es un mes se ignora, como siempre."""
+        meses = (MONTH_NUMBER.get(str(m).strip().lower()) for m in self.no_circula)
+        return frozenset(m for m in meses if m is not None)
+
     @property
     def titulo(self) -> str:
         """Único sitio que decide el título visible de la línea en el bot."""
         return self.nombre_corto or self.nombre
+
+
+@dataclass
+class Modelo:
+    localidades: dict[str, Localidad]
+    paradas: dict[str, Parada]
+    observaciones: dict[str, Observacion]
+    lineas: dict[str, Linea]
+    pendientes: tuple[str, ...] = ()  # pendientes declarados en paradas.yaml
+    # Pares de localidades entre las que la empresa no vende billetes, en
+    # ninguno de los dos sentidos, declarados en paradas.yaml.
+    no_vendibles: frozenset[frozenset[str]] = frozenset()
+    # None solo si la validación no llegó a construirlo (errores);
+    # `formato.validar()` siempre lo rellena si no hay errores. Los tests
+    # construyen Modelo(...) a mano sin validar y dependen de este valor por defecto.
+    calendario: Calendario | None = None
+
+
+@dataclass
+class Resultado:
+    modelo: Modelo | None
+    errores: list[str]
+    avisos: list[str]

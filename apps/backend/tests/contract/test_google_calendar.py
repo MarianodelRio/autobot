@@ -55,35 +55,35 @@ def test_pagination_and_html() -> None:
     assert api.events().list.call_args.kwargs["calendarId"] == "test-calendar"
 
 
-def test_reads_and_writes_request_only_the_fields_used() -> None:
+CONFIRMED = EVENT | {"description": "Nombre: Lucía\nEstado: confirmada"}
+
+
+@pytest.mark.parametrize(
+    ("operation", "response", "call"),
+    [
+        ("list", {"items": [EVENT]}, lambda cal: cal.list_events(START, END)),
+        ("get", EVENT, lambda cal: cal.get_event("abc123")),
+        ("insert", EVENT, lambda cal: cal.insert_event(EVENT, "abc123")),
+        (
+            "patch",
+            CONFIRMED,
+            lambda cal: cal.patch_description("abc123", {"Estado": "confirmada"}),
+        ),
+    ],
+)
+def test_reads_and_writes_request_only_the_fields_used(
+    operation: str, response: dict[str, Any], call: Any
+) -> None:
     """`fields=` (partial response) keeps every Calendar call from returning the full
     resource (attendees, conferenceData, reminders...) when `_event()` only reads a
     handful of fields."""
-    cal, api = client({"items": [EVENT]})
-    cal.list_events(START, END)
-    assert api.events().list.call_args.kwargs["fields"] == f"nextPageToken,items({FIELDS})"
-
-    api.events.return_value.get.return_value.execute.side_effect = [EVENT]
-    cal.get_event("abc123")
-    assert api.events().get.call_args.kwargs["fields"] == FIELDS
-
-    api.events.return_value.insert.return_value.execute.side_effect = [EVENT]
-    cal.insert_event(EVENT, "abc123")
-    assert api.events().insert.call_args.kwargs["fields"] == FIELDS
-
-    # Both raise afterward (the fixed EVENT response doesn't reflect the patch), but
-    # the request itself, with `fields=`, already happened by then.
-    api.events.return_value.get.return_value.execute.side_effect = [EVENT]
-    api.events.return_value.patch.return_value.execute.side_effect = [EVENT]
-    with contextlib.suppress(CalendarPermanentError):
-        cal.patch_description("abc123", {"Estado": "pendiente"})
-    assert api.events().patch.call_args.kwargs["fields"] == FIELDS
-
-    api.events.return_value.get.return_value.execute.side_effect = [EVENT]
-    api.events.return_value.patch.return_value.execute.side_effect = [EVENT]
-    with contextlib.suppress(CalendarPermanentError):
-        cal.patch_private("abc123", {"k": "v"})
-    assert api.events().patch.call_args.kwargs["fields"] == FIELDS
+    cal, api = client()
+    events = api.events.return_value
+    events.get.return_value.execute.return_value = EVENT
+    getattr(events, operation).return_value.execute.side_effect = [response]
+    call(cal)
+    expected = f"nextPageToken,items({FIELDS})" if operation == "list" else FIELDS
+    assert getattr(events, operation).call_args.kwargs["fields"] == expected
 
 
 def test_all_day_end_is_exclusive() -> None:
@@ -108,7 +108,7 @@ def test_permanent_errors(status: int) -> None:
         error(429),
         error(503),
         TimeoutError(),
-        httplib2.ServerNotFoundError("no DNS"),  # X12: any httplib2 error is transient
+        httplib2.ServerNotFoundError("no DNS"),  # any httplib2 error is transient
     ],
 )
 def test_transient_failures_retry_twice(failure: Exception) -> None:
@@ -158,7 +158,7 @@ def test_private_owner_wins_over_legacy_phone() -> None:
     assert cal.list_contact_events("other", "34600000001", START, END) == []
 
 
-def test_description_and_metadata_patches_preserve_other_fields() -> None:
+def test_description_patch_preserves_other_fields() -> None:
     cal, api = client()
     api.events().get.return_value.execute.return_value = EVENT
     api.events().patch.return_value.execute.return_value = EVENT | {
@@ -167,13 +167,6 @@ def test_description_and_metadata_patches_preserve_other_fields() -> None:
     result = cal.patch_description("abc123", {"Estado": "confirmada"})
     assert "Nombre: Lucía" in result.description
     assert result.description.count("Estado:") == 1
-    api.events().patch.return_value.execute.return_value = EVENT | {
-        "extendedProperties": {"private": {"fp_contact": "contact", "fp_key": "key"}}
-    }
-    assert cal.patch_private("abc123", {"fp_key": "key"}).private == {
-        "fp_contact": "contact",
-        "fp_key": "key",
-    }
 
 
 def test_service_caches_credentials_per_file(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -199,7 +192,7 @@ def test_service_caches_credentials_per_file(monkeypatch: pytest.MonkeyPatch) ->
 def test_service_account_email_reads_the_credentials_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # D1: the panel shows this so a client knows what to share their calendar with.
+    # The panel shows this so a client knows what to share their calendar with.
     monkeypatch.setattr(
         service_account.Credentials,
         "from_service_account_file",
@@ -213,7 +206,7 @@ def test_service_account_email_is_none_without_a_valid_file() -> None:
 
 
 def test_service_uses_a_short_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    """X14: a short timeout per Calendar call, so an outage blocks an `inbound` thread
+    """A short timeout per Calendar call, so an outage blocks an `inbound` thread
     for as little time as possible (it also has its own worker, so it never blocks
     `outbound`/`periodic` either)."""
     import integrations.google_calendar.client as client_module
@@ -239,14 +232,6 @@ def test_the_real_client_satisfies_the_pack_protocol() -> None:
     port: CalendarPort = cal
     port.check_access()
     assert api.events().list.call_args.kwargs["maxResults"] == 1
-
-
-def test_future_events_for_migration_have_a_bounded_horizon() -> None:
-    from integrations.google_calendar.client import FUTURE_HORIZON
-
-    cal, api = client({"items": [EVENT]})
-    assert len(cal.list_future_events(START)) == 1
-    assert api.events().list.call_args.kwargs["timeMax"] == (START + FUTURE_HORIZON).isoformat()
 
 
 def rate_limit_error(reason: str, status: int = 403) -> HttpError:
@@ -361,7 +346,7 @@ def test_observer_retains_denial_when_caller_catches_it(missing_status: int) -> 
 
 
 def test_check_write_access_inserts_confirms_and_deletes_a_probe_event() -> None:
-    """D3: verified for real against the local demo calendar too (not just here)."""
+    """Verified for real against the local demo calendar too (not just here)."""
     api = MagicMock()
     api.events.return_value.list.return_value.execute.side_effect = [{"items": []}]
 

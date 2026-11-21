@@ -178,16 +178,8 @@ def _merge(replies: list[Reply]) -> list[Reply]:
     return merged
 
 
-def _cut(value: str, limit: int) -> str:
-    return value[:limit]
-
-
 def _cut_optional(value: str | None, limit: int) -> str | None:
     return None if value is None else value[:limit]
-
-
-def _units(value: str, limit: int) -> str:
-    return cut_utf16(value, limit)
 
 
 def _units_optional(value: str | None, limit: int) -> str | None:
@@ -197,12 +189,12 @@ def _units_optional(value: str | None, limit: int) -> str | None:
 def _truncate(reply: Reply) -> Reply:
     match reply:
         case Text():
-            return Text(_cut(reply.body, MAX_TEXT))
+            return Text(reply.body[:MAX_TEXT])
         case Buttons():
             return Buttons(
-                body=_cut(reply.body, MAX_INTERACTIVE_BODY),
+                body=reply.body[:MAX_INTERACTIVE_BODY],
                 buttons=[
-                    Button(b.id, _units(b.title, MAX_BUTTON_TITLE))
+                    Button(b.id, cut_utf16(b.title, MAX_BUTTON_TITLE))
                     for b in reply.buttons[:MAX_BUTTONS]
                 ],
                 header=_cut_optional(reply.header, MAX_HEADER),
@@ -215,7 +207,7 @@ def _truncate(reply: Reply) -> Reply:
                 rows = [
                     Row(
                         r.id,
-                        _units(r.title, MAX_ROW_TITLE),
+                        cut_utf16(r.title, MAX_ROW_TITLE),
                         _units_optional(r.description, MAX_ROW_DESCRIPTION),
                     )
                     for r in s.rows[:room]
@@ -224,8 +216,8 @@ def _truncate(reply: Reply) -> Reply:
                 if rows:
                     sections.append(Section(_units_optional(s.title, MAX_SECTION_TITLE), rows))
             return List(
-                body=_cut(reply.body, MAX_INTERACTIVE_BODY),
-                button_label=_units(reply.button_label, MAX_LIST_BUTTON_LABEL),
+                body=reply.body[:MAX_INTERACTIVE_BODY],
+                button_label=cut_utf16(reply.button_label, MAX_LIST_BUTTON_LABEL),
                 sections=sections,
                 header=_cut_optional(reply.header, MAX_HEADER),
                 footer=_cut_optional(reply.footer, MAX_FOOTER),

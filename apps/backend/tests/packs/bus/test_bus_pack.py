@@ -30,7 +30,7 @@ from tests.helpers.integration import (
     wa_tenant,
     wa_text,
 )
-from tests.packs.bus.conversation_harness import CONFIG, HORARIOS_FICTICIOS
+from tests.packs.bus.demo import CONFIG, HORARIOS_FICTICIOS
 from tests.platform.tenancy.helpers import PACKS, TG_SECRETS, WA_SECRETS, seed_db
 
 pytestmark = [

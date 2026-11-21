@@ -26,7 +26,7 @@ from core.errors import PermanentError, TransientError
 from core.text import fold, strip_html
 
 # Short, so an outage blocks an `inbound` thread for as little time as possible
-# (X14: `inbound` has its own worker, but a long wait here still delays that
+# (`inbound` has its own worker, but a long wait here still delays that
 # contact's retries and the alert from catching on).
 TIMEOUT_S = 5
 
@@ -37,9 +37,6 @@ log = logging.getLogger(__name__)
 _RATE_LIMIT_REASONS = frozenset(
     {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded", "dailyLimitExceeded"}
 )
-# The longest horizon of `list_future_events` (the salon migration): a recurring event
-# expanded with `singleEvents` would otherwise never end.
-FUTURE_HORIZON = timedelta(days=730)
 
 
 def _reasons(exc: HttpError) -> set[str]:
@@ -72,7 +69,7 @@ class CalendarPermanentError(PermanentError):
 # Partial response (`fields=`): only what `_event()` reads, instead of the full
 # resource (attendees, conferenceData, reminders...) on every read or write.
 _EVENT_FIELDS = "id,summary,description,start,end,created,status,extendedProperties/private"
-_PROBE_KEY = "fp_probe"  # D3: marks check_write_access()'s own throwaway event
+_PROBE_KEY = "fp_probe"  # Marks check_write_access()'s own throwaway event
 
 
 @dataclass(frozen=True)
@@ -107,7 +104,7 @@ def _credentials(credentials_file: str) -> Any:
 
 
 def service_account_email(credentials_file: str) -> str | None:
-    """The service account's own email (D1): what a client shares their calendar
+    """The service account's own email: what a client shares their calendar
     with. `None` when the file is missing or invalid — never its private key."""
     try:
         return str(_credentials(credentials_file).service_account_email)
@@ -263,12 +260,6 @@ class CalendarClient:
             raise ValueError("Calendar window needs ordered aware datetimes")
         return self._list(start, end)
 
-    def list_future_events(self, start: datetime) -> list[Event]:
-        """From `start` to `FUTURE_HORIZON` later (bounded: recurring events expand)."""
-        if start.tzinfo is None:
-            raise ValueError("Calendar window needs an aware datetime")
-        return self._list(start, start + FUTURE_HORIZON)
-
     def _list(self, start: datetime, end: datetime | None) -> list[Event]:
         events: list[Event] = []
         token = None
@@ -354,23 +345,6 @@ class CalendarClient:
             raise CalendarPermanentError("Calendar did not confirm description")
         return result
 
-    def patch_private(self, gcal_id: str, fields: dict[str, str]) -> Event:
-        event = self.get_event(gcal_id)
-        if event is None:
-            raise CalendarPermanentError("Calendar event missing")
-        private = event.private | fields
-        result = self._event(
-            self._request(
-                "patch",
-                eventId=gcal_id,
-                body={"extendedProperties": {"private": private}},
-                fields=_EVENT_FIELDS,
-            )
-        )
-        if any(result.private.get(key) != value for key, value in private.items()):
-            raise CalendarPermanentError("Calendar did not confirm metadata")
-        return result
-
     def cancel_event(self, gcal_id: str) -> None:
         try:
             self._call("delete", eventId=gcal_id)
@@ -409,7 +383,7 @@ class CalendarClient:
         self._request("list", maxResults=1, singleEvents=True, fields="items(id)")
 
     def check_write_access(self) -> None:
-        """D3: proves the service account can actually write to this calendar, not
+        """Proves the service account can actually write to this calendar, not
         just read it. Inserts a throwaway event (year 2000, transparent, private,
         `[cfg]` summary, `fp_probe=1` — never `fp_key`/`fp_contact`, so neither the
         sweep nor the owner's summary ever mistake it for a booking), confirms it,

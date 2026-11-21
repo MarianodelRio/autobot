@@ -1,7 +1,7 @@
 """Sube o baja un conjunto de horarios de la biblioteca (ADR-013), nunca de un
 cliente:
 
-- `make bus-subir NOMBRE=<nombre> DIR=<dir> COMMENT="..." [PROD=1]` (C21): valida
+- `make bus-subir NOMBRE=<nombre> DIR=<dir> COMMENT="..." [PROD=1]`: valida
   en local, prueba la subida sin escribir y sube con `--base-sha` (leído justo antes,
   así que una subida de otra persona entre medias la rechaza en vez de sobrescribirla).
 - `make bus-bajar NOMBRE=<nombre> [DIR=<dir>] [VERSION=<n>] [PROD=1]`: descarga la
@@ -20,7 +20,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from packs.bus.formato import validar
-from tools.bus.tenant import REPO_ROOT, TenantDesconocido, published_dir
+from tools._paths import REPO_ROOT
+from tools.bus.tenant import TenantDesconocido, published_dir
 
 PACK = "bus"
 DATASET = "timetable"

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from core.dates import weekday_es
+from core.dates import WEEKDAY_KEYS, WEEKDAY_LABEL, weekday_es
 from core.limits import MAX_TEXT
 from packs.bus.config import BusConfig
 from packs.bus.formato import NOMBRES_PUBLICOS_TEMPORADA
@@ -33,16 +33,7 @@ def nombre_dia_abrev_es(fecha: date) -> str:
     return _DIAS_ES_ABREV[fecha.weekday()]
 
 
-_DIAS_OFICINA = {
-    "lunes": "lunes",
-    "martes": "martes",
-    "miercoles": "miércoles",
-    "jueves": "jueves",
-    "viernes": "viernes",
-    "sabado": "sábado",
-    "domingo": "domingo",
-}
-_ORDEN_DIAS_OFICINA = tuple(_DIAS_OFICINA)
+_ORDEN_DIAS_OFICINA = WEEKDAY_KEYS
 _LABORABLES = frozenset(_ORDEN_DIAS_OFICINA[:5])
 
 
@@ -64,7 +55,7 @@ def _dias_oficina_txt(dias: tuple[str, ...]) -> str:
             tramos.append([i])
     partes: list[str] = []
     for tramo in tramos:
-        nombres = [_DIAS_OFICINA[_ORDEN_DIAS_OFICINA[i]] for i in tramo]
+        nombres = [WEEKDAY_LABEL[_ORDEN_DIAS_OFICINA[i]] for i in tramo]
         if len(nombres) >= 3:
             partes.append(f"{nombres[0]} a {nombres[-1]}")
         else:

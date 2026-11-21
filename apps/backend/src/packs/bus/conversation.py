@@ -249,7 +249,7 @@ def _elegir(t: _Turno, campo: str, localidad_id: str) -> None:
     loc = datos.horarios.modelo.localidades.get(localidad_id)
     if loc is not None and loc.pendiente is not None:
         assert loc.ver is not None  # el validador exige `ver` en toda localidad pendiente
-        # Aldea sin hora de paso (P15/P32): se ofrece consultar `ver` en su
+        # Aldea sin hora de paso: se ofrece consultar `ver` en su
         # lugar; no se toca el origen ni se emite "sin trayecto".
         t.step = SEL_ORIGEN if campo == "origen" else SEL_DESTINO
         t.set("campo", campo)
@@ -312,7 +312,7 @@ def _usar(t: _Turno, campo: str, value: str) -> None:
     _elegir(t, campo, lid)
 
 
-# ── Pueblos por línea (P18) ───────────────────────────────────────────
+# ── Pueblos por línea ───────────────────────────────────────────
 
 
 def _lineas_visibles(
@@ -429,7 +429,7 @@ def _descripcion_dia(consulta: query.Consulta, es_hoy: bool) -> str:
         ultima = consulta.salidas[-1].hora_salida.strftime("%H:%M")
         return prefijo + f"{n} salidas · de {primera} a {ultima}" + sufijo
     if consulta.estado == "sin_servicio":
-        return prefijo + "sin servicio"  # también sin_servicio_general (P03g)
+        return prefijo + "sin servicio"  # también sin_servicio_general
     if consulta.estado == "sin_datos":
         return prefijo + "horario no disponible"
     if consulta.estado == "no_vendible":
@@ -566,52 +566,28 @@ def _repetir_paso(t: _Turno, campo: str) -> None:
         _mostrar_paso(t, campo)
 
 
-def _handle_sel_origen(t: _Turno, value: str) -> None:
+def _handle_sel(t: _Turno, campo: str, value: str) -> None:
+    """Paso de elegir (o escribir) el pueblo de `campo` ("origen" o "destino")."""
     if not t.es_boton:
-        _buscar(t, "origen", value)
+        _buscar(t, campo, value)
     elif value.startswith("loc:"):
-        _elegir(t, "origen", value.removeprefix("loc:"))
+        _elegir(t, campo, value.removeprefix("loc:"))
     elif value.startswith("usar:"):
-        _usar(t, "origen", value)
+        _usar(t, campo, value)
     elif value == "escribir":
-        t.step = ESCRIBIR_ORIGEN
-        t.set("campo", "origen")
-        t.responder(build_escribir(t.cfg, "origen", msg.msg_pedir_pueblo("origen")))
+        t.step = ESCRIBIR_ORIGEN if campo == "origen" else ESCRIBIR_DESTINO
+        t.set("campo", campo)
+        t.responder(build_escribir(t.cfg, campo, msg.msg_pedir_pueblo(campo)))
     elif value.startswith("lineas:"):
-        _mostrar_lineas(t, "origen", _pagina_de_lineas(value))
+        _mostrar_lineas(t, campo, _pagina_de_lineas(value))
     elif value.startswith("linea:"):
-        _mostrar_linea_pagina(t, "origen", value)
-    elif value == "zonas" or value.startswith("zona:"):
-        # Botones y filas antiguos (antes de P18): lista de líneas.
-        _mostrar_lineas(t, "origen", 0)
-    elif value == "menu":
+        _mostrar_linea_pagina(t, campo, value)
+    elif campo == "origen" and value == "menu":
         to_menu(t)
-    else:
-        _repetir_paso(t, "origen")
-
-
-def _handle_sel_destino(t: _Turno, value: str) -> None:
-    if not t.es_boton:
-        _buscar(t, "destino", value)
-    elif value.startswith("loc:"):
-        _elegir(t, "destino", value.removeprefix("loc:"))
-    elif value.startswith("usar:"):
-        _usar(t, "destino", value)
-    elif value == "escribir":
-        t.step = ESCRIBIR_DESTINO
-        t.set("campo", "destino")
-        t.responder(build_escribir(t.cfg, "destino", msg.msg_pedir_pueblo("destino")))
-    elif value.startswith("lineas:"):
-        _mostrar_lineas(t, "destino", _pagina_de_lineas(value))
-    elif value.startswith("linea:"):
-        _mostrar_linea_pagina(t, "destino", value)
-    elif value == "zonas" or value.startswith("zona:"):
-        # Botones y filas antiguos (antes de P18): lista de líneas.
-        _mostrar_lineas(t, "destino", 0)
-    elif value == "cambiar_origen":
+    elif campo == "destino" and value == "cambiar_origen":
         _ir_a_origen(t)
     else:
-        _repetir_paso(t, "destino")
+        _repetir_paso(t, campo)
 
 
 def _handle_confirmar_pueblo(t: _Turno, value: str) -> None:
@@ -742,6 +718,14 @@ def _handle_resultado(t: _Turno, value: str) -> None:
         _ir_a_dia(t, value)
     else:
         to_menu(t)
+
+
+def _handle_sel_origen(t: _Turno, value: str) -> None:
+    _handle_sel(t, "origen", value)
+
+
+def _handle_sel_destino(t: _Turno, value: str) -> None:
+    _handle_sel(t, "destino", value)
 
 
 DESPACHO: dict[str, Callable[[_Turno, str], None]] = {

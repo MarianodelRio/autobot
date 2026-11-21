@@ -9,28 +9,22 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from packs.bus import diff
-from packs.bus.formato import (
-    DIAS_INDIVIDUALES,
-    Modelo,
-    Resultado,
-    texto_observacion,
-    validar,
-)
+from packs.bus.formato import DIAS_INDIVIDUALES, texto_observacion, validar
 from packs.bus.interactive import descripcion_linea
 from packs.bus.loader import (
     calcular_festivos_por_linea,
     calcular_lineas_pueblos,
 )
 from packs.bus.messages import msg_no_vendible
-from packs.bus.modelo import Linea, Localidad, Parada, Paso, Tabla, Viaje
-from tools.bus.tenant import (
-    REPO_ROOT,
-    TenantDesconocido,
-    dataset_dir,
-    published_dir,
-)
+from packs.bus.modelo import Linea, Localidad, Modelo, Parada, Paso, Resultado, Tabla, Viaje
+from tools._paths import REPO_ROOT
+from tools.bus import diff
+from tools.bus.tenant import TenantDesconocido, dataset_dir, published_dir
 
+# Zona horaria de la fecha impresa en la revisión. Esta herramienta solo ve la
+# carpeta del dataset (`var/datos/<nombre>/`), no el documento del negocio donde
+# está la zona del tenant, así que queda fija; todos los negocios actuales están
+# en la península.
 ZONA_HORARIA = "Europe/Madrid"
 
 
@@ -55,20 +49,14 @@ def _contar_viajes(modelo: Modelo) -> int:
     return sum(len(linea.viajes) for linea in modelo.lineas.values())
 
 
-def _clases_tabla() -> list[str]:
-    # Las 8 clases individuales, en el orden de formato.py.
-    return list(DIAS_INDIVIDUALES)
+def _obs_de_viaje(viajes: list[Viaje]) -> set[str]:
+    """Ids de las observaciones de ámbito viaje usadas en `viajes`."""
+    return {oid for viaje in viajes for oid in viaje.observaciones}
 
 
-def _observaciones_usadas_en_tabla(modelo: Modelo, viajes: list[Viaje], letra: bool) -> list[str]:
-    ids: set[str] = set()
-    for viaje in viajes:
-        if not letra:
-            ids.update(viaje.observaciones)
-        for paso in viaje.pasos:
-            if letra:
-                ids.update(paso.observaciones)
-    return sorted(ids)
+def _obs_de_pasos(viajes: list[Viaje]) -> set[str]:
+    """Ids de las observaciones de ámbito parada (las de letra) usadas en `viajes`."""
+    return {oid for viaje in viajes for paso in viaje.pasos for oid in paso.observaciones}
 
 
 # Por encima de este número de paradas, la tabla se pinta trasponiendo filas
@@ -104,9 +92,7 @@ def _leyenda_tabla(
 ) -> str:
     notas = notas or {}
     leyenda_items = []
-    obs_viaje = _observaciones_usadas_en_tabla(modelo, viajes, letra=False)
-    obs_paso = _observaciones_usadas_en_tabla(modelo, viajes, letra=True)
-    for oid in sorted(set(obs_viaje) | set(obs_paso)):
+    for oid in sorted(_obs_de_viaje(viajes) | _obs_de_pasos(viajes)):
         obs = modelo.observaciones.get(oid)
         if obs is None:
             continue
@@ -263,7 +249,7 @@ def _render_mismo_autobus(
 
 
 def _render_estado_dias(linea: Linea) -> str:
-    clases = _clases_tabla()
+    clases = DIAS_INDIVIDUALES  # las 8 clases de día, en orden de semana
     filas = []
     temporadas_orden = [t.nombre for t in linea.temporadas]
     cabecera = "".join(f"<th>{html.escape(diff.clase_en_palabras(c))}</th>" for c in clases)
@@ -350,7 +336,7 @@ def _render_seccion_linea(
 
 
 def _render_seccion_pueblos(modelo: Modelo) -> str:
-    """ "Así aparecen las líneas en el bot" (P18): por cada línea, en el orden
+    """ "Así aparecen las líneas en el bot": por cada línea, en el orden
     de la lista del bot, su título, la descripción que ve el cliente (misma
     función que `build_lineas`) y sus pueblos con paradas/alias. Después, las
     localidades que ninguna línea usa (solo si hay alguna)."""
@@ -402,7 +388,7 @@ def _render_seccion_pueblos(modelo: Modelo) -> str:
 
 
 def _render_seccion_pendientes(modelo: Modelo) -> str:
-    """ "Localidades sin hora de paso" (P15/P32): aldeas en las que algunos
+    """ "Localidades sin hora de paso": aldeas en las que algunos
     autobuses paran pero sin hora propia; el bot remite a otra localidad.
     Devuelve "" si no hay ninguna."""
     pendientes = sorted(
@@ -449,7 +435,7 @@ def _fecha_es(fecha: date) -> str:
 
 def _render_seccion_calendario(modelo: Modelo) -> str:
     """ "Calendario": lo que el bot hace con los días especiales, para que
-    negocio lo confirme (P03e, P03g, P12b)."""
+    negocio lo confirme (festivos locales, días sin servicio general y no vendibles)."""
     calendario = modelo.calendario
     if calendario is None:
         return ""

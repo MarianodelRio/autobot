@@ -1,18 +1,74 @@
-"""packs/bus/tests/test_interactive.py — ninguna lista supera 10 filas ni ningún botón
-3. La prueba más importante: la lista de destinos depende
-del origen elegido y nunca puede pasarse del límite."""
+"""Constructores de mensajes interactivos (`packs/bus/interactive.py`): ninguna lista
+supera 10 filas ni ningún botón 3. La prueba más importante: la lista de destinos
+depende del origen elegido y nunca puede pasarse del límite.
+
+Prueba los constructores sueltos; las conversaciones completas están en
+`test_escenarios.py`."""
 
 from typing import Any
 
+from core.replies import Buttons, List, Reply, Text
 from packs.bus import conversation as flujo
 from packs.bus import interactive as I
 from packs.bus import matcher, query
 from packs.bus.datos import Datos
 from packs.bus.interactive import descripcion_linea
 from packs.bus.modelo import Linea, Localidad
-from tests.packs.bus.conversation_harness import CONFIG, NEGOCIO_TELEFONO, datos_demo, wa, wa_all
+from tests.packs.bus.demo import CONFIG, NEGOCIO_TELEFONO, datos_demo
 
-# Los constructores sin la config y el payload de WhatsApp que leen estos tests.
+# El payload de WhatsApp de una respuesta, que es lo que leen estos tests.
+
+
+def wa(reply: Reply) -> dict[str, Any]:
+    """El payload de WhatsApp equivalente a esta respuesta."""
+    if isinstance(reply, Text):
+        return {"type": "text", "text": {"body": reply.body}}
+    interactive: dict[str, Any] = {"body": {"text": reply.body}}
+    if reply.header:
+        interactive["header"] = {"type": "text", "text": reply.header}
+    if reply.footer:
+        interactive["footer"] = {"text": reply.footer}
+    if isinstance(reply, Buttons):
+        interactive["type"] = "button"
+        interactive["action"] = {
+            "buttons": [
+                {"type": "reply", "reply": {"id": b.id, "title": b.title}} for b in reply.buttons
+            ]
+        }
+    else:
+        assert isinstance(reply, List)
+        interactive["type"] = "list"
+        interactive["action"] = {
+            "button": reply.button_label,
+            "sections": [
+                {
+                    "title": s.title,
+                    "rows": [
+                        {"id": r.id, "title": r.title}
+                        | ({"description": r.description} if r.description else {})
+                        for r in s.rows
+                    ],
+                }
+                for s in reply.sections
+            ],
+        }
+    return {"type": "interactive", "interactive": interactive}
+
+
+def wa_all(replies: list[Reply]) -> dict[str, Any]:
+    """Para constructores que devuelven varias respuestas (el resultado largo):
+    el último interactivo, con el texto previo delante, como lo leían los tests."""
+    *previos, ultimo = replies
+    payload = wa(ultimo)
+    if previos:
+        textos = "\n\n".join(r.body for r in previos)
+        payload["interactive"]["body"]["text"] = (
+            f"{textos}\n\n{payload['interactive']['body']['text']}"
+        )
+    return payload
+
+
+# Los constructores sin la config.
 
 
 def build_menu() -> dict[str, Any]:
@@ -133,7 +189,7 @@ def test_build_origen_within_limits() -> None:
 
 
 def test_build_destinos_every_real_origin_within_limits() -> None:
-    """Propiedad obligatoria (plan fase 4): recorre TODOS los orígenes
+    """Propiedad obligatoria: recorre TODOS los orígenes
     reales de horarios/ y comprueba que la lista de destinos nunca supera
     el límite de WhatsApp, sea cual sea su longitud."""
     datos = datos_demo()
@@ -439,7 +495,7 @@ def test_lista_de_destinos_con_no_vendibles_filtrados_respeta_limites() -> None:
         assert len(_rows(payload)) <= MAX_ROWS
 
 
-# ── Fase 1b-1: origen con más de 9 destinos (paginación, P18) ───────────────
+# ── origen con más de 9 destinos (paginación) ───────────────
 
 NOMBRE_LARGO = "Estación Grande de Villagrande del Soto"
 
@@ -493,7 +549,7 @@ def test_nombre_largo_estacion_ave_respeta_limites_en_todos_los_constructores() 
     )
 
 
-# ── Localidad pendiente (ciclo C2, P15/P32) ──────────────────────────────
+# ── Localidad pendiente ──────────────────────────────
 
 
 def test_build_localidad_pendiente_within_limits() -> None:

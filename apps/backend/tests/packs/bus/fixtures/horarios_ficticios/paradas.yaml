@@ -1,6 +1,6 @@
 # tests/fixtures/horarios_ficticios/paradas.yaml — red de autobuses
 # inventada (comarca ficticia de Valdehoz, sin relación con ninguna red
-# real) usada por conversation_harness.py (`datos_demo()`) y por los tests
+# real) usada por demo.py (`datos_demo()`) y por los tests
 # que antes cargaban `horarios_real/`.
 
 localidades:
@@ -15,10 +15,10 @@ localidades:
   pinarnuevo: { nombre: Pinarnuevo }
   valdejunco: { nombre: Valdejunco }
   # Comparten el alias "villagrande" (ambigüedad declarada, caso
-  # villafranca): formato.py avisa, nunca falla.
+  # villafranca): formato/ avisa, nunca falla.
   villagrande-de-riomayor: { nombre: Villagrande de Riomayor, alias: [villagrande] }
   villagrande-del-soto: { nombre: Villagrande del Soto, alias: [villagrande] }
-  # Localidades sin línea (test_matcher.py / formato.py avisa pero no
+  # Localidades sin línea (test_matcher.py / formato/ avisa pero no
   # falla): sirven solo para probar el buscador de texto libre.
   zarfe: { nombre: Zarfe } # 5 letras, para el umbral de distancia de errata
   la-vereda: { nombre: La Vereda } # artículo propio, para el relleno "a la"
@@ -41,7 +41,7 @@ paradas:
   MTA: { nombre: Montealto, localidad: montealto }
   FCL: { nombre: Fuenteclara, localidad: fuenteclara }
   # Nombre con coma (requiere comillas en el YAML): prueba de
-  # matcher.py/formato.py con nombres de parada que llevan coma.
+  # matcher.py/formato/ con nombres de parada que llevan coma.
   ODA: { nombre: "Odalla (cruce, gasolinera)", localidad: odalla }
   RBZ: { nombre: Ribazo, localidad: ribazo }
   CAM: { nombre: Campoalto, localidad: campoalto }
@@ -58,7 +58,7 @@ paradas:
   CRF: { nombre: Cruce Sur, localidad: fontanar }
 
 # Riomayor, Campoalto y Pinarnuevo son paradas de paso de la misma línea
-# pero no se venden billetes entre ninguna pareja de las tres (P12b).
+# pero no se venden billetes entre ninguna pareja de las tres.
 no_vendibles:
   - [riomayor, campoalto]
   - [riomayor, pinarnuevo]

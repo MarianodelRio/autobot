@@ -165,7 +165,7 @@ def build_escribir(cfg: BusConfig, campo: str, texto: str) -> Buttons:
     )
 
 
-# ── Localidad pendiente (P15/P32) ─────────────────────────────────────────
+# ── Localidad pendiente ─────────────────────────────────────────
 
 
 def _titulo_usar(nombre: str) -> str:
@@ -196,7 +196,7 @@ def build_localidad_pendiente(cfg: BusConfig, texto: str, ver_id: str, ver_nombr
     )
 
 
-# ── Pueblos por línea (P18) ───────────────────────────────────────────
+# ── Pueblos por línea ───────────────────────────────────────────
 
 
 def descripcion_linea(linea: Linea, n_pueblos: int) -> str:

@@ -1,12 +1,12 @@
 """`RecordMetric("schedule_query")` only on a found itinerary (`_resultado`'s
-`con_salidas` branch), on the production conversation harness directly: the legacy
-`Conv` wrapper in `conversation_harness.py` has no access to `PackResult.actions`."""
+`con_salidas` branch), on the conversation harness (`core.testing`), which exposes
+`PackResult.actions`."""
 
 from datetime import date, timedelta
 
 from core.testing.harness import Conversation
 from packs.bus.pack import pack
-from tests.packs.bus.conversation_harness import CONFIG, datos_demo
+from tests.packs.bus.demo import CONFIG, datos_demo
 
 HOY = date(2026, 9, 23)  # miércoles, dentro de vigencia
 

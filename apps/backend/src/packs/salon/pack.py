@@ -18,9 +18,9 @@ OWNER_NOTICES = (
 
 
 def _test_calendar() -> Any:
-    # Deferred: this import only happens when `manage.py chat` (L4) actually calls
-    # it, so packs/salon/pack.py (always imported via the registry) never pulls
-    # in its own test double just by being registered.
+    # Deferred: this import only happens when `manage.py chat` actually calls it, so
+    # packs/salon/pack.py (always imported via the registry) never pulls in its own
+    # test double just by being registered.
     from packs.salon.testing import FakeCalendar
 
     return FakeCalendar()

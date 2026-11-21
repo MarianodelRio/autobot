@@ -1,8 +1,7 @@
 """packs/bus/fechas.py — lector de fechas en formato cerrado día/mes[/año].
 
 Sin lenguaje natural ("mañana", "el viernes que viene"): solo día y mes en
-números, con año opcional. Puro: `hoy` lo pasa el llamador (fase 4 pasará
-`calendario.hoy()`); no importa `zoneinfo` ni `pytz` aquí.
+números, con año opcional. Puro: `hoy` lo pasa el llamador; no importa `zoneinfo` ni `pytz` aquí.
 """
 
 from __future__ import annotations

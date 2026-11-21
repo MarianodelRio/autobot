@@ -1,4 +1,4 @@
-"""tools/bus_formatear.py — make bus-formatear NOMBRE=<nombre>.
+"""tools/bus/formatear.py — make bus-formatear NOMBRE=<nombre>.
 
 Realinea las columnas de los bloques
 `tabla: |` de `lineas/*.yaml` del dataset del tenant a
@@ -13,7 +13,8 @@ import re
 import sys
 from pathlib import Path
 
-from tools.bus.tenant import REPO_ROOT, TenantDesconocido, dataset_dir
+from tools._paths import REPO_ROOT
+from tools.bus.tenant import dataset_from_argv
 
 _TABLA_INICIO_RE = re.compile(r"^(?P<indent>[ \t]*)tabla:\s*\|\s*$")
 
@@ -97,15 +98,9 @@ def formatear_texto(texto: str) -> str:
 
 
 def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
-    args = argv if argv is not None else sys.argv[1:]
-    if len(args) != 1:
-        print("Uso: make bus-formatear NOMBRE=<nombre>")
-        return 2
-    try:
-        directorio = dataset_dir(args[0], repo_root)
-    except TenantDesconocido as exc:
-        print(f"✗ {exc}")
-        return 2
+    directorio = dataset_from_argv(argv, "Uso: make bus-formatear NOMBRE=<nombre>", repo_root)
+    if isinstance(directorio, int):
+        return directorio
     for path in sorted((directorio / "lineas").glob("*.yaml")):
         original = path.read_text(encoding="utf-8")
         formateado = formatear_texto(original)

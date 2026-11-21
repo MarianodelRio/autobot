@@ -96,8 +96,8 @@ class TestParsePhone:
     def test_telefono_field(self) -> None:
         assert parse_phone("Telefono: 34600000001") == "34600000001"
 
-    def test_tel_legacy(self) -> None:
-        assert parse_phone("Tel: 34600000001") == "34600000001"
+    def test_tel_prefix_is_not_a_phone_field(self) -> None:
+        assert parse_phone("Tel: 34600000001") is None
 
     def test_spaces_stripped(self) -> None:
         assert parse_phone("Telefono: 346 000 000 01") == "34600000001"
@@ -232,15 +232,7 @@ class TestParseServiceFromTitle:
         result = parse_service_title("Corte - Juan Garcia")
         assert result == ("corte", "Juan Garcia")
 
-    def test_corte_barba_y(self) -> None:
-        result = parse_service_title("Corte y barba - Paco")
-        assert result == ("corte_barba", "Paco")
-
-    def test_corte_barba_plus(self) -> None:
-        result = parse_service_title("Corte+barba - Paco")
-        assert result == ("corte_barba", "Paco")
-
-    def test_corte_barba_space(self) -> None:
+    def test_corte_barba_matches_its_key_with_spaces(self) -> None:
         result = parse_service_title("Corte barba - Paco")
         assert result == ("corte_barba", "Paco")
 

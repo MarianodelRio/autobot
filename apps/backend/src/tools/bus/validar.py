@@ -1,6 +1,6 @@
-"""tools/bus_validar.py — make bus-validar NOMBRE=<nombre>.
+"""tools/bus/validar.py — make bus-validar NOMBRE=<nombre>.
 
-Valida el dataset de horarios del tenant con `packs/bus/formato.py` e imprime
+Valida el dataset de horarios del tenant con `packs.bus.formato` e imprime
 errores y avisos agrupados. Sale con código 1 si hay errores, 0 en caso
 contrario.
 """
@@ -11,19 +11,14 @@ import sys
 from pathlib import Path
 
 from packs.bus.formato import validar
-from tools.bus.tenant import REPO_ROOT, TenantDesconocido, dataset_dir
+from tools._paths import REPO_ROOT
+from tools.bus.tenant import dataset_from_argv
 
 
 def main(argv: list[str] | None = None, repo_root: Path = REPO_ROOT) -> int:
-    args = argv if argv is not None else sys.argv[1:]
-    if len(args) != 1:
-        print("Uso: make bus-validar NOMBRE=<nombre>")
-        return 2
-    try:
-        directorio = dataset_dir(args[0], repo_root)
-    except TenantDesconocido as exc:
-        print(f"✗ {exc}")
-        return 2
+    directorio = dataset_from_argv(argv, "Uso: make bus-validar NOMBRE=<nombre>", repo_root)
+    if isinstance(directorio, int):
+        return directorio
     resultado = validar(directorio)
 
     if resultado.errores:

@@ -256,7 +256,7 @@ def test_calendario_pendiente_valido_avisa(tmp_path: Path) -> None:
     assert any("pendiente P03" in a for a in resultado.avisos)
 
 
-# ── sin_servicio_todas_las_lineas (P03g) ────────────────────────────────────
+# ── sin_servicio_todas_las_lineas ────────────────────────────────────
 
 
 def test_calendario_real_declara_sin_servicio_25_12_y_01_01() -> None:
@@ -316,7 +316,7 @@ def test_calendario_campo_desconocido_cercano_es_error(tmp_path: Path) -> None:
     )
 
 
-# ── Festivos locales por línea (P03e) ───────────────────────────────────────
+# ── Festivos locales por línea ───────────────────────────────────────
 
 
 def test_calendario_ficticios_declara_festivos_locales_de_odalla() -> None:
@@ -346,7 +346,7 @@ def test_clase_dia_linea_con_festivo_local_usa_festivos_aunque_sea_sabado() -> N
         "festivos",
         ("San Rafael", "riomayor"),
     )
-    # InfoDia no cambia por un festivo local (P04)
+    # InfoDia no cambia por un festivo local
     assert info.es_lectivo is False
 
 

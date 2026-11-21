@@ -17,7 +17,7 @@ from packs.bus.config import BusConfig
 from packs.bus.datos import Datos
 from packs.bus.loader import HorariosInvalidos
 from packs.bus.pack import DATASET_DIR, load_data, pack
-from tests.packs.bus.conversation_harness import CONFIG, HORARIOS_FICTICIOS
+from tests.packs.bus.demo import CONFIG, HORARIOS_FICTICIOS
 
 
 def _config(**cambios: Any) -> dict[str, Any]:

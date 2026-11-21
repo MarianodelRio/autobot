@@ -10,10 +10,13 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+from typing import Any
 
 from cryptography.fernet import Fernet
 
-ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent
+# `make check-prod-config` runs this file as a plain script (src/ is not on sys.path), so
+# it cannot import `tools._paths`: src/tools/ops/<this file> -> repository root.
+ROOT = Path(__file__).resolve().parents[5]
 NAME = f"fp-config-{uuid.uuid4().hex[:12]}"
 BACKEND = f"{NAME}-backend"
 PROXY = f"{NAME}-caddy"
@@ -26,8 +29,38 @@ def run(*args: str, check: bool = True) -> str:
     return result.stdout.strip()
 
 
-def main() -> None:
-    env = {
+# Every upstream path returns 200: a 404 can only come from Caddy. Echoes
+# X-Autobot-Edge back so the check can see Caddy actually set it.
+UPSTREAM_SERVER = (
+    "from http.server import BaseHTTPRequestHandler,HTTPServer; "
+    "H=type('H',(BaseHTTPRequestHandler,),{'do_GET':lambda s:"
+    "(s.send_response(200),"
+    "s.send_header('X-Echo-Edge', s.headers.get('X-Autobot-Edge','')),"
+    "s.end_headers())}); "
+    "HTTPServer(('0.0.0.0',8000),H).serve_forever()"
+)
+
+# Routes Caddy must forward to the app, and routes it must answer with 404 itself.
+PUBLIC_PATHS = (
+    "/health",
+    "/webhooks/telegram-demo",
+    "/webhooks/whatsapp-demo",
+    "/webhooks/telegram/abc",
+    "/webhooks/whatsapp/abc",
+)
+BLOCKED_PATHS = (
+    "/",
+    "/admin/",
+    "/static/admin/css/base.css",
+    "/health/",
+    "/webhooks/telegram",
+    "/webhooks/telegram-test",
+)
+
+
+def compose_env() -> dict[str, str]:
+    """Throwaway environment for `docker compose config` (placeholders, no real secret)."""
+    return {
         **os.environ,
         "SECRETS_ENCRYPTION_KEY": Fernet.generate_key().decode(),
         "SHA": "a" * 40,
@@ -43,25 +76,10 @@ def main() -> None:
         "FP_READONLY_PASSWORD": "local",
         "DEPLOY_UID": "10001",
     }
-    config = subprocess.run(
-        [
-            "docker",
-            "compose",
-            "-f",
-            str(ROOT / "deploy" / "compose" / "compose.yaml"),
-            "-f",
-            str(ROOT / "deploy" / "compose" / "compose.prod.yaml"),
-            "config",
-            "--format",
-            "json",
-        ],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    services = json.loads(config.stdout)["services"]
+
+
+def check_compose_services(services: dict[str, Any]) -> None:
+    """Assert the production hardening of the rendered Compose services."""
     assert services["web"]["ports"][0]["host_ip"] == "127.0.0.1"
     assert not services["db"].get("ports")
     assert not services["victorialogs"].get("ports")
@@ -82,21 +100,49 @@ def main() -> None:
     assert not services["db"]["environment"].get("DJANGO_SECRET_KEY")
     assert not services["caddy"]["environment"].get("DB_APP_URL")
 
+
+def check_routes(port: str | int) -> None:
+    """Assert the allowlist on the proxy listening at 127.0.0.1:`port`: public routes reach
+    the upstream with `X-Autobot-Edge: public`, everything else is a 404 from the proxy."""
+    for path in PUBLIC_PATHS:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=3) as response:
+            assert response.status == 200, path
+            assert response.getheader("X-Echo-Edge") == "public", path
+    for path in BLOCKED_PATHS:
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=3)
+        except urllib.error.HTTPError as error:
+            assert error.code == 404, path
+        else:
+            raise AssertionError(f"Public route leaked: {path}")
+
+
+def main() -> None:
+    config = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(ROOT / "deploy" / "compose" / "compose.yaml"),
+            "-f",
+            str(ROOT / "deploy" / "compose" / "compose.prod.yaml"),
+            "config",
+            "--format",
+            "json",
+        ],
+        cwd=ROOT,
+        env=compose_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    check_compose_services(json.loads(config.stdout)["services"])
+
     state = Path(tempfile.mkdtemp(prefix="fp-caddy-"))
     (state / "data").mkdir()
     (state / "config").mkdir()
     run("docker", "network", "create", NAME)
     try:
-        # Every upstream path returns 200: a 404 can only come from Caddy. Echoes
-        # X-Autobot-Edge back so the test can check Caddy actually set it.
-        server = (
-            "from http.server import BaseHTTPRequestHandler,HTTPServer; "
-            "H=type('H',(BaseHTTPRequestHandler,),{'do_GET':lambda s:"
-            "(s.send_response(200),"
-            "s.send_header('X-Echo-Edge', s.headers.get('X-Autobot-Edge','')),"
-            "s.end_headers())}); "
-            "HTTPServer(('0.0.0.0',8000),H).serve_forever()"
-        )
         run(
             "docker",
             "run",
@@ -111,7 +157,7 @@ def main() -> None:
             "python:3.14-slim",
             "python",
             "-c",
-            server,
+            UPSTREAM_SERVER,
         )
         run(
             "docker",
@@ -145,30 +191,7 @@ def main() -> None:
                 time.sleep(0.3)
         else:
             raise RuntimeError("Caddy/upstream did not start")
-        for path in (
-            "/health",
-            "/webhooks/telegram-demo",
-            "/webhooks/whatsapp-demo",
-            "/webhooks/telegram/abc",
-            "/webhooks/whatsapp/abc",
-        ):
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=3) as response:
-                assert response.status == 200, path
-                assert response.getheader("X-Echo-Edge") == "public", path
-        for path in (
-            "/",
-            "/admin/",
-            "/static/admin/css/base.css",
-            "/health/",
-            "/webhooks/telegram",
-            "/webhooks/telegram-test",
-        ):
-            try:
-                urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=3)
-            except urllib.error.HTTPError as error:
-                assert error.code == 404, path
-            else:
-                raise AssertionError(f"Public route leaked: {path}")
+        check_routes(port)
         print("Production Compose and Caddy routes: OK")
     finally:
         run("docker", "rm", "-f", PROXY, BACKEND, check=False)

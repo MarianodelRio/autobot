@@ -329,7 +329,7 @@ def test_propiedad_toda_localidad_por_su_nombre_exacto() -> None:
         assert r.localidades == (lid,)
 
 
-# ── Localidades pendientes (ciclo C2, P15/P32) ───────────────────────────────
+# ── Localidades pendientes ───────────────────────────────
 
 
 def test_localidades_pendientes_se_encuentran_por_texto() -> None:

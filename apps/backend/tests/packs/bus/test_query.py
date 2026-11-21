@@ -4,7 +4,7 @@ Pruebas doradas contra `horarios_ficticios/` (red inventada, verificada a
 mano contra `horarios_ficticios/lineas/*.yaml`) más pruebas sobre la mezcla
 sintética tests/fixtures/horarios_motor/ para los casos especiales (a
 demanda, viernes lectivo, no_circula, sin_datos, fusión) y
-tests/fixtures/horarios_cicloC/ para llegada>salida y mismo autobús."""
+tests/fixtures/horarios_mismo_bus/ para llegada>salida y mismo autobús."""
 
 from __future__ import annotations
 
@@ -329,7 +329,7 @@ def test_aviso_de_linea_se_repite_en_cada_salida_sin_marca_numerica() -> None:
         assert s.notas.count("Horarios de paso aproximados.") == 1
 
 
-# ── Días sin servicio en ninguna línea (P03g) ───────────────────────────────
+# ── Días sin servicio en ninguna línea ───────────────────────────────
 
 
 def _pares_con_trayecto(horarios: loader.Horarios) -> list[tuple[str, str]]:
@@ -397,7 +397,7 @@ def test_dia_fuera_de_vigencia_que_no_es_general_sigue_siendo_sin_datos() -> Non
     assert c.fuera_de_calendario is True
 
 
-# ── Festivos locales por línea (P03e) ───────────────────────────────────────
+# ── Festivos locales por línea ───────────────────────────────────────
 
 FESTIVO_LOCAL = loader.cargar(FIXTURES / "horarios_festivo_local")
 
@@ -411,7 +411,7 @@ def test_festivo_local_de_odalla_usa_las_salidas_de_festivos() -> None:
     assert _horas(local) == [("09:00", "09:30")]
     assert _horas(local) != _horas(normal)
     assert local.festivo_local == ("Fiesta local de Odalla", "odalla")
-    assert _info(local).es_festivo is False  # InfoDia no cambia (P04)
+    assert _info(local).es_festivo is False  # InfoDia no cambia
 
 
 def test_festivo_local_no_afecta_a_una_linea_que_no_toca_esa_localidad() -> None:
@@ -476,7 +476,7 @@ def test_odalla_festivo_local_viernes_lectivo_no_activa_solo_viernes_lectivo() -
     assert c.festivo_local == ("Feria de Odalla", "odalla")
 
 
-# ── Trayectos no vendibles (P12b) ───────────────────────────────────────────
+# ── Trayectos no vendibles ───────────────────────────────────────────
 
 _NO_VENDIBLES = ("riomayor", "campoalto", "pinarnuevo")
 
@@ -519,7 +519,7 @@ def test_destinos_desde_linea_inexistente_es_vacio() -> None:
     assert query.destinos_desde(HORARIOS, "riomayor", "no-existe") == frozenset()
 
 
-# ── destinos_desde(..., linea=...) (P18) ────────────────────────────────
+# ── destinos_desde(..., linea=...) ────────────────────────────────
 
 
 def test_destinos_desde_por_linea_solo_cuenta_esa_linea() -> None:
@@ -535,15 +535,15 @@ def test_destinos_desde_por_linea_solo_cuenta_esa_linea() -> None:
     assert frozenset().union(*por_linea.values()) == todos
 
 
-# ── Ciclo C1: llegada>salida y mismo autobús (fixture horarios_cicloC) ───────
+# ── llegada>salida y mismo autobús (fixture horarios_mismo_bus) ───────
 
-CICLO_C = loader.cargar(FIXTURES / "horarios_cicloC")
+MISMO_BUS = loader.cargar(FIXTURES / "horarios_mismo_bus")
 MIERCOLES = date(2026, 9, 30)
 NOTA_APROXIMADA = "Horarios de paso aproximados."
 
 
-def test_cicloc_riomayor_penarroja_una_salida_con_las_dos_lineas() -> None:
-    c = query.consultar(CICLO_C, "riomayor", "penarroja", MIERCOLES)
+def test_mismo_bus_riomayor_penarroja_una_salida_con_las_dos_lineas() -> None:
+    c = query.consultar(MISMO_BUS, "riomayor", "penarroja", MIERCOLES)
     assert c.estado == "con_salidas"
     primera = c.salidas[0]
     assert (
@@ -556,49 +556,49 @@ def test_cicloc_riomayor_penarroja_una_salida_con_las_dos_lineas() -> None:
     assert (primera.parada_origen, primera.parada_destino) == ("COR", "PNR")
 
 
-def test_cicloc_penarroja_los_alamos_sale_a_la_salida_de_penarroja() -> None:
-    c = query.consultar(CICLO_C, "penarroja", "los-alamos", MIERCOLES)
+def test_mismo_bus_penarroja_los_alamos_sale_a_la_salida_de_penarroja() -> None:
+    c = query.consultar(MISMO_BUS, "penarroja", "los-alamos", MIERCOLES)
     assert _horas(c) == [("12:30", "13:20")]
     assert c.salidas[0].lineas == ("larga",)
     assert c.salidas[0].duracion_min == 50
 
 
-def test_cicloc_riomayor_los_alamos_una_sola_salida_de_punta_a_punta() -> None:
-    c = query.consultar(CICLO_C, "riomayor", "los-alamos", MIERCOLES)
+def test_mismo_bus_riomayor_los_alamos_una_sola_salida_de_punta_a_punta() -> None:
+    c = query.consultar(MISMO_BUS, "riomayor", "los-alamos", MIERCOLES)
     assert _horas(c) == [("10:30", "13:20")]
     assert c.salidas[0].duracion_min == 170
 
 
-def test_cicloc_ya_salio_usa_la_salida_no_la_llegada() -> None:
+def test_mismo_bus_ya_salio_usa_la_salida_no_la_llegada() -> None:
     # A las 12:00 el autobús ya llegó a Peñarroja (11:55) pero aún no salió
     # (12:30): Peñarroja -> Los Álamos no ha salido.
     ahora = datetime(2026, 9, 30, 12, 0, tzinfo=MADRID)
-    c = query.consultar(CICLO_C, "penarroja", "los-alamos", MIERCOLES, ahora=ahora)
+    c = query.consultar(MISMO_BUS, "penarroja", "los-alamos", MIERCOLES, ahora=ahora)
     assert [s.ya_salio for s in c.salidas] == [False]
     ahora = datetime(2026, 9, 30, 12, 31, tzinfo=MADRID)
-    c = query.consultar(CICLO_C, "penarroja", "los-alamos", MIERCOLES, ahora=ahora)
+    c = query.consultar(MISMO_BUS, "penarroja", "los-alamos", MIERCOLES, ahora=ahora)
     assert [s.ya_salio for s in c.salidas] == [True]
 
 
-def test_cicloc_villanueva_del_pinar_da_la_parada_de_cada_salida() -> None:
-    c = query.consultar(CICLO_C, "riomayor", "villanueva-del-pinar", MIERCOLES)
+def test_mismo_bus_villanueva_del_pinar_da_la_parada_de_cada_salida() -> None:
+    c = query.consultar(MISMO_BUS, "riomayor", "villanueva-del-pinar", MIERCOLES)
     paradas = {s.hora_salida.strftime("%H:%M"): s.parada_destino for s in c.salidas}
     assert paradas["10:30"] == "VRE"
     assert paradas["13:10"] == "VRC"
 
 
-def test_cicloc_nota_a_solo_cuando_la_parada_es_origen_o_destino() -> None:
+def test_mismo_bus_nota_a_solo_cuando_la_parada_es_origen_o_destino() -> None:
     # PVN (12:50A) es intermedia de Riomayor -> Los Álamos: sin nota.
-    c = query.consultar(CICLO_C, "riomayor", "los-alamos", MIERCOLES)
+    c = query.consultar(MISMO_BUS, "riomayor", "los-alamos", MIERCOLES)
     assert NOTA_APROXIMADA not in c.salidas[0].notas
     # Origen o destino en PVN: con nota.
-    c = query.consultar(CICLO_C, "riomayor", "el-mirador", MIERCOLES)
+    c = query.consultar(MISMO_BUS, "riomayor", "el-mirador", MIERCOLES)
     assert any(NOTA_APROXIMADA in s.notas for s in c.salidas)
-    c = query.consultar(CICLO_C, "el-mirador", "los-alamos", MIERCOLES)
+    c = query.consultar(MISMO_BUS, "el-mirador", "los-alamos", MIERCOLES)
     assert NOTA_APROXIMADA in c.salidas[0].notas
 
 
-# ── Localidades pendientes (ciclo C2, P15/P32) ───────────────────────────────
+# ── Localidades pendientes ───────────────────────────────
 
 PENDIENTES = loader.cargar(FIXTURES / "horarios_pendientes")
 
@@ -618,3 +618,35 @@ def test_destinos_desde_nunca_incluye_pendientes() -> None:
         destinos = query.destinos_desde(PENDIENTES, lid)
         assert not any(PENDIENTES.modelo.localidades[d].pendiente for d in destinos)
     assert set(query.destinos_desde(PENDIENTES, "pueblo-a")) == {"pueblo-b", "pueblo-c"}
+
+
+# ── Lo que solo depende del par (origen, destino) se calcula una vez ─────────────
+
+
+def test_la_cache_del_par_no_cambia_ningun_resultado() -> None:
+    """Cada consulta con la cache del par caliente da lo mismo que con la cache vacía,
+    para todos los pares y una muestra de días."""
+    horarios = loader.cargar(HORARIOS_FICTICIOS)
+    ids = sorted(lid for lid, loc in horarios.modelo.localidades.items() if loc.pendiente is None)
+    fechas = [date(2026, 9, 1 + d) for d in range(0, 28, 3)] + [date(2026, 12, 25)]
+    comprobadas = 0
+    for origen in ids:
+        for destino in ids:
+            if origen == destino or query.es_no_vendible(horarios, origen, destino):
+                continue
+            for fecha in fechas:
+                caliente = query.consultar(horarios, origen, destino, fecha)
+                horarios.cache_pares.clear()
+                assert query.consultar(horarios, origen, destino, fecha) == caliente
+                comprobadas += 1
+    assert comprobadas > 500
+
+
+def test_el_par_se_calcula_una_sola_vez() -> None:
+    horarios = loader.cargar(HORARIOS_FICTICIOS)
+    assert not horarios.cache_pares
+    query.consultar(horarios, "pozoluengo", "riomayor", date(2026, 9, 24))
+    assert list(horarios.cache_pares) == [("pozoluengo", "riomayor")]
+    par = horarios.cache_pares[("pozoluengo", "riomayor")]
+    query.consultar(horarios, "pozoluengo", "riomayor", date(2026, 9, 25))
+    assert horarios.cache_pares[("pozoluengo", "riomayor")] is par  # no se recalcula

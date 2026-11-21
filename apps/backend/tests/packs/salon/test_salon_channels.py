@@ -11,7 +11,7 @@ import pytest
 from autobot.runtime import periodic
 from autobot.runtime.models import Contact, Notification, OutboundMessage
 from core.clock import SystemClock
-from packs.salon.models import CalendarEvent
+from packs.salon.testing import CalendarEvent
 from tests.helpers.integration import Providers, drain, fixture, post_tg, post_wa, wa_press, wa_text
 from tests.helpers.integration import providers as recorded_providers  # noqa: F401
 

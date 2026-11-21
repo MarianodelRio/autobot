@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from core.errors import TransientError
 from core.replies import List
 from core.testing.harness import Conversation
-from packs.salon.models import CalendarEvent
+from packs.salon.testing import CalendarEvent
 from tests.packs.salon.test_config import configuration
 
 
@@ -209,7 +209,7 @@ def test_text_at_the_menu_shows_the_menu(salon: Conversation) -> None:
 
 
 def test_days_and_hours_are_paginated_without_losing_choices(salon: Conversation) -> None:
-    from packs.salon.config import DAYS
+    from core.dates import WEEKDAY_KEYS as DAYS
 
     salon.config = configuration(
         opening_hours={day: ["10:00-12:00"] for day in DAYS}, slot_step_min=5

@@ -11,8 +11,7 @@ from core.pack import PackContext, SummaryLine
 from core.testing.clock import FixedClock
 from core.testing.harness import sample_tenant
 from packs.salon import summary
-from packs.salon.models import CalendarEvent
-from packs.salon.testing import FakeCalendar
+from packs.salon.testing import CalendarEvent, FakeCalendar
 from tests.packs.salon.test_config import configuration
 
 MADRID = ZoneInfo("Europe/Madrid")

@@ -22,7 +22,7 @@ def _parse_lineas_dir(lineas_dir: Path) -> dict[str, list[tuple[str, ...]]]:
         datos = yaml.safe_load(path.read_text(encoding="utf-8"))
         filas_totales = []
         for entrada in datos.get("horarios", []):
-            _cabecera, filas = formato._parse_tabla(entrada["tabla"])
+            _cabecera, filas = formato.parse_tabla(entrada["tabla"])
             for fila in filas:
                 filas_totales.append(tuple(fila.valores))
         resultado[path.name] = filas_totales
@@ -87,7 +87,7 @@ def test_formatear_conserva_llegada_salida_y_bus_y_es_idempotente() -> None:
         import yaml
 
         datos = yaml.safe_load(texto)
-        _cab, fs = formato._parse_tabla(datos["horarios"][0]["tabla"])
+        _cab, fs = formato.parse_tabla(datos["horarios"][0]["tabla"])
         return [(tuple(f.valores), tuple(f.bus), tuple(f.pendientes)) for f in fs]
 
     assert filas(TABLA_CON_ESPERA_Y_BUS) == filas(uno)

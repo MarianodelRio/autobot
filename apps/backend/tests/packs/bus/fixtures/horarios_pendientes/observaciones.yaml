@@ -1,4 +1,4 @@
-# Avisos de viaje de las aldeas pendientes del ciclo C2.
+# Avisos de viaje de las aldeas pendientes.
 pasa_por_aldea_a:
   tipo: aviso
   ambitos: [viaje]

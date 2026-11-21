@@ -1,25 +1,13 @@
 """Config of the bus pack: non-empty name and phone, office hours with known days and
 non-overlapping `HH:MM-HH:MM` ranges, and 1 to 8 distinct start-menu towns."""
 
-import re
-from typing import Annotated, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
+from core.dates import Weekday
+from core.hours import TimeRange, validate_ranges
 from core.text import normalize
-
-Weekday = Literal["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
-
-_RANGE_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$")
-
-TimeRange = Annotated[str, Field(pattern=_RANGE_RE.pattern)]  # "08:00-15:00"
-
-
-def _minutes(range_: str) -> tuple[int, int]:
-    m = _RANGE_RE.match(range_)
-    assert m is not None  # already checked by the pattern
-    h1, m1, h2, m2 = (int(g) for g in m.groups())
-    return h1 * 60 + m1, h2 * 60 + m2
 
 
 class OfficeHours(BaseModel):
@@ -37,11 +25,7 @@ class OfficeHours(BaseModel):
     @field_validator("ranges")
     @classmethod
     def _ordered_ranges(cls, ranges: list[str]) -> list[str]:
-        spans = sorted(_minutes(r) for r in ranges)
-        if any(start >= end for start, end in spans):
-            raise ValueError("un tramo debe empezar antes de acabar")
-        if any(a[1] > b[0] for a, b in zip(spans, spans[1:], strict=False)):
-            raise ValueError("los tramos se solapan")
+        validate_ranges(ranges)
         return ranges
 
 

@@ -4,7 +4,7 @@ from datetime import timedelta
 from core.errors import PermanentError, TransientError
 from core.idem import IdemKeys
 from core.testing.harness import Conversation
-from packs.salon.models import CalendarEvent
+from packs.salon.testing import CalendarEvent
 from tests.packs.salon.test_config import configuration
 
 

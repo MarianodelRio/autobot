@@ -1,4 +1,4 @@
-# Fixture sintética para los festivos locales por línea (P03e): pueblo-a tiene
+# Fixture sintética para los festivos locales por línea: pueblo-a tiene
 # festivos locales; linea-con-a pasa por pueblo-a, linea-sin-a no.
 localidades:
   pueblo-a: { nombre: Pueblo A }

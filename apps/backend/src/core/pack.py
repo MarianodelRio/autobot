@@ -93,7 +93,7 @@ class PackResult:
 
 @dataclass(frozen=True)
 class OwnerNotice:
-    """One kind of `NotifyOwner` a pack can emit (C8), with the label the panel
+    """One kind of `NotifyOwner` a pack can emit, with the label the panel
     shows next to its checkbox in `owner.notify`."""
 
     kind: str
@@ -127,7 +127,7 @@ class Pack:
     templates: list[TemplateSpec] = field(default_factory=list)
     summary: SummaryHook | None = None
     owner_notices: tuple[OwnerNotice, ...] = ()
-    """Kinds of `NotifyOwner` this pack can emit (C8). A new tenant's `owner.notify`
+    """Kinds of `NotifyOwner` this pack can emit. A new tenant's `owner.notify`
     starts with all of them, same as the demo; the operator unchecks what it does
     not want."""
     template: Path | None = None
@@ -139,5 +139,5 @@ class Pack:
     text (e.g. a name): the platform then does not read `alta`/`baja` as opt-in/out
     commands there, and passes the text to the pack. `menu` always keeps working."""
     test_calendar: Callable[[], object] | None = None
-    """When `needs_calendar`: builds an in-memory double for `manage.py chat` (L4).
+    """When `needs_calendar`: builds an in-memory double for `manage.py chat`.
     Never used outside that dev tool; the real calendar is wired by the worker."""

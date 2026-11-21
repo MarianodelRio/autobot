@@ -1,4 +1,5 @@
-"""Public channel links and actual offline SVG generation for both channel types."""
+"""Offline SVG generation of the public channel QR for both channel types. The link
+itself (`channel_link`) is covered in `tests/platform/tenancy/test_links.py`."""
 
 from pathlib import Path
 from xml.etree import ElementTree
@@ -6,40 +7,13 @@ from xml.etree import ElementTree
 import pytest
 import yaml
 
-from autobot.tenancy.schema import TelegramChannel, WhatsAppChannel
-from tests.platform.tenancy.helpers import demo_tenant_yaml, tenant_yaml
-from tools.ops.qr import channel_link, main, tenant_link_from_file
-
-
-@pytest.mark.parametrize("phone", ["+34 600 12 34 56", "34600123456", "+34 (600) 123-456"])
-def test_whatsapp_link_uses_public_phone(phone: str) -> None:
-    channel = WhatsAppChannel(
-        type="whatsapp", public_id="testpubid", phone_number_id="9988776655", display_phone=phone
-    )
-    assert channel_link(channel) == "https://wa.me/34600123456"
-
-
-def test_telegram_link_uses_business_bot() -> None:
-    channel = TelegramChannel(type="telegram", public_id="testpubid", bot_username="business_bot")
-    assert channel_link(channel) == "https://t.me/business_bot"
-
-
-@pytest.mark.parametrize(
-    "phone", [None, "", "0034600123456", "+0001234567", "123", "+34foo600123456", "+" + "1" * 16]
-)
-def test_missing_or_invalid_public_phone_is_rejected(phone: str | None) -> None:
-    with pytest.raises(ValueError):
-        channel_link(WhatsAppChannel(type="whatsapp", public_id="testpubid", display_phone=phone))
-
-
-def test_missing_telegram_username_is_rejected() -> None:
-    with pytest.raises(ValueError):
-        channel_link(TelegramChannel(type="telegram", public_id="testpubid"))
+from tests.platform.tenancy.helpers import demo_tenant_yaml, tenant_document
+from tools.ops.qr import main, tenant_link_from_file
 
 
 @pytest.mark.parametrize("kind", ["whatsapp", "telegram"])
 def test_cli_generates_real_svg_without_services(tmp_path: Path, kind: str) -> None:
-    doc = tenant_yaml("local")
+    doc = tenant_document("local")
     if kind == "whatsapp":
         doc["channel"]["display_phone"] = "+34 600 12 34 56"
     else:
@@ -76,7 +50,7 @@ def test_demo_tenant_has_no_channel_to_link(tmp_path: Path) -> None:
 
 
 def test_custom_output_and_svg_extension(tmp_path: Path) -> None:
-    doc = tenant_yaml("local")
+    doc = tenant_document("local")
     doc["channel"]["display_phone"] = "+34 600 12 34 56"
     document = tmp_path / "document.yaml"
     document.write_text(yaml.safe_dump(doc))

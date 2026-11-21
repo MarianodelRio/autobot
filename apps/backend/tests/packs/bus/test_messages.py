@@ -9,7 +9,7 @@ from datetime import date
 from packs.bus import loader, query
 from packs.bus.messages import msg_resultado
 from packs.bus.modelo import Temporada
-from tests.packs.bus.conversation_harness import CONFIG, HORARIOS_FICTICIOS
+from tests.packs.bus.demo import CONFIG, HORARIOS_FICTICIOS
 
 HORARIOS = loader.cargar(HORARIOS_FICTICIOS)
 

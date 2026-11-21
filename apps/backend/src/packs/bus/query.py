@@ -7,10 +7,11 @@ deterministas y para no acoplar el motor a una zona horaria concreta.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
-from typing import Any, Literal
+from typing import Literal
 
+from core.dates import minutes_of, parse_hhmm
 from packs.bus import calendario as calendario_servicio
 from packs.bus import formato
 from packs.bus.calendario import InfoDia
@@ -45,10 +46,10 @@ class Consulta:
     lineas_sin_datos: tuple[str, ...]
     fuera_de_calendario: bool
     siguiente_con_servicio: date | None
-    # True si el día es de sin servicio en ninguna línea (P03g).
+    # True si el día es de sin servicio en ninguna línea .
     sin_servicio_general: bool = False
     # (nombre, id de localidad) si alguna línea que cubre el par usó un
-    # festivo local ese día (P03e).
+    # festivo local ese día .
     festivo_local: tuple[str, str] | None = None
 
 
@@ -62,15 +63,6 @@ class _Resolucion:
     fuera_de_calendario: bool
     sin_servicio_general: bool = False
     festivo_local: tuple[str, str] | None = None
-
-
-def _parse_hora(hhmm: str) -> time:
-    h, m = hhmm.split(":")
-    return time(int(h), int(m))
-
-
-def _minutos(t: time) -> int:
-    return t.hour * 60 + t.minute
 
 
 def _localidades_del_viaje(horarios: Horarios, viaje: Viaje) -> list[str | None]:
@@ -115,106 +107,133 @@ def _emparejar(
 
 def _viajes_candidatos_por_localidad(horarios: Horarios, origen: str, destino: str) -> list[Viaje]:
     """Viajes que paran en alguna parada de `origen` y en alguna parada de
-    `destino` (en cualquier orden), usando `horarios.localidad_viajes` en vez
+    `destino` (en cualquier orden), usando los índices de `horarios` en vez
     de recorrer todas las líneas y viajes. No confirma el sentido del
     trayecto: eso lo hace `_emparejar` sobre cada candidato.
 
-    El orden devuelto es el de `horarios.localidad_viajes[origen]`, que a su
-    vez respeta el orden de `modelo.lineas` y, dentro de cada línea, el orden
-    de `linea.viajes` (ver `loader.py`); así la agrupación por línea y por
-    salida en `_resolver_fecha` no cambia respecto al escaneo completo."""
-    viajes_origen = horarios.localidad_viajes.get(origen, ())
-    viajes_destino = horarios.localidad_viajes.get(destino, ())
-    if not viajes_origen or not viajes_destino:
+    El orden devuelto es el de `horarios.viajes` (el de `modelo.lineas` y,
+    dentro de cada línea, el de `linea.viajes`), así la agrupación por línea y
+    por salida en `_resolver_fecha` no cambia respecto al escaneo completo."""
+    en_destino = set(horarios.localidad_viajes_idx.get(destino, ()))
+    if not en_destino:
         return []
-    ids_destino = {id(v) for v in viajes_destino}
-    return [v for v in viajes_origen if id(v) in ids_destino]
+    return [
+        horarios.viajes[i] for i in horarios.localidad_viajes_idx.get(origen, ()) if i in en_destino
+    ]
 
 
-def _candidatos_por_linea(horarios: Horarios, origen: str, destino: str) -> dict[str, list[Viaje]]:
-    """Agrupa `_viajes_candidatos_por_localidad` por línea, preservando el
-    orden de aparición de cada línea y de sus viajes."""
-    agrupados: dict[str, list[Viaje]] = {}
-    for viaje in _viajes_candidatos_por_localidad(horarios, origen, destino):
-        agrupados.setdefault(viaje.linea, []).append(viaje)
-    return agrupados
+@dataclass(frozen=True)
+class _Tramo:
+    """Un viaje que conecta el par (origen, destino), con todo lo que no
+    depende de la fecha ya resuelto: horas y paradas del tramo, y notas."""
+
+    clases: frozenset[str]  # clases de día en las que circula (de `viaje.dias`)
+    hora_salida: time
+    hora_llegada: time
+    parada_origen: str
+    parada_destino: str
+    notas: tuple[str, ...]
+    solo_viernes_lectivo: bool
 
 
-def _conecta_alguna_vez(
-    horarios: Horarios, candidatos: list[Viaje], origen: str, destino: str
-) -> bool:
-    return any(_emparejar(horarios, viaje, origen, destino) is not None for viaje in candidatos)
+@dataclass(frozen=True)
+class _LineaDelPar:
+    """Tramos de una línea que conecta el par, por temporada."""
+
+    linea: Linea
+    por_temporada: dict[str, tuple[_Tramo, ...]]
 
 
-def _mes_en_no_circula(linea: Linea, mes: int) -> bool:
-    for nombre_mes in linea.no_circula:
-        if formato._MESES.get(str(nombre_mes).strip().lower()) == mes:
-            return True
-    return False
-
-
-def _observaciones_relevantes(
-    linea: Linea, viaje: Viaje, i_origen: int, i_destino: int
-) -> list[str]:
+def _tramo(horarios: Horarios, linea: Linea, viaje: Viaje, par: tuple[int, int]) -> _Tramo:
+    """Construye el tramo de `viaje`: hora de salida/llegada ya como `time` y las
+    observaciones que le aplican (de línea, de viaje y de las dos paradas), con
+    su texto resuelto. Ningún pendiente (`Pnn`) llega nunca aquí: son solo para
+    negocio/validador."""
+    i_origen, i_destino = par
     paso_origen = viaje.pasos[i_origen]
     paso_destino = viaje.pasos[i_destino]
-    ids: list[str] = []
-    ids.extend(linea.avisos)
-    ids.extend(viaje.observaciones)
-    ids.extend(paso_origen.observaciones)
-    ids.extend(paso_destino.observaciones)
-    return ids
-
-
-def _evaluar_pareja(
-    horarios: Horarios,
-    linea: Linea,
-    viaje: Viaje,
-    i_origen: int,
-    i_destino: int,
-    info: InfoDia,
-    clase: str,
-) -> tuple[bool, tuple[str, ...]]:
-    """Comprueba las condiciones de negocio que aplican
-    a esta pareja concreta de paradas de un viaje, y devuelve si es válida y
-    las notas (texto ya resuelto) que debe llevar. Ningún pendiente (`Pnn`)
-    aparece nunca aquí: son solo para negocio/validador."""
-    modelo = horarios.modelo
-    ids = _observaciones_relevantes(linea, viaje, i_origen, i_destino)
+    ids = [
+        *linea.avisos,
+        *viaje.observaciones,
+        *paso_origen.observaciones,
+        *paso_destino.observaciones,
+    ]
     notas: list[str] = []
+    solo_viernes_lectivo = False
     for oid in ids:
-        obs = modelo.observaciones.get(oid)
+        obs = horarios.modelo.observaciones.get(oid)
         if obs is None:
             continue
-        # `clase` es la de ESTA línea: un festivo local la vuelve
-        # "festivos" aunque el día sea viernes lectivo.
-        if obs.id == "solo_viernes_lectivo" and not (
-            info.dia_semana == "viernes" and info.es_lectivo and clase == "viernes"
-        ):
-            return False, ()
+        solo_viernes_lectivo = solo_viernes_lectivo or obs.id == "solo_viernes_lectivo"
         texto = formato.texto_observacion(obs, linea)
         if texto not in notas:
             notas.append(texto)
-    return True, tuple(notas)
+    return _Tramo(
+        clases=formato.GRUPOS_DIA.get(viaje.dias, frozenset()),
+        hora_salida=parse_hhmm(paso_origen.salida),
+        hora_llegada=parse_hhmm(paso_destino.llegada),
+        parada_origen=paso_origen.parada,
+        parada_destino=paso_destino.parada,
+        notas=tuple(notas),
+        solo_viernes_lectivo=solo_viernes_lectivo,
+    )
+
+
+def _lineas_del_par(horarios: Horarios, origen: str, destino: str) -> tuple[_LineaDelPar, ...]:
+    """Líneas que conectan `origen` con `destino` en algún viaje, con sus tramos.
+    Solo depende del par, no de la fecha: se calcula una vez por par y se
+    guarda en `horarios.cache_pares`, porque listar varios días o buscar el
+    siguiente día con servicio resuelve muchas fechas para el mismo par."""
+    clave = (origen, destino)
+    cacheado: tuple[_LineaDelPar, ...] | None = horarios.cache_pares.get(clave)
+    if cacheado is not None:
+        return cacheado
+
+    por_linea: dict[str, list[Viaje]] = {}
+    for viaje in _viajes_candidatos_por_localidad(horarios, origen, destino):
+        por_linea.setdefault(viaje.linea, []).append(viaje)
+
+    resultado: list[_LineaDelPar] = []
+    for lid, viajes in por_linea.items():
+        linea = horarios.modelo.lineas[lid]
+        por_temporada: dict[str, list[_Tramo]] = {}
+        for viaje in viajes:
+            par = _emparejar(horarios, viaje, origen, destino)
+            if par is not None:
+                por_temporada.setdefault(viaje.temporada, []).append(
+                    _tramo(horarios, linea, viaje, par)
+                )
+        # Una línea con viajes candidatos pero que no conecta el par en ningún
+        # viaje no interviene en la consulta.
+        if por_temporada:
+            resultado.append(
+                _LineaDelPar(linea, {t: tuple(tramos) for t, tramos in por_temporada.items()})
+            )
+    cacheado = tuple(resultado)
+    horarios.cache_pares[clave] = cacheado
+    return cacheado
+
+
+@dataclass
+class _Acumulado:
+    """Una salida provisional: varias líneas con las mismas horas y paradas se
+    fusionan en una."""
+
+    tramo: _Tramo
+    lineas: list[str] = field(default_factory=list)
+    notas: list[str] = field(default_factory=list)
 
 
 def _resolver_fecha(horarios: Horarios, origen: str, destino: str, fecha: date) -> _Resolucion:
     """Precedencia: sin_trayecto, sin_servicio en
-    ninguna línea (P03g), fuera de vigencia (sin_datos), líneas."""
-    modelo = horarios.modelo
-    calendario = modelo.calendario
+    ninguna línea, fuera de vigencia (sin_datos), líneas."""
+    calendario = horarios.modelo.calendario
     assert calendario is not None
 
     fuera_de_vigencia = fecha < calendario.vigencia_inicio or fecha > calendario.vigencia_fin
+    lineas = _lineas_del_par(horarios, origen, destino)
 
-    candidatos_por_linea = _candidatos_por_linea(horarios, origen, destino)
-    lineas_conectan: set[str] = {
-        lid
-        for lid, candidatos in candidatos_por_linea.items()
-        if _conecta_alguna_vez(horarios, candidatos, origen, destino)
-    }
-
-    if not lineas_conectan:
+    if not lineas:
         info = None if fuera_de_vigencia else calendario_servicio.info_dia(calendario, fecha)
         return _Resolucion("sin_trayecto", [], info, (), (), fuera_de_vigencia)
 
@@ -230,92 +249,71 @@ def _resolver_fecha(horarios: Horarios, origen: str, destino: str, fecha: date) 
     lineas_sin_datos: set[str] = set()
     temporadas_usadas: dict[str, Temporada] = {}
     festivo_local_usado: tuple[str, str] | None = None
-    # (hora_salida, hora_llegada, parada_origen, parada_destino) -> Salida provisional
-    agrupadas: dict[tuple[time, time, str, str], dict[str, Any]] = {}
+    # (hora_salida, hora_llegada, parada_origen, parada_destino) -> salida provisional
+    agrupadas: dict[tuple[time, time, str, str], _Acumulado] = {}
 
-    for lid, candidatos in candidatos_por_linea.items():
-        linea = modelo.lineas[lid]
-        conecta_esta_linea = lid in lineas_conectan
-
+    for entrada in lineas:
+        linea = entrada.linea
         temporada = calendario_servicio.temporada_de(linea, fecha)
         if temporada is None:
             continue
-        if conecta_esta_linea:
-            temporadas_usadas[lid] = temporada
+        temporadas_usadas[linea.id] = temporada
 
-        if _mes_en_no_circula(linea, fecha.month):
+        if fecha.month in linea.meses_no_circula:
             continue
 
         clase, festivo_local = calendario_servicio.clase_dia_linea(
-            info, horarios.festivos_por_linea.get(lid, {})
+            info, horarios.festivos_por_linea.get(linea.id, {})
         )
-        if festivo_local is not None and conecta_esta_linea and festivo_local_usado is None:
+        if festivo_local is not None and festivo_local_usado is None:
             festivo_local_usado = festivo_local
 
         estado = linea.dias.get(temporada.nombre, {}).get(clase)
         if estado is None or estado == "sin_servicio":
             continue
         if estado == "sin_datos":
-            if conecta_esta_linea:
-                lineas_sin_datos.add(lid)
+            lineas_sin_datos.add(linea.id)
             continue
 
         # estado == "horario"
-        for viaje in candidatos:
-            if viaje.temporada != temporada.nombre:
+        for tramo in entrada.por_temporada.get(temporada.nombre, ()):
+            if clase not in tramo.clases:
                 continue
-            if clase not in formato.GRUPOS_DIA.get(viaje.dias, frozenset()):
+            # `clase` es la de ESTA línea: un festivo local la vuelve
+            # "festivos" aunque el día sea viernes lectivo.
+            if tramo.solo_viernes_lectivo and not (
+                info.dia_semana == "viernes" and info.es_lectivo and clase == "viernes"
+            ):
                 continue
-            par = _emparejar(horarios, viaje, origen, destino)
-            if par is None:
-                continue
-            i_origen, i_destino = par
-            valido, notas = _evaluar_pareja(
-                horarios, linea, viaje, i_origen, i_destino, info, clase
+            clave = (
+                tramo.hora_salida,
+                tramo.hora_llegada,
+                tramo.parada_origen,
+                tramo.parada_destino,
             )
-            if not valido:
-                continue
-
-            paso_origen = viaje.pasos[i_origen]
-            paso_destino = viaje.pasos[i_destino]
-            hora_salida = _parse_hora(paso_origen.salida)
-            hora_llegada = _parse_hora(paso_destino.llegada)
-            clave = (hora_salida, hora_llegada, paso_origen.parada, paso_destino.parada)
-            entrada = agrupadas.setdefault(
-                clave,
-                {
-                    "hora_salida": hora_salida,
-                    "hora_llegada": hora_llegada,
-                    "parada_origen": paso_origen.parada,
-                    "parada_destino": paso_destino.parada,
-                    "lineas": [],
-                    "notas": [],
-                },
-            )
-            if lid not in entrada["lineas"]:
-                entrada["lineas"].append(lid)
-            for nota in notas:
-                if nota not in entrada["notas"]:
-                    entrada["notas"].append(nota)
+            acumulado = agrupadas.setdefault(clave, _Acumulado(tramo))
+            if linea.id not in acumulado.lineas:
+                acumulado.lineas.append(linea.id)
+            for nota in tramo.notas:
+                if nota not in acumulado.notas:
+                    acumulado.notas.append(nota)
 
     salidas = [
         Salida(
-            hora_salida=e["hora_salida"],
-            hora_llegada=e["hora_llegada"],
-            duracion_min=_minutos(e["hora_llegada"]) - _minutos(e["hora_salida"]),
-            parada_origen=e["parada_origen"],
-            parada_destino=e["parada_destino"],
-            lineas=tuple(e["lineas"]),
-            notas=tuple(e["notas"]),
+            hora_salida=e.tramo.hora_salida,
+            hora_llegada=e.tramo.hora_llegada,
+            duracion_min=minutes_of(e.tramo.hora_llegada) - minutes_of(e.tramo.hora_salida),
+            parada_origen=e.tramo.parada_origen,
+            parada_destino=e.tramo.parada_destino,
+            lineas=tuple(e.lineas),
+            notas=tuple(e.notas),
         )
         for e in agrupadas.values()
     ]
     salidas.sort(key=lambda s: s.hora_salida)
 
-    if not lineas_conectan:
-        estado_final: EstadoConsulta = "sin_trayecto"
-    elif salidas:
-        estado_final = "con_salidas"
+    if salidas:
+        estado_final: EstadoConsulta = "con_salidas"
     elif lineas_sin_datos:
         estado_final = "sin_datos"
     else:
@@ -335,7 +333,7 @@ def _resolver_fecha(horarios: Horarios, origen: str, destino: str, fecha: date) 
 
 def es_no_vendible(horarios: Horarios, a: str, b: str) -> bool:
     """True si la empresa no vende billetes entre `a` y `b`, en ninguno de
-    los dos sentidos (P12b). Único sitio que consulta `modelo.no_vendibles`."""
+    los dos sentidos . Único sitio que consulta `modelo.no_vendibles`."""
     return frozenset((a, b)) in horarios.modelo.no_vendibles
 
 
@@ -424,7 +422,7 @@ def consultar(
 def destinos_desde(horarios: Horarios, origen: str, linea: str | None = None) -> frozenset[str]:
     """Localidades a las que se llega en servicio directo desde `origen`, en
     cualquier temporada/día (no filtrado por fecha). Nunca incluye `origen` ni
-    los destinos no vendibles desde él (P12b). Con `linea`, solo cuenta los
+    los destinos no vendibles desde él . Con `linea`, solo cuenta los
     viajes de esa línea (id)."""
     resultado: set[str] = set()
     for viaje in horarios.localidad_viajes.get(origen, ()):

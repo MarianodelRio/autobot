@@ -1,7 +1,7 @@
 """packs/bus/matcher.py — coincidencia de texto libre con localidades.
 
 Índice puro y sin estado sobre un `Horarios` ya cargado (`loader.cargar`):
-nada de WhatsApp ni de textos en español (eso vive en fase 4, en
+nada de WhatsApp ni de textos en español (eso vive en
 `conversation.py` y `messages.py`). La normalización de nombres es una única
 función compartida con el validador: `packs.bus.formato.normalizar`.
 """
@@ -142,15 +142,5 @@ def lineas(
     """Líneas en orden alfabético por título (`Linea.titulo`, normalizado),
     cada una con sus pueblos en orden alfabético.
     Descarta las líneas sin pueblos y las aldeas pendientes (ya excluidas en
-    `Horarios.lineas_pueblos`)."""
-    resultado: list[tuple[Linea, tuple[Localidad, ...]]] = []
-    for lid, ids in horarios.lineas_pueblos.items():
-        if not ids:
-            continue
-        resultado.append(
-            (
-                horarios.modelo.lineas[lid],
-                tuple(horarios.modelo.localidades[i] for i in ids),
-            )
-        )
-    return tuple(resultado)
+    `Horarios.lineas_pueblos`). Precalculado en `Horarios.lineas_con_pueblos`."""
+    return horarios.lineas_con_pueblos

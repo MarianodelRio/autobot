@@ -1,5 +1,5 @@
 # Los Álamos: un solo viaje desde Riomayor que para en Peñarroja
-# (llegada 11:55, salida 12:30). Mismo autobús que el de corta.yaml (P21).
+# (llegada 11:55, salida 12:30). Mismo autobús que el de corta.yaml.
 nombre: Los Álamos – Riomayor
 avisos: []
 no_circula: []

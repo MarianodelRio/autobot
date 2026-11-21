@@ -52,9 +52,9 @@ cita del bot, **bloquea las horas que cubre**, y uno de día completo las bloque
 opción conservadora (nunca se reserva sobre algo que el peluquero ha apuntado); para cerrar
 un día usa `[CFG] CERRADO`. El
 bot distingue citas propias por metadatos privados de Calendar; una cita creada
-a mano necesita `Telefono:` en la descripción para que el barrido pueda
-identificarla. Para probar cambios sin tocar el calendario real se usa
-`FakeCalendar` (ver `packs/salon/testing.py`) o el negocio de demo
+a mano necesita `Telefono:` (o `WaId:`) en la descripción para que el barrido pueda
+identificarla; `Tel:` no se reconoce. Para probar cambios sin tocar el calendario real se usa
+`FakeCalendar` (ver `packs/salon/testing.py`, que también alimenta `manage.py chat`) o el negocio de demo
 `demo-peluqueria` (`docs/procedimientos/demo.md`).
 
 Las plantillas de WhatsApp las crea el operador en el WhatsApp Manager de cada
@@ -106,8 +106,8 @@ puede consultar en cualquier momento escribiéndole al bot ("Cómo va el mes").
 
 Para cambiar horario o servicios desde el panel (pestaña «Configuración»), `opening_hours`
 tiene un editor por día (abierto/cerrado y tramos con selector de hora, nunca un día con
-una lista vacía: cerrado quita la clave) y `services` una tabla con id numérico automático
-(C17); por terminal, edita YAML, ejecuta `make check`, prueba una reserva completa y una
+una lista vacía: cerrado quita la clave) y `services` una tabla con id numérico automático;
+por terminal, edita YAML, ejecuta `make check`, prueba una reserva completa y una
 cancelación con `FakeCalendar` o con `demo-peluqueria`, y publica con
 `tenant_config import <dir> --comment "Motivo"`. Usa `tenant_health <slug>` para comprobar acceso
 Calendar y plantillas antes de activar el canal real. Los procedimientos de

@@ -1,5 +1,5 @@
 # tests/fixtures/horarios_motor/paradas.yaml — localidades y paradas
-# sintéticas para tests/test_query.py (motor de consulta, fase 2). Nombres
+# sintéticas para tests/test_query.py (motor de consulta). Nombres
 # legibles inventados, sin relación con horarios/ real.
 
 localidades:

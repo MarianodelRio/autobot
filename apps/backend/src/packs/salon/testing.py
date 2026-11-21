@@ -1,14 +1,30 @@
-"""An isolated CalendarPort in memory, with programmable errors and effects."""
+"""An isolated CalendarPort in memory, with programmable errors and effects. It backs the
+pack tests and the terminal chat (`manage.py chat`, via `Pack.test_calendar`)."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any
 
 from core.errors import PermanentError
-from packs.salon.models import CalendarEvent
 from packs.salon.ownership import belongs
+from packs.salon.parser import set_field
 from packs.salon.ports import CalendarPort
+
+
+@dataclass(frozen=True)
+class CalendarEvent:
+    """An event of the in-memory calendar (satisfies `ports.CalEvent`)."""
+
+    gcal_id: str
+    summary: str
+    description: str
+    start: datetime
+    end: datetime
+    all_day: bool = False
+    created: datetime | None = None
+    status: str = "confirmed"
+    private: dict[str, str] = field(default_factory=dict)
 
 
 class FakeCalendar:
@@ -42,13 +58,6 @@ class FakeCalendar:
             key=lambda e: e.start,
         )
 
-    def list_future_events(self, start: datetime) -> list[CalendarEvent]:
-        self._check("list_future_events")
-        return sorted(
-            [e for e in self.events.values() if e.status != "cancelled" and e.end > start],
-            key=lambda e: e.start,
-        )
-
     def get_event(self, gcal_id: str) -> CalendarEvent | None:
         self._check("get_event")
         event = self.events.get(gcal_id)
@@ -74,19 +83,12 @@ class FakeCalendar:
         return self.add(result)
 
     def patch_description(self, gcal_id: str, fields: dict[str, str]) -> CalendarEvent:
-        from packs.salon.parser import set_field
-
         self._check("patch_description")
         event = self.events[gcal_id]
         description = event.description
         for key, value in fields.items():
             description = set_field(description, key, value)
         return self.add(replace(event, description=description))
-
-    def patch_private(self, gcal_id: str, fields: dict[str, str]) -> CalendarEvent:
-        self._check("patch_private")
-        event = self.events[gcal_id]
-        return self.add(replace(event, private=event.private | fields))
 
     def cancel_event(self, gcal_id: str) -> None:
         self._check("cancel_event")

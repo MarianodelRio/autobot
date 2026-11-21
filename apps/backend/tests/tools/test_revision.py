@@ -460,7 +460,7 @@ def test_html_ficticios_seccion_lineas_con_los_3_nombres_cortos() -> None:
     assert "Pinarnuevo" in seccion[idx_pin : idx_pin + 1500]
 
 
-# ── Sección "Calendario" y pendientes del calendario (P03e, P03g, P12b) ─────
+# ── Sección "Calendario": festivos locales, días sin servicio general y no vendibles ──
 
 
 def _html_ficticios() -> str:
@@ -506,30 +506,30 @@ def test_seccion_calendario_sin_festivos_locales_ni_no_vendibles(tmp_path: Path)
     assert seccion.count("<p>Ninguno.</p>") == 3  # sin servicio, locales, no vendibles
 
 
-# ── Ciclo C1: llegada/salida y "mismo autobús que" ───────────────────────────
+# ── llegada/salida y "mismo autobús que" ───────────────────────────
 
 
-def _html_cicloc() -> str:
-    resultado = validar_horarios(FIXTURES / "horarios_cicloC")
+def _html_mismo_bus() -> str:
+    resultado = validar_horarios(FIXTURES / "horarios_mismo_bus")
     assert resultado.errores == [], resultado.errores
     return revision.generar_html(modelo_de(resultado), None, None, None, "01/01/2026")
 
 
 def test_celda_con_espera_muestra_llega_y_sale() -> None:
-    html_doc = _html_cicloc()
+    html_doc = _html_mismo_bus()
     assert "<td>llega 11:55 · sale 12:30</td>" in html_doc
     # una celda simple sigue mostrando solo la hora
     assert "<td>11:40</td>" in html_doc
 
 
 def test_celda_con_espera_y_letra_pone_la_letra_al_final() -> None:
-    modelo = modelo_de(validar_horarios(FIXTURES / "horarios_cicloC"))
+    modelo = modelo_de(validar_horarios(FIXTURES / "horarios_mismo_bus"))
     paso = modelo.lineas["larga"].viajes[0].pasos[-2]  # PVN 12:50A
     assert revision._celda_paso(modelo, paso) == "<td>12:50A</td>"
 
 
 def test_mismo_autobus_que_nombra_la_otra_linea_dias_y_sentido() -> None:
-    html_doc = _html_cicloc()
+    html_doc = _html_mismo_bus()
     assert (
         "mismo autobús que: Peñarroja – Riomayor "
         "(lunes a viernes, de Riomayor a Peñarroja)" in html_doc
@@ -541,7 +541,7 @@ def test_mismo_autobus_que_nombra_la_otra_linea_dias_y_sentido() -> None:
 
 
 def test_mismo_autobus_de_la_misma_linea_cita_la_otra_tabla_no_la_propia() -> None:
-    html_doc = _html_cicloc()
+    html_doc = _html_mismo_bus()
     frases = [f.split("</p>")[0] for f in html_doc.split("<p class='mismo-bus'>")[1:]]
     assert len(frases) == 5  # larga, corta (2 tablas) y paso (2 tablas)
     con_corta = [
@@ -561,7 +561,7 @@ def test_sin_bus_no_hay_frase_de_mismo_autobus(tmp_path: Path) -> None:
     assert "mismo autobús que" not in html_doc
 
 
-# ── Sección "Localidades sin hora de paso" (ciclo C2, P15/P32) ─────────────
+# ── Sección "Localidades sin hora de paso" ─────────────
 
 
 def test_html_pendientes_muestra_localidades_y_viajes() -> None:

@@ -5,8 +5,8 @@ from datetime import date, datetime, time, timedelta
 
 import pytest
 
-from packs.salon.models import CalendarEvent
 from packs.salon.slots import classify, compute_slots, generate_slots, overlaps, split_periods
+from packs.salon.testing import CalendarEvent
 
 NOW = datetime.fromisoformat("2026-03-24T09:00:00+01:00")
 DAY = NOW.date()

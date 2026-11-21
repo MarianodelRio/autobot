@@ -1,5 +1,5 @@
 # tests/fixtures/calendario_base.yaml — calendario mínimo válido para los
-# tests de formato.py, formatear.py y revision.py (que ahora requieren
+# tests de formato/, formatear.py y revision.py (que ahora requieren
 # calendario.yaml, igual que paradas.yaml/observaciones.yaml).
 
 vigencia: 01/01/2026 - 31/08/2027

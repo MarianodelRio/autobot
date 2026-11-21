@@ -18,8 +18,7 @@ from autobot.runtime.models import Channel
 from core.pack import ContactInfo
 from core.testing.clock import FixedClock
 from packs.salon.booking import SlotTaken, reserve
-from packs.salon.models import CalendarEvent
-from packs.salon.testing import FakeCalendar
+from packs.salon.testing import CalendarEvent, FakeCalendar
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 NOW = datetime.fromisoformat("2026-03-24T09:00:00+01:00")

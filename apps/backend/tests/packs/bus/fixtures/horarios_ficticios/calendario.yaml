@@ -40,7 +40,7 @@ sin_servicio_todas_las_lineas: [25/12, 01/01]
 # Festivo local de Odalla: un día de entre semana (miércoles) y un viernes
 # lectivo, para comprobar que la línea de Odalla usa el calendario de
 # festivos ese día y que un viernes lectivo con festivo local no activa
-# "solo_viernes_lectivo" (ver query._evaluar_pareja).
+# "solo_viernes_lectivo" (ver query._tramo).
 festivos_locales:
   odalla:
     14/10/2026: Fiesta local de Odalla

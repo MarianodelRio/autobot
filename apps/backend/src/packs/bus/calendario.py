@@ -1,31 +1,18 @@
 """packs/bus/calendario.py — lógica pura de calendario: temporada de una línea,
 tipo de día y periodo lectivo para una fecha dada.
 
-No hace E/S ni lee el reloj para resolver `info_dia`/`temporada_de`: reciben
-el objeto `Calendario` ya validado por `formato.py` y la fecha a resolver.
-Solo `hoy()`/`ahora()` leen el reloj, y son para quien los llame (fases
-posteriores), nunca los usa este módulo internamente. Siempre `zoneinfo`,
-nunca `pytz`.
+No hace E/S ni lee el reloj: recibe el objeto `Calendario` ya validado por
+`formato/` y la fecha a resolver.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import date
 
+from core.dates import WEEKDAY_KEYS
 from packs.bus import formato
 from packs.bus.modelo import Calendario, Linea, Temporada
-
-_DIAS_SEMANA = (
-    "lunes",
-    "martes",
-    "miercoles",
-    "jueves",
-    "viernes",
-    "sabado",
-    "domingo",
-)
 
 
 class FueraDeCalendario(Exception):
@@ -64,7 +51,7 @@ def info_dia(
             f"{calendario.vigencia_fin.strftime('%d/%m/%Y')})"
         )
 
-    dia_semana = _DIAS_SEMANA[fecha.weekday()]
+    dia_semana = WEEKDAY_KEYS[fecha.weekday()]
     nombre_festivo = calendario.festivos.get(fecha)
     es_festivo = nombre_festivo is not None
 
@@ -94,12 +81,12 @@ def info_dia(
 def clase_dia_linea(
     info: InfoDia, festivos_locales_de_la_linea: dict[date, tuple[str, str]]
 ) -> tuple[str, tuple[str, str] | None]:
-    """Clase de día que aplica una línea concreta en `info.fecha` (P03e):
+    """Clase de día que aplica una línea concreta en `info.fecha` :
     "festivos" si el día es festivo general o festivo local de alguna
     localidad que la línea toca; si no, la clase del día de la semana.
     Devuelve también el festivo local `(nombre, id de localidad)` que tenga la
     línea ese día (aunque además sea festivo general), o None. `InfoDia` y
-    `es_lectivo` no cambian por un festivo local (P04)."""
+    `es_lectivo` no cambian por un festivo local ."""
     festivo_local = festivos_locales_de_la_linea.get(info.fecha)
     if info.es_festivo or festivo_local is not None:
         return "festivos", festivo_local
@@ -109,17 +96,5 @@ def clase_dia_linea(
 def temporada_de(linea: Linea, fecha: date) -> Temporada | None:
     """Temporada de `linea` vigente en `fecha`. Delega en
     `formato.temporada_de_linea`: el único sitio que interpreta un rango de
-    temporada de línea es `formato.py`."""
+    temporada de línea es `formato/temporadas.py`."""
     return formato.temporada_de_linea(linea, fecha.month, fecha.day)
-
-
-def hoy(tz: str = "Europe/Madrid") -> date:
-    """Fecha de hoy en `tz`. No la usa ningún módulo de esta fase
-    internamente (query.py recibe `ahora` como parámetro); es para quien la
-    llame en fases posteriores."""
-    return datetime.now(ZoneInfo(tz)).date()
-
-
-def ahora(tz: str = "Europe/Madrid") -> datetime:
-    """Instante actual en `tz`. Ver `hoy()`."""
-    return datetime.now(ZoneInfo(tz))

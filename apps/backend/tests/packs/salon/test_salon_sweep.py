@@ -9,7 +9,7 @@ import pytest
 from autobot.runtime import periodic
 from autobot.runtime.models import Channel, Contact, OutboundMessage
 from autobot.tenancy.tx import tenant_tx
-from packs.salon.models import CalendarEvent
+from packs.salon.testing import CalendarEvent
 
 pytestmark = [
     pytest.mark.django_db(transaction=True, databases=["default", "owner"]),

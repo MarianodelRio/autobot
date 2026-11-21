@@ -361,7 +361,7 @@ paradas:
 
 
 def test_localidad_id_demasiado_largo_para_un_id_de_canal_es_error(tmp_path: Path) -> None:
-    # X11: "loc:<id>" (4 bytes de prefijo) no puede superar los 64 bytes del id de
+    # "loc:<id>" (4 bytes de prefijo) no puede superar los 64 bytes del id de
     # botón/fila de WhatsApp o Telegram (bus/interactive.py).
     horarios_dir = _build(tmp_path, BASE_VALIDA.format(fila="08:00  08:10  08:20"))
     largo = "x" * 61
@@ -381,7 +381,7 @@ paradas:
 
 
 def test_linea_id_demasiado_largo_para_un_id_de_canal_es_error(tmp_path: Path) -> None:
-    # X11: "linea:<id>:<página>" tampoco puede superar los 64 bytes.
+    # "linea:<id>:<página>" tampoco puede superar los 64 bytes.
     horarios_dir = _build(
         tmp_path, BASE_VALIDA.format(fila="08:00  08:10  08:20"), linea_nombre="x" * 60
     )
@@ -565,7 +565,7 @@ horarios:
     assert len(etiquetas_pendiente) == 2
 
 
-# ── no_vendibles en paradas.yaml (P12b) ─────────────────────────────────────
+# ── no_vendibles en paradas.yaml ─────────────────────────────────────
 
 _LINEA_A_B = """\
 nombre: Línea de prueba
@@ -654,7 +654,7 @@ def test_horarios_ficticios_declara_los_tres_no_vendibles_de_p12b() -> None:
     assert not any("no_vendibles" in a for a in resultado.avisos)
 
 
-# ── celda `llegada>salida` (ciclo C1, P21) ───────────────────────────────────
+# ── celda `llegada>salida` ───────────────────────────────────
 
 
 def _validar_fila(tmp_path: Path, fila: str) -> formato.Resultado:
@@ -722,9 +722,9 @@ def test_llegada_igual_a_la_salida_previa_no_es_retroceso(tmp_path: Path) -> Non
     assert resultado.errores == []
 
 
-# ── mismo autobús: `bus:<id>` y aviso heurístico (ciclo C1, T-1) ─────────────
+# ── mismo autobús: `bus:<id>` y aviso heurístico ─────────────
 
-CICLO_C = FIXTURES / "horarios_cicloC"
+MISMO_BUS = FIXTURES / "horarios_mismo_bus"
 
 LINEA_TPL = """\
 nombre: {nombre}
@@ -755,11 +755,11 @@ def _lv(nombre: str, cabecera: str, fila: str) -> str:
     return _linea(nombre, _tabla("lunes-viernes", cabecera, fila))
 
 
-def _ciclo_c(
+def _mismo_bus(
     tmp_path: Path, extra: dict[str, str] | None = None, quitar: tuple[str, ...] = ()
 ) -> Path:
     destino = tmp_path / "horarios"
-    shutil.copytree(CICLO_C, destino)
+    shutil.copytree(MISMO_BUS, destino)
     for nombre in quitar:
         (destino / "lineas" / f"{nombre}.yaml").unlink()
     for nombre, texto in (extra or {}).items():
@@ -769,7 +769,7 @@ def _ciclo_c(
 
 def _errores_bus(tmp_path: Path, **lineas: str) -> formato.Resultado:
     """Valida la fixture sin vecina/larga/corta/paso más las líneas dadas."""
-    destino = _ciclo_c(
+    destino = _mismo_bus(
         tmp_path,
         extra=lineas,
         quitar=("larga", "corta", "paso", "vecina"),
@@ -777,14 +777,14 @@ def _errores_bus(tmp_path: Path, **lineas: str) -> formato.Resultado:
     return formato.validar(destino)
 
 
-def test_fixture_ciclo_c_valida_sin_errores() -> None:
-    resultado = formato.validar(CICLO_C)
+def test_fixture_mismo_bus_valida_sin_errores() -> None:
+    resultado = formato.validar(MISMO_BUS)
     assert resultado.errores == []
     assert resultado.modelo is not None
 
 
-def test_fixture_ciclo_c_lee_llegada_salida_y_bus() -> None:
-    modelo = modelo_de(formato.validar(CICLO_C))
+def test_fixture_mismo_bus_lee_llegada_salida_y_bus() -> None:
+    modelo = modelo_de(formato.validar(MISMO_BUS))
     viaje = modelo.lineas["larga"].viajes[0]
     pnr = next(p for p in viaje.pasos if p.parada == "PNR")
     assert (pnr.llegada, pnr.salida) == ("11:55", "12:30")
@@ -794,7 +794,7 @@ def test_fixture_ciclo_c_lee_llegada_salida_y_bus() -> None:
 
 def test_bus_compartido_por_dos_tablas_de_una_linea_y_un_viaje_de_otra_es_valido() -> None:
     # paso.yaml (lunes-jueves y viernes) + un viaje lunes-viernes de corta.yaml
-    resultado = formato.validar(CICLO_C)
+    resultado = formato.validar(MISMO_BUS)
     assert resultado.errores == []
     ids = [
         v.bus
@@ -806,7 +806,7 @@ def test_bus_compartido_por_dos_tablas_de_una_linea_y_un_viaje_de_otra_es_valido
 
 
 def test_aviso_heuristico_texto_y_un_solo_aviso_por_par(tmp_path: Path) -> None:
-    resultado = formato.validar(CICLO_C)
+    resultado = formato.validar(MISMO_BUS)
     avisos = [a for a in resultado.avisos if "posible mismo autobús" in a]
     # vecina discrepa con larga y con corta; vecina tiene dos tablas
     # (lunes-viernes y lunes-jueves) pero cada par sale una sola vez.
@@ -823,7 +823,7 @@ def test_aviso_heuristico_texto_y_un_solo_aviso_por_par(tmp_path: Path) -> None:
 
 
 def test_no_hay_aviso_si_el_par_esta_declarado_con_el_mismo_bus(tmp_path: Path) -> None:
-    resultado = formato.validar(CICLO_C)
+    resultado = formato.validar(MISMO_BUS)
     assert not any(
         "'Los Álamos – Riomayor' y 'Peñarroja – Riomayor'" in a
         or "'Peñarroja – Riomayor' y 'Los Álamos – Riomayor'" in a
@@ -965,11 +965,11 @@ def test_bus_y_pendiente_conviven_en_la_misma_fila(tmp_path: Path) -> None:
     assert viaje.bus == "x" and viaje.pendientes == ("P01",)
 
 
-def test_cicloc_tiene_dos_avisos_de_posible_mismo_autobus() -> None:
+def test_mismo_bus_tiene_dos_avisos_de_posible_mismo_autobus() -> None:
     # vecina.yaml parece compartir autobús con corta.yaml y con larga.yaml
     # (misma salida, llegada distinta a Montesierra) pero no está declarado
     # con `bus:`: aviso heurístico, nunca error ni fusión.
-    resultado = formato.validar(FIXTURES / "horarios_cicloC")
+    resultado = formato.validar(FIXTURES / "horarios_mismo_bus")
     assert resultado.errores == []
     posibles = [a for a in resultado.avisos if "posible mismo autobús" in a]
     assert len(posibles) == 2
@@ -981,7 +981,7 @@ def test_cicloc_tiene_dos_avisos_de_posible_mismo_autobus() -> None:
         assert sum(f"'{a}' y '{b}'" in p for p in posibles) == 1, (a, b)
 
 
-# ── Localidades pendientes (ciclo C2, P15/P32) ────────────────────────────
+# ── Localidades pendientes ────────────────────────────
 
 
 def _pendientes(
@@ -1197,7 +1197,7 @@ def test_horarios_ficticios_no_tiene_localidades_pendientes() -> None:
     assert len(resultado.avisos) == 3
 
 
-# ── P18: pueblos por línea (ciclo C3) ────────────────────────────────────
+# ── campos obsoletos zona/zonas ────────────────────────────────────────
 
 
 def _con_paradas(tmp_path: Path, texto_paradas: str) -> Path:
@@ -1222,10 +1222,7 @@ def test_zonas_en_paradas_es_campo_obsoleto(tmp_path: Path) -> None:
     horarios_dir = _con_paradas(tmp_path, "zonas:\n  z: Zona\n" + _PARADAS_MIN % "")
     resultado = formato.validar(horarios_dir)
     ruta = horarios_dir / "paradas.yaml"
-    assert (
-        f"{ruta}: campo obsoleto 'zonas' (P18: los pueblos se agrupan por línea)"
-        in resultado.errores
-    )
+    assert f"{ruta}: campo obsoleto 'zonas' (los pueblos se agrupan por línea)" in resultado.errores
 
 
 def test_zona_en_localidad_es_campo_obsoleto(tmp_path: Path) -> None:
@@ -1233,8 +1230,7 @@ def test_zona_en_localidad_es_campo_obsoleto(tmp_path: Path) -> None:
     resultado = formato.validar(horarios_dir)
     ruta = horarios_dir / "paradas.yaml"
     assert (
-        f"{ruta}: localidad 'pueblo-a': campo obsoleto 'zona' (P18: los pueblos "
-        "se agrupan por línea)"
+        f"{ruta}: localidad 'pueblo-a': campo obsoleto 'zona' (los pueblos se agrupan por línea)"
     ) in resultado.errores
 
 
@@ -1430,3 +1426,32 @@ def test_zonas_y_zona_obsoletas_dan_solo_su_mensaje(tmp_path: Path) -> None:
     assert any("campo obsoleto 'zonas'" in e for e in errores)
     assert any("campo obsoleto 'zona'" in e for e in errores)
     assert not any("campo desconocido" in e for e in errores), errores
+
+
+# ── Datos precalculados del modelo ────────────────────────────────────────
+
+
+def test_meses_no_circula_son_numeros_de_mes_y_ignoran_lo_que_no_es_un_mes() -> None:
+    from packs.bus.modelo import Linea
+
+    linea = Linea(
+        id="x",
+        nombre="X",
+        telefono_demanda=None,
+        avisos=(),
+        no_circula=("Agosto", " septiembre ", "no-es-un-mes"),
+        temporadas=(),
+    )
+    assert linea.meses_no_circula == frozenset({8, 9})
+
+
+def test_temporada_de_linea_por_dia_del_anio() -> None:
+    from packs.bus.modelo import Linea, Temporada
+
+    verano = Temporada("verano", "15/06 - 31/08")
+    invierno = Temporada("invierno", "01/09 - 14/06")  # cruza el fin de año
+    linea = Linea("x", "X", None, (), (), (invierno, verano))
+    assert formato.temporada_de_linea(linea, 6, 14) == invierno
+    assert formato.temporada_de_linea(linea, 6, 15) == verano
+    assert formato.temporada_de_linea(linea, 2, 29) == invierno  # 29/02 existe en el calendario
+    assert formato.temporada_de_linea(linea, 2, 30) is None

@@ -1,6 +1,5 @@
-# tests/fixtures/horarios_cicloC/paradas.yaml — paradas sintéticas del ciclo C1
-# (mismo autobús en varias líneas, llegada>salida). Migrada en el ciclo C3
-# (P18): sin zonas.
+# tests/fixtures/horarios_mismo_bus/paradas.yaml — paradas sintéticas
+# (mismo autobús en varias líneas, llegada>salida), sin zonas.
 
 localidades:
   riomayor: { nombre: Riomayor }

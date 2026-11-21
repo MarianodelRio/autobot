@@ -3,72 +3,35 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import date
 from pathlib import Path
 
 import pytest
 
 from packs.bus import datos as horarios_datos
-from tests.packs.bus.conversation_harness import Conv, MockWA, congelar, datos_demo
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
-def _instalados() -> dict[str, horarios_datos.Datos]:
-    """Los datos que verá la conversación: los reales, salvo que un test pida
-    unos sintéticos (`datos_motor`, `datos_pendientes`, `datos_muchas_lineas`)."""
-    return {"datos": datos_demo()}
-
-
-@pytest.fixture
-def mock_wa() -> MockWA:
-    return MockWA()
-
-
-@pytest.fixture(params=["whatsapp", "telegram"])
-def conv(
-    request: pytest.FixtureRequest, mock_wa: MockWA, _instalados: dict[str, horarios_datos.Datos]
-) -> Conv:
-    """La conversación del pack, en los dos tipos de canal."""
-    c = Conv(mock_wa, request.param)
-    c.instalados = _instalados
-    return c
-
-
-@pytest.fixture
-def freeze_calendario(conv: Conv) -> Callable[..., None]:
-    def _apply(fecha: date, hora: tuple[int, int] | None = None) -> None:
-        congelar(conv, fecha, hora)
-
-    return _apply
-
-
-@pytest.fixture
-def datos_motor(_instalados: dict[str, horarios_datos.Datos]) -> horarios_datos.Datos:
+def datos_motor() -> horarios_datos.Datos:
     """Los datos sintéticos de `fixtures/horarios_motor/`, para los casos borde
-    que `horarios_real/` no cubre con comodidad (sin_datos, sin_servicio largo,
+    que `horarios_ficticios/` no cubre con comodidad (sin_datos, sin_servicio largo,
     a demanda, viernes lectivo, fusión)."""
-    d = horarios_datos.cargar(
+    return horarios_datos.cargar(
         FIXTURES / "horarios_motor", ["Pueblo A", "Pueblo E", "Pueblo K", "Pueblo N"]
     )
-    _instalados["datos"] = d
-    return d
 
 
 @pytest.fixture
-def datos_pendientes(_instalados: dict[str, horarios_datos.Datos]) -> horarios_datos.Datos:
+def datos_pendientes() -> horarios_datos.Datos:
     """Los datos sintéticos de `fixtures/horarios_pendientes/` (localidades
-    pendientes, P15/P32)."""
-    d = horarios_datos.cargar(FIXTURES / "horarios_pendientes", ["Pueblo A", "Pueblo B"])
-    _instalados["datos"] = d
-    return d
+    pendientes)."""
+    return horarios_datos.cargar(FIXTURES / "horarios_pendientes", ["Pueblo A", "Pueblo B"])
 
 
 def crear_horarios_muchas_lineas(directorio: Path | str) -> None:
     """Genera un `horarios/` sintético para probar la paginación de la lista de
-    líneas (P18): 12 líneas desde un mismo origen ("Origen"); "Linea Larga"
+    líneas: 12 líneas desde un mismo origen ("Origen"); "Linea Larga"
     pasa por 18 pueblos y "Ruta muy larga del norte al sur de la sierra" (más
     de 24 caracteres) lleva `nombre_corto: Ruta del norte`."""
     directorio = Path(directorio)
@@ -134,14 +97,10 @@ def crear_horarios_muchas_lineas(directorio: Path | str) -> None:
 
 
 @pytest.fixture
-def datos_muchas_lineas(
-    tmp_path: Path, _instalados: dict[str, horarios_datos.Datos]
-) -> horarios_datos.Datos:
+def datos_muchas_lineas(tmp_path: Path) -> horarios_datos.Datos:
     """El `horarios/` sintético de `crear_horarios_muchas_lineas`."""
     crear_horarios_muchas_lineas(tmp_path)
-    d = horarios_datos.cargar(tmp_path, ["Origen"])
-    _instalados["datos"] = d
-    return d
+    return horarios_datos.cargar(tmp_path, ["Origen"])
 
 
 def crear_horarios_muchas_salidas(directorio: Path) -> None:

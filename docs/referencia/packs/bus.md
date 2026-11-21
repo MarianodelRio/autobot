@@ -108,6 +108,17 @@ propia ficha. El alta crea una versión de dataset y su auditoría; no hay tags 
 ni despliegue.
 [`docs/procedimientos/horarios-bus.md`](../../procedimientos/horarios-bus.md) describe el flujo completo y las comprobaciones.
 
+### Dónde está el código
+
+- `apps/backend/src/packs/bus/formato/`: el único parser y validador del dataset (`validar()`), un módulo por
+  fichero (`localidades`, `calendario`, `observaciones`, `linea` y `tabla`, `buses`) más `temporadas` y
+  `normalizar`, que usa también el motor de consulta. El modelo (`Modelo`, `Linea`, `Viaje`…) está en `modelo.py`.
+- `loader.py` calcula al cargar los índices (`localidad_viajes`, `lineas_pueblos`, `lineas_con_pueblos`) y
+  `query.py` guarda por par origen-destino lo que no depende de la fecha, para que listar siete días o buscar
+  el siguiente día con salidas no repita el trabajo.
+- `apps/backend/src/tools/bus/`: las herramientas de terminal (`make bus-*`), incluida la comparación de versiones
+  (`diff.py`) que usa `make bus-revision`.
+
 ### Resumen mensual al dueño
 
 El pack declara un único gancho `summary` para el resumen periódico al dueño

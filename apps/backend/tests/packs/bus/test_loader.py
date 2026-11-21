@@ -77,7 +77,7 @@ def test_festivos_locales_localidad_sin_lineas_avisa_sin_fallar() -> None:
     assert not any("festivos_locales" in a for a in resultado.avisos)
 
 
-# ── lineas_pueblos (P18) ─────────────────────────────────────────────────
+# ── lineas_pueblos ─────────────────────────────────────────────────
 
 
 def test_lineas_pueblos_ficticios_orden_y_contenido() -> None:
@@ -136,3 +136,22 @@ def test_lineas_pueblos_ficticios_pinarnuevo_comparte_linea_con_campoalto() -> N
 def test_horarios_ficticios_oda_con_nombre_con_coma() -> None:
     horarios = loader.cargar(HORARIOS_FICTICIOS)
     assert horarios.modelo.paradas["ODA"].nombre == "Odalla (cruce, gasolinera)"
+
+
+def test_indices_de_viajes_son_posiciones_estables() -> None:
+    horarios = loader.cargar(HORARIOS_FICTICIOS)
+    for localidad, viajes in horarios.localidad_viajes.items():
+        indices = horarios.localidad_viajes_idx[localidad]
+        assert list(indices) == sorted(indices)
+        assert tuple(horarios.viajes[i] for i in indices) == viajes
+
+
+def test_lineas_con_pueblos_sigue_el_orden_de_lineas_pueblos() -> None:
+    horarios = loader.cargar(HORARIOS_FICTICIOS)
+    con_pueblos = horarios.lineas_con_pueblos
+    assert con_pueblos is horarios.lineas_con_pueblos  # calculado una sola vez
+    assert [linea.id for linea, _ in con_pueblos] == [
+        lid for lid, ids in horarios.lineas_pueblos.items() if ids
+    ]
+    for linea, pueblos in con_pueblos:
+        assert [p.id for p in pueblos] == list(horarios.lineas_pueblos[linea.id])

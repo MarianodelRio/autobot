@@ -1,10 +1,10 @@
-"""packs/bus/diff.py — diferencias entre dos versiones de horarios/
+"""tools/bus/diff.py — diferencias entre dos versiones de horarios/
 en lenguaje de negocio ("Cambios desde la versión publicada").
 
 Módulo puro: no toca disco, no invoca git, no lanza excepciones por
 diferencias de negocio. Compara dos `Modelo` ya validados por
-`formato.validar()` (los construye quien llama, típicamente
-`tools/revision.py`). `tools/revision.py` es responsable de decidir si hay
+`packs.bus.formato.validar()` (los construye quien llama, típicamente
+`tools/bus/revision.py`). `revision.py` es responsable de decidir si hay
 una versión anterior o si es la primera versión: este módulo siempre recibe
 dos `Modelo`s reales.
 """
@@ -14,23 +14,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from packs.bus.formato import DIAS_INDIVIDUALES, GRUPOS_DIA, Modelo
-from packs.bus.modelo import Linea, Paso, Viaje
-
-_MESES_EN_PALABRAS = {
-    1: "enero",
-    2: "febrero",
-    3: "marzo",
-    4: "abril",
-    5: "mayo",
-    6: "junio",
-    7: "julio",
-    8: "agosto",
-    9: "septiembre",
-    10: "octubre",
-    11: "noviembre",
-    12: "diciembre",
-}
+from core.dates import MONTHS_ES, WEEKDAY_LABEL, minutes_of
+from packs.bus.formato import DIAS_INDIVIDUALES, GRUPOS_DIA
+from packs.bus.modelo import Linea, Modelo, Paso, Viaje
 
 _ESTADOS_EN_PALABRAS = {
     "horario": "hay servicio",
@@ -43,15 +29,9 @@ _ORDEN_CLASES = DIAS_INDIVIDUALES
 
 # Fraseo "en palabras" de cada clave de tabla. Se
 # construye a partir de GRUPOS_DIA para no duplicar el catálogo de claves de
-# formato.py, con los textos exactos que pide el diseño.
-_CLASES_EN_PALABRAS = {
-    "lunes": "lunes",
-    "martes": "martes",
-    "miercoles": "miércoles",
-    "jueves": "jueves",
-    "viernes": "viernes",
-    "sabado": "sábado",
-    "domingo": "domingo",
+# `packs.bus.formato.temporadas`, con los textos exactos que pide el diseño.
+_CLASES_EN_PALABRAS: dict[str, str] = {
+    **WEEKDAY_LABEL,
     "festivos": "festivos",
     "lunes-viernes": "lunes a viernes",
     "lunes-jueves": "lunes a jueves",
@@ -62,7 +42,8 @@ _CLASES_EN_PALABRAS = {
 }
 
 assert set(_CLASES_EN_PALABRAS) == set(GRUPOS_DIA), (
-    "_CLASES_EN_PALABRAS debe cubrir exactamente las claves de GRUPOS_DIA (formato.py)"
+    "_CLASES_EN_PALABRAS debe cubrir exactamente las claves de GRUPOS_DIA "
+    "(`packs.bus.formato.temporadas`)"
 )
 
 
@@ -78,10 +59,9 @@ def fecha_en_palabras(fecha: str) -> str:
         mes = int(partes[1])
     except ValueError:
         return fecha
-    nombre_mes = _MESES_EN_PALABRAS.get(mes)
-    if nombre_mes is None:
+    if not 1 <= mes <= 12:
         return fecha
-    return f"{dia} de {nombre_mes}"
+    return f"{dia} de {MONTHS_ES[mes - 1]}"
 
 
 def rango_en_palabras(rango: str) -> str:
@@ -113,11 +93,6 @@ def _hora_primer_paso(viaje: Viaje) -> str:
     return viaje.pasos[0].salida if viaje.pasos else ""
 
 
-def _minutos(hhmm: str) -> int:
-    h, m = hhmm.split(":")
-    return int(h) * 60 + int(m)
-
-
 # Diferencia máxima (minutos) entre las horas del primer punto en común de
 # dos viajes para considerarlos "el mismo viaje que cambió de hora" en vez de
 # una alta y una baja independientes.
@@ -128,7 +103,7 @@ def _firma_tabla(viaje: Viaje) -> tuple[str, str, str | None, str | None]:
     """(temporada, dias, primera parada de la cabecera, última parada de la
     cabecera) de la `Tabla` a la que pertenece `viaje`. Dos tablas con la
     misma firma en versiones distintas se consideran "la misma tabla" a
-    efectos del diff (formato.py impide que haya dos tablas con la misma
+    efectos del diff (`packs.bus.formato` impide que haya dos tablas con la misma
     firma dentro de una misma línea)."""
     paradas = viaje.tabla.paradas
     primera = paradas[0] if paradas else None
@@ -165,7 +140,7 @@ def _diferencia_primer_paso_comun(viaje_a: Viaje, viaje_b: Viaje) -> int | None:
     for paso in viaje_a.pasos:
         hora_b = horas_b.get(paso.parada)
         if hora_b is not None:
-            return abs(_minutos(paso.salida) - _minutos(hora_b))
+            return abs(minutes_of(paso.salida) - minutes_of(hora_b))
     return None
 
 
@@ -664,7 +639,7 @@ def _avisos_agrupados(anterior: Modelo, actual: Modelo) -> tuple[list[str], set[
 
 
 def _fecha_dia_mes(d: date) -> str:
-    return f"{d.day} de {_MESES_EN_PALABRAS[d.month]}"
+    return f"{d.day} de {MONTHS_ES[d.month - 1]}"
 
 
 def _fecha_larga(d: date) -> str:
@@ -709,13 +684,11 @@ def _comparar_calendario(anterior: Modelo, actual: Modelo) -> list[str]:
     sin_act = cal_act.sin_servicio_todas_las_lineas
     for mes, dia in sorted(sin_act - sin_ant, key=lambda md: (md[0], md[1])):
         mensajes.append(
-            f"Se añade el {dia} de {_MESES_EN_PALABRAS[mes]} como día sin "
-            "servicio en ninguna línea."
+            f"Se añade el {dia} de {MONTHS_ES[mes - 1]} como día sin servicio en ninguna línea."
         )
     for mes, dia in sorted(sin_ant - sin_act, key=lambda md: (md[0], md[1])):
         mensajes.append(
-            f"Se quita el {dia} de {_MESES_EN_PALABRAS[mes]} como día sin "
-            "servicio en ninguna línea."
+            f"Se quita el {dia} de {MONTHS_ES[mes - 1]} como día sin servicio en ninguna línea."
         )
 
     for etiqueta, v_ant, v_act in (
@@ -798,7 +771,7 @@ def comparar(anterior: Modelo, actual: Modelo) -> list[str]:
     """Devuelve una lista de frases en lenguaje de negocio con las
     diferencias entre `anterior` y `actual`. Ambos deben ser `Modelo`s reales
     ya validados; nunca se llama con `None` (eso lo decide quien invoca este
-    módulo, típicamente `tools/revision.py`, que resuelve "primera versión"
+    módulo, típicamente `tools/bus/revision.py`, que resuelve "primera versión"
     antes de llamar aquí).
 
     Orden: bloque general (paradas y localidades, calendario, textos de

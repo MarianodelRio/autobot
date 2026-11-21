@@ -4,33 +4,19 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 from functools import lru_cache
-from typing import Annotated, Literal
 
 import holidays as holidays_lib
 from holidays.utils import list_supported_countries
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from core.dates import WEEKDAY_KEYS, Weekday
+from core.hours import TimeRange, parse_range, validate_ranges
+from core.limits import MAX_ID_BYTES
 from packs.salon.messages import SalonTexts
 
-Weekday = Literal["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
-DAYS: tuple[Weekday, ...] = (
-    "lunes",
-    "martes",
-    "miercoles",
-    "jueves",
-    "viernes",
-    "sabado",
-    "domingo",
-)
-TimeRange = Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$")]
 
-
-def validate_ranges(ranges: list[str]) -> list[str]:
-    spans = sorted(r.split("-") for r in ranges)
-    if not spans or any(a >= b for a, b in spans):
-        raise ValueError("los tramos deben ser no vacíos y estar ordenados")
-    if any(a[1] > b[0] for a, b in zip(spans, spans[1:], strict=False)):
-        raise ValueError("los tramos se solapan")
+def sorted_ranges(ranges: list[str]) -> list[str]:
+    validate_ranges(ranges)
     return sorted(ranges)
 
 
@@ -57,7 +43,7 @@ class SpecialEvent(BaseModel):
     @field_validator("days")
     @classmethod
     def validate_days(cls, days: dict[date, list[str]]) -> dict[date, list[str]]:
-        return {day: validate_ranges(ranges) for day, ranges in days.items()}
+        return {day: sorted_ranges(ranges) for day, ranges in days.items()}
 
     @model_validator(mode="after")
     def validate_active(self) -> SpecialEvent:
@@ -181,15 +167,15 @@ class SalonConfig(BaseModel):
     def service_keys(cls, value: dict[str, Service]) -> dict[str, Service]:
         if any(re.fullmatch(r"[a-z0-9_]+", key) is None for key in value):
             raise ValueError("id de servicio no válido")
-        # The interactive id is service_<key> (64-byte shared channel limit).
-        if any(len(f"service_{key}".encode()) > 64 for key in value):
+        # The interactive id is service_<key> (shared channel limit).
+        if any(len(f"service_{key}".encode()) > MAX_ID_BYTES for key in value):
             raise ValueError("id de servicio demasiado largo")
         return value
 
     @field_validator("opening_hours")
     @classmethod
     def hours(cls, value: dict[Weekday, list[str]]) -> dict[Weekday, list[str]]:
-        return {day: validate_ranges(ranges) for day, ranges in value.items()}
+        return {day: sorted_ranges(ranges) for day, ranges in value.items()}
 
     @model_validator(mode="after")
     def rules(self) -> SalonConfig:
@@ -207,5 +193,5 @@ class SalonConfig(BaseModel):
         elif self.holidays is not None and self.holidays.is_closed(day):
             ranges = []
         else:
-            ranges = self.opening_hours.get(DAYS[day.weekday()], [])
-        return [(r.split("-")[0], r.split("-")[1]) for r in ranges]
+            ranges = self.opening_hours.get(WEEKDAY_KEYS[day.weekday()], [])
+        return [parse_range(r) for r in ranges]

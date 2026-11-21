@@ -7,7 +7,7 @@ import pytest
 
 from core.errors import TransientError
 from core.testing.harness import Conversation
-from packs.salon.models import CalendarEvent
+from packs.salon.testing import CalendarEvent
 from tests.packs.salon.test_booking import choose
 from tests.packs.salon.test_config import configuration
 
