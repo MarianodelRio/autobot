@@ -51,7 +51,7 @@ services:
       retries: 10
 
   victorialogs:
-    image: victoriametrics/victoria-logs:v1.53.0
+    image: victoriametrics/victoria-logs:v1.54.0
     command:
       - "-storageDataPath=/vlogs"
       - "-retentionPeriod=31d"
