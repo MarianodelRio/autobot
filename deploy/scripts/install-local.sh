@@ -84,6 +84,7 @@ for ((i = 0; i < 30; i++)); do
   sleep 2
 done
 if ! health; then
+  # shellcheck disable=SC2016 # literal backticks/$() in a message
   echo 'web no quedó sana en 60 s: revisa `make logs SERVICE=web`' >&2
   exit 1
 fi

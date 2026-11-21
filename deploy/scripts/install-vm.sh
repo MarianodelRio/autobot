@@ -494,6 +494,7 @@ check_health() { health_report >/dev/null 2>&1; }
 
 do_health() {
   say 'Comprobación de salud:'
+  # shellcheck disable=SC2016 # literal backticks/$() in a message
   health_report || die 'La comprobación de salud ha fallado (ver arriba); revisa `deploy/scripts/compose.sh logs web`'
 }
 
@@ -621,6 +622,7 @@ summary() {
   fi
 
   if [[ -s $ci_private ]]; then
+    # shellcheck disable=SC2016 # literal backticks/$() in a message
     pending 'GitHub: sube la clave de CI al entorno `production` y bórrala de la VM. Desde tu portátil:' \
       "ssh admin@$host 'sudo cat $ci_private' | gh secret set DEPLOY_SSH_KEY --env production" \
       "ssh admin@$host 'sudo shred -u $ci_private'" \
@@ -629,6 +631,7 @@ summary() {
       "ssh admin@$host \"cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub\" | sed \"s/^/$host /\" | gh secret set DEPLOY_KNOWN_HOSTS --env production" \
       '(si aún no existe el entorno: gh api -X PUT repos/'"$slug"'/environments/production)'
   fi
+  # shellcheck disable=SC2016 # literal backticks/$() in a message
   pending 'GitHub: restringe el entorno `production` (Settings > Environments > production):' \
     'despliegues solo desde la rama main y revisores obligatorios. Sin esto, cualquier rama' \
     'con acceso al workflow puede usar la clave de despliegue.'
@@ -654,6 +657,7 @@ summary() {
     [[ -n $(env_get "$srv/.env" "$key") ]] || missing+=("$key")
   done
   if ((${#missing[@]})); then
+    # shellcheck disable=SC2016 # literal backticks/$() in a message
     pending "Credenciales externas sin rellenar en $srv/.env: ${missing[*]}" \
       'Healthchecks.io (HEALTHCHECKS_PING_URL y el de backup), Sentry, el chat de avisos y los tokens de Telegram.' \
       'Edítalo como deploy y relanza el último despliegue: deploy/scripts/deploy.sh $(cat var/.deployed-sha)' \

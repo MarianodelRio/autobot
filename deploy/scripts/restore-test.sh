@@ -197,6 +197,9 @@ print('decrypted', count)
   echo 'The restored encryption key could not decrypt the restored tenant_secret rows' >&2
   exit 1
 }
+# `manage.py shell` also prints log lines and Django's auto-import notice to stdout:
+# keep only the last line, the one the snippet printed.
+decrypted=${decrypted##*$'\n'}
 if [[ $decrypted != 'decrypted '[1-9]* ]]; then
   echo "Expected at least one decryptable tenant_secret after the restore, got: $decrypted" >&2
   exit 1
