@@ -1,6 +1,6 @@
 """Runtime tables.
 
-Every table with `tenant_id` has RLS (migration 0002). Children point to their parent
+Every table with `tenant_id` has RLS (initial migration). Children point to their parent
 through a composite foreign key `(tenant_id, x_id) → x(tenant_id, id)`, so a row can never
 reference another tenant's row. Django has no composite foreign keys: the relation is a
 `ForeignKey(db_constraint=False)` for the ORM and the constraint is created in SQL.
@@ -222,7 +222,7 @@ class Notification(TenantScoped):
 class MetricEvent(TenantScoped):
     """A pack business event for the owner's periodic summary
     (`autobot.runtime.summary`). No phone, user id or free text: only `kind` (a fixed
-    string the pack declares in `Pack.summary_metrics`) and `value`."""
+    string chosen by the pack's `RecordMetric` action) and `value`."""
 
     kind = models.CharField(max_length=64)
     value = models.DecimalField(max_digits=12, decimal_places=2)
@@ -299,7 +299,7 @@ class DemoSession(models.Model):
 
 
 class DemoInvite(models.Model):
-    """A capped, expiring invitation to a demo door (D5, ADR-006 amendment): redeeming
+    """A capped, expiring invitation to a demo door (ADR-006 amendment): redeeming
     its code grants access without editing DEMO_TELEGRAM_USERS/DEMO_WHATSAPP_USERS by
     hand. Created from the panel (`autobot.panel.services.demo_invites`), always with
     `.using("owner")`. No RLS: belongs to the platform, like DemoSession. The code is a

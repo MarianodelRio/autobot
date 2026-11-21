@@ -13,7 +13,7 @@ Varios negocios comparten la plataforma. Un error de código que muestre datos d
 - El tenant se fija **solo** con `tenant_tx(tenant_id)`: transacción corta + `SET LOCAL app.tenant_id`, nunca anidada. Sin tenant fijado no se ve ninguna fila.
 - Tres roles: `fp_app` (`web` y `worker`, sin `BYPASSRLS`), `fp_owner` (dueño de las tablas, con `BYPASSRLS`: migraciones, panel y comandos de operación entre tenants) y `fp_readonly` (`NOBYPASSRLS`, solo `SELECT`, para la consola SQL del panel, con una política `readonly_all` adicional en toda tabla con RLS). Ninguno está expuesto a internet (túnel SSH).
 - Claves foráneas compuestas `(tenant_id, x_id)`.
-- El registro de tenants vive en PostgreSQL, así que **no hacen falta funciones `SECURITY DEFINER`**, con una excepción real: `purge_platform_history(cutoff)` (migración `0015_ops_alert.py`), que deja a `fp_app` purgar su propio historial sin `BYPASSRLS`.
+- El registro de tenants vive en PostgreSQL, así que **no hacen falta funciones `SECURITY DEFINER`**, con una excepción real: `purge_platform_history(cutoff)` (migración inicial `0001_squashed_0026_dataset_library.py`), que deja a `fp_app` purgar su propio historial sin `BYPASSRLS`.
 - Test genérico de aislamiento que recorre todas las tablas con `tenant_id` y deja CI en rojo si alguna tabla no tiene política. La config y los datasets de los negocios, y otras piezas de operación de la plataforma, son la excepción explícita de ese test: viven en tablas con `tenant_id` pero sin RLS por diseño, porque cada proceso necesita leerlas enteras — `demo_session`, `owner_link`, `tenant_document_version`, `tenant_dataset_version`, `tenant_secret`, `audit_event` y `ops_alert`. `config_revision` no lleva `tenant_id`: es un contador global.
 
 ## Alternativas consideradas
