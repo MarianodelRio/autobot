@@ -7,7 +7,7 @@ from uuid import uuid7
 import pytest
 from django.utils import timezone
 
-from autobot.ops import status
+from autobot.ops import health, status
 from autobot.ops.health import Issue
 from autobot.tenancy.registry import LoadedTenant
 from autobot.tenancy.schema import TenantDocument
@@ -29,7 +29,7 @@ def test_cached_health_levels(
     issues: list[Issue], age: int, level: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cached = {"checked_at": timezone.now().timestamp() - age, "issues": issues}
-    monkeypatch.setattr(status, "cache", SimpleNamespace(get=lambda key: cached))
+    monkeypatch.setattr(health, "cache", SimpleNamespace(get=lambda key: cached))
     tenant = LoadedTenant(document=TenantDocument.model_validate(tg_tenant()))
     assert status.tenant_status(tenant).level == level
 
@@ -37,7 +37,7 @@ def test_cached_health_levels(
 def test_missing_cache_degradation_and_active_disabled_channel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(status, "cache", SimpleNamespace(get=lambda key: None))
+    monkeypatch.setattr(health, "cache", SimpleNamespace(get=lambda key: None))
     tenant = LoadedTenant(document=TenantDocument.model_validate(tg_tenant()))
     assert status.tenant_status(tenant).level == "unknown"
     tenant.main_disabled.append("missing secrets")
@@ -47,7 +47,7 @@ def test_missing_cache_degradation_and_active_disabled_channel(
 
 
 def test_alert_severity_and_tenant_filter(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(status, "cache", SimpleNamespace(get=lambda key: None))
+    monkeypatch.setattr(health, "cache", SimpleNamespace(get=lambda key: None))
     tenant = LoadedTenant(document=TenantDocument.model_validate(tg_tenant()))
     unrelated: Any = SimpleNamespace(tenant_id=uuid7(), severity="critical")
     warning: Any = SimpleNamespace(tenant_id=tenant.id, severity="warning")
@@ -59,7 +59,7 @@ def test_alert_severity_and_tenant_filter(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_notice_alert_and_info_health(monkeypatch: pytest.MonkeyPatch) -> None:
     cached = {"checked_at": timezone.now().timestamp(), "issues": [Issue("x", "Info", "🟢")]}
-    monkeypatch.setattr(status, "cache", SimpleNamespace(get=lambda key: cached))
+    monkeypatch.setattr(health, "cache", SimpleNamespace(get=lambda key: cached))
     tenant = LoadedTenant(document=TenantDocument.model_validate(tg_tenant()))
     assert status.tenant_status(tenant).level == "ok"
     alert: Any = SimpleNamespace(tenant_id=tenant.id, severity="notice")

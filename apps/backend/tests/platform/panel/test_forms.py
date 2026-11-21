@@ -14,7 +14,7 @@ from packs.registry import PACKS
 
 @pytest.mark.parametrize("pack_name", list(PACKS))
 def test_document_schema_is_valid_json_schema(pack_name: str) -> None:
-    # Draft-07, not 2020-12 (C6): the schema is reshaped for rjsf/ajv8, which render
+    # Draft-07, not 2020-12: the schema is reshaped for rjsf/ajv8, which render
     # and validate against draft-07 semantics (fixed-length `items` as an array, a
     # nullable field merged into `type: [X, "null"]`), not pydantic's own 2020-12 output.
     schema = forms.document_schema(pack_name)
@@ -105,12 +105,12 @@ def test_pack_template_blanks_the_salon_placeholders() -> None:
     assert config["business_name"] is None
     assert config["contact_phone"] is None
     assert config["calendar_id"] is None
-    assert config["info_text"] is None  # C2: a new salon no longer inherits the demo's text
+    assert config["info_text"] is None  # a new salon no longer inherits the demo's text
     assert config["services"]  # untouched fields stay filled in
 
 
 def test_pack_template_blanks_the_bus_placeholders() -> None:
-    # C3: a new bus no longer inherits the demo's name, phone or towns.
+    # a new bus no longer inherits the demo's name, phone or towns.
     config = forms.pack_template("bus")
     assert config is not None
     assert config["business_name"] is None
@@ -120,7 +120,7 @@ def test_pack_template_blanks_the_bus_placeholders() -> None:
 
 
 def test_nullable_scalar_field_merges_into_a_type_array() -> None:
-    # C6: `str | None` (e.g. a WhatsApp Meta id) must render its own widget
+    # `str | None` (e.g. a WhatsApp Meta id) must render its own widget
     # directly, which rjsf only does for `type: [X, "null"]`, never `anyOf`.
     schema = forms.document_schema("salon")
     app_id = schema["$defs"]["WhatsAppChannel"]["properties"]["app_id"]
@@ -130,7 +130,7 @@ def test_nullable_scalar_field_merges_into_a_type_array() -> None:
 
 
 def test_nullable_ref_field_merges_into_a_type_array() -> None:
-    # C6: `Owner | None` must do the same, inlining the $ref.
+    # `Owner | None` must do the same, inlining the $ref.
     schema = forms.document_schema("salon")
     owner = schema["properties"]["owner"]
     assert "anyOf" not in owner
@@ -148,7 +148,7 @@ def test_discriminated_channel_union_is_left_alone() -> None:
 
 
 def test_tuple_field_uses_fixed_items_rjsf_understands() -> None:
-    # C6: `reminder_window_hours: tuple[int, int]` must render as two number boxes,
+    # `reminder_window_hours: tuple[int, int]` must render as two number boxes,
     # which rjsf only does for draft-07 `items: [...]`, never 2020-12's `prefixItems`.
     schema = forms.document_schema("salon")
     window = schema["properties"]["config"]["properties"]["reminder_window_hours"]
@@ -159,7 +159,7 @@ def test_tuple_field_uses_fixed_items_rjsf_understands() -> None:
 
 
 def test_owner_notify_is_restricted_to_the_packs_own_notices() -> None:
-    # C8: rjsf renders a checkbox list only once the array's items carry an enum.
+    # rjsf renders a checkbox list only once the array's items carry an enum.
     schema = forms.document_schema("salon")
     notify = schema["$defs"]["Owner"]["properties"]["notify"]
     assert notify["items"]["enum"] == [

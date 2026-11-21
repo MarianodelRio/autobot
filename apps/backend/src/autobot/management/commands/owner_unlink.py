@@ -3,11 +3,10 @@ request) (ADR-007)."""
 
 from typing import Any
 
-from django.core.management.base import BaseCommand, CommandError, CommandParser
+from django.core.management.base import BaseCommand, CommandParser
 
-from autobot.ops.audit import record
-from autobot.owner.links import unlink
-from autobot.tenancy.registry import get_registry
+from autobot.management.commands._common import registry_tenant
+from autobot.ops import tenant_actions
 
 
 class Command(BaseCommand):
@@ -17,18 +16,8 @@ class Command(BaseCommand):
         parser.add_argument("slug")
 
     def handle(self, *args: Any, **options: Any) -> None:
-        tenant = get_registry().by_slug.get(options["slug"])
-        if tenant is None:
-            raise CommandError("Negocio desconocido.")
-        had_chat = unlink(tenant.id)
-        record(
-            actor="command:owner_unlink",
-            action="tenant.owner_unlink",
-            tenant_id=tenant.id,
-            target_type="tenant",
-            target_id=str(tenant.id),
-            summary="Dueño desconectado" if had_chat else "Invitación del dueño cancelada",
-        )
+        tenant = registry_tenant(options["slug"])
+        had_chat = tenant_actions.unlink_owner(tenant, actor="command:owner_unlink")
         if had_chat:
             self.stdout.write(f"Chat de {tenant.document.name} desconectado.")
         else:

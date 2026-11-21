@@ -26,7 +26,7 @@ def test_every_manage_command_is_documented() -> None:
         for path in (
             ROOT / "apps" / "backend" / "src" / "autobot" / "management" / "commands"
         ).glob("*.py")
-        if path.stem != "__init__"
+        if not path.stem.startswith("_")  # `_common.py` and friends are helpers
     }
     assert commands, "no management commands found; the layout may have changed"
     comandos = (ROOT / "docs" / "referencia" / "comandos.md").read_text()

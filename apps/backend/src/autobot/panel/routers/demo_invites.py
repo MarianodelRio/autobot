@@ -1,4 +1,4 @@
-"""Demo invite codes (D5): list, create and revoke, with the QR/link each one needs
+"""Demo invite codes: list, create and revoke, with the QR/link each one needs
 for a person to redeem it on the demo door's Telegram bot."""
 
 from datetime import datetime

@@ -12,7 +12,7 @@ from procrastinate.contrib.django.models import ProcrastinateJob
 
 from autobot.channels.demo.doors import door
 from autobot.ops import audit
-from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE
+from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE, app
 from autobot.runtime.locks import contact_hash
 from autobot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
 from autobot.runtime.queue import enqueue
@@ -71,8 +71,6 @@ def can_retry(job: ProcrastinateJob) -> tuple[bool, str]:
         return False, "El trabajo no está en estado fallido."
     if job.task_name in NOT_RETRYABLE_TASKS:
         return False, "Revise el resultado del envío antes de actuar."
-    from autobot.runtime.jobs import app
-
     if job.task_name not in app.tasks:
         return False, "La tarea ya no existe."
     return True, ""

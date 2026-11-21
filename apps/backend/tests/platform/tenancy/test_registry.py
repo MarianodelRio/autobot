@@ -21,7 +21,7 @@ from tests.platform.tenancy.helpers import (
     WA_SECRETS,
     demo_tenant_yaml,
     phone_number_id,
-    tenant_yaml,
+    tenant_document,
     write_tenants,
 )
 
@@ -48,7 +48,7 @@ def load(
 
 
 def test_valid_tenant_is_loaded_and_indexed(tmp_path: Path) -> None:
-    doc = tenant_yaml("salon-ejemplo")
+    doc = tenant_document("salon-ejemplo")
     registry = load(tmp_path, doc, secrets={"salon-ejemplo": WA_SECRETS})
     (t,) = registry.tenants
     assert registry.problems == {}
@@ -62,7 +62,7 @@ def test_valid_tenant_is_loaded_and_indexed(tmp_path: Path) -> None:
 
 
 def test_pack_config_is_validated_with_its_schema(tmp_path: Path) -> None:
-    registry = load(tmp_path, tenant_yaml("a", config={"greeting": "Buenas"}))
+    registry = load(tmp_path, tenant_document("a", config={"greeting": "Buenas"}))
     assert registry.tenants[0].config == toy.ToyConfig(greeting="Buenas")
 
 
@@ -74,14 +74,14 @@ def test_load_data_receives_the_tenant_directory(tmp_path: Path) -> None:
         return {"rows": 3}
 
     packs = {"toy": dataclasses.replace(toy.pack, load_data=load_data)}
-    registry = load(tmp_path, tenant_yaml("bus-a"), packs=packs)
+    registry = load(tmp_path, tenant_document("bus-a"), packs=packs)
     assert seen[0][0] == "bus-a"
     assert seen[0][1].startswith("autobot-dataset-")
     assert registry.tenants[0].data == {"rows": 3}
 
 
 def test_telegram_tenant(tmp_path: Path) -> None:
-    doc = tenant_yaml(
+    doc = tenant_document(
         "tg",
         channel={"type": "telegram", "public_id": "tgpublic0001", "bot_username": "tg_bot"},
         testers={"main": [123456789]},
@@ -97,7 +97,7 @@ def test_telegram_tenant(tmp_path: Path) -> None:
 
 
 def test_missing_secrets_disable_only_the_main_channel(tmp_path: Path) -> None:
-    registry = load(tmp_path, tenant_yaml("a"), tenant_yaml("b"), secrets={"a": WA_SECRETS})
+    registry = load(tmp_path, tenant_document("a"), tenant_document("b"), secrets={"a": WA_SECRETS})
     a, b = registry.tenants
     assert a.main_enabled
     assert not b.main_enabled and not b.is_degraded
@@ -105,7 +105,7 @@ def test_missing_secrets_disable_only_the_main_channel(tmp_path: Path) -> None:
 
 
 def test_no_secrets_file_disables_every_main_channel(tmp_path: Path) -> None:
-    registry = load(tmp_path, tenant_yaml("a"))
+    registry = load(tmp_path, tenant_document("a"))
     assert not registry.tenants[0].main_enabled
     assert registry.problems == {}  # CI has no secrets: that is not a tenant problem
 
@@ -120,23 +120,23 @@ def test_no_secrets_file_disables_every_main_channel(tmp_path: Path) -> None:
 def test_incomplete_secrets_disable_the_main_channel(
     tmp_path: Path, secrets: dict[str, str], problem: str
 ) -> None:
-    (t,) = load(tmp_path, tenant_yaml("a"), secrets={"a": secrets}).tenants
+    (t,) = load(tmp_path, tenant_document("a"), secrets={"a": secrets}).tenants
     assert not t.main_enabled
     assert problem in t.main_disabled[0]
 
 
 def test_whatsapp_app_secret_needs_32_characters(tmp_path: Path) -> None:
     secrets = {"a": {**WA_SECRETS, "app_secret": "short"}}
-    assert not load(tmp_path, tenant_yaml("a"), secrets=secrets).tenants[0].main_enabled
+    assert not load(tmp_path, tenant_document("a"), secrets=secrets).tenants[0].main_enabled
 
 
 def test_whatsapp_app_secret_rejects_empty(tmp_path: Path) -> None:
     secrets = {"a": {**WA_SECRETS, "app_secret": ""}}
-    assert not load(tmp_path, tenant_yaml("a"), secrets=secrets).tenants[0].main_enabled
+    assert not load(tmp_path, tenant_document("a"), secrets=secrets).tenants[0].main_enabled
 
 
 def test_telegram_webhook_secret_needs_32_characters(tmp_path: Path) -> None:
-    doc = tenant_yaml(
+    doc = tenant_document(
         "tg",
         channel={"type": "telegram", "public_id": "tgpublic0001", "bot_username": "tenant_bot"},
         testers={},
@@ -146,7 +146,7 @@ def test_telegram_webhook_secret_needs_32_characters(tmp_path: Path) -> None:
 
 
 def test_missing_meta_ids_disable_the_main_channel(tmp_path: Path) -> None:
-    doc = tenant_yaml("a", channel={"type": "whatsapp", "public_id": "apublic00001"})
+    doc = tenant_document("a", channel={"type": "whatsapp", "public_id": "apublic00001"})
     (t,) = load(tmp_path, doc, secrets={"a": WA_SECRETS}).tenants
     assert t.main_disabled == ["whatsapp channel ids are missing"]
     assert not t.is_degraded
@@ -162,7 +162,11 @@ def test_secret_values_never_reach_logs_or_messages(
     }
     with caplog.at_level(logging.WARNING):
         registry = load(
-            tmp_path, tenant_yaml("a"), tenant_yaml("b"), tenant_yaml("c"), secrets=secrets
+            tmp_path,
+            tenant_document("a"),
+            tenant_document("b"),
+            tenant_document("c"),
+            secrets=secrets,
         )
     text = caplog.text + repr(registry.tenants) + str(registry.tenants)
     for value in ("SUPER-SECRET-VALUE", "LEAKED-IN-A-LIST", *WA_SECRETS.values()):
@@ -173,7 +177,7 @@ def test_secret_values_never_reach_logs_or_messages(
 
 
 def test_unknown_pack_degrades_the_tenant(tmp_path: Path) -> None:
-    registry = load(tmp_path, tenant_yaml("a", pack="nope"), tenant_yaml("b"))
+    registry = load(tmp_path, tenant_document("a", pack="nope"), tenant_document("b"))
     a, b = registry.tenants
     assert a.degraded == ["unknown pack 'nope'"]
     assert not b.is_degraded
@@ -181,7 +185,7 @@ def test_unknown_pack_degrades_the_tenant(tmp_path: Path) -> None:
 
 
 def test_invalid_config_degrades_only_that_tenant(tmp_path: Path) -> None:
-    registry = load(tmp_path, tenant_yaml("a", config={"greeting": 3}), tenant_yaml("b"))
+    registry = load(tmp_path, tenant_document("a", config={"greeting": 3}), tenant_document("b"))
     a, b = registry.tenants
     assert a.is_degraded and a.degraded[0].startswith("config: greeting")
     assert not b.is_degraded
@@ -194,7 +198,7 @@ def test_failing_load_data_degrades_only_that_tenant(tmp_path: Path) -> None:
         raise ValueError("bad dataset line 3")
 
     packs = {"toy": dataclasses.replace(toy.pack, load_data=broken)}
-    registry = load(tmp_path, tenant_yaml("a"), packs=packs)
+    registry = load(tmp_path, tenant_document("a"), packs=packs)
     assert registry.tenants[0].degraded == ["load_data failed: ValueError: bad dataset line 3"]
 
 
@@ -218,13 +222,13 @@ def test_failing_load_data_degrades_only_that_tenant(tmp_path: Path) -> None:
 def test_invalid_common_part_is_reported_and_others_load(
     tmp_path: Path, change: dict[str, Any], problem: str
 ) -> None:
-    registry = load(tmp_path, tenant_yaml("bad", **change), tenant_yaml("good"))
+    registry = load(tmp_path, tenant_document("bad", **change), tenant_document("good"))
     assert [t.slug for t in registry.tenants] == ["good"]
     assert problem in " ".join(registry.errors["bad"]) or problem in str(registry.errors)
 
 
 def test_telegram_main_testers_must_be_user_ids(tmp_path: Path) -> None:
-    doc = tenant_yaml(
+    doc = tenant_document(
         "tg",
         channel={"type": "telegram", "public_id": "tgpublic0001"},
         testers={"main": ["34600000001", "@someone"]},
@@ -233,12 +237,12 @@ def test_telegram_main_testers_must_be_user_ids(tmp_path: Path) -> None:
 
 
 def test_whatsapp_main_testers_accept_phones_and_bsuids(tmp_path: Path) -> None:
-    doc = tenant_yaml("a", testers={"main": ["34600000001", "ES.AbC123"]})
+    doc = tenant_document("a", testers={"main": ["34600000001", "ES.AbC123"]})
     assert load(tmp_path, doc).problems == {}
 
 
 def test_directory_name_does_not_define_tenant_identity(tmp_path: Path) -> None:
-    doc = tenant_yaml("a")
+    doc = tenant_document("a")
     raw = {"other": yaml.safe_dump(doc)}
     registry = load(tmp_path, raw=raw, secrets={"a": WA_SECRETS})
     assert registry.problems == {}
@@ -247,7 +251,7 @@ def test_directory_name_does_not_define_tenant_identity(tmp_path: Path) -> None:
 
 
 def test_unreadable_yaml_is_reported(tmp_path: Path) -> None:
-    registry = load(tmp_path, tenant_yaml("good"), raw={"broken": "id: [unclosed"})
+    registry = load(tmp_path, tenant_document("good"), raw={"broken": "id: [unclosed"})
     assert registry.errors == {"broken": ["document.yaml cannot be read (ParserError)"]}
     assert [t.slug for t in registry.tenants] == ["good"]
 
@@ -267,14 +271,14 @@ def test_repeated_keys_degrade_every_tenant_involved(
     tmp_path: Path, field: str, value: str
 ) -> None:
     def doc(slug: str) -> dict[str, Any]:
-        d = tenant_yaml(slug)
+        d = tenant_document(slug)
         if field == "id":
             d["id"] = value
         else:
             d["channel"][field] = value
         return d
 
-    registry = load(tmp_path, doc("a"), doc("b"), tenant_yaml("c"))
+    registry = load(tmp_path, doc("a"), doc("b"), tenant_document("c"))
     a, b, c = registry.tenants
     assert a.degraded == [f"{field} repeated"] and b.degraded == [f"{field} repeated"]
     assert not c.is_degraded
@@ -290,7 +294,7 @@ def test_demo_tenants_lists_only_demo_businesses(tmp_path: Path) -> None:
         tmp_path,
         demo_tenant_yaml("demo-a"),
         demo_tenant_yaml("demo-b", status="paused"),
-        tenant_yaml("real"),
+        tenant_document("real"),
     )
     assert {t.slug for t in registry.demo_tenants()} == {"demo-a", "demo-b"}
     real = registry.by_slug["real"]
@@ -317,16 +321,16 @@ def test_a_demo_tenant_is_never_indexed_by_public_id(tmp_path: Path) -> None:
 def test_serving_excludes_degraded_and_offboarded(tmp_path: Path) -> None:
     registry = load(
         tmp_path,
-        tenant_yaml("a"),
-        tenant_yaml("b", status="offboarded"),
-        tenant_yaml("c", pack="nope"),
-        tenant_yaml("d", status="onboarding"),
+        tenant_document("a"),
+        tenant_document("b", status="offboarded"),
+        tenant_document("c", pack="nope"),
+        tenant_document("d", status="onboarding"),
     )
     assert [t.slug for t in registry.serving("toy")] == ["a", "d"]
 
 
 def test_a_tenant_file_that_is_not_utf8_only_affects_itself(tmp_path: Path) -> None:
-    tenants = write_tenants(tmp_path, tenant_yaml("good"))
+    tenants = write_tenants(tmp_path, tenant_document("good"))
     (tenants / "latin1").mkdir()
     (tenants / "latin1" / "document.yaml").write_bytes("name: Peluquería".encode("latin-1"))
     registry = load_registry([source_from_dir(p) for p in sorted(tenants.iterdir())], PACKS)
@@ -335,7 +339,7 @@ def test_a_tenant_file_that_is_not_utf8_only_affects_itself(tmp_path: Path) -> N
 
 
 def test_a_directory_without_document_yaml_is_reported(tmp_path: Path) -> None:
-    tenants = write_tenants(tmp_path, tenant_yaml("a"))
+    tenants = write_tenants(tmp_path, tenant_document("a"))
     (tenants / "typo").mkdir()
     (tenants / "typo" / "tenant.yml").write_text("id: x")
     registry = load_registry([source_from_dir(p) for p in sorted(tenants.iterdir())], PACKS)
@@ -350,13 +354,13 @@ def test_a_directory_without_document_yaml_is_reported(tmp_path: Path) -> None:
     ],
 )
 def test_channel_ids_have_a_format(tmp_path: Path, channel: dict[str, str]) -> None:
-    assert "channel" in str(load(tmp_path, tenant_yaml("a", channel=channel)).errors["a"])
+    assert "channel" in str(load(tmp_path, tenant_document("a", channel=channel)).errors["a"])
 
 
 def test_directory_document_name(tmp_path: Path) -> None:
     directory = tmp_path / "a"
     directory.mkdir()
-    (directory / "document.yaml").write_text(yaml.safe_dump(tenant_yaml("a")))
+    (directory / "document.yaml").write_text(yaml.safe_dump(tenant_document("a")))
     source = source_from_dir(directory, WA_SECRETS)
     registry = load_registry([source], PACKS)
     assert registry.problems == {}
@@ -373,7 +377,7 @@ def test_dataset_is_materialized_then_removed(tmp_path: Path) -> None:
     packs = {"toy": dataclasses.replace(toy.pack, load_data=load_data)}
     source = TenantSource(
         "a",
-        tenant_yaml("a"),
+        tenant_document("a"),
         datasets={"timetable": {"nested/rows.csv": "línea,1\n"}},
         version=3,
     )
@@ -390,8 +394,8 @@ def test_dataset_is_materialized_then_removed(tmp_path: Path) -> None:
 def test_invalid_dataset_path_degrades_only_its_tenant(path: str) -> None:
     registry = load_registry(
         [
-            TenantSource("bad", tenant_yaml("bad"), datasets={"timetable": {path: "text"}}),
-            TenantSource("good", tenant_yaml("good")),
+            TenantSource("bad", tenant_document("bad"), datasets={"timetable": {path: "text"}}),
+            TenantSource("good", tenant_document("good")),
         ],
         PACKS,
     )
@@ -401,12 +405,12 @@ def test_invalid_dataset_path_degrades_only_its_tenant(path: str) -> None:
 
 
 def test_nontext_dataset_degrades_tenant() -> None:
-    source = TenantSource("a", tenant_yaml("a"), datasets={"timetable": {"rows.csv": b"bytes"}})  # type: ignore[dict-item]
+    source = TenantSource("a", tenant_document("a"), datasets={"timetable": {"rows.csv": b"bytes"}})  # type: ignore[dict-item]
     assert load_registry([source], PACKS).tenants[0].degraded == ["dataset timetable: invalid path"]
 
 
 def test_unreadable_secrets_disable_main_without_degrading() -> None:
-    source = TenantSource("a", tenant_yaml("a"), secrets_error="unreadable")
+    source = TenantSource("a", tenant_document("a"), secrets_error="unreadable")
     registry = load_registry([source], PACKS)
     (tenant,) = registry.tenants
     assert not tenant.is_degraded and not tenant.main_enabled

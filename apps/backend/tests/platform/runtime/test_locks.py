@@ -1,11 +1,8 @@
 """Queue locks are keyed hashes: stable for a given platform key, useless without it."""
 
 import hashlib
-import os
-import subprocess
-import sys
+import hmac
 import uuid
-from pathlib import Path
 
 from django.test import override_settings
 
@@ -36,26 +33,12 @@ def test_the_locks_keep_their_shape_and_hide_the_identifier() -> None:
 
 
 def test_the_hash_is_stable_across_processes() -> None:
-    code = (
-        "import django, uuid; django.setup();"
-        "from autobot.runtime.locks import contact_hash;"
-        f"print(contact_hash(uuid.UUID('{TENANT}'), 'main', '1'))"
-    )
-    src = str(Path(__file__).resolve().parents[3] / "src")
-    env = {
-        **os.environ,
-        "DJANGO_SECRET_KEY": "fixed-key-for-the-test",
-        "DJANGO_SETTINGS_MODULE": "config.settings_dev",
-        "PYTHONPATH": src,
-    }
-    runs = {
-        subprocess.run(
-            [sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True
-        )
-        .stdout.strip()
-        .splitlines()[-1]
-        for _ in range(2)
-    }
-    assert len(runs) == 1
-    with override_settings(SECRET_KEY="fixed-key-for-the-test"):
-        assert runs == {contact_hash(TENANT, "main", "1")}
+    """A golden value: the same key and parts give the same lock in every process (web and
+    workers), so a release that changed the derivation would fail here. It is also
+    recomputed with the standard library alone, independently of the module."""
+    key = "fixed-key-for-the-test"
+    with override_settings(SECRET_KEY=key):
+        assert contact_hash(TENANT, "main", "1") == "21dfc1fab1da6eec"
+    derived = hmac.new(key.encode(), b"autobot.queue-lock.v1", hashlib.sha256).digest()
+    message = "\x00".join([str(TENANT), "main", "1"]).encode()
+    assert hmac.new(derived, message, hashlib.sha256).hexdigest()[:16] == "21dfc1fab1da6eec"

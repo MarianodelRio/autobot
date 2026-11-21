@@ -142,26 +142,30 @@ class TenantDocument(Strict):
     @model_validator(mode="after")
     def demo_or_channel(self) -> TenantDocument:
         if self.demo is not None:
-            if self.channel is not None:
-                raise ValueError("un negocio de demo no puede tener canal")
-            if self.testers.main:
-                raise ValueError("un negocio de demo no puede tener testers.main")
-            if self.status not in ("active", "paused", "offboarded"):
-                raise ValueError(
-                    "el estado de un negocio de demo debe ser active, paused u offboarded"
-                )
-            return self
-        if self.channel is None:
+            self._check_demo()
+        elif self.channel is None:
             raise ValueError("el canal es obligatorio para un negocio que no es demo")
-        if self.channel.type == "whatsapp":
+        else:
+            self._check_testers(self.channel)
+        return self
+
+    def _check_demo(self) -> None:
+        if self.channel is not None:
+            raise ValueError("un negocio de demo no puede tener canal")
+        if self.testers.main:
+            raise ValueError("un negocio de demo no puede tener testers.main")
+        if self.status not in ("active", "paused", "offboarded"):
+            raise ValueError("el estado de un negocio de demo debe ser active, paused u offboarded")
+
+    def _check_testers(self, channel: WhatsAppChannel | TelegramChannel) -> None:
+        if channel.type == "whatsapp":
             wrong = [i for i in self.testers.main if not (BSUID.match(i) or PHONE.match(i))]
             kind = "un BSUID o un teléfono (solo cifras)"
         else:
             wrong = [i for i in self.testers.main if not TELEGRAM_ID.match(i)]
             kind = "un id de usuario de Telegram"
         if wrong:
-            raise ValueError(f"testers.main debe contener {kind} para un canal {self.channel.type}")
-        return self
+            raise ValueError(f"testers.main debe contener {kind} para un canal {channel.type}")
 
 
 class WhatsAppSecrets(Strict):

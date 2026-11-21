@@ -6,9 +6,8 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
-from autobot.ops.audit import record
-from autobot.owner.invites import InviteError, create_invite_link
-from autobot.tenancy.registry import get_registry
+from autobot.management.commands._common import registry_tenant
+from autobot.ops import tenant_actions
 
 
 class Command(BaseCommand):
@@ -18,21 +17,11 @@ class Command(BaseCommand):
         parser.add_argument("slug")
 
     def handle(self, *args: Any, **options: Any) -> None:
-        tenant = get_registry().by_slug.get(options["slug"])
-        if tenant is None:
-            raise CommandError("Negocio desconocido.")
+        tenant = registry_tenant(options["slug"])
         try:
-            link = create_invite_link(tenant)
-        except InviteError as e:
+            link = tenant_actions.create_owner_invite(tenant, actor="command:owner_invite")
+        except tenant_actions.ActionError as e:
             raise CommandError(str(e)) from None
-        record(
-            actor="command:owner_invite",
-            action="tenant.owner_invite",
-            tenant_id=tenant.id,
-            target_type="tenant",
-            target_id=str(tenant.id),
-            summary="Enlace de invitación generado",
-        )
         if link.replaces_chat:
             self.stdout.write("Ya hay un chat conectado; este enlace lo sustituirá cuando se use.")
         expires = link.expires_at.astimezone(tenant.info.timezone)

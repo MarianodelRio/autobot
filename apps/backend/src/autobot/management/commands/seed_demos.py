@@ -48,7 +48,7 @@ class Command(BaseCommand):
                 dataset_origins[dataset_name] = dataset_library.origin(entry)
             try:
                 with transaction.atomic(using="owner"):
-                    store._lock()
+                    store.lock()
                     if (
                         TenantDocumentVersion.objects.using("owner")
                         .filter(tenant_id=source.document["id"])

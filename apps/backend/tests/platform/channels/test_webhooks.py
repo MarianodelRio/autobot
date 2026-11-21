@@ -266,9 +266,8 @@ def test_database_errors_are_503(tenants: Any, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_health(tenants: Any) -> None:
-    # Public: only `status`, nothing a probe on the internet should learn (ADR-less
-    # finding S12 of docs/plan-lanzamiento.md). The tenant detail is on /health/internal,
-    # which Caddy never forwards.
+    # Public: only `status`, nothing a probe on the internet should learn. The tenant
+    # detail is on /health/internal, which Caddy never forwards.
     tenants(wa_tenant(), wa_tenant("bad", config={"colors": 1}))
     response = Client().get("/health")
     assert response.status_code == 200

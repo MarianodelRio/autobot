@@ -99,6 +99,11 @@ class ChannelAdapter[C, S](Protocol):
         """Immediate effects once an item is taken (Telegram: answerCallbackQuery)."""
         ...
 
+    def synthetic_text(self, payload: dict[str, Any], text: str) -> dict[str, Any]:
+        """A stored item's body turned into a plain `text` message from the same person
+        (what `parse` reads back), e.g. the demo selector's synthetic `menu`."""
+        ...
+
     def render(self, out: Outbound, channel: C) -> dict[str, Any]:
         """The provider's request body for a reply or proactive message (no recipient)."""
         ...

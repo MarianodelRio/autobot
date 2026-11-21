@@ -1,4 +1,4 @@
-"""The platform's single Google service account (D1): its own email, so a client
+"""The platform's single Google service account: its own email, so a client
 can share their calendar with it. Never its private key."""
 
 from django.conf import settings

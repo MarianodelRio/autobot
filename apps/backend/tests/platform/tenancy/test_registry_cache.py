@@ -13,7 +13,7 @@ from django.http import HttpRequest, HttpResponse
 from autobot.ops.logging import contextual, redact
 from autobot.tenancy import registry
 from autobot.tenancy.middleware import RegistryScopeMiddleware
-from tests.platform.tenancy.helpers import PACKS, tenant_yaml
+from tests.platform.tenancy.helpers import PACKS, tenant_document
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def state(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     def sources(alias: str = "default") -> tuple[int, list[registry.TenantSource]]:
         state.loads += 1
         return state.revision, [
-            registry.TenantSource("a", tenant_yaml("a"), version=state.revision)
+            registry.TenantSource("a", tenant_document("a"), version=state.revision)
         ]
 
     monkeypatch.setattr(registry, "sources_from_database", sources)

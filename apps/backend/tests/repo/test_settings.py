@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from django.conf import settings
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -59,12 +60,6 @@ def test_demo_telegram_webhook_secret_must_be_long() -> None:
     assert result.returncode != 0 and "DEMO_TELEGRAM_WEBHOOK_SECRET" in result.stderr
 
 
-def test_prod_requires_secret_key() -> None:
-    result = run("manage.py", "check", ENVIRONMENT="prod")
-    assert result.returncode != 0
-    assert "DJANGO_SECRET_KEY" in result.stderr
-
-
 def test_prod_with_all_variables_passes_check() -> None:
     result = run(
         "-c",
@@ -80,45 +75,50 @@ def test_prod_with_all_variables_passes_check() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_prod_rejects_example_secret_key() -> None:
-    result = run(
-        "manage.py",
-        "check",
-        ENVIRONMENT="prod",
-        DJANGO_SECRET_KEY="change-me",
-        SECRETS_ENCRYPTION_KEY="UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=",
-        DB_APP_URL="postgres://u:p@127.0.0.1:1/none",
-    )
-    assert result.returncode != 0
-    assert "DJANGO_SECRET_KEY" in result.stderr
+REAL_FERNET_KEY = "r9QT0J-HCiYMurCE7CqrNd-Cxb8WIxoYsw3XekIvUoU="
+EXAMPLE_FERNET_KEY = "UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w="
+REMOTE_DB = "postgres://u:p@db.internal:5432/none"
+LOCAL_DB = "postgres://u:p@localhost:5433/autobot"
 
-
-def test_prod_rejects_example_encryption_key() -> None:
-    result = run(
-        "manage.py",
-        "check",
-        ENVIRONMENT="prod",
-        DJANGO_SECRET_KEY="a-real-key",
-        SECRETS_ENCRYPTION_KEY="UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=",
-        DB_APP_URL="postgres://u:p@127.0.0.1:1/none",
-    )
-    assert result.returncode != 0
-    assert "SECRETS_ENCRYPTION_KEY" in result.stderr
-
-
-def test_prod_rejects_db_urls_pointing_at_localhost() -> None:
-    for name in ("DB_APP_URL", "DB_OWNER_URL", "DB_READONLY_URL"):
-        env_vars = {
-            "ENVIRONMENT": "prod",
+PROD_REJECTIONS = {
+    "requires-secret-key": ({}, "DJANGO_SECRET_KEY"),
+    "example-secret-key": (
+        {
+            "DJANGO_SECRET_KEY": "change-me",
+            "SECRETS_ENCRYPTION_KEY": EXAMPLE_FERNET_KEY,
+            "DB_APP_URL": "postgres://u:p@127.0.0.1:1/none",
+        },
+        "DJANGO_SECRET_KEY",
+    ),
+    "example-encryption-key": (
+        {
             "DJANGO_SECRET_KEY": "a-real-key",
-            "DJANGO_ALLOWED_HOSTS": "api.x",
-            "SECRETS_ENCRYPTION_KEY": "r9QT0J-HCiYMurCE7CqrNd-Cxb8WIxoYsw3XekIvUoU=",
-            "DB_APP_URL": "postgres://u:p@db.internal:5432/none",
-            name: "postgres://u:p@localhost:5433/autobot",
-        }
-        result = run("manage.py", "check", **env_vars)
-        assert result.returncode != 0, name
-        assert name in result.stderr, name
+            "SECRETS_ENCRYPTION_KEY": EXAMPLE_FERNET_KEY,
+            "DB_APP_URL": "postgres://u:p@127.0.0.1:1/none",
+        },
+        "SECRETS_ENCRYPTION_KEY",
+    ),
+    **{
+        f"localhost-{name}": (
+            {
+                "DJANGO_SECRET_KEY": "a-real-key",
+                "DJANGO_ALLOWED_HOSTS": "api.x",
+                "SECRETS_ENCRYPTION_KEY": REAL_FERNET_KEY,
+                "DB_APP_URL": REMOTE_DB,
+                name: LOCAL_DB,
+            },
+            name,
+        )
+        for name in ("DB_APP_URL", "DB_OWNER_URL", "DB_READONLY_URL")
+    },
+}
+
+
+@pytest.mark.parametrize(("env", "expected"), PROD_REJECTIONS.values(), ids=PROD_REJECTIONS.keys())
+def test_prod_rejects_bad_settings(env: dict[str, str], expected: str) -> None:
+    result = run("manage.py", "check", **{"ENVIRONMENT": "prod", **env})
+    assert result.returncode != 0
+    assert expected in result.stderr
 
 
 def test_unknown_environment_is_rejected() -> None:

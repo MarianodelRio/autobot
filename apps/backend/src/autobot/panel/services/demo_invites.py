@@ -1,4 +1,4 @@
-"""Demo invite codes (D5): create, list and revoke them from the panel, and build
+"""Demo invite codes: create, list and revoke them from the panel, and build
 what it needs to print or scan as a QR. Always `.using("owner")` (CLAUDE.md): this is
 panel-only, never written by the worker (which only reads/updates `uses` on
 redemption, `autobot.channels.demo.invites`)."""

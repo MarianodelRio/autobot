@@ -10,30 +10,28 @@ use, not by how many tenants there are.
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.core.cache import cache
 from django.db import connections
 from django.db.models import Count, Max, Q, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from ninja import Schema
 
-from autobot.ops import system
+from autobot.ops import health, system
 from autobot.ops.models import OpsAlert
 from autobot.ops.status import tenant_status
+from autobot.panel.services.month import MADRID, MonthAggregates, month_aggregates
 from autobot.panel.services.system import tls_days_left
-from autobot.runtime import costs
 from autobot.runtime.models import InboundEvent, MetricEvent, OutboundMessage
 from autobot.runtime.summary import month_to_date
 from autobot.tenancy.registry import LoadedTenant, get_registry
 
-MADRID = ZoneInfo("Europe/Madrid")
 STALE_MINUTES = 10
 MAX_PROBLEMS = 5
 MAX_RECENT_ALERTS = 5
@@ -147,10 +145,8 @@ def _channel_label(tenant: LoadedTenant) -> Literal["whatsapp", "telegram", "dem
 
 
 def _health_checked_at(tenant_id: UUID) -> datetime | None:
-    health = cache.get(f"health:{tenant_id}")
-    if isinstance(health, dict) and "checked_at" in health:
-        return datetime.fromtimestamp(health["checked_at"], tz=UTC)
-    return None
+    snapshot = health.read_snapshot(tenant_id)
+    return snapshot.checked_at if snapshot is not None else None
 
 
 def _stale_outbound(now: datetime, tenant_ids: list[UUID]) -> int:
@@ -173,40 +169,17 @@ def _failed_jobs() -> int:
 
 
 def tenant_rows(now: datetime) -> list[TenantRow]:
-    """One `TenantRow` per non-offboarded tenant. Reused by `GET tenants` (T16a)."""
+    """One `TenantRow` per non-offboarded tenant. Reused by `GET tenants`."""
     tenants = _active_tenants()
     open_alerts = _open_alerts()
     by_tz: dict[ZoneInfo, list[LoadedTenant]] = defaultdict(list)
     for tenant in tenants:
         by_tz[tenant.info.timezone].append(tenant)
 
-    inbound_month: dict[UUID, int] = {}
-    outbound_month: dict[UUID, int] = {}
-    pricing_counts: dict[UUID, dict[str | None, int]] = defaultdict(dict)
+    month: dict[UUID, MonthAggregates] = {}
     for tz, group in by_tz.items():
         start, _ = month_to_date(now, tz)
-        ids = [t.id for t in group]
-        inbound_month.update(
-            InboundEvent.objects.using("owner")
-            .filter(tenant_id__in=ids, kind="message", received_at__gte=start)
-            .values("tenant_id")
-            .annotate(total=Count("id"))
-            .values_list("tenant_id", "total")
-        )
-        outbound_month.update(
-            OutboundMessage.objects.using("owner")
-            .filter(tenant_id__in=ids, status="sent", sent_at__gte=start)
-            .values("tenant_id")
-            .annotate(total=Count("id"))
-            .values_list("tenant_id", "total")
-        )
-        for row in (
-            OutboundMessage.objects.using("owner")
-            .filter(tenant_id__in=ids, billable=True, sent_at__gte=start)
-            .values("tenant_id", "pricing_category")
-            .annotate(total=Count("id"))
-        ):
-            pricing_counts[row["tenant_id"]][row["pricing_category"]] = row["total"]
+        month.update(month_aggregates([t.id for t in group], start))
 
     all_ids = [t.id for t in tenants]
     last_received: dict[UUID, datetime] = dict(
@@ -226,7 +199,8 @@ def tenant_rows(now: datetime) -> list[TenantRow]:
 
     rows = []
     for tenant in tenants:
-        health = tenant_status(tenant, open_alerts=open_alerts)
+        status = tenant_status(tenant, open_alerts=open_alerts)
+        figures = month[tenant.id]
         received = last_received.get(tenant.id)
         sent = last_sent.get(tenant.id)
         last_activity = max((d for d in (received, sent) if d is not None), default=None)
@@ -237,12 +211,12 @@ def tenant_rows(now: datetime) -> list[TenantRow]:
                 pack=tenant.document.pack,
                 channel=_channel_label(tenant),
                 status=tenant.document.status,
-                health=health.level,
-                health_reasons=health.reasons,
+                health=status.level,
+                health_reasons=status.reasons,
                 health_checked_at=_health_checked_at(tenant.id),
-                inbound_month=inbound_month.get(tenant.id, 0),
-                outbound_month=outbound_month.get(tenant.id, 0),
-                cost_eur_month=costs.cost_of(pricing_counts.get(tenant.id, {})),
+                inbound_month=figures.inbound,
+                outbound_month=figures.outbound,
+                cost_eur_month=figures.cost_eur,
                 last_activity_at=last_activity,
             )
         )
@@ -281,26 +255,16 @@ def _global_month(now: datetime, tenants: list[LoadedTenant]) -> tuple[datetime,
     ids = [t.id for t in tenants]
     pack_by_id = {t.id: t.document.pack for t in tenants}
 
-    inbound = (
-        InboundEvent.objects.using("owner")
-        .filter(tenant_id__in=ids, kind="message", received_at__gte=start)
-        .count()
-    )
+    per_tenant = month_aggregates(ids, start).values()
+    inbound = sum(m.inbound for m in per_tenant)
+    outbound = sum(m.outbound for m in per_tenant)
+    users = sum(m.users for m in per_tenant)
+    billable = sum(m.billable for m in per_tenant)
+    # Per-tenant costs, already rounded, summed — so the Clientes table adds up.
+    cost_eur = sum((m.cost_eur for m in per_tenant), Decimal(0))
     outbound_qs = OutboundMessage.objects.using("owner").filter(
         tenant_id__in=ids, status="sent", sent_at__gte=start
     )
-    outbound = outbound_qs.count()
-    users = outbound_qs.values("contact_id").distinct().count()
-    billable_qs = OutboundMessage.objects.using("owner").filter(
-        tenant_id__in=ids, billable=True, sent_at__gte=start
-    )
-    billable = billable_qs.count()
-
-    by_tenant_prices: dict[UUID, dict[str | None, int]] = defaultdict(dict)
-    for row in billable_qs.values("tenant_id", "pricing_category").annotate(total=Count("id")):
-        by_tenant_prices[row["tenant_id"]][row["pricing_category"]] = row["total"]
-    # Per-tenant costs, already rounded, summed — so the Clientes table adds up.
-    cost_eur = sum((costs.cost_of(counts) for counts in by_tenant_prices.values()), Decimal(0))
 
     inbound_by_day: dict[date, int] = dict(
         InboundEvent.objects.using("owner")

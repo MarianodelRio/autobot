@@ -22,7 +22,7 @@ from tests.platform.tenancy.helpers import (
     WA_SECRETS,
     demo_tenant_yaml,
     phone_number_id,
-    tenant_yaml,
+    tenant_document,
 )
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
@@ -38,7 +38,7 @@ def demo_tenant(slug: str = "demo-toy", **changes: Any) -> dict[str, Any]:
 
 
 def wa_tenant(slug: str = "wa", **changes: Any) -> dict[str, Any]:
-    doc = tenant_yaml(slug, **changes)
+    doc = tenant_document(slug, **changes)
     doc["channel"] = {
         "type": "whatsapp",
         "public_id": f"pub{slug}0000",
@@ -50,7 +50,7 @@ def wa_tenant(slug: str = "wa", **changes: Any) -> dict[str, Any]:
 
 
 def tg_tenant(slug: str = "tg", **changes: Any) -> dict[str, Any]:
-    doc = tenant_yaml(slug, **changes)
+    doc = tenant_document(slug, **changes)
     doc["channel"] = {"type": "telegram", "public_id": f"pub{slug}0000", "bot_username": "toy_bot"}
     doc["testers"] = {"main": ["100000001"]}
     return doc

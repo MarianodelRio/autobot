@@ -10,6 +10,8 @@ from django.conf import settings
 from django.utils import timezone
 
 from autobot.owner import texts
+from autobot.owner.invites import InviteError, create_invite_link
+from autobot.owner.links import OWNER_INVITE_DAYS
 from autobot.runtime import summary
 from autobot.tenancy.registry import LoadedTenant
 from core.limits import MAX_BUTTONS
@@ -68,11 +70,9 @@ def _usable(tenant: LoadedTenant) -> bool:
 
 
 def reconnect_text(chat: OwnerChat) -> str:
-    """C14: a fresh invite link per tenant of this chat, so the owner can connect
+    """A fresh invite link per tenant of this chat, so the owner can connect
     a replacement device themselves without asking the operator. Reuses the same
     `create_invite_link` the panel's «Invitar al dueño» and `owner_invite` use."""
-    from autobot.owner.invites import InviteError, create_invite_link
-    from autobot.owner.links import OWNER_INVITE_DAYS
 
     lines = []
     for tenant in sorted(chat.tenants, key=lambda t: t.info.name):

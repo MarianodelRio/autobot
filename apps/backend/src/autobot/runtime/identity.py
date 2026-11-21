@@ -1,17 +1,12 @@
 """Verified phone relationships, queried only within the caller's tenant_tx."""
 
-import re
 from uuid import UUID
 
 from django.db.models import Q
 
 from autobot.runtime.models import Channel, Contact
 from autobot.tenancy.schema import BSUID
-
-
-def phone_key(value: str | None) -> str:
-    digits = re.sub(r"\D", "", value or "")
-    return "34" + digits if len(digits) == 9 else digits
+from core.phone import phone_key
 
 
 def phone_group(tenant_id: UUID, phone: str, *, lock: bool = False) -> list[Contact]:

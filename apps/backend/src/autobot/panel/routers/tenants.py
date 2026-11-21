@@ -25,7 +25,7 @@ class CreateTenantIn(Schema):
     demo_description: str | None = None
     config: dict[str, Any]
     comment: str = ""
-    # ADR-013/C22: {dataset name -> library entry name}, always its latest version.
+    # ADR-013: {dataset name -> library entry name}, always its latest version.
     dataset_choices: dict[str, str] | None = None
 
 

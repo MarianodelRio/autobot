@@ -106,7 +106,7 @@ def test_system_endpoint(
     assert [row["sha"] for row in data["deploys"]] == ["new", "old"]
     assert data["release"] == "abc123"
     assert seen == [("http://logs.test/health", {"timeout": 5})]
-    # One worker alive and the other dead is still not green (X14).
+    # One worker alive and the other dead is still not green.
     with connections["owner"].cursor() as db:
         db.execute(
             "UPDATE procrastinate_workers SET last_heartbeat=%s"

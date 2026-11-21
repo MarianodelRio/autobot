@@ -1,17 +1,32 @@
 """The "Alta" tab (ADR-014): one step-by-step view assembled from the services
-C1-C15 and D1-D4 already built, instead of a new hook per pack or channel.
+already built, instead of a new hook per pack or channel.
 """
 
+from collections.abc import Collection, Iterable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from ninja import Schema
 
-from autobot.ops.audit import record
+from autobot.channels.adapters import endpoint
+from autobot.channels.base import InboundItem, parse_stored
+from autobot.channels.telegram.registration import expected_webhook_url, is_webhook_registered
+from autobot.channels.whatsapp import registration as meta
+from autobot.ops.audit import record_tenant
+from autobot.ops.health import Issue, whatsapp_template_statuses
+from autobot.ops.status import tenant_status
 from autobot.panel.errors import ApiError
-from autobot.tenancy import activation
-from autobot.tenancy.registry import LoadedTenant, get_registry
+from autobot.panel.services._common import get_tenant_or_404
+from autobot.panel.services.tenants import tenant_dataset_status
+from autobot.runtime.context import CalendarUnavailable, build_context
+from autobot.runtime.models import Channel, InboundEvent
+from autobot.tenancy import activation, store
+from autobot.tenancy.registry import LoadedTenant, get_registry, source_from_dir
 from autobot.tenancy.schema import TelegramChannel, WhatsAppChannel, WhatsAppSecrets
+from core.errors import PermanentError, TransientError
+from integrations.google_calendar.client import service_account_email
+from packs import registry as pack_registry  # read `PACKS` at call time: tests replace it
 
 if TYPE_CHECKING:
     from autobot.channels.whatsapp.registration import NumberStatus
@@ -46,15 +61,6 @@ class SetupStepOut(Schema):
     checkable: bool = False
     tester_candidates: list[TesterCandidate] = []
     action: SetupAction | None = None
-
-
-def _tenant(slug: str) -> LoadedTenant:
-    tenant = get_registry().by_slug.get(slug)
-    if tenant is None:
-        tenant = get_registry(force=True).by_slug.get(slug)
-    if tenant is None:
-        raise ApiError("not_found", "No se encuentra el negocio", 404)
-    return tenant
 
 
 def _state(ok: bool) -> str:
@@ -112,7 +118,7 @@ def _template_values(
 def tenant_setup(slug: str) -> list[SetupStepOut]:
     """Only what is already cached or in the database — never calls a provider.
     `tenant_setup_check` does that, one step at a time."""
-    tenant = _tenant(slug)
+    tenant = get_tenant_or_404(slug)
     items = {item.key: item for item in activation.checklist(slug, refresh=False).items}
     channel = tenant.document.channel
     steps = [
@@ -143,8 +149,6 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
         ),
     ]
     if isinstance(channel, TelegramChannel):
-        from autobot.channels.telegram.registration import expected_webhook_url
-
         expected = expected_webhook_url(f"webhooks/telegram/{channel.public_id}")
         steps.append(
             SetupStepOut(
@@ -209,8 +213,6 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
         )
     )
     if tenant.document.pack == "salon":
-        from integrations.google_calendar.client import service_account_email
-
         email = (
             service_account_email(settings.GOOGLE_SERVICE_ACCOUNT_FILE)
             if settings.GOOGLE_SERVICE_ACCOUNT_FILE
@@ -221,7 +223,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
         steps.append(
             SetupStepOut(
                 key="calendar",
-                label="Calendario (D1-D4)",
+                label="Calendario",
                 why="Sin permiso de escritura en el calendario del negocio no se pueden"
                 " guardar citas.",
                 state="pending",
@@ -239,39 +241,14 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
     return steps
 
 
-def _tester_candidates(tenant: LoadedTenant, *, limit: int = 5) -> list[TesterCandidate]:
-    """Recent senders ignored for not being in `testers.main` (C12): re-parses each
-    event's own stored payload with the tenant's real channel, never a contact record
-    (inbound events keep no link to one — ADR-009)."""
-    if tenant.document.channel is None:
-        return []
-    from autobot.channels.adapters import endpoint
-    from autobot.channels.base import InboundItem, parse_stored
-    from autobot.runtime.models import Channel, InboundEvent
-
-    ep = endpoint(tenant, Channel.MAIN)
-    testers = set(tenant.document.testers.main)
-    events = (
-        InboundEvent.objects.using("owner")
-        .filter(
-            tenant_id=tenant.id,
-            channel=Channel.MAIN,
-            kind=InboundEvent.Kind.MESSAGE,
-            status=InboundEvent.Status.IGNORED,
-        )
-        .order_by("-received_at")[:50]
-    )
+def pick_tester_candidates(
+    items: Iterable[tuple[InboundItem, datetime]], testers: Collection[str], *, limit: int
+) -> list[TesterCandidate]:
+    """From senders (newest first) keeps those not already in `testers`, one per person,
+    up to `limit`. Pure: no database, no provider."""
     candidates: list[TesterCandidate] = []
     seen: set[str] = set()
-    for event in events:
-        if not isinstance(event.payload, dict):
-            continue
-        try:
-            item = parse_stored(ep.adapter, event.payload, ep.channel)
-        except ValueError, KeyError, TypeError:
-            continue
-        if not isinstance(item, InboundItem):
-            continue
+    for item, received_at in items:
         phone = item.phone.removeprefix("+") if item.phone else None
         if item.external_id in testers or (phone is not None and phone in testers):
             continue
@@ -283,7 +260,7 @@ def _tester_candidates(tenant: LoadedTenant, *, limit: int = 5) -> list[TesterCa
             TesterCandidate(
                 id=tester_id,
                 display=phone or f"id {item.external_id}",
-                received_at=event.received_at.isoformat(),
+                received_at=received_at.isoformat(),
             )
         )
         if len(candidates) >= limit:
@@ -291,10 +268,45 @@ def _tester_candidates(tenant: LoadedTenant, *, limit: int = 5) -> list[TesterCa
     return candidates
 
 
-def tenant_setup_add_tester(slug: str, tester_id: str, *, actor: str) -> SetupStepOut:
-    from autobot.tenancy import store
+def _ignored_senders(tenant: LoadedTenant, *, scan: int = 50) -> list[tuple[InboundItem, datetime]]:
+    """The senders of the last `scan` ignored messages, newest first: each event's own
+    stored payload re-parsed with the tenant's real channel (inbound events keep no link
+    to a contact record, ADR-009)."""
+    ep = endpoint(tenant, Channel.MAIN)
+    events = (
+        InboundEvent.objects.using("owner")
+        .filter(
+            tenant_id=tenant.id,
+            channel=Channel.MAIN,
+            kind=InboundEvent.Kind.MESSAGE,
+            status=InboundEvent.Status.IGNORED,
+        )
+        .order_by("-received_at")[:scan]
+    )
+    senders: list[tuple[InboundItem, datetime]] = []
+    for event in events:
+        if not isinstance(event.payload, dict):
+            continue
+        try:
+            item = parse_stored(ep.adapter, event.payload, ep.channel)
+        except ValueError, KeyError, TypeError:
+            continue
+        if isinstance(item, InboundItem):
+            senders.append((item, event.received_at))
+    return senders
 
-    tenant = _tenant(slug)
+
+def _tester_candidates(tenant: LoadedTenant, *, limit: int = 5) -> list[TesterCandidate]:
+    """Recent senders ignored for not being in `testers.main`."""
+    if tenant.document.channel is None:
+        return []
+    return pick_tester_candidates(
+        _ignored_senders(tenant), set(tenant.document.testers.main), limit=limit
+    )
+
+
+def tenant_setup_add_tester(slug: str, tester_id: str, *, actor: str) -> SetupStepOut:
+    tenant = get_tenant_or_404(slug)
     if tenant.version is None:
         raise ApiError("bad_request", "El negocio está degradado.", 400)
     doc = tenant.document.model_dump(mode="json")
@@ -312,14 +324,7 @@ def tenant_setup_add_tester(slug: str, tester_id: str, *, actor: str) -> SetupSt
         actor=actor,
         comment="Tester añadido desde la pestaña Alta",
     )
-    record(
-        actor=actor,
-        action="tenant.setup_add_tester",
-        tenant_id=tenant.id,
-        target_type="tenant",
-        target_id=str(tenant.id),
-        summary="Tester añadido desde la pestaña Alta",
-    )
+    record_tenant(actor, "tenant.setup_add_tester", tenant, "Tester añadido desde la pestaña Alta")
     get_registry(force=True)
     for step in tenant_setup(slug):
         if step.key == "tester":
@@ -328,23 +333,17 @@ def tenant_setup_add_tester(slug: str, tester_id: str, *, actor: str) -> SetupSt
 
 
 def _dataset_names(tenant: LoadedTenant) -> tuple[str, ...]:
-    """The dataset names a pack's own template declares (C22): its directory
+    """The dataset names a pack's own template declares : its directory
     layout is the only canonical source of them. Looked up by name, never via
     `tenant.pack` — a tenant missing its dataset is degraded (no bound pack), which
     is exactly when this step matters most."""
-    from packs.registry import PACKS
-
-    pack = PACKS.get(tenant.document.pack)
+    pack = pack_registry.PACKS.get(tenant.document.pack)
     if pack is None or pack.template is None:
         return ()
-    from autobot.tenancy.registry import source_from_dir
-
     return tuple(sorted(source_from_dir(pack.template).datasets))
 
 
 def _dataset_steps(slug: str, tenant: LoadedTenant) -> list[SetupStepOut]:
-    from autobot.panel.services.tenants import tenant_dataset_status
-
     steps = []
     for name in _dataset_names(tenant):
         status = tenant_dataset_status(slug, name)
@@ -373,15 +372,13 @@ def _dataset_steps(slug: str, tenant: LoadedTenant) -> list[SetupStepOut]:
 def tenant_setup_check(slug: str, step: str, *, actor: str) -> SetupStepOut:
     """Runs one step's real check against the provider, outside any transaction,
     and audits the result."""
-    tenant = _tenant(slug)
+    tenant = get_tenant_or_404(slug)
     steps = {item.key: item for item in tenant_setup(slug)}
     current = steps.get(step)
     if current is None or not current.checkable:
         raise ApiError("bad_request", "Ese paso no se puede comprobar", 400)
 
     if step == "webhook":
-        from autobot.channels.telegram.registration import is_webhook_registered
-
         registered = is_webhook_registered(slug)
         state = "ok" if registered else "error" if registered is False else "pending"
         detail = (
@@ -403,21 +400,18 @@ def tenant_setup_check(slug: str, step: str, *, actor: str) -> SetupStepOut:
     else:  # pragma: no cover - current.checkable already restricts this
         raise ApiError("bad_request", "Ese paso no se puede comprobar", 400)
 
-    record(
-        actor=actor,
-        action="tenant.setup_check",
-        tenant_id=tenant.id,
-        target_type="tenant",
-        target_id=str(tenant.id),
-        summary=f"Comprobación de alta: {step}",
-        details={"step": step, "state": result.state},
+    record_tenant(
+        actor,
+        "tenant.setup_check",
+        tenant,
+        f"Comprobación de alta: {step}",
+        step=step,
+        state=result.state,
     )
     return result
 
 
 def _check_health(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:
-    from autobot.ops.status import tenant_status
-
     # The same forced check activation runs, so what is shown is what would block it.
     item = {i.key: i for i in activation.checklist(tenant.slug).items}["health"]
     reasons = tenant_status(tenant).reasons
@@ -426,10 +420,6 @@ def _check_health(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:
 
 
 def _check_calendar(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:
-    from autobot.runtime.context import CalendarUnavailable, build_context
-    from autobot.runtime.models import Channel
-    from core.errors import PermanentError, TransientError
-
     config = tenant.document.config if isinstance(tenant.document.config, dict) else {}
     if not config.get("calendar_id"):
         return current.model_copy(
@@ -454,8 +444,6 @@ def _check_calendar(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut
 
 
 def _check_templates(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:
-    from autobot.ops.health import Issue, whatsapp_template_statuses
-
     if tenant.pack is None or not isinstance(tenant.secrets, WhatsAppSecrets):
         return current.model_copy(
             update={"state": "error", "detail": "Faltan secretos legibles de WhatsApp."}
@@ -547,8 +535,6 @@ def _whatsapp_steps(tenant: LoadedTenant, channel: WhatsAppChannel) -> list[Setu
 
 
 def _check_whatsapp(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOut:
-    from autobot.channels.whatsapp import registration as meta
-
     ready = _whatsapp_ready(tenant)
     if isinstance(ready, str):
         return current.model_copy(update={"state": "error", "detail": ready})
@@ -594,9 +580,7 @@ def _number_result(current: SetupStepOut, status: NumberStatus) -> SetupStepOut:
 def tenant_setup_action(slug: str, step: str, pin: str | None, *, actor: str) -> SetupStepOut:
     """Runs one step's write against Meta, outside any transaction, and audits the
     outcome (never the PIN). An ambiguous write is reported, never retried."""
-    from autobot.channels.whatsapp import registration as meta
-
-    tenant = _tenant(slug)
+    tenant = get_tenant_or_404(slug)
     if not isinstance(tenant.document.channel, WhatsAppChannel):
         raise ApiError("bad_request", "El canal no es WhatsApp", 400)
     current = {item.key: item for item in tenant_setup(slug)}.get(step)
@@ -626,12 +610,6 @@ def tenant_setup_action(slug: str, step: str, pin: str | None, *, actor: str) ->
 
 
 def _record_action(tenant: LoadedTenant, step: str, outcome: str, actor: str) -> None:
-    record(
-        actor=actor,
-        action="tenant.setup_action",
-        tenant_id=tenant.id,
-        target_type="tenant",
-        target_id=str(tenant.id),
-        summary=f"Acción de alta: {step}",
-        details={"step": step, "outcome": outcome},
+    record_tenant(
+        actor, "tenant.setup_action", tenant, f"Acción de alta: {step}", step=step, outcome=outcome
     )

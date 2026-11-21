@@ -17,7 +17,7 @@ from django.core.management.base import CommandError
 from django.db import OperationalError, connection, connections
 from django.utils import timezone
 
-from autobot.ops import check, health, state
+from autobot.ops import check, health, state, system
 from autobot.ops.models import OpsAlert, SystemSample
 from autobot.runtime.jobs import app
 from autobot.runtime.models import Contact, OutboundMessage
@@ -70,7 +70,7 @@ def kinds(alerts: list[tuple[Any, ...]]) -> set[str]:
     ("status", "age_min", "expected"),
     [
         ("failed", 0, True),
-        ("failed", 25 * 60, False),  # X8: an old failure must not alert forever
+        ("failed", 25 * 60, False),  # an old failure must not alert forever
         ("unknown", 11, True),
         ("unknown", 10, False),
         ("unknown", 25 * 60, False),  # same 24 h cutoff as a failed message
@@ -201,7 +201,7 @@ def test_queue_rows(tenants: Any, alerts: Any) -> None:
 def test_daily_health_row_retries_a_failure_at_15_min(
     tenants: Any, alerts: Any, monkeypatch: Any
 ) -> None:
-    """X13: a one-off health failure must not stay cached a full day; it is rechecked
+    """A one-off health failure must not stay cached a full day; it is rechecked
     at ~15 min, so it clears once the service is back."""
     tenants(wa_tenant())
     calls = []
@@ -355,7 +355,7 @@ def test_platform_bot_auth_signal(tenants: Any, alerts: Any, bot: str) -> None:
 def test_notify_bot_webhook_unregistered_is_a_finding(
     tenants: Any, settings: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # C15: a demo/notify bot whose webhook Telegram has set to something else (or
+    # a demo/notify bot whose webhook Telegram has set to something else (or
     # nothing) must surface as a finding, not look "ok".
     tenants()
     settings.HEALTHCHECKS_PING_URL = ""
@@ -381,12 +381,14 @@ def test_collect_never_calls_send_ops_alert(tenants: Any, settings: Any, monkeyp
     tenants(wa_tenant())
     monkeypatch.setattr(check, "door", lambda channel: None)
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
+    monkeypatch.setattr(system, "disk", lambda: 10.0)  # not the host's real disk
 
     def boom(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("collect() must not send alerts")
 
     monkeypatch.setattr(check, "send_ops_alert", boom)
-    check.collect()
+    findings = check.collect()
+    assert findings == []
 
 
 def test_sync_alerts_auto_resolves_a_disappeared_finding(settings: Any) -> None:

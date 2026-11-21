@@ -5,6 +5,7 @@ import sys
 import tarfile
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 
@@ -61,8 +62,6 @@ def read_source(directory: Path, secrets_file: str | None) -> TenantSource:
         raise CommandError("El documento debe declarar el slug del negocio")
     secret_path = Path(secrets_file) if secrets_file else directory / "secrets.yaml"
     if secrets_file or secret_path.is_file():
-        from dataclasses import replace
-
         source = replace(source, secrets=read_secret_file(secret_path, source.document["slug"]))
     return source
 

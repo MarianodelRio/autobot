@@ -1,4 +1,4 @@
-"""HTTP contract for demo invite codes (D5): create, list, revoke and the QR/link
+"""HTTP contract for demo invite codes: create, list, revoke and the QR/link
 each one carries."""
 
 from typing import Any

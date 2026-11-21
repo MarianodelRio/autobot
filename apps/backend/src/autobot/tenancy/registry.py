@@ -232,6 +232,34 @@ def _dataset_path(path: str) -> bool:
     )
 
 
+def _bad_datasets(datasets: Mapping[str, Mapping[str, str]]) -> str | None:
+    """Why the datasets cannot be written to disk (an unsafe name or path), or None."""
+    for name, files in datasets.items():
+        if not _dataset_path(name) or len(PurePosixPath(name).parts) != 1:
+            return "dataset: invalid name"
+        if any(
+            not _dataset_path(path) or not isinstance(text, str) for path, text in files.items()
+        ):
+            return f"dataset {name}: invalid path"
+    return None
+
+
+def _load_pack_data(
+    pack: Pack, tenant: LoadedTenant, config: Any, datasets: Mapping[str, Mapping[str, str]]
+) -> Any:
+    """The pack's loaded data: the datasets written to a temporary directory, as its
+    `load_data` reads them."""
+    with TemporaryDirectory(prefix="autobot-dataset-") as temporary:
+        root = Path(temporary)
+        for name, files in datasets.items():
+            for path, text in files.items():
+                target = root / "datasets" / name / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(text, encoding="utf-8")
+        assert pack.load_data is not None
+        return pack.load_data(tenant.info, config, root)
+
+
 def _with_pack(
     tenant: LoadedTenant, packs: Mapping[str, Pack], datasets: Mapping[str, Mapping[str, str]]
 ) -> LoadedTenant:
@@ -242,24 +270,13 @@ def _with_pack(
         config = pack.config_schema.model_validate(tenant.document.config)
     except ValidationError as error:
         return _degrade(tenant, *(f"config: {m}" for m in _describe(error)))
-    for name, files in datasets.items():
-        if not _dataset_path(name) or len(PurePosixPath(name).parts) != 1:
-            return _degrade(tenant, "dataset: invalid name")
-        if any(
-            not _dataset_path(path) or not isinstance(text, str) for path, text in files.items()
-        ):
-            return _degrade(tenant, f"dataset {name}: invalid path")
+    problem = _bad_datasets(datasets)
+    if problem is not None:
+        return _degrade(tenant, problem)
     data = None
     if pack.load_data is not None:
         try:
-            with TemporaryDirectory(prefix="autobot-dataset-") as temporary:
-                root = Path(temporary)
-                for name, files in datasets.items():
-                    for path, text in files.items():
-                        target = root / "datasets" / name / path
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        target.write_text(text, encoding="utf-8")
-                data = pack.load_data(tenant.info, config, root)
+            data = _load_pack_data(pack, tenant, config, datasets)
         except Exception as error:
             return _degrade(tenant, f"load_data failed: {type(error).__name__}: {error}")
     return replace(tenant, pack=pack, config=config, data=data)
@@ -344,21 +361,7 @@ def sources_from_database(alias: str = "default") -> tuple[int, list[TenantSourc
             .distinct("tenant_id")
             .values("tenant_id", "version", "document")
         )
-        datasets: dict[UUID, dict[str, dict[str, str]]] = {}
-        origins: dict[UUID, dict[str, tuple[str, int, str]]] = {}
-        for row in (
-            TenantDatasetVersion.objects.using(alias)
-            .order_by("tenant_id", "name", "-version")
-            .distinct("tenant_id", "name")
-            .values("tenant_id", "name", "files", "source_name", "source_version", "source_sha")
-        ):
-            datasets.setdefault(row["tenant_id"], {})[row["name"]] = row["files"]
-            if row["source_name"] and row["source_version"] is not None and row["source_sha"]:
-                origins.setdefault(row["tenant_id"], {})[row["name"]] = (
-                    row["source_name"],
-                    row["source_version"],
-                    row["source_sha"],
-                )
+        datasets, origins = _latest_datasets(TenantDatasetVersion, alias)
         secrets = {
             row["tenant_id"]: bytes(row["ciphertext"])
             for row in TenantSecret.objects.using(alias).values("tenant_id", "ciphertext")
@@ -388,6 +391,29 @@ def sources_from_database(alias: str = "default") -> tuple[int, list[TenantSourc
             )
         )
     return revision, sources
+
+
+def _latest_datasets(
+    model: Any, alias: str
+) -> tuple[dict[UUID, dict[str, dict[str, str]]], dict[UUID, dict[str, tuple[str, int, str]]]]:
+    """The latest version of each tenant's datasets, and where each was copied from."""
+    datasets: dict[UUID, dict[str, dict[str, str]]] = {}
+    origins: dict[UUID, dict[str, tuple[str, int, str]]] = {}
+    rows = (
+        model.objects.using(alias)
+        .order_by("tenant_id", "name", "-version")
+        .distinct("tenant_id", "name")
+        .values("tenant_id", "name", "files", "source_name", "source_version", "source_sha")
+    )
+    for row in rows:
+        datasets.setdefault(row["tenant_id"], {})[row["name"]] = row["files"]
+        if row["source_name"] and row["source_version"] is not None and row["source_sha"]:
+            origins.setdefault(row["tenant_id"], {})[row["name"]] = (
+                row["source_name"],
+                row["source_version"],
+                row["source_sha"],
+            )
+    return datasets, origins
 
 
 @dataclass

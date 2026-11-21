@@ -22,7 +22,7 @@ def phone_number_id(slug: str) -> str:
     return str(int.from_bytes(slug.encode()) % 10**15)
 
 
-def tenant_yaml(slug: str, **changes: Any) -> dict[str, Any]:
+def tenant_document(slug: str, **changes: Any) -> dict[str, Any]:
     doc: dict[str, Any] = {
         "id": str(uuid.uuid7()),
         "slug": slug,

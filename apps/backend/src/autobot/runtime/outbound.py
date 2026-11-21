@@ -13,9 +13,10 @@ from django.utils import timezone
 from autobot.channels.adapters import endpoint
 from autobot.channels.base import Ambiguous, Rejected, RetryLater, SendOutcome, Sent
 from autobot.ops.logging import bind, contextual
+from autobot.runtime.cache import remember_demo_outbound
 from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE
 from autobot.runtime.locks import contact_hash
-from autobot.runtime.models import Contact, InboundEvent, OutboundMessage
+from autobot.runtime.models import Channel, Contact, InboundEvent, OutboundMessage
 from autobot.runtime.queue import enqueue
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
@@ -81,6 +82,8 @@ def defer_sends(tenant_id: UUID, messages: list[OutboundMessage]) -> None:
     send it."""
     for message in messages:
         contact = message.contact
+        if contact.channel == Channel.DEMO_WA:  # its delivery statuses are routed by this
+            remember_demo_outbound(message.id, tenant_id)
         lock = f"out:{contact_hash(tenant_id, contact.channel, contact.external_id)}"
         enqueue(
             SEND_MESSAGE,
@@ -182,7 +185,7 @@ def _record(slug: str, message: OutboundMessage, outcome: SendOutcome) -> SendRe
             message.sent_at = timezone.now()
             message.last_error = ""
             fields += ["provider_message_id", "sent_at"]
-            # A send got through: the contact is not unreachable any more (X9).
+            # A send got through: the contact is not unreachable any more.
             Contact.objects.filter(id=message.contact_id, unreachable=True).update(
                 unreachable=False
             )

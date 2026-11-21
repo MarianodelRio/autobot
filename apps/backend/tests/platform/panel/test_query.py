@@ -175,6 +175,48 @@ def test_semicolons_inside_literals_and_comments_are_allowed() -> None:
             query._clean(bad)
 
 
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("select 1", []),
+        ("select 1;", [8]),
+        ("select 1;select 2;", [8, 17]),
+        # single-quoted strings, with a doubled quote inside
+        ("select ';'", []),
+        ("select 'it''s;';", [15]),
+        ("select 'a'';'';b'", []),
+        # E'' strings honour backslash escapes; plain strings do not
+        ("select E'a\\';b'", []),
+        ("select e'a\\\\';", [13]),
+        ("select 'a\\';", [11]),
+        # quoted identifiers, with a doubled quote inside
+        ('select "a;b"', []),
+        ('select "a"";b";', [14]),
+        # dollar quoting: bare and tagged, nested tag text, unterminated
+        ("select $$a;b$$;", [14]),
+        ("select $tag$a;$$;b$tag$;", [23]),
+        ("select $tag$a;$other$;b$tag$", []),
+        ("select $$ never closed; ", []),
+        ("select $1;", [9]),
+        # line comments
+        ("select 1 -- ; here\n;", [19]),
+        ("select 1 -- ; to the end", []),
+        # block comments, including nested ones
+        ("select /* ; */ 1;", [16]),
+        ("select /* a /* ; */ ; */ 1;", [26]),
+        ("select /* never closed ;", []),
+        # a quote opened inside a comment does not leak out of it
+        ("select 1 -- it's\n;", [17]),
+        ("select 1 /* it's */;", [19]),
+        # a comment marker inside a string is not a comment
+        ("select '--'; select 2", [11]),
+        ("select '/*'; select '*/';", [11, 24]),
+    ],
+)
+def test_top_level_semicolons(sql: str, expected: list[int]) -> None:
+    assert query._top_level_semicolons(sql) == expected
+
+
 def test_the_database_itself_refuses_a_second_statement(tenants: Any) -> None:
     # Defence in depth: even bypassing `_clean`, DECLARE CURSOR takes one statement.
     connection = connections["readonly"]

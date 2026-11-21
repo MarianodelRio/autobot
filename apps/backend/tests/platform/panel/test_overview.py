@@ -7,6 +7,8 @@ from uuid import UUID, uuid7
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.db import connections
+from django.test.utils import CaptureQueriesContext
 
 from autobot.ops.models import OpsAlert
 from autobot.panel.services.overview import build_overview
@@ -200,8 +202,25 @@ def test_metrics_are_grouped_by_pack_and_kind_with_a_known_label(tenants: Any) -
     assert metrics[0].total == Decimal("10")
 
 
-def test_query_budget(tenants: Any, django_assert_max_num_queries: Any) -> None:
-    tenants(wa_tenant("a"), wa_tenant("b"), demo_tenant("demo"))
-    outbound("a", contact("a"), billable=True, pricing_category="utility", at=NOW)
-    with django_assert_max_num_queries(25, using="owner"):
+QUERY_BUDGET = 15  # owner-connection queries of one `build_overview`, whatever the tenants
+
+
+def owner_queries() -> int:
+    with CaptureQueriesContext(connections["owner"]) as captured:
         build_overview(NOW)
+    return len(captured)
+
+
+def test_query_count_does_not_grow_with_the_number_of_tenants(tenants: Any) -> None:
+    """Figures are grouped by tenant in SQL: more tenants (same timezone) cost no more
+    queries, so an N+1 shows up as a difference here."""
+    tenants(wa_tenant("a"))
+    outbound("a", contact("a"), billable=True, pricing_category="utility", at=NOW)
+    one = owner_queries()
+    tenants(wa_tenant("b"), demo_tenant("demo"), wa_tenant("c"))
+    for slug, n in (("b", 2), ("demo", 3), ("c", 4)):
+        inbound(slug, NOW)
+        outbound(slug, contact(slug, n), billable=True, pricing_category="utility", at=NOW)
+    assert len(get_registry(force=True).tenants) == 4
+    assert owner_queries() == one
+    assert one <= QUERY_BUDGET

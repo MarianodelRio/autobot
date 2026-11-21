@@ -1,6 +1,6 @@
 """Audit log of every write the panel and the operator commands make."""
 
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from django.db import transaction
@@ -20,6 +20,11 @@ FORBIDDEN_KEYS = frozenset(
         "otp",
     }
 )
+
+
+class HasId(Protocol):
+    @property
+    def id(self) -> UUID: ...
 
 
 def _check(details: Any) -> None:
@@ -69,3 +74,20 @@ def record(
             target_id=target_id,
             details=details,
         )
+
+
+def record_tenant(
+    actor: str, action: str, tenant: HasId | UUID, summary: str, **details: Any
+) -> None:
+    """`record` for an event whose target is a tenant (a `LoadedTenant`, a `Tenant` or
+    its id); any extra keyword arguments become the event's `details`."""
+    tenant_id = tenant if isinstance(tenant, UUID) else tenant.id
+    record(
+        actor=actor,
+        action=action,
+        summary=summary,
+        tenant_id=tenant_id,
+        target_type="tenant",
+        target_id=str(tenant_id),
+        details=details or None,
+    )

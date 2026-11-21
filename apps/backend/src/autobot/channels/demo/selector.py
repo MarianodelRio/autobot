@@ -9,7 +9,7 @@ WhatsApp are two independent sessions for the same person.
    no RLS (the tenant is not known yet), and queues `route_demo_event` with the
    person's `demo_user_lock(channel, external_id)`.
 2. `route_demo_event` decides: no access and no valid invite code to redeem
-   (`channels/demo/invites.py`, D5) → a refusal (Telegram) or silence (WhatsApp, Meta
+   (`channels/demo/invites.py`) → a refusal (Telegram) or silence (WhatsApp, Meta
    bills every message); `/start`, `/negocio` or no business picked → the list of
    demo businesses; `fp_select:<slug>` → picks it and sends a synthetic `menu` to that
    tenant; anything else → forwarded to the picked tenant, as an inbound_event of the
@@ -26,12 +26,10 @@ are not even saved, and on Telegram the saved update is emptied once the refusal
 Every person is also limited in how many events per minute are accepted.
 """
 
-import copy
 import dataclasses
 import json
 import logging
 import uuid
-from typing import Any
 from uuid import UUID
 
 from django.core.cache import cache
@@ -43,6 +41,13 @@ from autobot.channels.demo import invites
 from autobot.channels.demo.doors import Door, allowed, door
 from autobot.channels.ratelimit import WindowLimiter
 from autobot.ops.logging import bind, contextual
+from autobot.runtime.cache import (
+    SELECTOR_OWNER,
+    demo_outbound_owner,
+    record_auth_outcome,
+    remember_demo_outbound,
+)
+from autobot.runtime.event_flow import finish, finish_and_send, finish_limited
 from autobot.runtime.inbound import store
 from autobot.runtime.jobs import INBOUND, ROUTE_DEMO_EVENT
 from autobot.runtime.locks import demo_user_lock
@@ -133,72 +138,91 @@ def route_demo_event(event_id: UUID) -> None:
     bind(channel=event.channel, event_id=str(event_id))
     door_ = door(Channel(event.channel))
     if door_ is None:  # the door was switched off after the event was saved
-        _finish(event)
+        finish(DemoEvent, event.id)
         return
     items = door_.adapter.parse(event.payload, door_.description)
     item = items[0] if items else None
     if not isinstance(item, InboundItem):
-        _finish(event)
+        finish(DemoEvent, event.id)
         return
-    message = item.message
-    payload = message.payload or ""
+    payload = item.message.payload or ""
     if payload.startswith((SELECT, PAGE)):
         door_.adapter.acknowledge(event.payload, door_.description, door_.secrets)
-
-    if not allowed(door_, item) and not invites.redeem(door_, item):
-        log.info("demo message from a user without access")
-        if door_.channel == Channel.DEMO_TG:
-            if refusals.hit(item.external_id):
-                _finish(event)  # someone insisting: the bot must not answer without limit
-            else:
-                _finish_and_reply(event, door_, item, [Text(NO_ACCESS_TEXT)])
-        else:
-            _finish(event)  # WhatsApp: never answer (Meta bills every message)
-        _scrub(event)  # nothing of a stranger is kept
+    if not _gate_access(event, door_, item):
         return
-
     available = _available()
-
     if payload.startswith(PAGE):
-        page = business_list(available, _page(payload))
-        _finish_and_reply(event, door_, item, [page])
+        _handle_page(event, door_, item, available)
     elif payload.startswith(SELECT):
-        slug = payload.removeprefix(SELECT)
-        tenant = next((t for t in available if t.slug == slug), None)
-        if tenant is None:
-            _finish_and_reply(
-                event,
-                door_,
-                item,
-                [Text(NOT_AVAILABLE_TEXT), business_list(available, 0)],
-            )
-        else:
-            _pick(event, door_, item, tenant)
-    elif _is_selector_command(message.text):
+        _handle_select(event, door_, item, available)
+    elif _is_selector_command(item.message.text):
         _finish_and_reply(event, door_, item, [business_list(available, 0)])
     else:
-        session = DemoSession.objects.filter(
-            channel=door_.channel, external_id=item.external_id
-        ).first()
-        tenant = None
-        if session is not None:
-            tenant = next((t for t in available if t.id == session.tenant_id), None)
-        if session is None:
-            _finish_and_reply(event, door_, item, [business_list(available, 0)])
-        elif tenant is None:
-            session.delete()  # no longer available (paused, degraded, ambiguous)
-            _finish_and_reply(
-                event,
-                door_,
-                item,
-                [Text(NOT_AVAILABLE_TEXT), business_list(available, 0)],
-            )
-        else:
-            DemoSession.objects.filter(channel=door_.channel, external_id=item.external_id).update(
-                selected_at=timezone.now()
-            )
-            store(tenant, [item], door_.channel)
-            _finish(event)
+        _handle_session_message(event, door_, item, available)
+
+
+def _gate_access(event: DemoEvent, door_: Door, item: InboundItem) -> bool:
+    """True if the person may use the demo (their id is on the door's list, or they
+    redeemed an invite code). Otherwise the refusal is dealt with (Telegram: at most a
+    few times an hour; WhatsApp: never, Meta bills every message) and False returned."""
+    if allowed(door_, item) or invites.redeem(door_, item):
+        return True
+    log.info("demo message from a user without access")
+    if door_.channel == Channel.DEMO_TG:
+        finish_limited(
+            DemoEvent,
+            event.id,
+            refusals,
+            item.external_id,  # someone insisting: the bot must not answer without limit
+            lambda: _reply(door_, item, [Text(NO_ACCESS_TEXT)]),
+            "demo reply not sent",
+        )
+    else:
+        finish(DemoEvent, event.id)  # WhatsApp: never answer
+    _scrub(event)  # nothing of a stranger is kept
+    return False
+
+
+def _handle_page(
+    event: DemoEvent, door_: Door, item: InboundItem, available: list[LoadedTenant]
+) -> None:
+    page = business_list(available, _page(item.message.payload or ""))
+    _finish_and_reply(event, door_, item, [page])
+
+
+def _handle_select(
+    event: DemoEvent, door_: Door, item: InboundItem, available: list[LoadedTenant]
+) -> None:
+    slug = (item.message.payload or "").removeprefix(SELECT)
+    tenant = next((t for t in available if t.slug == slug), None)
+    if tenant is None:
+        _finish_and_reply(
+            event, door_, item, [Text(NOT_AVAILABLE_TEXT), business_list(available, 0)]
+        )
+    else:
+        _pick(event, door_, item, tenant)
+
+
+def _handle_session_message(
+    event: DemoEvent, door_: Door, item: InboundItem, available: list[LoadedTenant]
+) -> None:
+    """Anything else goes to the business the person picked, if it is still available."""
+    session = DemoSession.objects.filter(
+        channel=door_.channel, external_id=item.external_id
+    ).first()
+    if session is None:
+        _finish_and_reply(event, door_, item, [business_list(available, 0)])
+        return
+    tenant = next((t for t in available if t.id == session.tenant_id), None)
+    if tenant is None:
+        session.delete()  # no longer available (paused, degraded, ambiguous)
+        _finish_and_reply(
+            event, door_, item, [Text(NOT_AVAILABLE_TEXT), business_list(available, 0)]
+        )
+        return
+    DemoSession.objects.filter(pk=session.pk).update(selected_at=timezone.now())
+    store(tenant, [item], door_.channel)
+    finish(DemoEvent, event.id)
 
 
 def _available() -> list[LoadedTenant]:
@@ -244,37 +268,12 @@ def _pick(event: DemoEvent, door_: Door, item: InboundItem, tenant: LoadedTenant
     )
     menu = _synthetic_menu(door_, item)
     store(tenant, [menu], door_.channel)
-    _finish(event)
+    finish(DemoEvent, event.id)
 
 
 def _synthetic_menu(door_: Door, item: InboundItem) -> InboundItem:
     """A `menu` item from the same person, the way `process_event` reads it back."""
-    if door_.channel == Channel.DEMO_TG:
-        update: dict[str, Any] = item.payload
-        callback = update.get("callback_query") or {}
-        sender: dict[str, Any] = callback.get("from") or update["message"]["from"]
-        body = {
-            "update_id": update["update_id"],
-            "message": {
-                "message_id": 0,
-                "from": sender,
-                "chat": {"id": sender["id"], "type": "private"},
-                "date": int(timezone.now().timestamp()),
-                "text": "menu",
-            },
-        }
-    else:
-        body = copy.deepcopy(item.payload)
-        message = body["entry"][0]["changes"][0]["value"]["messages"][0]
-        kept = {
-            k: message[k]
-            for k in ("from", "from_user_id", "user_id", "id", "timestamp")
-            if k in message
-        }
-        message.clear()
-        message.update(kept)
-        message["type"] = "text"
-        message["text"] = {"body": "menu"}
+    body = door_.adapter.synthetic_text(item.payload, "menu")
     (parsed,) = door_.adapter.parse(body, door_.description)
     assert isinstance(parsed, InboundItem)
     return dataclasses.replace(parsed, provider_event_id=f"select:{item.provider_event_id}")
@@ -292,12 +291,6 @@ def _page(payload: str) -> int:
         return 0
 
 
-def _finish(event: DemoEvent) -> None:
-    DemoEvent.objects.filter(id=event.id, status=DemoEvent.Status.PENDING).update(
-        status=DemoEvent.Status.DONE
-    )
-
-
 def _scrub(event: DemoEvent) -> None:
     """Empty the saved update (the person is not known to the demo, so nothing of theirs
     is worth keeping). The event is already done: it is never parsed again."""
@@ -307,27 +300,34 @@ def _scrub(event: DemoEvent) -> None:
 def _finish_and_reply(
     event: DemoEvent, door_: Door, item: InboundItem, replies: list[Reply]
 ) -> None:
-    """Mark the event done, then answer: a retry never repeats the answer. If nothing
-    could be sent and the provider says it is only temporary, the event is reopened and
-    the job retried instead (nothing went out, so nothing repeats)."""
-    _finish(event)
-    if _reply(door_, item, replies):
-        DemoEvent.objects.filter(id=event.id, status=DemoEvent.Status.DONE).update(
-            status=DemoEvent.Status.PENDING
-        )
-        raise TransientError("demo reply not sent")
+    finish_and_send(
+        DemoEvent, event.id, lambda: _reply(door_, item, replies), "demo reply not sent"
+    )
 
 
 def route_demo_status(item: StatusItem) -> None:
     """A WhatsApp demo door delivery status: find which demo tenant's outbound_message
-    it belongs to (by our id or the provider's) and queue it there, like any other
-    event of that tenant. Only database reads: no external call."""
+    it belongs to and queue it there, like any other event of that tenant. Only database
+    reads: no external call.
+
+    Our outbound id (echoed by Meta) is remembered, per message, with the tenant that sent
+    it (`runtime.cache.remember_demo_outbound`), so the usual case is a single lookup. Only
+    when it is not remembered (expired, or no echoed id) is every demo tenant searched, each
+    in its own `tenant_tx`: RLS is never bypassed."""
     ref: UUID | None = None
     if item.outbound_ref:
         try:
             ref = UUID(item.outbound_ref)
         except ValueError:
             ref = None
+    owner = demo_outbound_owner(ref) if ref is not None else None
+    if owner == SELECTOR_OWNER:
+        return  # the selector's own message: it belongs to no tenant
+    if isinstance(owner, UUID):
+        tenant = get_registry().by_id.get(owner)
+        if tenant is not None and tenant.is_demo:
+            store(tenant, [item], Channel.DEMO_WA)
+            return
     for tenant in get_registry().demo_tenants():
         with tenant_tx(tenant.id):
             found = (
@@ -353,17 +353,17 @@ def _reply(door_: Door, item: InboundItem, replies: list[Reply]) -> bool:
     recipient = item.phone or item.external_id
     maybe_sent = False
     for reply in plan_sends(replies):
+        outbound_id = uuid.uuid7()
+        if door_.channel == Channel.DEMO_WA:
+            remember_demo_outbound(outbound_id, None)  # its status belongs to no tenant
         outcome = door_.adapter.send(
             door_.adapter.render(reply, door_.description),
             recipient,
             door_.description,
             door_.secrets,
-            uuid.uuid7(),
+            outbound_id,
         )
-        if isinstance(outcome, Rejected) and outcome.kind == "auth":
-            cache.set(f"bot:{door_.channel}:auth", True, timeout=None)
-        elif isinstance(outcome, Sent):
-            cache.delete(f"bot:{door_.channel}:auth")
+        record_auth_outcome(str(door_.channel), outcome)
         if isinstance(outcome, RetryLater):
             log.warning("demo selector message not sent: RetryLater")
             if not maybe_sent:

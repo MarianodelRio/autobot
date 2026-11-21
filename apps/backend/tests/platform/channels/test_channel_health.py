@@ -76,7 +76,7 @@ def test_telegram(responses: Any, response: Any, code: str | None) -> None:
 
 
 def test_telegram_flags_a_webhook_registered_to_the_wrong_url(responses: Any) -> None:
-    # C15: a never-registered (or stale) webhook looked "ok" before, since only
+    # A never-registered (or stale) webhook looked "ok" before, since only
     # recent delivery errors were checked.
     responses(
         (200, {"ok": True, "result": {"url": "https://old.example/secret-path"}}),
@@ -126,7 +126,7 @@ def with_template() -> Any:
 def test_tenant_health_flags_a_telegram_tenant_whose_webhook_is_not_registered(
     tenants: Any, responses: Any, settings: Any
 ) -> None:
-    """C15: `tenant_health` must compare against this tenant's *own* expected url,
+    """`tenant_health` must compare against this tenant's *own* expected url,
     not just look for recent delivery errors."""
     from tests.helpers.integration import tg_tenant
 

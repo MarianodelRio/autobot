@@ -418,7 +418,7 @@ def test_no_proactive_to_an_opted_out_or_unreachable_contact(
     tenants: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The target is a separate contact from the one writing: it must not write back in
-    # between (that would clear `unreachable`, X9) to keep testing the block itself.
+    # between (that would clear `unreachable`) to keep testing the block itself.
     tenants(wa_tenant())
     other = Contact.objects.using("owner").create(
         tenant_id=tenant().id, channel="test", external_id="100000001", opt_out=True

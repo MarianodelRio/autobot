@@ -2,12 +2,13 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Literal, Protocol
 from uuid import UUID
 
-from django.core.cache import cache
 from django.utils import timezone
 
+from autobot.ops.health import read_snapshot
 from autobot.tenancy.registry import LoadedTenant
 
 
@@ -38,9 +39,9 @@ def tenant_status(
         critical.append("Configuración degradada")
     if tenant.document.status == "active" and not tenant.is_demo and not tenant.main_enabled:
         critical.append("Canal principal desactivado")
-    health = cache.get(f"health:{tenant.id}")
-    if isinstance(health, dict):
-        for issue in health.get("issues", []):
+    snapshot = read_snapshot(tenant.id)
+    if snapshot is not None:
+        for issue in snapshot.issues:
             target = {"🔴": critical, "🟠": warning, "🟡": notice}.get(issue.severity)
             if target is not None:
                 target.append(issue.message)
@@ -60,9 +61,6 @@ def tenant_status(
     for level, reasons in ranked:
         if reasons:
             return TenantStatus(level, list(dict.fromkeys(reasons)))
-    if (
-        not isinstance(health, dict)
-        or timezone.now().timestamp() - health.get("checked_at", 0) > 86400
-    ):
+    if snapshot is None or timezone.now() - snapshot.checked_at > timedelta(hours=24):
         return TenantStatus("unknown", ["La comprobación de salud falta o tiene más de 24 horas"])
     return TenantStatus("ok", [])

@@ -1,4 +1,4 @@
-"""`manage.py chat <pack> [--channel telegram|whatsapp]` (L4): a terminal chat with a
+"""`manage.py chat <pack> [--channel telegram|whatsapp]`: a terminal chat with a
 pack's own demo template, over `core.testing.Conversation` -- the same harness the
 conversation scenarios use, with the common rules, `plan_sends` and the channel's
 limits applied, but no real channel, no database and no network. For trying out a
@@ -45,7 +45,7 @@ def _render(turn: Turn) -> tuple[str, dict[int, str]]:
 
 
 class Command(BaseCommand):
-    help = "Chat de prueba por terminal con el demo de un pack (L4, sin canal real)."
+    help = "Chat de prueba por terminal con el demo de un pack (sin canal real)."
     requires_system_checks: list[str] = []
 
     def add_arguments(self, parser: CommandParser) -> None:

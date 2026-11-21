@@ -21,7 +21,7 @@ def _url(webhook_path: str) -> str:
 
 
 def expected_webhook_url(webhook_path: str) -> str | None:
-    """The url `health.telegram_health` (C15) compares Telegram's own
+    """The url `health.telegram_health` compares Telegram's own
     `getWebhookInfo` against. `None` when `PUBLIC_URL` is not set: nothing to
     compare against yet (local development), not a health problem to report."""
     try:

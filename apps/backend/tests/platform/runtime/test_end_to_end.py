@@ -366,7 +366,7 @@ def test_a_contact_that_cannot_receive_becomes_unreachable(tenants: Any, meta: M
     for body in (wa_press("color"), wa_press("pick_0")):
         assert post_wa(body) == 200
     run_worker()
-    # The contact wrote again: `unreachable` is cleared (X9), so its proactive notice
+    # The contact wrote again: `unreachable` is cleared, so its proactive notice
     # (from picking a color) goes out too, not just the replies.
     assert "Elige un color" in meta.bodies() and "Has elegido Rojo." in meta.bodies()
     assert not Contact.objects.using("owner").get().unreachable

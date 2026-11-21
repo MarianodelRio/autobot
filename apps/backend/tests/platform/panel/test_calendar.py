@@ -1,4 +1,4 @@
-"""`GET /calendar/service-account` (D1)."""
+"""`GET /calendar/service-account`."""
 
 from typing import Any
 

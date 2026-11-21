@@ -30,7 +30,7 @@ from autobot.channels.ratelimit import WindowLimiter
 from autobot.ops.logging import bind, contextual
 from autobot.ops.state import record
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
-from autobot.runtime.identity import aliases_for, phone_group, phone_key
+from autobot.runtime.identity import aliases_for, phone_group
 from autobot.runtime.jobs import OUTBOUND, RETRYABLE, SEND_NOTIFICATION
 from autobot.runtime.models import (
     DEMO_CHANNELS,
@@ -60,6 +60,7 @@ from core.errors import TransientError
 from core.limits import plan_sends
 from core.messages import IncomingMessage
 from core.pack import ContactInfo, PackResult
+from core.phone import phone_key
 from core.proactive import ProactiveMessage
 from core.replies import Reply, Text
 
@@ -106,6 +107,7 @@ def process_event(
         contact = _upsert_contact(tenant, event.channel, item, now)
         conversation, _ = Conversation.objects.get_or_create(tenant_id=tenant.id, contact=contact)
         effective = _effective_state(tenant, conversation, now)
+        info = _contact_info(contact, aliases_for(contact))  # needs this tenant_tx
 
     # ── No transaction: acknowledge, then the pack ────────────────────────
     try:
@@ -140,7 +142,7 @@ def process_event(
         if command == "menu":
             state, message = {}, menu_message(message.received_at)
         result, error = _run_pack(
-            tenant, event, contact, state, message, last_attempt=last_attempt, calendars=calendars
+            tenant, event, info, state, message, last_attempt=last_attempt, calendars=calendars
         )
 
     # ── tx2: persist ──────────────────────────────────────────────────────
@@ -221,7 +223,7 @@ def _persist(
 def _run_pack(
     tenant: LoadedTenant,
     event: InboundEvent,
-    contact: Contact,
+    contact: ContactInfo,
     state: dict[str, Any],
     message: IncomingMessage,
     *,
@@ -236,7 +238,7 @@ def _run_pack(
         ctx = build_context(
             tenant,
             Channel(event.channel),
-            contact=_contact_info(contact),
+            contact=contact,
             # A copy: a pack that mutates ctx.state must not change what tx2 saves when it
             # returns state=None (the harness does the same).
             state=copy.deepcopy(state),
@@ -516,7 +518,7 @@ def _upsert_contact(tenant: LoadedTenant, channel: str, item: InboundItem, now: 
         if item.display_name and not contact.display_name:
             contact.display_name = item.display_name
         contact.last_activity_at = now
-        contact.unreachable = False  # the contact just wrote: reachable again (X9)
+        contact.unreachable = False  # the contact just wrote: reachable again
         contact.save(
             update_fields=["phone_e164", "display_name", "last_activity_at", "unreachable"]
         )
@@ -539,9 +541,9 @@ def _effective_state(tenant: LoadedTenant, conversation: Conversation, now: Any)
     return effective
 
 
-def _contact_info(contact: Contact) -> ContactInfo:
-    with tenant_tx(contact.tenant_id):
-        aliases = aliases_for(contact)
+def _contact_info(contact: Contact, aliases: tuple[UUID, ...]) -> ContactInfo:
+    """What the pack sees of the contact. `aliases` are computed by the caller inside its
+    own `tenant_tx`."""
     return ContactInfo(
         id=contact.id,
         external_id=contact.external_id,

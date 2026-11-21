@@ -110,9 +110,22 @@ def test_fp_app_cannot_write_tenant() -> None:
         )
 
 
+def privileges() -> set[tuple[str, str, str]]:
+    """(role, table, privilege) for every grant the app roles hold on `public` tables."""
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "SELECT grantee, table_name, privilege_type FROM information_schema.role_table_grants"
+            " WHERE table_schema = 'public' AND grantee IN ('fp_app', 'fp_readonly')"
+        )
+        return {(role, table, privilege) for role, table, privilege in cursor.fetchall()}
+
+
 def test_apply_grants_is_idempotent() -> None:
     db_grants.apply(connections["owner"])
+    first = privileges()
+    assert ("fp_readonly", "tenant", "SELECT") in first
     db_grants.apply(connections["owner"])
+    assert privileges() == first
 
 
 def test_apply_grants_reapplies_a_revoked_grant() -> None:

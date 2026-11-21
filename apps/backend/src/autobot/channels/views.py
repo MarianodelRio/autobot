@@ -101,19 +101,15 @@ def whatsapp(request: HttpRequest, public_id: str) -> HttpResponse:
     bind(tenant=tenant.slug, channel="main")
     channel, secrets = tenant.document.channel, tenant.secrets
     assert isinstance(channel, WhatsAppChannel) and isinstance(secrets, WhatsAppSecrets)
-    if request.method == "GET":  # Meta's subscription handshake
-        challenge = WHATSAPP.verify_subscription(request.GET.dict(), secrets)
-        if challenge is None:
-            log.warning("WhatsApp verification refused for tenant %s", tenant.slug)
-            response = reject_unauthenticated(request, f"whatsapp:{public_id}")
-            return HttpResponse(status=403) if response.status_code == 401 else response
-        return HttpResponse(challenge, content_type="text/plain")
-    return _receive(
+    route = f"whatsapp:{public_id}"
+    if request.method == "GET":
+        return handle_meta_handshake(request, secrets, route=route, who=f"tenant {tenant.slug}")
+    return receive(
         request,
-        tenant,
-        route=f"whatsapp:{public_id}",
+        route=route,
+        who=f"tenant {tenant.slug}",
         verify=lambda: WHATSAPP.verify(request, channel, secrets),
-        parse=lambda body: WHATSAPP.parse(body, channel),
+        handle=lambda body: accept(tenant, body, lambda b: WHATSAPP.parse(b, channel)),
     )
 
 
@@ -130,12 +126,12 @@ def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
     bind(tenant=tenant.slug, channel="main")
     channel, secrets = tenant.document.channel, tenant.secrets
     assert isinstance(channel, TelegramChannel) and isinstance(secrets, TelegramSecrets)
-    return _receive(
+    return receive(
         request,
-        tenant,
         route=f"telegram:{public_id}",
+        who=f"tenant {tenant.slug}",
         verify=lambda: TELEGRAM.verify(request, channel, secrets),
-        parse=lambda body: TELEGRAM.parse(body, channel),
+        handle=lambda body: accept(tenant, body, lambda b: TELEGRAM.parse(b, channel)),
     )
 
 
@@ -148,26 +144,42 @@ def main_channel_tenant(kind: str, public_id: str) -> LoadedTenant | None:
     return tenant
 
 
-def _receive(
+def handle_meta_handshake(
+    request: HttpRequest, secrets: WhatsAppSecrets, *, route: str, who: str
+) -> HttpResponse:
+    """Meta's `GET` subscription handshake: the challenge echoed back, or 403 (counted
+    for the invalid-signature limit; 429 once it is reached)."""
+    challenge = WHATSAPP.verify_subscription(request.GET.dict(), secrets)
+    if challenge is None:
+        log.warning("WhatsApp verification refused for %s", who)
+        response = reject_unauthenticated(request, route)
+        return HttpResponse(status=403) if response.status_code == 401 else response
+    return HttpResponse(challenge, content_type="text/plain")
+
+
+def receive(
     request: HttpRequest,
-    tenant: LoadedTenant,
     *,
     route: str,
+    who: str,
     verify: Callable[[], bool],
-    parse: Callable[[dict[str, Any]], list[ParsedItem]],
+    handle: Callable[[dict[str, Any]], None],
 ) -> HttpResponse:
+    """The steps every webhook POST shares, in this order: size (400), authenticity (401
+    or 429), JSON (400), then `handle(body)` saves what is authentic (200; 503 if saving
+    failed transiently). `who` names the webhook in logs, never the sender."""
     if body_too_large(request):
         return HttpResponse(status=400)
     if not verify():
-        log.warning("Invalid webhook signature for tenant %s", tenant.slug)
+        log.warning("Invalid webhook signature for %s", who)
         return reject_unauthenticated(request, route)
     body = json_object(request)
     if body is None:
         return HttpResponse(status=400)
     try:
-        accept(tenant, body, parse)
+        handle(body)
     except (DatabaseError, ProcrastinateException) as e:  # the provider retries
-        return storage_failure(e, f"Webhook of tenant {tenant.slug}")
+        return storage_failure(e, f"Webhook of {who}")
     return HttpResponse(status=200)
 
 

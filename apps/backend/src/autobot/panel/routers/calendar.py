@@ -1,4 +1,4 @@
-"""`GET /calendar/service-account` (D1)."""
+"""`GET /calendar/service-account`."""
 
 from django.http import HttpRequest
 from ninja import Router

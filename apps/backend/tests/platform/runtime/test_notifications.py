@@ -140,7 +140,7 @@ def test_safe_retry(tenants: Any, telegram: Any) -> None:
 
 @pytest.mark.parametrize("code", [500, 503])
 def test_5xx_is_ambiguous_never_retried(tenants: Any, telegram: Any, code: int) -> None:
-    """X5: unlike 429, a 5xx is never retried blindly even if it carries `retry_after`."""
+    """Unlike 429, a 5xx is never retried blindly even if it carries `retry_after`."""
     tenants(owner())
     link()
     seen = telegram(httpx.Response(code, json={"parameters": {"retry_after": 7}}))

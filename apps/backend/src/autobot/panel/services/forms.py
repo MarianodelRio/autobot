@@ -8,8 +8,10 @@ import yaml
 from ninja import Schema
 
 from autobot.panel.errors import ApiError
+from autobot.tenancy import dataset_library
 from autobot.tenancy.registry import source_from_dir
 from autobot.tenancy.schema import TenantDocument
+from packs import registry as pack_registry  # read `PACKS` at call time: tests replace it
 
 
 @dataclass(frozen=True)
@@ -46,10 +48,8 @@ class LibraryEntryOut(Schema):
 
 
 def dataset_library_entries(pack_name: str, dataset: str) -> list[LibraryEntryOut]:
-    """The alta's and the ficha's picker (C22/C23): every named entry's latest
+    """The alta's and the ficha's picker: every named entry's latest
     version for this pack's dataset, never the raw files."""
-    from autobot.tenancy import dataset_library
-
     _pack(pack_name)  # 404 for an unknown pack
     return [
         LibraryEntryOut(
@@ -76,16 +76,14 @@ READ_ONLY = ("id", "slug", "pack", "status", "channel.type", "channel.public_id"
 
 
 def _pack(name: str) -> Any:
-    from packs.registry import PACKS
-
-    pack = PACKS.get(name)
+    pack = pack_registry.PACKS.get(name)
     if pack is None:
         raise ApiError("not_found", "No se encuentra el pack", 404)
     return pack
 
 
 def _template_dataset_names(pack: Any) -> tuple[str, ...]:
-    """The dataset names a pack's own template declares (C22): the alta's picker
+    """The dataset names a pack's own template declares: the alta's picker
     needs these to know which library datasets to ask for, since a pack's own
     directory layout is the only canonical source of them."""
     if pack.template is None:
@@ -95,8 +93,6 @@ def _template_dataset_names(pack: Any) -> tuple[str, ...]:
 
 
 def list_packs() -> list[PackSummary]:
-    from packs.registry import PACKS
-
     return [
         PackSummary(
             name=p.name,
@@ -104,7 +100,7 @@ def list_packs() -> list[PackSummary]:
             has_template=p.template is not None,
             dataset_names=_template_dataset_names(p),
         )
-        for p in PACKS.values()
+        for p in pack_registry.PACKS.values()
     ]
 
 
@@ -126,7 +122,7 @@ _NULL_SCHEMA = {"type": "null"}
 
 def _merge_nullable(node: Any, defs: dict[str, Any]) -> Any:
     """rjsf only renders a nullable field's own widget directly (no branch selector)
-    when the schema uses `"type": [X, "null"]`, not `anyOf`/`oneOf` (C6: `str | None`
+    when the schema uses `"type": [X, "null"]`, not `anyOf`/`oneOf` (`str | None`
     and `Owner | None` fields had no input box). Merges a plain `anyOf: [<schema>,
     {"type": "null"}]` into one node; a discriminated union (`channel: Channel | None`)
     is left alone, since it needs its own branch selection."""
@@ -155,7 +151,7 @@ def _merge_nullable(node: Any, defs: dict[str, Any]) -> Any:
 def _fixed_items(node: Any) -> Any:
     """rjsf only recognizes a fixed-length tuple (`isFixedItems`) as the draft-07
     `items: [<schema>, ...]`, never 2020-12's `prefixItems` that pydantic emits for a
-    `tuple[int, int]` (C6: `reminder_window_hours` had no usable widget)."""
+    `tuple[int, int]` (`reminder_window_hours` had no usable widget)."""
     if isinstance(node, dict):
         out = {key: _fixed_items(value) for key, value in node.items()}
         prefix_items = out.pop("prefixItems", None)
@@ -169,7 +165,7 @@ def _fixed_items(node: Any) -> Any:
 
 
 def _owner_notice_checkboxes(document: dict[str, Any], pack: Any) -> None:
-    """C8: `owner.notify` is a plain `list[str]` in the schema (any pack's kinds fit
+    """`owner.notify` is a plain `list[str]` in the schema (any pack's kinds fit
     the same field); restricting its items to this pack's own declared
     `owner_notices`, with `enumNames` for their labels, is what makes rjsf render it
     as a list of checkboxes instead of a free-text, reorderable array."""
@@ -216,7 +212,7 @@ def _textarea_fields(pack: Any) -> list[str]:
 
 
 CUSTOM_FIELDS: dict[str, dict[str, str]] = {
-    # C17: a dedicated per-day editor and a table with an automatic id, instead of
+    # A dedicated per-day editor and a table with an automatic id, instead of
     # rjsf's generic dict/array widgets.
     "salon": {"config.opening_hours": "OpeningHours", "config.services": "Services"},
 }

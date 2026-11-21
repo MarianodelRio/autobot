@@ -13,9 +13,12 @@ from django.db.models import Q
 from django.utils import timezone
 
 from autobot.channels.demo.doors import door
+from autobot.channels.telegram.polling import DEMO_WEBHOOK_PATH, NOTIFY_WEBHOOK_PATH
+from autobot.channels.telegram.registration import expected_webhook_url
 from autobot.ops import containers, health, state, system
 from autobot.ops.models import OpsAlert, SystemSample
 from autobot.owner import links
+from autobot.runtime.cache import auth_flag_key
 from autobot.runtime.models import DEMO_CHANNELS, Channel, Notification, OutboundMessage
 from autobot.runtime.notifications import bot_secrets, resolve_alert, send_ops_alert
 from autobot.runtime.periodic import channels_for
@@ -216,7 +219,7 @@ def collect() -> list[Finding]:
             )
         )
     for demo_channel, label in DEMO_LABELS.items():
-        if cache.get(f"bot:{demo_channel}:auth"):
+        if cache.get(auth_flag_key(demo_channel)):
             findings.append(
                 Finding(
                     f"auth:{demo_channel}",
@@ -224,13 +227,10 @@ def collect() -> list[Finding]:
                     f"🔴 Bot de demo ({label}): envío rechazado por autenticación.",
                 )
             )
-    if cache.get("bot:notify:auth"):
+    if cache.get(auth_flag_key("notify")):
         findings.append(
             Finding("bot:notify:auth", None, "🔴 Bot de avisos: envío rechazado por autenticación.")
         )
-    from autobot.channels.telegram.polling import DEMO_WEBHOOK_PATH, NOTIFY_WEBHOOK_PATH
-    from autobot.channels.telegram.registration import expected_webhook_url
-
     for name, token, webhook_path in (
         ("demo_tg", settings.DEMO_TELEGRAM_TOKEN, DEMO_WEBHOOK_PATH),
         ("notify", settings.NOTIFY_BOT_TOKEN, NOTIFY_WEBHOOK_PATH),

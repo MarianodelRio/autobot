@@ -13,10 +13,11 @@ from django.utils import timezone
 from pydantic import SecretStr
 
 from autobot.channels.adapters import TELEGRAM
-from autobot.channels.base import Rejected, RetryLater, SendOutcome, Sent
+from autobot.channels.base import RetryLater, SendOutcome, Sent
 from autobot.ops.logging import bind, contextual
 from autobot.ops.models import OpsAlert
 from autobot.owner import links
+from autobot.runtime.cache import record_auth_outcome
 from autobot.runtime.models import Notification
 from autobot.runtime.outbound import SendRetry
 from autobot.runtime.summary import OWNER_SUMMARY_KIND
@@ -50,10 +51,7 @@ def deliver(reply: Outbound, chat_id: str, reference: UUID) -> SendOutcome | Non
     if secrets is None:
         return None
     outcome = TELEGRAM.send(TELEGRAM.render(reply, None), chat_id, None, secrets, reference)
-    if isinstance(outcome, Rejected) and outcome.kind == "auth":
-        cache.set("bot:notify:auth", True, timeout=None)
-    elif isinstance(outcome, Sent):
-        cache.delete("bot:notify:auth")
+    record_auth_outcome("notify", outcome)
     return outcome
 
 
@@ -114,9 +112,12 @@ def _severity(text: str) -> str:
     return "warning"
 
 
+def _alert_digest(kind: str, tenant_id: UUID | None) -> bytes:
+    return hashlib.sha256(f"{kind}:{tenant_id}".encode()).digest()
+
+
 def _cooldown_key(kind: str, tenant_id: UUID | None) -> str:
-    digest = hashlib.sha256(f"{kind}:{tenant_id}".encode()).digest()
-    return f"ops:{digest.hex()}"
+    return f"ops:{_alert_digest(kind, tenant_id).hex()}"
 
 
 def send_ops_alert(
@@ -128,7 +129,7 @@ def send_ops_alert(
     resolved: it is a one-off notice, never an ongoing problem to track.
     A failed/ambiguous send also keeps the cooldown to prevent an alert storm.
     """
-    digest = hashlib.sha256(f"{kind}:{tenant_id}".encode()).digest()
+    digest = _alert_digest(kind, tenant_id)
     key = _cooldown_key(kind, tenant_id)
     now = timezone.now()
     # DatabaseCache.add alone can race when replacing an expired entry.
@@ -191,8 +192,8 @@ def send_ops_alert(
 def resolve_alert(alert: OpsAlert, *, by: str, notify: bool = False) -> None:
     """Resolve and clear the cooldown, so a problem that returns is reported at once.
 
-    `notify`: also tell the ops chat it is over (B2/B6: closes the loop on "parar el
-    worker dispara la alerta y arrancarlo la recupera"). Used only for alerts that
+    `notify`: also tell the ops chat it is over (closes the loop on "stopping the worker
+    raises the alert and starting it again recovers it"). Used only for alerts that
     resolved themselves, and only the critical ones, to avoid a message for every
     minor flap; a person who resolves one from the panel already knows it is done.
     """

@@ -5,7 +5,7 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from autobot.ops.audit import record
+from autobot.ops.audit import record_tenant
 from autobot.tenancy.crypto import SecretsUnreadable, decrypt, encrypt
 from autobot.tenancy.models import TenantSecret
 
@@ -25,14 +25,12 @@ class Command(BaseCommand):
                     secret.save(
                         using="owner", update_fields=["ciphertext", "updated_at", "updated_by"]
                     )
-                    record(
-                        actor=secret.updated_by,
-                        action="tenant.secrets",
-                        summary="Secretos de canal recifrados",
-                        tenant_id=secret.tenant_id,
-                        target_type="tenant",
-                        target_id=str(secret.tenant_id),
-                        details={"reencrypted": True},
+                    record_tenant(
+                        secret.updated_by,
+                        "tenant.secrets",
+                        secret.tenant_id,
+                        "Secretos de canal recifrados",
+                        reencrypted=True,
                     )
                     count += 1
         except SecretsUnreadable:

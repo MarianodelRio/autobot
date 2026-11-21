@@ -168,7 +168,7 @@ def test_telegram_webhook_registers_and_audits(
 def test_changing_telegram_secrets_reregisters_the_webhook(
     authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
 ) -> None:
-    # C10: the old webhook (set with the previous bot_token/webhook_secret) must not
+    # the old webhook (set with the previous bot_token/webhook_secret) must not
     # stay registered after the panel writes new secrets.
     tenants(tg_tenant())
     settings.PUBLIC_URL = "https://api.example.org/"
@@ -332,7 +332,7 @@ def test_owner_invite_returns_the_link_once_without_the_code_in_audit(
 def test_owner_invite_marks_the_tenant_as_pending_until_linked(
     authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
 ) -> None:
-    # C14: the ficha must distinguish "no invite yet" from "invited, not yet used".
+    # the ficha must distinguish "no invite yet" from "invited, not yet used".
     tenants(wa_tenant("a"))
     settings.NOTIFY_BOT_TOKEN = "123:NOTIFY-TOKEN"
 

@@ -111,6 +111,13 @@ def tenant_source(slug: str) -> Source:
     return Source(slug, tenant.secrets, accept, f"webhooks/telegram/{channel.public_id}")
 
 
+@dataclass
+class _Progress:
+    offset: int | None = None  # the next update to ask for
+    failing: int | None = None  # the update_id that failed to be saved...
+    failures: int = 0  # ...and how often
+
+
 def poll(
     source: Source,
     client: httpx.Client,
@@ -123,46 +130,56 @@ def poll(
     `MAX_SAVE_ATTEMPTS` times; the connections are dropped so they are opened anew). An
     update that fails for any other reason is logged and skipped, never blocking the next
     ones. Stale connections are closed on every round, as a long-running worker does."""
-    offset: int | None = None
-    failing: int | None = None  # the update_id that failed to be saved, and how often
-    failures = 0
+    progress = _Progress()
     while not stop():
         close_old_connections()
         params: dict[str, Any] = {"timeout": POLL_TIMEOUT_S, "allowed_updates": ALLOWED_UPDATES}
-        if offset is not None:
-            params["offset"] = offset
+        if progress.offset is not None:
+            params["offset"] = progress.offset
         try:
             updates = call(client, source.secrets, "getUpdates", params, CLIENT_TIMEOUT_S)
         except TelegramApiError as e:
-            if e.status == 409:
-                raise WebhookActive(source.name) from None
-            if e.status in (401, 404):
-                raise BotRefused(source.name) from None
-            log.warning("getUpdates of %s failed (%s): retrying", source.name, e)
-            sleep(ERROR_PAUSE_S)
+            _backoff(source, e, sleep)
             continue
-        for update in updates if isinstance(updates, list) else []:
-            if not isinstance(update, dict) or not isinstance(update.get("update_id"), int):
-                continue
-            update_id: int = update["update_id"]
-            try:
-                source.accept(update)
-            except TRANSIENT_ERRORS as e:
-                failures = failures + 1 if failing == update_id else 1
-                failing = update_id
-                connections.close_all()
-                if failures < MAX_SAVE_ATTEMPTS:
-                    log.warning(
-                        "update of %s not saved (%s): asking for it again",
-                        source.name,
-                        type(e).__name__,
-                    )
-                    offset = update_id  # not past it: Telegram sends it again
-                    sleep(ERROR_PAUSE_S)
-                    break
-                log.error("update of %s dropped after %d attempts", source.name, failures)
-            except Exception as e:
-                # Unlike the webhook (503, so Telegram retries), retrying would fail the
-                # same way: in local development this update is lost.
-                log.error("update of %s not saved: %s", source.name, type(e).__name__)
-            offset = update_id + 1
+        _handle_updates(source, updates if isinstance(updates, list) else [], progress, sleep)
+
+
+def _backoff(source: Source, error: TelegramApiError, sleep: Callable[[float], None]) -> None:
+    """A failed `getUpdates`: a webhook or a refused token ends the polling; anything
+    else is retried after a pause."""
+    if error.status == 409:
+        raise WebhookActive(source.name) from None
+    if error.status in (401, 404):
+        raise BotRefused(source.name) from None
+    log.warning("getUpdates of %s failed (%s): retrying", source.name, error)
+    sleep(ERROR_PAUSE_S)
+
+
+def _handle_updates(
+    source: Source, updates: list[Any], progress: _Progress, sleep: Callable[[float], None]
+) -> None:
+    for update in updates:
+        if not isinstance(update, dict) or not isinstance(update.get("update_id"), int):
+            continue
+        update_id: int = update["update_id"]
+        try:
+            source.accept(update)
+        except TRANSIENT_ERRORS as e:
+            progress.failures = progress.failures + 1 if progress.failing == update_id else 1
+            progress.failing = update_id
+            connections.close_all()
+            if progress.failures < MAX_SAVE_ATTEMPTS:
+                log.warning(
+                    "update of %s not saved (%s): asking for it again",
+                    source.name,
+                    type(e).__name__,
+                )
+                progress.offset = update_id  # not past it: Telegram sends it again
+                sleep(ERROR_PAUSE_S)
+                return
+            log.error("update of %s dropped after %d attempts", source.name, progress.failures)
+        except Exception as e:
+            # Unlike the webhook (503, so Telegram retries), retrying would fail the
+            # same way: in local development this update is lost.
+            log.error("update of %s not saved: %s", source.name, type(e).__name__)
+        progress.offset = update_id + 1

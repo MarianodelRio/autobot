@@ -1,16 +1,16 @@
 """Activation checks run provider health before any configuration write transaction."""
 
 from dataclasses import dataclass
-
-from django.core.cache import cache
+from uuid import UUID
 
 from autobot.ops import health
 from autobot.ops.status import tenant_status
 from autobot.runtime.models import InboundEvent, OwnerLink
 from autobot.tenancy import store
-from autobot.tenancy.registry import load_registry
-from autobot.tenancy.schema import WhatsAppChannel
+from autobot.tenancy.registry import LoadedTenant, load_registry
+from autobot.tenancy.schema import Channel, WhatsAppChannel
 from autobot.tenancy.tx import tenant_tx
+from packs import registry as packs_registry
 
 
 @dataclass(frozen=True)
@@ -31,52 +31,61 @@ class Checklist:
         return [item.key for item in self.items if item.blocking and not item.ok]
 
 
+def _channel_complete(channel: Channel | None) -> bool:
+    # `complete` alone (app_id/waba_id/phone_number_id) still leaves a WhatsApp tenant
+    # without `display_phone`, so no public link and no QR (tenancy.links.channel_link):
+    # the checklist must not call that "ok".
+    return (
+        channel is not None
+        and channel.complete
+        and (not isinstance(channel, WhatsAppChannel) or bool(channel.display_phone))
+    )
+
+
+def _health_issues(tenant: LoadedTenant, refresh: bool) -> tuple[bool, list[health.Issue]]:
+    """Whether the health is known, and its issues (the cache holds them when not
+    refreshing)."""
+    if refresh:
+        return True, health.daily(tenant.id, lambda: health.tenant_health(tenant), force=True)
+    snapshot = health.read_snapshot(tenant.id)
+    return (True, snapshot.issues) if snapshot is not None else (False, [])
+
+
+def _tester_wrote(tenant_id: UUID) -> bool:
+    with tenant_tx(tenant_id):
+        # A message from a stranger during onboarding is saved but ignored
+        # (runtime.inbound), not answered: it must not count as a tester.
+        return (
+            InboundEvent.objects.filter(tenant_id=tenant_id, channel="main", kind="message")
+            .exclude(status=InboundEvent.Status.IGNORED)
+            .exists()
+        )
+
+
 def checklist(slug: str, *, refresh: bool = True) -> Checklist:
     """`refresh=True` (activating, and the panel's «Comprobar») asks the providers now.
     `refresh=False` (the panel's plain reads) only looks at the cached health: a page
     load must not call Meta, Telegram or Google, and an unchecked health counts as
     pending, never as ok."""
-    from packs.registry import PACKS
-
     sources = store.current_sources()
-    store._current(slug, sources)
-    registry = load_registry(sources, PACKS)
-    tenant = registry.by_slug.get(slug)
+    store.find_source(slug, sources)
+    tenant = load_registry(sources, packs_registry.PACKS).by_slug.get(slug)
     valid = tenant is not None and not tenant.is_degraded and not tenant.ambiguous
     channel_ok = secrets_ok = healthy = templates_ok = inbound = owner = False
     checked = True
     if tenant is not None:
         channel = tenant.document.channel
-        # C1: `complete` alone (app_id/waba_id/phone_number_id) still leaves a
-        # WhatsApp tenant without `display_phone`, so no public link and no QR
-        # (tenancy.links.channel_link); the checklist must not call that "ok".
-        channel_ok = (
-            channel is not None
-            and channel.complete
-            and (not isinstance(channel, WhatsAppChannel) or bool(channel.display_phone))
-        )
+        channel_ok = _channel_complete(channel)
         secrets_ok = tenant.secrets is not None and not any(
             "decrypt" in issue for issue in tenant.main_disabled
         )
-        if refresh:
-            issues = health.daily(tenant.id, lambda: health.tenant_health(tenant), force=True)
-        else:
-            cached = cache.get(f"health:{tenant.id}")
-            checked = isinstance(cached, dict)
-            issues = list(cached["issues"]) if isinstance(cached, dict) else []
+        checked, issues = _health_issues(tenant, refresh)
         healthy = checked and tenant_status(tenant).level != "critical"
         templates_ok = checked and (
             not isinstance(channel, WhatsAppChannel)
             or not any(issue.code == "templates" for issue in issues)
         )
-        with tenant_tx(tenant.id):
-            # C1: a message from a stranger during onboarding is saved but ignored
-            # (runtime.inbound), not answered — it must not count as a tester.
-            inbound = (
-                InboundEvent.objects.filter(tenant_id=tenant.id, channel="main", kind="message")
-                .exclude(status=InboundEvent.Status.IGNORED)
-                .exists()
-            )
+        inbound = _tester_wrote(tenant.id)
         owner = OwnerLink.objects.filter(tenant_id=tenant.id, chat_id__isnull=False).exists()
     rows = [
         ("document", "Documento válido y sin degradación", valid, True),

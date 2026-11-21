@@ -18,6 +18,7 @@ from autobot.panel.services.activity import (
     describe_outbound,
     encode_cursor,
 )
+from autobot.runtime import privacy
 from autobot.runtime.models import Contact, Conversation, OutboundMessage
 from autobot.tenancy.models import Tenant
 
@@ -155,10 +156,8 @@ class ContactExportOut(Schema):
 
 @router.get("/contacts/{id}/export", response=ContactExportOut)
 def contact_export(request: HttpRequest, id: UUID) -> ContactExportOut:
-    """C16: the panel equivalent of `contact_export`, downloaded as JSON instead
+    """The panel equivalent of `contact_export`, downloaded as JSON instead
     of written to an operator-chosen local path."""
-    from autobot.runtime import privacy
-
     contact = get_object_or_404(Contact.objects.using("owner").select_related("tenant"), pk=id)
     with transaction.atomic(using="owner"):
         data = privacy.export_data(contact.tenant, contact)
@@ -180,9 +179,7 @@ class ContactForgetOut(Schema):
 
 @router.post("/contacts/{id}/forget", response=ContactForgetOut)
 def contact_forget(request: HttpRequest, id: UUID) -> ContactForgetOut:
-    """C16: the panel equivalent of `contact_forget` (right to erasure)."""
-    from autobot.runtime import privacy
-
+    """The panel equivalent of `contact_forget` (right to erasure)."""
     contact = get_object_or_404(Contact.objects.using("owner").select_related("tenant"), pk=id)
     tenant_id, contact_id = contact.tenant_id, contact.id
     # The erasure and its audit row commit together: never an erasure without a trace.

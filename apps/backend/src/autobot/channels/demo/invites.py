@@ -1,4 +1,4 @@
-"""Invitation codes for the demo doors (D5, ADR-006 amendment): a closed-list
+"""Invitation codes for the demo doors (ADR-006 amendment): a closed-list
 alternative that does not need a person's Telegram id up front. The panel creates a
 code, with a note, a use limit and an optional expiry
 (`autobot.panel.services.demo_invites`); a QR or a `t.me/<bot>?start=<code>` link

@@ -15,6 +15,7 @@ from django.db import IntegrityError, connections, transaction
 
 from autobot.ops.audit import record
 from autobot.tenancy.models import DatasetLibraryVersion
+from core.pack import Pack
 
 
 class LibraryError(Exception):
@@ -60,8 +61,6 @@ def list_entries(pack: str, dataset: str) -> list[DatasetLibraryVersion]:
 
 
 def _summarize(pack_obj: object, dataset: str, files: Mapping[str, str]) -> dict[str, object]:
-    from core.pack import Pack
-
     assert isinstance(pack_obj, Pack)
     if pack_obj.dataset_summary is None:
         raise LibraryError(f"El pack {pack_obj.name!r} no declara datasets.")
@@ -164,8 +163,8 @@ def apply_to_tenant(
     actor: str,
     comment: str,
 ) -> int | None:
-    """Copies a library entry's files into the tenant's own dataset (C23's
-    "Aplicar"). `None` when the tenant already has this exact content."""
+    """Copies a library entry's files into the tenant's own dataset
+    (the panel's "Aplicar"). `None` when the tenant already has this exact content."""
     from autobot.tenancy import store
 
     entry = get(pack, dataset, name, version)
@@ -180,7 +179,7 @@ def apply_to_tenant(
 
 
 def preview(*, pack: str, dataset: str, name: str, files: Mapping[str, str]) -> DiffResult:
-    """A dry run (C21's `--dry-run`): validates and reports whether this would
+    """A dry run (`--dry-run`): validates and reports whether this would
     create a new version, without writing anything."""
     from packs.registry import PACKS
 

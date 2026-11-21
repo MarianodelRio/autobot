@@ -6,10 +6,54 @@ from typing import Any
 import psycopg
 from django.db import DatabaseError, connections, transaction
 from django.http import Http404
+from ninja import Schema
 
 from autobot.ops.audit import record
 from autobot.panel.errors import ApiError
 from autobot.tenancy.models import Tenant
+
+
+class RelationOut(Schema):
+    name: str
+    source: str
+    target: str
+    columns: list[str]
+    target_columns: list[str]
+
+
+class TenantCountOut(Schema):
+    tenant_id: str | None
+    tenant: str | None
+    count: int
+
+
+class TableColumnOut(Schema):
+    name: str
+    type: str
+    nullable: bool
+    primary_key: bool
+    description: str
+    hidden: bool
+
+
+class TableSummaryOut(Schema):
+    name: str
+    group: str
+    description: str
+    written_by: str
+    retention: str
+    rls: bool
+    row_count: int
+    approx: bool
+    bytes: int
+    columns: list[TableColumnOut]
+    rows_by_tenant: list[TenantCountOut]
+    incoming: list[RelationOut]
+    outgoing: list[RelationOut]
+
+
+class TableDetailOut(TableSummaryOut):
+    rows: list[list[Any]]
 
 
 @dataclass(frozen=True)
@@ -138,7 +182,7 @@ CATALOG: dict[str, TableDoc] = {
     ),
     "demo_invite": TableDoc(
         DEMO,
-        "Código de invitación a una puerta de demo (D5).",
+        "Código de invitación a una puerta de demo.",
         "Panel",
         "30 días tras caducar, agotarse o revocarse",
         False,
@@ -426,42 +470,35 @@ def table_list() -> list[dict[str, Any]]:
     return result
 
 
-def table_detail(name: str, *, actor: str) -> dict[str, Any]:
-    metadata = _catalog_metadata()
-    if name not in CATALOG or name not in metadata:
-        raise Http404
-    doc = CATALOG[name]
-    columns = _columns(name)
-    names = {col["name"] for col in columns if col["type"].startswith(("timestamp", "date"))}
-    order = next(
-        (
-            column
-            for column in ("at", "created_at", "received_at", "taken_at", "updated_at")
-            if column in names
-        ),
-        None,
+ORDER_COLUMNS = ("at", "created_at", "received_at", "taken_at", "updated_at")
+DETAIL_LIMIT = 20
+
+
+def _pick_order(columns: list[dict[str, Any]]) -> str | None:
+    """The column a preview is sorted by, newest first: the first date column of
+    `ORDER_COLUMNS`, else the primary key, else none."""
+    dates = {col["name"] for col in columns if col["type"].startswith(("timestamp", "date"))}
+    return next(
+        (column for column in ORDER_COLUMNS if column in dates),
+        next((col["name"] for col in columns if col["primary_key"]), None),
     )
-    if order is None:
-        order = next((col["name"] for col in columns if col["primary_key"]), None)
+
+
+def _build_select(name: str, columns: list[dict[str, Any]], order: str | None) -> str:
     quote = _identifier
     expressions = ["'<oculto>'" if col["hidden"] else quote(col["name"]) for col in columns]
     query = f"SELECT {', '.join(expressions)} FROM public.{quote(name)}"
     if order:
         query += f" ORDER BY {quote(order)} DESC NULLS LAST"
-    query += " LIMIT 20"
-    # Recorded before running, not after: a failure (e.g. a CAST error that leaks a
-    # value through the driver's message) must never leave a view without a trace.
-    record(
-        actor=actor,
-        action="data.table",
-        summary="Vista de tabla consultada.",
-        details={"table": name},
-    )
+    return f"{query} LIMIT {DETAIL_LIMIT}"
+
+
+def _run_sample(query: str) -> list[list[Any]]:
     try:
         with transaction.atomic(using="owner"), connections["owner"].cursor() as cursor:
             cursor.execute(f"SET LOCAL statement_timeout = '{DETAIL_TIMEOUT}'")
             cursor.execute(query)
-            rows = [
+            return [
                 [
                     f"<{len(value)} bytes>"
                     if isinstance(value, (bytes, bytearray, memoryview))
@@ -472,17 +509,37 @@ def table_detail(name: str, *, actor: str) -> dict[str, Any]:
             ]
     except (DatabaseError, psycopg.Error) as exc:
         raise ApiError("bad_request", str(exc).strip()[:500], 400) from None
+
+
+def table_detail(name: str, *, actor: str) -> TableDetailOut:
+    metadata = _catalog_metadata()
+    if name not in CATALOG or name not in metadata:
+        raise Http404
+    doc = CATALOG[name]
+    columns = _columns(name)
+    query = _build_select(name, columns, _pick_order(columns))
+    # Recorded before running, not after: a failure (e.g. a CAST error that leaks a
+    # value through the driver's message) must never leave a view without a trace.
+    record(
+        actor=actor,
+        action="data.table",
+        summary="Vista de tabla consultada.",
+        details={"table": name},
+    )
+    rows = _run_sample(query)
     relations = _relations()
-    return dict(
-        name=name,
-        group=doc.group,
-        description=doc.description,
-        written_by=doc.written_by,
-        retention=doc.retention,
-        rls=metadata[name]["rls"],
-        columns=columns,
-        rows=rows,
-        **_stats(name, metadata[name], columns, _tenant_slugs()),
-        incoming=[r for r in relations if r["target"] == name],
-        outgoing=[r for r in relations if r["source"] == name],
+    return TableDetailOut.model_validate(
+        dict(
+            name=name,
+            group=doc.group,
+            description=doc.description,
+            written_by=doc.written_by,
+            retention=doc.retention,
+            rls=metadata[name]["rls"],
+            columns=columns,
+            rows=rows,
+            **_stats(name, metadata[name], columns, _tenant_slugs()),
+            incoming=[r for r in relations if r["target"] == name],
+            outgoing=[r for r in relations if r["source"] == name],
+        )
     )

@@ -1,4 +1,4 @@
-"""`channels/demo/invites.py`: redeeming and checking invite codes (D5), independent
+"""`channels/demo/invites.py`: redeeming and checking invite codes, independent
 of a particular webhook payload. The end-to-end flow through the Telegram door lives
 in `test_demo.py`."""
 

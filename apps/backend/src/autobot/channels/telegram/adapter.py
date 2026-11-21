@@ -8,10 +8,9 @@ The API URL carries the bot token: logs only hold exception names, status and er
 import hmac
 import html
 import logging
-import math
 import re
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 import httpx
@@ -26,7 +25,9 @@ from autobot.channels.base import (
     SendOutcome,
     Sent,
 )
+from autobot.channels.http_outcome import clamp_retry_after, safe_json_dict
 from autobot.channels.payload import clean_payload
+from autobot.channels.telegram.types import Callback, Message
 from autobot.tenancy.schema import TelegramChannel, TelegramSecrets
 from core.limits import MAX_ID_BYTES, MAX_TEXT, cut_utf16, utf16_len
 from core.messages import IncomingMessage
@@ -41,7 +42,6 @@ TIMEOUT_S = 10.0
 SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token"
 MAX_MESSAGE_UTF16 = 4096  # Telegram counts UTF-16 code units, after entity parsing
 MAX_BUTTON_TEXT = 64
-MAX_RETRY_AFTER_S = 3600.0
 NO_PREVIEW = {"is_disabled": True}  # WhatsApp shows no link preview; Telegram does
 # WhatsApp's *bold*: asterisks at word edges, with no space inside them ("2*3*4" and
 # "a * b * c" stay as they are, as in WhatsApp).
@@ -101,11 +101,11 @@ class TelegramAdapter:
         message = body.get("message")
         callback = body.get("callback_query")
         if isinstance(message, dict):
-            incoming = _message(message)
+            incoming = _message(cast(Message, message))
             sender = message.get("from")
             chat = message.get("chat")
         elif isinstance(callback, dict):
-            incoming = _callback(callback)
+            incoming = _callback(cast(Callback, callback))
             sender = callback.get("from")
             inner = callback.get("message")
             chat = inner.get("chat") if isinstance(inner, dict) else None
@@ -125,6 +125,20 @@ class TelegramAdapter:
                 payload=body,
             )
         ]
+
+    def synthetic_text(self, payload: dict[str, Any], text: str) -> dict[str, Any]:
+        callback = payload.get("callback_query") or {}
+        sender: dict[str, Any] = callback.get("from") or payload["message"]["from"]
+        return {
+            "update_id": payload["update_id"],
+            "message": {
+                "message_id": 0,
+                "from": sender,
+                "chat": {"id": sender["id"], "type": "private"},
+                "date": int(datetime.now(UTC).timestamp()),
+                "text": text,
+            },
+        }
 
     def acknowledge(
         self, payload: dict[str, Any], channel: Channel, secrets: TelegramSecrets
@@ -218,7 +232,7 @@ def call(
         response = client.post(_url(secrets, method), json=params, timeout=timeout_s)
     except httpx.HTTPError as e:
         raise TelegramApiError(0, type(e).__name__) from None
-    data = _json(response)
+    data = safe_json_dict(response)
     if not response.is_success or data.get("ok") is not True:
         raise TelegramApiError(response.status_code, data.get("error_code"))
     return data.get("result")
@@ -227,7 +241,7 @@ def call(
 def classify(response: httpx.Response) -> SendOutcome:
     """Telegram's answer → `SendOutcome`."""
     status = response.status_code
-    data = _json(response)
+    data = safe_json_dict(response)
     reason = _describe(response)
     if 200 <= status < 300:
         result = data.get("result") if data.get("ok") is True else None
@@ -286,7 +300,7 @@ def _private(chat: object, sender: object) -> bool:
     )
 
 
-def _message(message: dict[str, Any]) -> IncomingMessage | None:
+def _message(message: Message) -> IncomingMessage | None:
     date = message.get("date")
     if not isinstance(date, int) or isinstance(date, bool):
         return None
@@ -307,7 +321,7 @@ def _message(message: dict[str, Any]) -> IncomingMessage | None:
     return IncomingMessage("text", text.strip()[:MAX_TEXT], None, received_at)
 
 
-def _callback(callback: dict[str, Any]) -> IncomingMessage | None:
+def _callback(callback: Callback) -> IncomingMessage | None:
     data = callback.get("data")
     if not isinstance(data, str) or not data or len(data.encode()) > MAX_ID_BYTES:
         return None
@@ -364,24 +378,13 @@ def _html(text: str) -> str:
     return BOLD.sub(r"<b>\1</b>", html.escape(text, quote=False))
 
 
-def _json(response: httpx.Response) -> dict[str, Any]:
-    try:
-        data = response.json()
-    except ValueError:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def _describe(response: httpx.Response) -> str:
     """Status and error code only: never the description nor the URL."""
-    code = _json(response).get("error_code")
+    code = safe_json_dict(response).get("error_code")
     return f"HTTP {response.status_code}" + (f", error {code}" if code is not None else "")
 
 
 def _seconds(value: object) -> float | None:
     if not isinstance(value, int | float) or isinstance(value, bool):
         return None
-    seconds = float(value)
-    if not math.isfinite(seconds) or seconds < 0:
-        return None
-    return min(seconds, MAX_RETRY_AFTER_S)
+    return clamp_retry_after(float(value))

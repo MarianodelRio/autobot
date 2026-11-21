@@ -5,7 +5,6 @@ import ssl
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
-from zoneinfo import ZoneInfo
 
 import httpx
 from django.conf import settings
@@ -21,10 +20,13 @@ from procrastinate.contrib.django.models import (
 )
 
 from autobot.channels.demo.doors import door
-from autobot.ops import containers
+from autobot.ops import containers, health
 from autobot.ops import system as host
 from autobot.ops.models import SystemSample
+from autobot.panel.services.month import MADRID
+from autobot.runtime.cache import auth_flag_key
 from autobot.runtime.models import Channel, InboundEvent, OutboundMessage
+from autobot.runtime.summary import month_to_date
 from autobot.tenancy.registry import get_registry
 
 EXPECTED_WORKERS = 2  # worker-inbound and worker-outbound (compose)
@@ -204,7 +206,7 @@ def flow(now: datetime, queues: list[dict[str, Any]]) -> FlowOut:
 def _bot_integration(key: str, label: str, name: str, off: bool) -> IntegrationOut:
     if off:
         return IntegrationOut(key=key, label=label, state="off", detail=None, checked_at=None)
-    if cache.get(f"bot:{name}:auth"):
+    if cache.get(auth_flag_key(name)):
         return IntegrationOut(
             key=key,
             label=label,
@@ -212,17 +214,20 @@ def _bot_integration(key: str, label: str, name: str, off: bool) -> IntegrationO
             detail="Envío rechazado por autenticación.",
             checked_at=None,
         )
-    cached = cache.get(f"health:bot:{name}")
-    if not isinstance(cached, dict):
+    snapshot = health.read_snapshot(f"bot:{name}")
+    if snapshot is None:
         return IntegrationOut(key=key, label=label, state="unknown", detail=None, checked_at=None)
-    checked_at = datetime.fromtimestamp(cached["checked_at"], tz=UTC)
-    issues = cached.get("issues") or []
-    if issues:
-        detail = getattr(issues[0], "message", None)
+    if snapshot.issues:
         return IntegrationOut(
-            key=key, label=label, state="critical", detail=detail, checked_at=checked_at
+            key=key,
+            label=label,
+            state="critical",
+            detail=snapshot.issues[0].message,
+            checked_at=snapshot.checked_at,
         )
-    return IntegrationOut(key=key, label=label, state="ok", detail=None, checked_at=checked_at)
+    return IntegrationOut(
+        key=key, label=label, state="ok", detail=None, checked_at=snapshot.checked_at
+    )
 
 
 def _calendar_integration() -> IntegrationOut:
@@ -242,14 +247,12 @@ def _calendar_integration() -> IntegrationOut:
     failing = 0
     latest_checked: datetime | None = None
     for tenant in candidates:
-        cached = cache.get(f"health:{tenant.id}")
-        if not isinstance(cached, dict):
+        snapshot = health.read_snapshot(tenant.id)
+        if snapshot is None:
             continue
-        checked_at = datetime.fromtimestamp(cached["checked_at"], tz=UTC)
-        if latest_checked is None or checked_at > latest_checked:
-            latest_checked = checked_at
-        issues = cached.get("issues") or []
-        if any(getattr(issue, "code", "").endswith("calendar_unavailable") for issue in issues):
+        if latest_checked is None or snapshot.checked_at > latest_checked:
+            latest_checked = snapshot.checked_at
+        if any(issue.code.endswith("calendar_unavailable") for issue in snapshot.issues):
             failing += 1
         else:
             accessible += 1
@@ -284,9 +287,7 @@ def integrations() -> list[IntegrationOut]:
 
 def build_system() -> SystemOut:
     now = timezone.now()
-    start = now.astimezone(ZoneInfo("Europe/Madrid")).replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0
-    )
+    start, _ = month_to_date(now, MADRID)
     samples = list(
         SystemSample.objects.using("owner")
         .filter(taken_at__gte=start, taken_at__lte=now)
@@ -294,7 +295,7 @@ def build_system() -> SystemOut:
         .values("taken_at", "cpu_pct", "mem_used_pct", "load1", "disk_used_pct", "db_bytes")
     )
     database = database_info()
-    # worker-inbound and worker-outbound (X14): green only while both beat, so one
+    # worker-inbound and worker-outbound: green only while both beat, so one
     # dead worker is not hidden by the other.
     worker = (
         ProcrastinateWorker.objects.using("owner")
@@ -351,20 +352,5 @@ def build_containers(now: datetime) -> ContainersOut:
         generated_at=assessment.generated_at,
         stale=assessment.stale,
         maintenance=assessment.maintenance,
-        items=[
-            ContainerOut(
-                service=row.service,
-                name=row.name,
-                status=row.status,
-                health=row.health,
-                restart_count=row.restart_count,
-                oom_killed=row.oom_killed,
-                started_at=row.started_at,
-                image_tag=row.image_tag,
-                image_matches=row.image_matches,
-                level=row.level,
-                reason=row.reason,
-            )
-            for row in assessment.services
-        ],
+        items=[ContainerOut.model_validate(row) for row in assessment.services],
     )

@@ -1,5 +1,5 @@
 """Exporting/forgetting a contact and exporting a business, from the panel
-(C16): the panel equivalent of `contact_export`, `contact_forget` and
+the panel equivalent of `contact_export`, `contact_forget` and
 `tenant_data_export`, which stay CLI-only for a local file instead."""
 
 from typing import Any

@@ -28,7 +28,7 @@ from autobot.tenancy.schema import TelegramChannel, TenantDocument
 from core.errors import TransientError
 from core.pack import ContactInfo
 from tests.fixtures.toy_pack import pack as toy
-from tests.platform.tenancy.helpers import demo_tenant_yaml, tenant_yaml
+from tests.platform.tenancy.helpers import demo_tenant_yaml, tenant_document
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 
@@ -43,7 +43,7 @@ CALENDAR_PACK = dataclasses.replace(toy.pack, needs_calendar=True, config_schema
 
 
 def loaded(pack: Any = toy.pack, config: BaseModel | None = None) -> LoadedTenant:
-    document = TenantDocument.model_validate(tenant_yaml("some-business"))
+    document = TenantDocument.model_validate(tenant_document("some-business"))
     return LoadedTenant(document=document, pack=pack, config=config or pack.config_schema())
 
 

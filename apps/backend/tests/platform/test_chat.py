@@ -1,4 +1,4 @@
-"""`manage.py chat` (L4): a terminal chat with a pack's demo template, over
+"""`manage.py chat`: a terminal chat with a pack's demo template, over
 `core.testing.Conversation`. No database, no channel, no network."""
 
 import io

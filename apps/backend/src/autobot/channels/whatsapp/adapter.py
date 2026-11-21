@@ -4,12 +4,12 @@ Logs never carry identifiers, texts or provider response bodies (a 4xx body may 
 personal data): only status and error codes.
 """
 
+import copy
 import hashlib
 import hmac
 import logging
-import math
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 import httpx
@@ -26,7 +26,9 @@ from autobot.channels.base import (
     Sent,
     StatusItem,
 )
+from autobot.channels.http_outcome import clamp_retry_after, safe_json_dict
 from autobot.channels.payload import clean_payload
+from autobot.channels.whatsapp.types import Contact, WaMessage, WaStatus
 from autobot.tenancy.schema import BSUID, PHONE, WhatsAppChannel, WhatsAppSecrets
 from core.limits import MAX_ID_BYTES, MAX_TEXT
 from core.messages import IncomingMessage
@@ -40,7 +42,6 @@ GRAPH_URL = "https://graph.facebook.com"
 TIMEOUT_S = 10.0
 SIGNATURE_HEADER = "X-Hub-Signature-256"
 MAX_EVENT_ID = 200  # inbound_event.provider_event_id
-MAX_RETRY_AFTER_S = 3600.0
 
 STATUSES = frozenset({"sent", "delivered", "read", "failed"})
 # Graph API error codes of a send, and what each becomes (`classify`):
@@ -113,16 +114,30 @@ class WhatsAppAdapter:
                 if number is None or number != channel.phone_number_id:
                     log.warning("WhatsApp change for another phone_number_id dropped")
                     continue
-                contacts = _dicts(value.get("contacts"))
+                contacts = cast(list[Contact], _dicts(value.get("contacts")))
                 for message in _dicts(value.get("messages")):
-                    item = _message(entry, value, message, contacts)
+                    item = _message(entry, value, cast(WaMessage, message), contacts)
                     if item is not None:
                         items.append(item)
                 for status in _dicts(value.get("statuses")):
-                    status_item = _status(entry, value, status)
+                    status_item = _status(entry, value, cast(WaStatus, status))
                     if status_item is not None:
                         items.append(status_item)
         return items
+
+    def synthetic_text(self, payload: dict[str, Any], text: str) -> dict[str, Any]:
+        body = copy.deepcopy(payload)
+        message = body["entry"][0]["changes"][0]["value"]["messages"][0]
+        kept = {
+            k: message[k]
+            for k in ("from", "from_user_id", "user_id", "id", "timestamp")
+            if k in message
+        }
+        message.clear()
+        message.update(kept)
+        message["type"] = "text"
+        message["text"] = {"body": text}
+        return body
 
     def acknowledge(
         self, payload: dict[str, Any], channel: WhatsAppChannel, secrets: WhatsAppSecrets
@@ -207,9 +222,8 @@ def classify(response: httpx.Response) -> SendOutcome:
     reason = _describe(response)
     if 200 <= status < 300:
         try:
-            data = response.json()
-            return Sent(str(data["messages"][0]["id"]))
-        except ValueError, LookupError, TypeError:
+            return Sent(str(safe_json_dict(response)["messages"][0]["id"]))
+        except LookupError, TypeError:
             return Ambiguous("2xx without a message id")
     code = error.get("code") if error is not None else None
     if status == 401 or code == AUTH_ERROR:
@@ -256,27 +270,33 @@ def _timestamp(value: object) -> datetime | None:
         return None
 
 
+def _extract_sender(message: WaMessage) -> tuple[str | None, str | None]:
+    """`(phone, external_id)` of whoever wrote: the phone digits if valid, and the id the
+    platform knows them by (the BSUID when there is one, else the phone)."""
+    phone = message.get("from")
+    phone = phone if isinstance(phone, str) and PHONE.match(phone) else None
+    # The BSUID (since April 2026) identifies the contact even when the phone is hidden.
+    bsuid = message.get("from_user_id") or message.get("user_id")
+    external_id = bsuid if isinstance(bsuid, str) and BSUID.match(bsuid) else phone
+    return phone, external_id
+
+
 def _message(
     entry: dict[str, Any],
     value: dict[str, Any],
-    message: dict[str, Any],
-    contacts: list[dict[str, Any]],
+    message: WaMessage,
+    contacts: list[Contact],
 ) -> InboundItem | None:
     wamid = message.get("id")
     received_at = _timestamp(message.get("timestamp"))
     if not isinstance(wamid, str) or not 0 < len(wamid) <= MAX_EVENT_ID or received_at is None:
         log.warning("WhatsApp message without a valid id or timestamp dropped")
         return None
-    phone = message.get("from")
-    phone = phone if isinstance(phone, str) and PHONE.match(phone) else None
-    # The BSUID (since April 2026) identifies the contact even when the phone is hidden.
-    bsuid = message.get("from_user_id") or message.get("user_id")
-    external_id = bsuid if isinstance(bsuid, str) and BSUID.match(bsuid) else phone
+    phone, external_id = _extract_sender(message)
     if external_id is None:
         log.warning("WhatsApp message without a valid sender dropped")
         return None
-    kind = message.get("type")
-    if kind in IGNORED_TYPES:
+    if message.get("type") in IGNORED_TYPES:
         return None
     incoming = _incoming(message, received_at)
     if incoming is None:
@@ -295,11 +315,11 @@ def _message(
         display_name=name[:200] if isinstance(name, str) and name else None,
         phone=f"+{phone}" if phone else None,
         message=incoming,
-        payload=_single(entry, value, "messages", message, **extra),
+        payload=_single(entry, value, "messages", cast(dict[str, Any], message), **extra),
     )
 
 
-def _incoming(message: dict[str, Any], received_at: datetime) -> IncomingMessage | None:
+def _incoming(message: WaMessage, received_at: datetime) -> IncomingMessage | None:
     kind = message.get("type")
     if kind == "text":
         text = message.get("text")
@@ -328,9 +348,7 @@ def _incoming(message: dict[str, Any], received_at: datetime) -> IncomingMessage
     return IncomingMessage("button", None, payload, received_at)
 
 
-def _status(
-    entry: dict[str, Any], value: dict[str, Any], status: dict[str, Any]
-) -> StatusItem | None:
+def _status(entry: dict[str, Any], value: dict[str, Any], status: WaStatus) -> StatusItem | None:
     wamid = status.get("id")
     name = status.get("status")
     if not isinstance(wamid, str) or not wamid or name not in STATUSES:
@@ -349,11 +367,11 @@ def _status(
         provider_event_id=event_id,
         outbound_ref=ref if isinstance(ref, str) and ref else None,
         provider_message_id=wamid,
-        status=name,
+        status=cast(Literal["sent", "delivered", "read", "failed"], name),
         pricing_category=category[:32] if isinstance(category, str) else None,
         billable=billable if isinstance(billable, bool) else None,
         error=",".join(codes) or None,
-        payload=_single(entry, value, "statuses", status),
+        payload=_single(entry, value, "statuses", cast(dict[str, Any], status)),
     )
 
 
@@ -392,11 +410,7 @@ def _template(out: ProactiveMessage) -> dict[str, Any]:
 
 def _error(response: httpx.Response) -> dict[str, Any] | None:
     """Meta's error object, if the body is one (`{"error": {"code": …}}`)."""
-    try:
-        data = response.json()
-    except ValueError:
-        return None
-    error = data.get("error") if isinstance(data, dict) else None
+    error = safe_json_dict(response).get("error")
     return error if isinstance(error, dict) else None
 
 
@@ -414,6 +428,4 @@ def _retry_after(response: httpx.Response) -> float | None:
         seconds = float(response.headers.get("retry-after", ""))
     except ValueError:
         return None
-    if not math.isfinite(seconds) or seconds < 0:
-        return None
-    return min(seconds, MAX_RETRY_AFTER_S)
+    return clamp_retry_after(seconds)

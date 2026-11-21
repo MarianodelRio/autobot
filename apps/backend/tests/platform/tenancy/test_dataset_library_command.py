@@ -1,4 +1,4 @@
-"""`manage.py dataset_library push/list/current-sha` (C21, ADR-013)."""
+"""`manage.py dataset_library push/list/current-sha` (ADR-013)."""
 
 import io
 import json

@@ -7,6 +7,7 @@ from uuid import uuid7
 import pytest
 from django.utils import timezone
 
+from autobot.ops import audit
 from autobot.ops.models import AuditEvent
 from autobot.tenancy import activation, store
 from autobot.tenancy.crypto import decrypt
@@ -18,6 +19,7 @@ from autobot.tenancy.models import (
     TenantSecret,
 )
 from autobot.tenancy.registry import source_from_dir
+from autobot.tenancy.store import validate
 from packs.registry import PACKS as REGISTERED
 from tests.helpers.integration import tg_tenant
 from tests.platform.tenancy.helpers import PACKS, TG_SECRETS
@@ -104,7 +106,7 @@ def test_validation_errors_do_not_echo_values() -> None:
 
 
 def test_validation_errors_are_readable_in_spanish() -> None:
-    # C7: the pydantic error type is never shown raw.
+    # The pydantic error type is never shown raw.
     create()
     doc = current().document | {"config": {"colors": "private-value"}}
     with pytest.raises(store.StoreError) as error:
@@ -115,7 +117,7 @@ def test_validation_errors_are_readable_in_spanish() -> None:
 
 
 def test_degraded_tenant_surfaces_its_real_reason(monkeypatch: pytest.MonkeyPatch) -> None:
-    """C5: a dataset/config mismatch (e.g. a `bus` town missing from its timetable)
+    """A dataset/config mismatch (e.g. a `bus` town missing from its timetable)
     must say why, not a generic "datos no válidos"."""
     import dataclasses
 
@@ -128,7 +130,7 @@ def test_degraded_tenant_surfaces_its_real_reason(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr("packs.registry.PACKS", PACKS | {"toy": broken})
     doc = tg_tenant("tg")
     with pytest.raises(store.StoreError) as error:
-        # A dataset is passed (C4 now requires one when load_data is declared);
+        # A dataset is passed (a pack that declares load_data requires one);
         # its content does not matter, `boom` rejects it regardless.
         store.create_tenant(document=doc, datasets={"any": {}}, actor="user", comment="Create")
     assert any("Nowhere" in detail for detail in error.value.details)
@@ -180,7 +182,7 @@ def test_initial_secret_is_encrypted_and_audited_by_field_names() -> None:
 
 
 def test_bus_creation_requires_a_dataset_choice() -> None:
-    # C4: a pack with load_data (bus's timetable) must not silently inherit the
+    # A pack with load_data (bus's timetable) must not silently inherit the
     # demo template's dataset; the caller must choose one explicitly (ADR-013).
     pack = REGISTERED["bus"]
     assert pack.template is not None
@@ -244,7 +246,7 @@ def test_status_transitions_and_rollback_keep_current_state(
 
 
 def test_pause_is_never_blocked_by_validation(monkeypatch: pytest.MonkeyPatch) -> None:
-    """X10: a tenant degraded for a reason unrelated to pausing (or even a plain
+    """A tenant degraded for a reason unrelated to pausing (or even a plain
     validation bug) must still be pausable — only "pause" skips revalidating the whole
     configuration; the other transitions still validate as before."""
     create()
@@ -254,7 +256,7 @@ def test_pause_is_never_blocked_by_validation(monkeypatch: pytest.MonkeyPatch) -
     def boom(*args: Any, **kwargs: Any) -> None:
         raise store.StoreError("validation_error", "La configuración no es válida", [])
 
-    monkeypatch.setattr(store, "_validate", boom)
+    monkeypatch.setattr(validate, "validate_candidate", boom)
     assert store.change_status("tg", action="pause", actor="user") == 3
     assert current().document["status"] == "paused"
     # Offboarding is the way out for a broken tenant too: it does not revalidate.
@@ -284,7 +286,7 @@ def test_audit_failure_rolls_back_everything(monkeypatch: pytest.MonkeyPatch) ->
     def fail(**kwargs: Any) -> None:
         raise RuntimeError("audit unavailable")
 
-    monkeypatch.setattr(store, "record", fail)
+    monkeypatch.setattr(audit, "record", fail)
     with pytest.raises(RuntimeError):
         create()
     assert not Tenant.objects.using("owner").exists()
@@ -311,7 +313,7 @@ def test_new_documents_have_independent_ids_and_blank_channel_ids() -> None:
 
 
 def test_new_document_defaults_to_every_owner_notice_of_the_pack() -> None:
-    # C8: a dueño who links their chat right after onboarding must receive
+    # A dueño who links their chat right after onboarding must receive
     # something; without this, owner.notify stayed empty forever.
     doc = store.new_document(
         pack="salon",

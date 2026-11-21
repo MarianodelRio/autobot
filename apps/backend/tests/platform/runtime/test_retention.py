@@ -118,7 +118,7 @@ def test_inactive_contact_cascades(
 def test_a_demo_tenants_contact_uses_the_short_cutoff_not_the_annual_one(
     tenants: Any, settings: Settings, last_activity: timedelta | None
 ) -> None:
-    """D4/B5: a demo tenant's own contacts are not kept for a year like a real
+    """A demo tenant's own contacts are not kept for a year like a real
     client's, only DEMO_RETENTION_DAYS (not active yet: RETENTION_CLEANUP_ENABLED
     stays false until approved, but the shorter demo cutoff is already implemented)."""
     a = loaded_demo(tenants)
@@ -138,7 +138,7 @@ def test_a_demo_tenants_contact_uses_the_short_cutoff_not_the_annual_one(
 def test_a_demo_tenant_contact_a_year_old_is_gone_while_cleanup_stays_disabled(
     tenants: Any, settings: Settings
 ) -> None:
-    """Confirms D4/B5's point: without the flag, not even the short demo cutoff
+    """Confirms that without the flag, not even the short demo cutoff
     applies — nothing is purged at all."""
     a = loaded_demo(tenants)
     settings.RETENTION_CLEANUP_ENABLED = False
@@ -248,7 +248,7 @@ def test_purge_platform_history_runs_as_fp_app(tenants: Any, settings: Settings)
 
 
 def test_old_finished_procrastinate_jobs_are_purged(tenants: Any, settings: Settings) -> None:
-    """X15: `procrastinate_jobs`/`_events` must not grow without bound; a finished job
+    """`procrastinate_jobs`/`_events` must not grow without bound; a finished job
     older than 30 days (by its last event, Procrastinate's own criterion) is deleted,
     cascading to its events, while a recent one is kept."""
     loaded(tenants)

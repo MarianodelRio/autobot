@@ -82,3 +82,31 @@ def test_job_retry_rejects_delivery_jobs() -> None:
         cursor.execute("UPDATE procrastinate_jobs SET status='failed' WHERE id=%s", [pk])
     with pytest.raises(CommandError):
         call_command("job_retry", str(pk))
+
+
+def test_tenant_purge_failures_delete_nothing(message: OutboundMessage) -> None:
+    from unittest.mock import patch
+
+    from autobot.runtime import privacy
+
+    slug = message.tenant.slug
+    with pytest.raises(CommandError, match="desconocido"):
+        call_command("tenant_purge", "ghost")
+    for failing_input in (EOFError(), KeyboardInterrupt()):
+        with (
+            patch("builtins.input", side_effect=failing_input),
+            pytest.raises(CommandError, match="cancelado"),
+        ):
+            call_command("tenant_purge", slug)
+    # A running job blocks the purge: the command fails and nothing is deleted.
+    with (
+        patch("builtins.input", return_value=slug),
+        patch(
+            "autobot.management.commands.tenant_purge.privacy.purge",
+            side_effect=privacy.PurgeBlocked("Hay trabajos en curso"),
+        ),
+        pytest.raises(CommandError, match="trabajos en curso"),
+    ):
+        call_command("tenant_purge", slug)
+    assert Tenant.objects.using("owner").filter(pk=message.tenant_id).exists()
+    assert OutboundMessage.objects.using("owner").filter(pk=message.pk).exists()

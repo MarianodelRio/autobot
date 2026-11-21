@@ -139,7 +139,7 @@ def test_setup_includes_a_non_checkable_dataset_step_for_bus(
     assert loaded_step["state"] == "ok"
 
 
-# ── Testers (C12: "últimos que escribieron → añadir") ───────────────────────
+# ── Testers ("últimos que escribieron → añadir") ───────────────────────
 
 
 def ignored_message(slug: str, chat_id: int) -> None:
@@ -203,7 +203,7 @@ def test_add_tester_twice_is_rejected(authed_client: Any, tenants: Any) -> None:
     assert post(authed_client, "tenants/tg/setup/testers", {"id": "100000001"}).status_code == 400
 
 
-# ── WhatsApp templates (C12: texto y estado de cada plantilla) ─────────────
+# ── WhatsApp templates (texto y estado de cada plantilla) ─────────────
 
 
 def salon_wa_document(slug: str, **changes: Any) -> dict[str, Any]:

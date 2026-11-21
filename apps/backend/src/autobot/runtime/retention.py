@@ -30,7 +30,7 @@ BATCH_SIZE = 1000
 PROCRASTINATE_RETENTION_DAYS = 30
 # A demo tenant's contacts, conversations and owner notices outlive the selector's
 # own demo_event/demo_session (7/30 days) by this much, never a year like a real
-# client's (D4): someone who tried the demo for an afternoon should not stay on file
+# client's: someone who tried the demo for an afternoon should not stay on file
 # as long as an actual customer. Not active yet (RETENTION_CLEANUP_ENABLED=false).
 DEMO_RETENTION_DAYS = 30
 # How long a revoked or expired invite stays visible in the panel before it is
@@ -65,7 +65,7 @@ def cleanup(*, now: datetime | None = None) -> None:
     demo_cutoff = now - timedelta(days=DEMO_RETENTION_DAYS)
     for tenant in get_registry().tenants:
         # A demo tenant's own cutoff is much shorter than a real client's annual one
-        # (D4): nobody who only tried the demo should stay on file for a year.
+        #: nobody who only tried the demo should stay on file for a year.
         cutoff = demo_cutoff if tenant.is_demo else annual
         expired = Q(last_activity_at__lte=cutoff) | Q(
             last_activity_at__isnull=True, created_at__lte=cutoff
@@ -144,7 +144,7 @@ def cleanup(*, now: datetime | None = None) -> None:
 
 def cleanup_jobs() -> None:
     """Delete finished Procrastinate jobs (and their events, by cascade) older than 30
-    days: the tables grow without bound otherwise (X15). Not conditioned by
+    days: the tables grow without bound otherwise. Not conditioned by
     `RETENTION_CLEANUP_ENABLED`: they hold only ids (never personal data), so there is
     nothing to approve. Procrastinate has no sync variant of this manager method."""
     from autobot.runtime.jobs import app

@@ -181,7 +181,7 @@ def test_rejected_recipient_marks_the_contact_unreachable(tenants: Any, meta: An
 
 
 def test_a_send_that_succeeds_clears_unreachable(tenants: Any, meta: Any) -> None:
-    """X9: `unreachable` must not stay stuck once a send to that contact gets through."""
+    """`unreachable` must not stay stuck once a send to that contact gets through."""
     tenants(wa_tenant())
     meta(error(400, 131026))
     first = a_reply()

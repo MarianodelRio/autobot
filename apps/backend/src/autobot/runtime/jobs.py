@@ -32,9 +32,9 @@ from core.pack import Pack
 log = logging.getLogger(__name__)
 
 # Each queue shows what gets stuck. `ops` is the one exception to "one worker per
-# queue group" (X14): both worker-inbound and worker-outbound listen to it, so
+# queue group": both worker-inbound and worker-outbound listen to it, so
 # ops_check keeps running, and keeps able to alert, even if one of the two is the
-# one that is down (B2/B6, docs/plan-lanzamiento.md).
+# one that is down.
 INBOUND = "inbound"  # process_event, apply_status, route_demo_event
 OUTBOUND = "outbound"  # send_message, send_notification
 PERIODIC = "periodic"  # run_periodic, retention_cleanup

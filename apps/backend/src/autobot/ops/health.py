@@ -2,6 +2,7 @@
 
 from collections.abc import Collection
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from pydantic import SecretStr
 
 from autobot.channels.demo.doors import door
 from autobot.channels.telegram.adapter import TelegramApiError, call
+from autobot.channels.telegram.registration import expected_webhook_url
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
 from autobot.runtime.models import DEMO_CHANNELS, Channel
 from autobot.tenancy.registry import LoadedTenant
@@ -24,7 +26,7 @@ from autobot.tenancy.schema import (
 )
 
 DAY_S = 86400
-RETRY_FAILED_S = 15 * 60  # a one-off failure is rechecked sooner than a success (X13)
+RETRY_FAILED_S = 15 * 60  # a one-off failure is rechecked sooner than a success
 
 
 @dataclass(frozen=True)
@@ -35,7 +37,7 @@ class Issue:
 
 
 def telegram_health(token: str, *, expected_url: str | None = None) -> list[Issue]:
-    """`expected_url` (C15): also fail if Telegram's own webhook isn't set to it —
+    """`expected_url`: also fail if Telegram's own webhook isn't set to it —
     today's `telegram_health` only looked at recent delivery errors, so a bot that
     was never (or no longer) registered reported "ok" and never answered."""
     secrets = TelegramSecrets(bot_token=SecretStr(token), webhook_secret=SecretStr("-" * 32))
@@ -77,7 +79,7 @@ def whatsapp_template_statuses(
     """The live status Meta reports for each of `templates` (`(name, language)`
     pairs); one missing from the result means Meta has never seen it. Used both by
     `whatsapp_health` (just whether all are `APPROVED`) and the "Alta" tab's own
-    per-template detail (C12)."""
+    per-template detail."""
     headers = {"Authorization": f"Bearer {secrets.access_token.get_secret_value()}"}
     base = f"https://graph.facebook.com/{settings.WHATSAPP_GRAPH_VERSION}"
     try:
@@ -189,8 +191,6 @@ def tenant_health(
         if isinstance(tenant.secrets, TelegramSecrets) and isinstance(
             tenant.document.channel, TelegramChannel
         ):
-            from autobot.channels.telegram.registration import expected_webhook_url
-
             expected = expected_webhook_url(
                 f"webhooks/telegram/{tenant.document.channel.public_id}"
             )
@@ -207,6 +207,39 @@ def tenant_health(
     return issues
 
 
+@dataclass(frozen=True)
+class HealthSnapshot:
+    """What `daily` caches for a tenant (or a bot): when it was checked and what it found."""
+
+    checked_at: datetime
+    issues: list[Issue]
+
+
+def cache_key(name: UUID | str) -> str:
+    return f"health:{name}"
+
+
+def read_snapshot(name: UUID | str) -> HealthSnapshot | None:
+    """The cached result for `name`, or None when never checked (or unreadable). The cache
+    holds a plain dict (`checked_at` as a timestamp), so other readers and older entries
+    keep working."""
+    cached = cache.get(cache_key(name))
+    if not isinstance(cached, dict) or not isinstance(cached.get("checked_at"), int | float):
+        return None
+    return HealthSnapshot(
+        checked_at=datetime.fromtimestamp(cached["checked_at"], tz=UTC),
+        issues=list(cached.get("issues") or []),
+    )
+
+
+def write_snapshot(name: UUID | str, snapshot: HealthSnapshot) -> None:
+    cache.set(
+        cache_key(name),
+        {"checked_at": snapshot.checked_at.timestamp(), "issues": snapshot.issues},
+        timeout=None,
+    )
+
+
 def daily(name: UUID | str, check: Any, *, force: bool = False) -> list[Issue]:
     """Cache a success for 24 h; a failure only for `RETRY_FAILED_S` (~15 min), so a
     one-off failure does not stay cached a full day once the service is back.
@@ -214,15 +247,13 @@ def daily(name: UUID | str, check: Any, *, force: bool = False) -> list[Issue]:
     A separate checked_at controls refresh, so a stale failure remains observable if
     a checker is interrupted. Calls are serialized by ops_check's queueing lock.
     """
-    key = f"health:{name}"
-    result = cache.get(key)
-    now = timezone.now().timestamp()
-    stale = not isinstance(result, dict)
-    if not stale:
-        ttl = RETRY_FAILED_S if result["issues"] else DAY_S
-        stale = now - result["checked_at"] >= ttl
-    if force or stale:
-        issues = check()
-        result = {"checked_at": now, "issues": issues}
-        cache.set(key, result, timeout=None)
-    return list(result["issues"])
+    now = timezone.now()
+    snapshot = read_snapshot(name)
+    stale = snapshot is None
+    if snapshot is not None:
+        ttl = RETRY_FAILED_S if snapshot.issues else DAY_S
+        stale = (now - snapshot.checked_at).total_seconds() >= ttl
+    if force or snapshot is None or stale:
+        snapshot = HealthSnapshot(checked_at=now, issues=check())
+        write_snapshot(name, snapshot)
+    return list(snapshot.issues)
