@@ -18,7 +18,7 @@ RUN pnpm build
 # `make docs-check`.
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
-FROM python:3.14-slim AS docs
+FROM python:3.15-slim AS docs
 COPY --from=uv /uv /uvx /usr/local/bin/
 ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_CACHE_DIR=/tmp/uv-cache
 WORKDIR /repo
