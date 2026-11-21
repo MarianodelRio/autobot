@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run from the host timer as deploy (A11): every deploy leaves the previous image
+# Run from the host timer as deploy: every deploy leaves the previous image
 # behind (needed for an instant rollback) and dangling layers from failed pulls;
 # left unchecked, the 40 GB disk a small VPS has fills up over time.
 set -euo pipefail
@@ -21,7 +21,7 @@ flock -s -w "${AUTOBOT_PRUNE_LOCK_WAIT:-60}" 9 || {
 # past that point re-pulls it, same as any other image `up` doesn't find locally.
 docker image prune --all --force --filter 'until=24h'
 
-# A8: var/backups/pre-migrate.dump holds every client's data in the clear and is
+# var/backups/pre-migrate.dump holds every client's data in the clear and is
 # never included in the restic backup on purpose; it must not outlive the window
 # where rolling back to the deploy that made it is still plausible.
 find var/backups/pre-migrate.dump -maxdepth 0 -mtime +7 -delete 2>/dev/null || true

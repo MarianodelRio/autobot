@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Execute manually on a new Ubuntu 24.04 VPS, as root or as a user with sudo (e.g.
-# the `ubuntu` initial user some providers set up). Safe to re-run. Two phases,
-# run as two separate invocations (A12):
+# Host-level setup of a new Ubuntu 24.04 VPS, as root or as a user with sudo. Normally
+# run by `install-vm.sh` (ADR-017), inside the VM, which passes it the keys; it can
+# also be run by hand. Safe to re-run. Two phases, run as two separate invocations:
 #
 #   REPO_URL=<https-url> bootstrap-server.sh --base <operator.pub> <ci.pub>
 #   bootstrap-server.sh --harden-ssh
@@ -102,7 +102,7 @@ EOF
   systemctl enable --now docker unattended-upgrades
 
   # A on a 2 vCPU/4 GB VPS: 2 GB of swap, as a cushion under real load (measured
-  # properly in A16), never as a substitute for picking a bigger machine.
+  # properly later), never as a substitute for picking a bigger machine.
   if ! swapon --show=NAME --noheadings | grep -qx /swapfile; then
     if [[ ! -f /swapfile ]]; then
       fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
@@ -163,13 +163,13 @@ EOF
   install -m 0644 /srv/autobot/deploy/systemd/autobot-prune.service /etc/systemd/system/
   install -m 0644 /srv/autobot/deploy/systemd/autobot-prune.timer /etc/systemd/system/
   systemctl daemon-reload
-  # Not started yet: the backup timer is started by hand only once
-  # var/backup.env and the restic password are in place (A3/A15); enabling it now
+  # Not started yet: install-vm.sh starts the backup timer only once
+  # var/backup.env and the restic password are in place; enabling it now
   # just means it is ready without racing a backup against an unconfigured host.
   systemctl enable autobot-backup.timer
   # Read-only snapshot: safe to enable and start immediately, unlike the backup timer.
   systemctl enable --now autobot-containers.timer
-  # A11: only removes images no container references; safe to start right away too.
+  # only removes images no container references; safe to start right away too.
   systemctl enable --now autobot-prune.timer
   install -d -m 0755 /var/lib/autobot
   printf '%s\n' "$fingerprint" >"$base_marker"

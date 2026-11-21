@@ -41,14 +41,14 @@ write_status() {
 }
 trap write_status EXIT
 
-# A3: `restic init` is never automatic here. A repository created by mistake (a
+# `restic init` is never automatic here. A repository created by mistake (a
 # typo in RESTIC_REPOSITORY, or credentials that happen to also reach some other,
 # empty bucket) would otherwise look like a successful backup forever, silently
 # hiding that the real repository was never written to. Init it once by hand, then
 # record its id below so every later run can tell "misconfigured, empty bucket"
 # apart from "the one true repository".
 config=$("$restic_bin" cat config) || {
-  echo 'Restic repository is not initialized (A3: this is never done automatically); run restic init once by hand' >&2
+  echo 'Restic repository is not initialized (this is never done automatically); run restic init once by hand' >&2
   exit 1
 }
 repo_id=$(printf '%s' "$config" | sed -n 's/.*"id":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
@@ -101,7 +101,7 @@ mv "$dump_tmp" var/backups/autobot.dump
 dump_bytes=$(stat -c '%s' var/backups/autobot.dump)
 
 backup_paths=(var/backups/autobot.dump .env var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile)
-# T2: Caddy's own state (its ACME account and certificates: losing them means
+# Caddy's own state (its ACME account and certificates: losing them means
 # reissuing from scratch) and the deploy log. Optional: missing on a target that
 # was bootstrapped but never deployed to yet, which must not fail the backup.
 for optional_path in var/state/caddy-data var/state/caddy-config var/state/ops/deploys.jsonl; do
@@ -110,7 +110,7 @@ done
 "$restic_bin" backup --tag autobot "${backup_paths[@]}"
 # Group by tag: the dump path stays constant and all snapshots use the same policy.
 forget_args=(--tag autobot --group-by tags --keep-daily 7 --keep-weekly 4 --keep-monthly 6)
-# T5: hourly backups make `forget` run hourly too, but `--prune` actually rewrites
+# hourly backups make `forget` run hourly too, but `--prune` actually rewrites
 # the repository (lists every pack in it) and most providers charge for that; once
 # a day is often enough to reclaim space from expired snapshots.
 prune_marker=var/.last-prune

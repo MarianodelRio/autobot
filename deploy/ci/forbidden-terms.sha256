@@ -1,6 +1,5 @@
 # SHA-256 of the normalized real-customer names this repo must never contain again
-# (business names, slugs, domains, network towns — see docs/plan-lanzamiento.md,
-# block R). No plaintext here on purpose: `deploy/scripts/check-forbidden-terms.py`
+# (business names, slugs, domains, network towns). No plaintext here on purpose: `deploy/scripts/check-forbidden-terms.py`
 # normalizes repo text the same way and compares hashes, never the other way round.
 # One hash per line; add a new one with the same script's `hash_term()` helper.
 853b261ec3e294702db3979dfd28f39e578fe345a7df55a0c68e639a9333bd2f

@@ -25,4 +25,11 @@ COPY manage.py ./
 COPY src ./src
 USER app
 EXPOSE 8000
-CMD ["gunicorn", "config.wsgi", "-b", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--no-control-socket"]
+# The production command, and the only place its flags live (compose.prod.yaml does
+# not repeat it; compose.local.yaml replaces it with a --reload variant).
+# --graceful-timeout (30 s) stays below the 60 s stop_grace_period of compose.prod.yaml:
+# a worker that does not finish on SIGTERM is killed by gunicorn before Docker kills
+# the container. --max-requests recycles workers (with jitter, so they do not all
+# restart together). The access log has no query string (%(U)s, not %(r)s): WhatsApp's
+# webhook verification carries its verify token there.
+CMD ["gunicorn", "config.wsgi", "-b", "0.0.0.0:8000", "--workers=2", "--threads=4", "--no-control-socket", "--timeout=60", "--graceful-timeout=30", "--keep-alive=5", "--max-requests=1000", "--max-requests-jitter=100", "--access-logfile=-", "--access-logformat=%(h)s \"%(m)s %(U)s\" %(s)s %(b)s %(M)sms"]

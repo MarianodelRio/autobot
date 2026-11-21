@@ -2,6 +2,8 @@
 # Disposable local backup/restore exercise; needs Docker and restic, no real services.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# shellcheck source=./lib.sh
+AUTOBOT_LIB_FUNCTIONS_ONLY=1 source deploy/scripts/lib.sh
 : "${RESTIC_BIN:=restic}"
 command -v "$RESTIC_BIN" >/dev/null
 test_root=$(mktemp -d)
@@ -10,10 +12,10 @@ target_dir=$test_root/target
 for dir in "$source_dir" "$target_dir"; do
   mkdir -p "$dir/deploy/compose" "$dir/deploy/postgres" "$dir/deploy/caddy" "$dir/deploy/scripts" \
     "$dir/var"
-  # Like bootstrap-server.sh on the real VPS: pre-create the bind-mount source so
-  # Docker never auto-creates it as root when a container starts before backup.sh
-  # does (`var/state/ops` is mounted read-only into web/worker).
-  mkdir -p "$dir/var/state/ops"
+  # Like install-vm.sh on the real VPS: pre-create the bind-mount sources so Docker
+  # never auto-creates them as root when a container starts before backup.sh does
+  # (`var/state/ops` is mounted read-only into web/worker).
+  ensure_state_dirs "$dir"
 done
 sha=$(python3 -c 'import secrets; print(secrets.token_hex(20))')
 source_project="fp-restore-src-${sha:0:8}"
@@ -23,12 +25,8 @@ cleanup() {
   if [[ -n $ping_pid ]]; then
     kill "$ping_pid" >/dev/null 2>&1 || true
   fi
-  (cd "$source_dir" && docker compose --project-name "$source_project" \
-    -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml --env-file .env \
-    down -v) >/dev/null 2>&1 || true
-  (cd "$target_dir" && docker compose --project-name "$target_project" \
-    -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml --env-file .env \
-    down -v) >/dev/null 2>&1 || true
+  compose_in "$source_dir" "$source_project" down -v >/dev/null 2>&1 || true
+  compose_in "$target_dir" "$target_project" down -v >/dev/null 2>&1 || true
   docker image rm "ghcr.io/example-owner/autobot:$sha" >/dev/null 2>&1 || true
   rm -rf "$test_root"
 }
@@ -96,38 +94,38 @@ HEALTHCHECKS_BACKUP_PING_URL=http://127.0.0.1:$ping_port/local-only
 EOF
 chmod 600 "$test_root/backup.env"
 export AUTOBOT_BACKUP_CONFIG="$test_root/backup.env"
-# A3: backup.sh never runs `restic init` itself; do it once here, like the
+# backup.sh never runs `restic init` itself; do it once here, like the
 # operator does by hand on a real server, and record the repository's id the
 # same way the first real backup would (so backup.sh's id check doesn't trip).
 RESTIC_REPOSITORY="$test_root/repository" RESTIC_PASSWORD_FILE="$test_root/restic-password" \
   "$RESTIC_BIN" init
-# T1: restore.sh refuses to run on a target that was never bootstrapped (the marker
+# restore.sh refuses to run on a target that was never bootstrapped (the marker
 # is written only by install-vm.sh). This machine is the developer's own, so skip
 # that one check explicitly instead of faking the marker.
 export AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK=true
 
-docker build -q -t autobot:restore-test -f apps/backend/Dockerfile apps/backend >/dev/null
+# CI builds this image beforehand with a shared layer cache and sets the variable.
+if [[ ${AUTOBOT_RESTORE_TEST_SKIP_BUILD:-false} != true ]]; then
+  docker build -q -t autobot:restore-test -f apps/backend/Dockerfile apps/backend >/dev/null
+fi
 docker tag autobot:restore-test "ghcr.io/example-owner/autobot:$sha"
-# --env-file is relative: every use below `cd`s into source_dir or target_dir first
-# (A1: compose's own .env lookup is relative to deploy/compose/, not the cwd).
-compose_args=(-f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml --env-file .env)
+source_compose() { compose_in "$source_dir" "$source_project" "$@"; }
 (
-  cd "$source_dir"
-  docker compose --project-name "$source_project" "${compose_args[@]}" up -d db >/dev/null
-  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
+  source_compose up -d db >/dev/null
+  source_compose run --rm web \
     python manage.py migrate --noinput >/dev/null
-  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
+  source_compose run --rm web \
     python manage.py apply_grants >/dev/null
-  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
+  source_compose run --rm web \
     python manage.py tenant_config validate --all >/dev/null
-  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
+  source_compose run --rm web \
     python manage.py seed_demos >/dev/null
-  docker compose --project-name "$source_project" "${compose_args[@]}" exec -T db \
+  source_compose exec -T db \
     psql -U postgres -d autobot -v ON_ERROR_STOP=1 -q -c \
     "INSERT INTO contact (id, tenant_id, channel, external_id, created_at) VALUES ('00000000-0000-7000-8000-000000000001', (SELECT id FROM tenant WHERE slug='demo-autobuses'), 'test', 'local-fixture', now())" >/dev/null
   # A channel secret encrypted with the source's SECRETS_ENCRYPTION_KEY: after the
   # restore, the key that travelled in the backed-up .env must still decrypt it.
-  docker compose --project-name "$source_project" "${compose_args[@]}" run --rm web \
+  source_compose run --rm web \
     python manage.py shell -c "
 from autobot.tenancy.crypto import encrypt
 from autobot.tenancy.models import Tenant, TenantSecret
@@ -139,10 +137,9 @@ TenantSecret.objects.using('owner').update_or_create(
 " >/dev/null
 )
 counts() {
-  local project=$1 dir=$2
-  (cd "$dir" && docker compose --project-name "$project" "${compose_args[@]}" exec -T db \
+  compose_in "$2" "$1" exec -T db \
     psql -U postgres -d autobot -At -c \
-    'SELECT t.slug, count(c.id) FROM tenant t LEFT JOIN contact c ON c.tenant_id=t.id GROUP BY t.slug ORDER BY t.slug')
+    'SELECT t.slug, count(c.id) FROM tenant t LEFT JOIN contact c ON c.tenant_id=t.id GROUP BY t.slug ORDER BY t.slug'
 }
 before=$(counts "$source_project" "$source_dir")
 (cd "$source_dir" && AUTOBOT_PROJECT="$source_project" deploy/scripts/backup.sh)
@@ -154,7 +151,7 @@ if [[ $before != "$after" || $before != *'demo-autobuses|1'* ]]; then
   exit 1
 fi
 # restore.sh reapplies roles and permissions (pg_restore --no-acl drops them).
-grants=$(cd "$target_dir" && docker compose --project-name "$target_project" "${compose_args[@]}" \
+grants=$(compose_in "$target_dir" "$target_project" \
   exec -T db psql -U postgres -d autobot -At -c \
   "SELECT has_table_privilege('fp_app', 'tenant', 'INSERT'), has_table_privilege('fp_readonly', 'auth_user', 'SELECT')")
 if [[ $grants != 'f|f' ]]; then
@@ -169,8 +166,7 @@ fi
 # would fail on a real recovery if the key or the registry did not survive.
 web_port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
 target_compose() {
-  (cd "$target_dir" && AUTOBOT_WEB_HOST_PORT="$web_port" SHA="$sha" \
-    docker compose --project-name "$target_project" "${compose_args[@]}" "$@")
+  AUTOBOT_WEB_HOST_PORT="$web_port" SHA="$sha" compose_in "$target_dir" "$target_project" "$@"
 }
 target_compose up -d --no-deps web >/dev/null
 healthy=false

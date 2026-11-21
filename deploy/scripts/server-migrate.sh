@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Move the whole deployment to another VPS (T4, `make server-migrate FROM= TO=`),
+# Move the whole deployment to another VPS (`make server-migrate FROM= TO=`),
 # run from the operator's machine. FROM and TO are SSH-reachable hosts (already
-# resolvable, e.g. via ~/.ssh/config aliases); TO must be a fresh machine. Shared
-# config (images, PUBLIC_HOST, Google service account, restic destination) comes
-# from var/server.env (deploy/env/server.env.example) -- the same domain and
-# backup repository are kept, only the machine changes.
+# resolvable, e.g. via ~/.ssh/config aliases); TO must be a fresh machine. The only
+# thing it reads from var/server.env (deploy/env/server.env.example) is PUBLIC_HOST,
+# for the health check through the new machine; images, Google service account and
+# restic destination travel with the backed-up .env, so the same domain and backup
+# repository are kept and only the machine changes.
 #
 # TO must have been prepared with `install-vm.sh --restore-target` (ADR-017) run on
 # that VM: users, Docker, timers, SSH hardening and the bootstrap marker, but no

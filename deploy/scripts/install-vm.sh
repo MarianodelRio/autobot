@@ -20,7 +20,7 @@
 #
 # It never invents a credential: every external value (Telegram, Sentry, Healthchecks,
 # restic, the Google service account) comes from the operator or stays pending. It
-# never runs `restic init` (A3).
+# never runs `restic init`.
 #
 # Options: see --help. `--check` changes nothing and reports each step.
 set -euo pipefail

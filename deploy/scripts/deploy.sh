@@ -17,14 +17,14 @@ if [[ ${AUTOBOT_DEPLOY_LOCK_HELD:-} != 1 ]]; then
   exec 9>var/.deploy.lock
   # containers.sh only probes this lock in shared mode for microseconds; wait instead
   # of failing instantly so it can never collide with a real deployment.
-  flock -w 10 9 || { echo 'Another deployment is running' >&2; exit 1; }
+  flock -w "${AUTOBOT_DEPLOY_LOCK_TIMEOUT:-10}" 9 || { echo 'Another deployment is running' >&2; exit 1; }
 fi
 
 if [[ $# -ne 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Usage: deploy/scripts/deploy.sh <full-40-character-sha>' >&2
   exit 2
 fi
-# T4: server-migrate.sh creates var/.frozen on the origin right before the cutover,
+# server-migrate.sh creates var/.frozen on the origin right before the cutover,
 # so that nothing (CI, an operator, a cron) can deploy there while the destination
 # is taking over; also checked by restore.sh.
 if [[ -f var/.frozen ]]; then
@@ -32,7 +32,7 @@ if [[ -f var/.frozen ]]; then
   exit 1
 fi
 # .env on disk is enough for docker compose itself (${VAR:?} substitution); this
-# shell also needs PUBLIC_HOST, for the HTTPS check after a successful deploy (A9).
+# shell also needs PUBLIC_HOST, for the HTTPS check after a successful deploy.
 deploy/scripts/ensure-env.sh
 set -a
 # shellcheck disable=SC1091
@@ -46,7 +46,7 @@ if [[ -n $previous && ! $previous =~ ^[0-9a-f]{40}$ ]]; then
 fi
 export SHA="$target"
 
-# A7: tag a deploy that exactly undoes the last recorded one as "rollback", so
+# tag a deploy that exactly undoes the last recorded one as "rollback", so
 # `make rollback` (rollback_target.py) can refuse to chain a second one back onto
 # the broken image the first rollback just moved away from. The *last successful*
 # ("deployed") entry is what matters, not the last line: an "already", "aborted"
@@ -73,7 +73,7 @@ print(last_previous)
 fi
 
 # A tenant already degraded before this deploy must never block it, including pausing
-# it (X10): only a tenant that becomes degraded *because of this deploy* does. Best
+# it: only a tenant that becomes degraded *because of this deploy* does. Best
 # effort: unreachable (e.g. the first deployment) counts as no pre-existing ones.
 baseline_degraded=0
 if response=$(curl --silent --show-error --fail --max-time 2 http://127.0.0.1:"${AUTOBOT_WEB_HOST_PORT:-8000}"/health/internal 2>/dev/null); then
@@ -106,7 +106,7 @@ wait_panel() {
 
 # Neither worker has an HTTP endpoint: a crash at start shows as a stopped container or
 # a restart under `restart: unless-stopped`, so each must stay up and unrestarted for
-# ~10 s (X14: inbound and outbound/periodic are now two separate workers).
+# ~10 s (inbound and outbound/periodic are now two separate workers).
 wait_worker() {
   local service id sample
   for service in worker-inbound worker-outbound; do
@@ -119,7 +119,7 @@ wait_worker() {
   done
 }
 
-# A9: `up` only recreates a container if its own definition changed, never because
+# `up` only recreates a container if its own definition changed, never because
 # the content of a bind-mounted file did; reload Caddy by hand whenever its config
 # did, instead of leaving it silently serving the previous one.
 reload_caddy_if_changed() {
@@ -192,7 +192,7 @@ abort() {
   exit 1
 }
 
-# A10: db and caddy are pinned by digest (S11), but nothing ever explicitly pulled
+# db and caddy are pinned by digest, but nothing ever explicitly pulled
 # them; `up` would only pull on first use, deep inside its own retry/error handling.
 # Pulling them here catches a registry outage (or a cache that lost that digest)
 # the same way the other images already do, instead of surfacing mid-`up`.
@@ -205,7 +205,7 @@ abort() {
 "${compose[@]}" pull victorialogs || echo 'Could not pull victorialogs; logs will be unavailable' >&2
 "${compose[@]}" up -d victorialogs || echo 'Could not start victorialogs; logs will be unavailable' >&2
 
-# A8: a dump right before a migration that will actually run something, so a bad one
+# a dump right before a migration that will actually run something, so a bad one
 # can be restored by hand; `abort`/`rollback` put the previous *code* back but never
 # touch the schema a migration already changed. This is why migrations must only
 # expand the schema (add, never remove/rename what the previous release still reads):
@@ -266,7 +266,7 @@ rollback() {
 }
 
 # --remove-orphans: drops containers of services no longer defined (the single
-# `worker` from before X14), which would otherwise keep running the old image.
+# `worker` from before the split into inbound and outbound workers), which would otherwise keep running the old image.
 "${compose[@]}" up --no-deps --remove-orphans -d web worker-inbound worker-outbound panel || rollback
 wait_health || rollback
 wait_worker || rollback
@@ -277,7 +277,7 @@ printf '%s\n' "$target" >var/.deployed-sha.tmp
 mv var/.deployed-sha.tmp var/.deployed-sha
 record_deploy deployed
 alert_ops deploy_ok "🟢 Desplegado ${target:0:7}" informational
-# A9: never aborts or rolls back (DNS/certificate issuance can lag a first deploy,
+# never aborts or rolls back (DNS/certificate issuance can lag a first deploy,
 # and reverting the image would not fix either); just makes sure an operator finds
 # out if HTTPS stops answering. --resolve checks Caddy and its own certificate
 # directly over loopback, without depending on DNS (which the external monitor
@@ -286,7 +286,7 @@ alert_ops deploy_ok "🟢 Desplegado ${target:0:7}" informational
 if [[ -n ${PUBLIC_HOST:-} ]]; then
   https_ok=false
   https_deadline=$((SECONDS + ${AUTOBOT_HTTPS_CHECK_TIMEOUT:-60}))
-  # L1 (localprod): Caddy's internal CA issues a certificate for `localhost` that
+  # localprod: Caddy's internal CA issues a certificate for `localhost` that
   # nothing trusts system-wide; production always keeps this unset and verifies
   # the real one.
   insecure=()

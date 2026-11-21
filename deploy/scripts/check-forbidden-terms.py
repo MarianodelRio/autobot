@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """CI gate: fail if any tracked file contains a real-customer name from
-deploy/ci/forbidden-terms.sha256 (docs/plan-lanzamiento.md, block R).
+deploy/ci/forbidden-terms.sha256.
 
 The hash file holds only SHA-256 digests, never the plaintext terms, so a
 leaked term cannot be recovered by reading this repo. To check text against
@@ -87,7 +87,7 @@ def main() -> int:
             ok = False
     if not ok:
         print(
-            "Forbidden real-customer terms found; see docs/plan-lanzamiento.md (block R).",
+            "Forbidden real-customer terms found (see deploy/ci/forbidden-terms.sha256).",
             file=sys.stderr,
         )
     return 0 if ok else 1

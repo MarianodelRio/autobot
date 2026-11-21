@@ -1,4 +1,4 @@
-"""Compute the SHA `make rollback` should redeploy (A7).
+"""Compute the SHA `make rollback` should redeploy.
 
 Reads `deploys.jsonl` lines from stdin and prints the SHA to roll back to, or exits
 1 with a message on stderr. Refuses to chain a second rollback onto the broken SHA

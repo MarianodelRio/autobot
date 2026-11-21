@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# L1/L2: reproduce production in local -- Caddy with TLS, `read_only` with the real
+# Reproduce production in local -- Caddy with TLS, `read_only` with the real
 # UID, gunicorn, `deploy.sh`/`backup.sh`/`restore.sh` themselves -- in a disposable
 # project (`autobot-localprod`) with its own ports, so it runs beside a normal
 # `make up` without clashing with it. A local Docker registry stands in for GHCR.
@@ -8,6 +8,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 root=$(pwd)
+# shellcheck source=./lib.sh
+AUTOBOT_LIB_FUNCTIONS_ONLY=1 source "$root/deploy/scripts/lib.sh"
 srv_dir=$root/var/localprod/srv
 restic_dir=$root/var/localprod/restic
 registry_name=autobot-localprod-registry
@@ -33,8 +35,7 @@ compose_down() {
   local sha
   sha=$(cat "$srv_dir/var/.deployed-sha" 2>/dev/null || true)
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || sha=0000000000000000000000000000000000000000
-  (cd "$srv_dir" && SHA="$sha" docker compose --project-name "$AUTOBOT_PROJECT" \
-    -f deploy/compose/compose.yaml -f deploy/compose/compose.prod.yaml --env-file .env down -v)
+  SHA="$sha" compose_in "$srv_dir" "$AUTOBOT_PROJECT" down -v
 }
 
 ensure_registry() {
@@ -87,7 +88,7 @@ write_env() {
   # Docker never auto-creates them as root when a container starts before this
   # does -- a real bug this drill found: Caddy's own CA setup needs to write to
   # /data (var/state/caddy-data), and a root-owned directory refuses it.
-  mkdir -p "$srv_dir/var/state/caddy-data" "$srv_dir/var/state/caddy-config" "$srv_dir/var/state/ops"
+  ensure_state_dirs "$srv_dir"
   (cd "$srv_dir" && deploy/scripts/ensure-env.sh)
 }
 

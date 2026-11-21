@@ -1,27 +1,35 @@
 # Base: what local and production share. Local adds dev tooling and local passwords
 # (compose.local.yaml); production adds Caddy, GHCR images and restart policies
 # (compose.prod.yaml). Relative paths here resolve against this directory.
-services:
-  web:
-    environment:
-      VICTORIALOGS_URL: http://victorialogs:9428
-    depends_on:
-      db:
-        condition: service_healthy
+# What web and both workers share: where their logs go and the wait for the database.
+x-app-base: &app-base
+  environment:
+    VICTORIALOGS_URL: http://victorialogs:9428
+  depends_on:
+    db:
+      condition: service_healthy
 
+services:
+  web: *app-base
+
+  # Two workers, so a Google Calendar outage cannot starve the sends: Google is
+  # only called from `inbound` (the packs) and `periodic` (the salon calendar sweep),
+  # both in worker-inbound; worker-outbound only sends. Both also listen to `ops`
+  # (ops_check), so one worker staying down does not also silence its own alert.
+  # Graceful stop: on SIGTERM a worker takes no new jobs and lets running ones finish
+  # for up to 50 s, within the 60 s before Docker kills it; a cut job is retried
+  # (every job is idempotent). The local file prefixes the command with its reloader.
   worker-inbound:
-    environment:
-      VICTORIALOGS_URL: http://victorialogs:9428
-    depends_on:
-      db:
-        condition: service_healthy
+    <<: *app-base
+    command: python manage.py procrastinate worker --queues inbound,periodic,ops --concurrency 2 --shutdown-graceful-timeout 50
+    stop_grace_period: 60s
+    init: true
 
   worker-outbound:
-    environment:
-      VICTORIALOGS_URL: http://victorialogs:9428
-    depends_on:
-      db:
-        condition: service_healthy
+    <<: *app-base
+    command: python manage.py procrastinate worker --queues outbound,ops --concurrency 2 --shutdown-graceful-timeout 50
+    stop_grace_period: 60s
+    init: true
 
   db:
     image: postgres:18@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
@@ -47,7 +55,7 @@ services:
     command:
       - "-storageDataPath=/vlogs"
       - "-retentionPeriod=31d"
-      # A11: belt-and-suspenders against the 31d time-based retention on a 40 GB
+      # belt-and-suspenders against the 31d time-based retention on a 40 GB
       # disk (A on 2 vCPU/4 GB): drops the oldest day first if this is hit before
       # time-based retention would have, instead of growing to fill the disk.
       - "-retention.maxDiskSpaceUsageBytes=5GiB"

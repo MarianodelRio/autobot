@@ -131,7 +131,7 @@ if [[ $hosts != *",127.0.0.1,"* || $hosts != *",localhost,"* ]]; then
   exit 1
 fi
 
-# A6: the deploy user's uid can differ between hosts, and a restored .env carries
+# the deploy user's uid can differ between hosts, and a restored .env carries
 # the uid of whichever host it was backed up from; always derive it here instead of
 # trusting a value set by hand (ensure-env.sh runs on restore.sh's target too).
 # Never root: run by mistake as root, DEPLOY_UID=0 would run every container as root.
@@ -143,12 +143,12 @@ ensure_fixed DEPLOY_UID "$(id -u)"
 public_url() {
   echo "https://$PUBLIC_HOST"
 }
-# A5: PUBLIC_URL is only the webhook base built from PUBLIC_HOST; derive it so
+# PUBLIC_URL is only the webhook base built from PUBLIC_HOST; derive it so
 # nobody has to keep the two in sync by hand.
 generate_if_missing PUBLIC_URL public_url
 flush_generated
 
-# A4: a missing google_sa.json would otherwise make Docker create a directory in its
+# a missing google_sa.json would otherwise make Docker create a directory in its
 # place when it binds the volume (`../../var/google_sa.json:/run/secrets/...`),
 # which then fails much later with a confusing error.
 if [[ ! -f var/google_sa.json ]]; then

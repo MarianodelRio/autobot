@@ -21,7 +21,7 @@ x-app-env: &app-env
   DEMO_WHATSAPP_USERS: ${DEMO_WHATSAPP_USERS:-}
   DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD: ${DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD:-300}
   # Missing from here until 2026-11-16: a new demo salon tenant kept the template's
-  # placeholder calendar in production and could not book (plan de lanzamiento, B1).
+  # placeholder calendar in production and could not book.
   DEMO_SALON_CALENDAR_ID: ${DEMO_SALON_CALENDAR_ID:-}
   PUBLIC_URL: ${PUBLIC_URL:-}
   NOTIFY_BOT_TOKEN: ${NOTIFY_BOT_TOKEN:-}
@@ -64,7 +64,7 @@ services:
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?Set the API hostname}
     ports:
-      # L1 (localprod): overridable so it can run beside a real dev stack on the
+      # localprod: overridable so it can run beside a real dev stack on the
       # same machine; production never sets these, so it keeps 80/443.
       - "${AUTOBOT_CADDY_HTTP_PORT:-80}:80"
       - "${AUTOBOT_CADDY_HTTPS_PORT:-443}:443"
@@ -87,26 +87,8 @@ services:
       DB_OWNER_URL: ${DB_OWNER_URL:?Set DB_OWNER_URL}
       DB_READONLY_URL: ${DB_READONLY_URL:?Set DB_READONLY_URL}
       SERVICE_NAME: web
-    # --graceful-timeout (30 s) stays below stop_grace_period (60 s): a worker that
-    # does not finish on SIGTERM is killed by gunicorn before Docker kills the container.
-    # --max-requests recycles workers (with jitter, so they do not all restart together).
-    # The access log has no query string (%(U)s, not %(r)s): WhatsApp's webhook
-    # verification carries its verify token there.
-    command:
-      - gunicorn
-      - config.wsgi
-      - -b
-      - 0.0.0.0:8000
-      - --workers=2
-      - --threads=4
-      - --no-control-socket
-      - --timeout=60
-      - --graceful-timeout=30
-      - --keep-alive=5
-      - --max-requests=1000
-      - --max-requests-jitter=100
-      - --access-logfile=-
-      - --access-logformat=%(h)s "%(m)s %(U)s" %(s)s %(b)s %(M)sms
+    # The gunicorn command (flags, graceful timeout, access log format) is the image's
+    # CMD in apps/backend/Dockerfile: one source of truth.
     stop_grace_period: 60s
     mem_limit: 640m
     pids_limit: 256
@@ -118,10 +100,6 @@ services:
       timeout: 5s
       retries: 6
 
-  # Two workers, so a Google Calendar outage cannot starve the sends (X14): Google is
-  # only called from `inbound` (the packs) and `periodic` (the salon calendar sweep),
-  # both in worker-inbound; worker-outbound only sends. Both also listen to `ops`
-  # (ops_check), so one worker staying down does not also silence its own alert.
   worker-inbound:
     <<: *app
     environment:
@@ -132,9 +110,6 @@ services:
       DB_CONN_MAX_AGE: "0"  # procrastinate's own connection handling; no idle persistent ones
     mem_limit: 384m
     pids_limit: 128
-    command: python manage.py procrastinate worker --queues inbound,periodic,ops --concurrency 2 --shutdown-graceful-timeout 50
-    stop_grace_period: 60s
-    init: true
 
   worker-outbound:
     <<: *app
@@ -146,9 +121,6 @@ services:
       DB_CONN_MAX_AGE: "0"
     mem_limit: 384m
     pids_limit: 128
-    command: python manage.py procrastinate worker --queues outbound,ops --concurrency 2 --shutdown-graceful-timeout 50
-    stop_grace_period: 60s
-    init: true
 
   panel:
     image: ${AUTOBOT_PANEL_IMAGE:?Set AUTOBOT_PANEL_IMAGE}:${SHA:?Set the published image SHA}

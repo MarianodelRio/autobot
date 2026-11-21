@@ -419,7 +419,7 @@ def test_a_lock_held_by_ssh_deploy_is_not_taken_twice(tmp_path: Path) -> None:
     lock = open(tmp_path / "var" / ".deploy.lock", "w")  # noqa: SIM115
     fcntl.flock(lock, fcntl.LOCK_EX)
     try:
-        blocked = invoke(script, binaries)
+        blocked = invoke(script, binaries, AUTOBOT_DEPLOY_LOCK_TIMEOUT="1")
         assert blocked.returncode == 1
         assert "Another deployment is running" in blocked.stderr
         handed_on = subprocess.run(

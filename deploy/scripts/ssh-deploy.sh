@@ -19,7 +19,7 @@ cd "$root"
 # against this one).
 mkdir -p var
 exec 9>var/.deploy.lock
-flock -w 10 9 || { echo 'Another deployment is running' >&2; exit 1; }
+flock -w "${AUTOBOT_DEPLOY_LOCK_TIMEOUT:-10}" 9 || { echo 'Another deployment is running' >&2; exit 1; }
 export AUTOBOT_DEPLOY_LOCK_HELD=1
 git diff --quiet
 git diff --cached --quiet

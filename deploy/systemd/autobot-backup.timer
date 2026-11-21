@@ -1,5 +1,5 @@
 [Unit]
-# T5: hourly once there are real bookings to lose (up to 6h of them, before this);
+# hourly once there are real bookings to lose (up to 6h of them, before this);
 # a `pg_dump` of this scale is cheap enough that there's no reason to wait to flip it.
 Description=Run Autobot backup every hour
 

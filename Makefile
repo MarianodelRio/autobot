@@ -4,10 +4,13 @@ NGROK_DOMAIN ?= $(shell sed -n 's/^NGROK_DOMAIN=//p' .env 2>/dev/null)
 .DEFAULT_GOAL := help
 
 # apps/backend is self-contained (its own pyproject.toml, uv.lock, .venv, tests/);
-# backend tooling runs from inside it, while targets whose relative paths (datos/,
-# tenants/, var/) are anchored at the repo root run from here with --project.
+# backend tooling runs from inside it, while targets whose relative paths (var/datos/,
+# var/tenants/) are anchored at the repo root run from here with --project.
 # DJANGO_SETTINGS_MODULE: local tools run with ENVIRONMENT=local (config.settings alone
 # treats an unset ENVIRONMENT as prod).
+# Variables passed to the scripts and tools the targets run.
+export DIR HOST SLUG SECRETS
+
 BACKEND = cd apps/backend && DJANGO_SETTINGS_MODULE=config.settings_dev
 PYTEST = $(BACKEND) uv run pytest
 
@@ -18,9 +21,9 @@ help: ## Enseña esta ayuda
 
 ##@ Desarrollo
 
-.PHONY: up down status db-roles logs shell telegram-poll chat local dev-bootstrap dev-reset dev-activity tenant-import ngrok
+.PHONY: help up down status db-roles logs shell telegram-poll chat local dev-bootstrap dev-reset dev-activity tenant-import ngrok
 
-up: ## Tras el bootstrap, levanta los contenedores
+up: ## Construye y levanta los contenedores de desarrollo (docker compose up -d --build)
 	docker compose up -d --build
 
 down: ## Para los contenedores
@@ -47,17 +50,15 @@ shell: ## Abre una shell de Django dentro de `web`
 telegram-poll: ## Long polling del bot de Telegram de un tenant (SLUG=<slug>)
 	docker compose exec web python manage.py telegram_poll $(SLUG)
 
-# L4: chat de prueba sobre la plantilla de demo de un pack, sin canal real ni BD
+# chat de prueba sobre la plantilla de demo de un pack, sin canal real ni BD
 # (core.testing.Conversation). No necesita `make up` ni ningún contenedor.
 chat: ## Chat de prueba por terminal con un pack (PACK=salon|bus [CHANNEL=telegram])
 	$(BACKEND) uv run python manage.py chat $(PACK) $(if $(CHANNEL),--channel $(CHANNEL),)
 
-export DIR
-
 # Un solo comando para dejarlo todo funcionando en local, desde cero o desde un estado
 # previo, sin borrar datos (deploy/scripts/install-local.sh; ADR-017).
 local: ## Deja todo el entorno local funcionando (requisitos, .env, BD, migraciones, demos, servicios, salud)
-	bash deploy/scripts/install-local.sh
+	bash deploy/scripts/install-local.sh $(ARGS)
 
 dev-bootstrap: local ## Alias de `make local`
 
@@ -134,8 +135,6 @@ qr: ## Genera el QR a partir de un documento exportado (FILE=<document.yaml>)
 check-prod-config: ## Prueba el allowlist de Caddy contra un upstream local
 	uv run --project apps/backend python apps/backend/src/tools/ops/check_prod_config.py
 
-export HOST SLUG SECRETS
-
 tenant-push: ## Exporta la BD local y la importa por SSH (SLUG=<slug> [SECRETS=<yaml>])
 	bash apps/backend/src/tools/tenant/tenant_push.sh
 
@@ -143,7 +142,7 @@ tenant-push: ## Exporta la BD local y la importa por SSH (SLUG=<slug> [SECRETS=<
 
 # Bus tools operate on ignored exports under var/datos/<slug>/.
 BUS_TOOL = PYTHONPATH=apps/backend/src uv run --project apps/backend python -m tools
-export COMMENT PROD NOMBRE DIR VERSION
+export COMMENT PROD NOMBRE VERSION
 
 .PHONY: bus-bajar bus-validar bus-formatear bus-revision bus-subir
 
@@ -159,23 +158,23 @@ bus-formatear: ## Realinea las columnas de las tablas de horarios (NOMBRE=<nombr
 bus-revision: ## Genera HTML/PDF comparando con .publicado (NOMBRE=<nombre> [ARGS="..."])
 	$(BUS_TOOL).bus.revision $(NOMBRE) $(ARGS)
 
-bus-subir: ## Sube horarios validados a la biblioteca (ADR-013, C21); nunca toca a ningún cliente (NOMBRE=<nombre> DIR=<dir> COMMENT="..." [PROD=1])
+bus-subir: ## Sube horarios validados a la biblioteca (ADR-013); nunca toca a ningún cliente (NOMBRE=<nombre> DIR=<dir> COMMENT="..." [PROD=1])
 	$(BUS_TOOL).bus.library push
 
 ##@ Entorno local completo (localprod)
 
 .PHONY: localprod-up localprod-backup localprod-restore localprod-down
 
-# L1: reproduce producción en local -- Caddy con TLS, DEPLOY_UID real, gunicorn,
+# reproduce producción en local -- Caddy con TLS, DEPLOY_UID real, gunicorn,
 # deploy.sh real, con un registro Docker local en vez de GHCR; proyecto, puertos y
 # volúmenes aparte de los de desarrollo (nunca choca con `make up`).
 localprod-up: ## Instala/actualiza el entorno localprod con el deploy.sh real
 	bash deploy/scripts/localprod.sh up
 
-localprod-backup: ## L2: backup.sh real contra un repositorio restic en disco (var/localprod/)
+localprod-backup: ## backup.sh real contra un repositorio restic en disco (var/localprod/)
 	bash deploy/scripts/localprod.sh backup
 
-localprod-restore: ## L2: restore.sh real; reemplaza el volumen de BD de localprod
+localprod-restore: ## restore.sh real; reemplaza el volumen de BD de localprod
 	bash deploy/scripts/localprod.sh restore
 
 localprod-down: ## Para y borra los contenedores y el registro local de localprod
@@ -190,9 +189,9 @@ localprod-down: ## Para y borra los contenedores y el registro local de localpro
 install-vm: ## Instala/repara la VM de producción; ejecutar dentro de la VM (ARGS="--public-host ... --google-sa ...")
 	sudo bash deploy/scripts/install-vm.sh $(ARGS)
 
-# T4: FROM y TO son alias de ~/.ssh/config o IPs; TO ya debe tener el bootstrap
-# hecho (install-vm.sh --restore-target, dentro de TO). Ver docs/plan-lanzamiento.md.
-server-migrate: ## Traslada el despliegue de FROM a TO (T4) (FROM= TO= [ONLY=paso])
+# FROM y TO son alias de ~/.ssh/config o IPs; TO ya debe tener el bootstrap hecho
+# (install-vm.sh --restore-target, dentro de TO). Ver docs/procedimientos/servidor.md y ADR-012.
+server-migrate: ## Traslada el despliegue de FROM a TO (FROM= TO= [ONLY=paso])
 	bash deploy/scripts/server-migrate.sh $(FROM) $(TO) $(if $(ONLY),--only=$(ONLY),)
 
 ##@ Producción
@@ -211,7 +210,7 @@ deploy: ## Lanza el despliegue si el CI del SHA está en verde ([SHA=])
 
 # Reads the last successful deployment's `previous` SHA from the server and redeploys
 # it, with confirmation. Needs the operation SSH key (`~/.ssh/config` alias $(HOST)).
-# rollback_target.py (A7) refuses a second rollback in a row: it would otherwise
+# rollback_target.py refuses a second rollback in a row: it would otherwise
 # redeploy the broken SHA the first rollback just moved away from.
 rollback: ## Redespliega el `previous` del último despliegue correcto, con confirmación
 	@previous=$$(ssh deploy@$(HOST) 'tail -n 50 /srv/autobot/var/state/ops/deploys.jsonl' | \

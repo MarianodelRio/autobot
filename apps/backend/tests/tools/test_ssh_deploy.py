@@ -69,10 +69,14 @@ def test_a_running_deploy_blocks_the_checkout(tmp_path: Path) -> None:
     lock = open(srv / "var/.deploy.lock", "w")  # noqa: SIM115
     fcntl.flock(lock, fcntl.LOCK_EX)
     try:
-        # Shorten the 10 s wait: the contended case must refuse, not hang the test.
+        # Shorten the lock wait: the contended case must refuse, not hang the test.
         result = subprocess.run(
             ["bash", "-c", f"cd {srv} && timeout 30 bash deploy/scripts/ssh-deploy.sh"],
-            env={**os.environ, "SSH_ORIGINAL_COMMAND": f"deploy/scripts/deploy.sh {second}"},
+            env={
+                **os.environ,
+                "SSH_ORIGINAL_COMMAND": f"deploy/scripts/deploy.sh {second}",
+                "AUTOBOT_DEPLOY_LOCK_TIMEOUT": "1",
+            },
             capture_output=True,
             text=True,
             check=False,

@@ -10,7 +10,7 @@ if [[ $# -ne 1 || $1 != --confirm-empty-target ]]; then
   echo 'Usage: deploy/scripts/restore.sh --confirm-empty-target' >&2
   exit 2
 fi
-# T1: a target that was never bootstrapped is missing the deploy user, the pinned
+# a target that was never bootstrapped is missing the deploy user, the pinned
 # UFW/SSH hardening and the systemd timers; restoring onto it would silently skip
 # all of that instead of failing loudly. The marker is written by install-vm.sh
 # (ADR-017) once the base install and the SSH hardening are done; nothing else
@@ -24,7 +24,7 @@ elif [[ ! -f $bootstrap_marker ]]; then
   echo "Bootstrap not done ($bootstrap_marker missing); run deploy/scripts/install-vm.sh first" >&2
   exit 1
 fi
-# T4: server-migrate.sh freezes the origin before its final backup; a target that
+# server-migrate.sh freezes the origin before its final backup; a target that
 # is itself frozen (e.g. being migrated away from) must not be restored into either.
 if [[ -f var/.frozen ]]; then
   echo 'var/.frozen is set (a migration is in progress); refusing to restore' >&2
@@ -50,7 +50,7 @@ restic_bin=${RESTIC_BIN:-restic}
 
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
-# T4: server-migrate.sh always passes a specific snapshot id (never "latest"), so
+# server-migrate.sh always passes a specific snapshot id (never "latest"), so
 # the destination restores exactly the snapshot taken at the origin's cutover,
 # not whatever newer snapshot a still-running source (or another target) wrote
 # in the meantime.
@@ -68,7 +68,7 @@ if [[ ! $SHA =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Snapshot has no valid deployed SHA' >&2
   exit 1
 fi
-# T1: match the code to the data being restored, same as a normal deploy does.
+# match the code to the data being restored, same as a normal deploy does.
 if [[ -d .git ]] && ! git checkout --quiet --detach "$SHA"; then
   echo 'Could not checkout the snapshot SHA' >&2
   exit 1
@@ -96,7 +96,7 @@ mkdir -p var/backups
 install -m 600 "$stage/.env" .env
 install -m 600 "$stage/var/google_sa.json" var/google_sa.json
 install -m 600 "$stage/deploy/caddy/Caddyfile" deploy/caddy/Caddyfile
-# T2: Caddy's own state and the deploy log, both optional (backup.sh only includes
+# Caddy's own state and the deploy log, both optional (backup.sh only includes
 # them if they existed on the source). Restoring certificates avoids reissuing them
 # from scratch; without the state Caddy just requests new ones on first start.
 for optional_path in var/state/caddy-data var/state/caddy-config; do
@@ -110,7 +110,7 @@ if [[ -s $stage/var/state/ops/deploys.jsonl ]]; then
   mkdir -p var/state/ops
   install -m 600 "$stage/var/state/ops/deploys.jsonl" var/state/ops/deploys.jsonl
 fi
-# A6: the restored .env carries the uid of whichever host it was backed up from;
+# the restored .env carries the uid of whichever host it was backed up from;
 # ensure-env.sh re-derives DEPLOY_UID for this one.
 deploy/scripts/ensure-env.sh
 "${compose[@]}" up -d --wait db
@@ -124,7 +124,7 @@ deploy/scripts/ensure-env.sh
 "${compose[@]}" run --rm web \
   python manage.py apply_grants
 if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
-  # T1: web, panel and victorialogs are safe and needed to verify the restore; the
+  # web, panel and victorialogs are safe and needed to verify the restore; the
   # workers are not started by default, because they would start sending with the
   # real tokens before anyone has verified the data or switched the DNS. Pass
   # AUTOBOT_RESTORE_START_WORKERS=true only when that's not a concern (e.g.
@@ -138,7 +138,7 @@ if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
   fi
 fi
 if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
-  # Only a real restore (not a DB_ONLY rehearsal, used by restore-test.sh and T4's
+  # Only a real restore (not a DB_ONLY rehearsal, used by restore-test.sh and server-migrate.sh's
   # destination rehearsal) marks this target as deployed; otherwise a later, real
   # restore to the same target would hit "Existing deployment" above because of
   # the rehearsal alone.

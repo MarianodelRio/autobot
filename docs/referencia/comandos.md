@@ -3,12 +3,23 @@
 Referencia única de los comandos `make` y `manage.py` del proyecto. Cada tarea que añade
 o cambia un comando amplía esta tabla en el mismo commit.
 
-## `make` (desarrollo local)
+## `make`
+
+Las secciones siguen las del `Makefile` (`make help`). Las de desarrollo y calidad se
+ejecutan en tu máquina; localprod ensaya la producción en local; las dos últimas operan
+sobre el servidor de producción (instalación dentro de la VM, el resto por SSH o GitHub).
+
+### Ayuda
 
 | Comando | Qué hace |
 |---|---|
-| `make help` | Lista los objetivos por sección (Desarrollo, Calidad, Panel, Negocios, Bus, Producción); objetivo por defecto |
-| `make up` | Tras el bootstrap, levanta los contenedores (`docker compose up -d --build`) |
+| `make help` | Lista los objetivos por sección (Ayuda, Desarrollo, Calidad, Panel, Negocios, Bus, Entorno local completo, Instalación y traslado, Producción); objetivo por defecto |
+
+### Desarrollo
+
+| Comando | Qué hace |
+|---|---|
+| `make up` | Construye y levanta los contenedores de desarrollo (`docker compose up -d --build`) |
 | `make local` | Un solo comando para dejar todo el entorno local funcionando, desde cero o desde un estado previo y sin borrar datos (`deploy/scripts/install-local.sh`, ADR-017): comprueba requisitos, crea `.env` desde `.env.example` si falta, levanta db, roles, build, migra, `apply_grants`, `seed_demos`, crea el usuario del panel (si hay terminal) y levanta web/workers comprobando su salud; opciones `--check`, `--skip-panel-user` |
 | `make dev-bootstrap` | Alias de `make local` |
 | `make dev-reset` | Exige escribir `RESET`, elimina el volumen local y repite `make local` |
@@ -20,37 +31,72 @@ o cambia un comando amplía esta tabla en el mismo commit.
 | `make db-roles` | Ejecuta `init-roles.sh` dentro del contenedor `db`: crea `fp_owner`, `fp_app` y `fp_readonly`, o actualiza sus contraseñas, timeouts y `CONNECT`, sin recrear el contenedor; los permisos de tablas los aplica solo `manage.py apply_grants` (ejecútalo después) |
 | `make logs SERVICE=<servicio>` | Sigue los logs de un servicio (`docker compose logs --tail=100 --follow`) |
 | `make shell` | Abre una shell de Django dentro de `web` |
+| `make telegram-poll SLUG=<slug>` | *Long polling* del bot de Telegram de un tenant (o `notify`), para desarrollo local sin webhook |
+| `make chat PACK=salon\|bus [CHANNEL=telegram]` | Chat de prueba por terminal con la plantilla de demo de un pack; sin canal real, BD ni contenedores |
+
+### Calidad
+
+| Comando | Qué hace |
+|---|---|
 | `make test` | `uv run pytest` |
 | `make test-fast` | `pytest -m "not db"`, sin base de datos levantada |
 | `make check` | Puerta de calidad del backend: `ruff check`, `ruff format --check`, `mypy`, `import-linter`, `pytest` |
-| `make telegram-poll SLUG=<slug>` | *Long polling* del bot de Telegram de un tenant (o `notify`), para desarrollo local sin webhook |
-| `make chat PACK=salon\|bus [CHANNEL=telegram]` | Chat de prueba por terminal con la plantilla de demo de un pack (L4); sin canal real, BD ni contenedores |
+| `make fix` | `ruff check --fix` y `ruff format` en el backend, `biome check --write` en `apps/panel/`, y `make api` |
+| `make api` | Regenera `apps/panel/openapi.json` (esquema de la API del panel) y `apps/panel/src/api/schema.d.ts` (tipos TypeScript) |
+
+### Panel
+
+| Comando | Qué hace |
+|---|---|
+| `make panel-dev` | `pnpm -C apps/panel dev`: Vite en modo desarrollo, con proxy `/api` hacia el backend local |
+| `make panel-check` | Puerta de calidad del frontend: `biome check`, `tsc -b --noEmit`, `vitest run` y el build de producción |
+| `make panel-tunnel [HOST=<servidor>]` | Túnel SSH al puerto del contenedor `panel` en producción (8080→18000 local); nunca a `web` directamente |
+
+### Negocios
+
+| Comando | Qué hace |
+|---|---|
+| `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
+| `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
+| `make check-prod-config` | Ejecuta `apps/backend/src/tools/ops/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
+| `make tenant-push SLUG=<slug> [SECRETS=<yaml>]` | Exporta la BD local y la importa por SSH. El YAML privado aporta solo la entrada del slug; el temporal se borra al salir |
+
+### Bus
+
+| Comando | Qué hace |
+|---|---|
 | `make bus-bajar NOMBRE=<nombre> [DIR=<dir>] [VERSION=<n>] [PROD=1]` | ADR-013: descarga esa entrada de la biblioteca a `var/datos/<nombre>/timetable` y `.publicado/timetable`; sin `VERSION`, la vigente |
 | `make bus-validar NOMBRE=<nombre>` | Valida `var/datos/<nombre>/timetable` |
 | `make bus-formatear NOMBRE=<nombre>` | Realinea las columnas de las tablas de horarios sobre `var/datos/<nombre>/timetable`, sin cambiar los datos |
 | `make bus-revision NOMBRE=<nombre> [ARGS="..."]` | Genera HTML/PDF comparando con `.publicado/timetable`; `ARGS="--base <dir>"` elige otra base |
 | `make bus-subir NOMBRE=<nombre> [DIR=<dir>] COMMENT="..." [PROD=1]` | ADR-013: valida, prueba sin escribir y sube `var/datos/<nombre>/timetable` (o `DIR`) a la biblioteca, rechazando si otra persona subió antes (`--base-sha`, resuelto solo); nunca toca a ningún cliente |
-| `make tenant-health SLUG=<slug>` | `tenant_health`: comprueba y persiste la salud del pack y del canal |
-| `make qr FILE=<document.yaml> [ARGS="..."]` | Genera el QR a partir de un documento exportado, en la máquina del desarrollador, sin secretos |
-| `make check-prod-config` | Ejecuta `apps/backend/src/tools/ops/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
-| `make api` | Regenera `apps/panel/openapi.json` (esquema de la API del panel) y `apps/panel/src/api/schema.d.ts` (tipos TypeScript) |
-| `make fix` | `ruff check --fix` y `ruff format` en el backend, `biome check --write` en `apps/panel/`, y `make api` |
-| `make panel-dev` | `pnpm -C apps/panel dev`: Vite en modo desarrollo, con proxy `/api` hacia el backend local |
-| `make panel-check` | Puerta de calidad del frontend: `biome check`, `tsc -b --noEmit`, `vitest run` y el build de producción |
-| `make panel-tunnel [HOST=<servidor>]` | Túnel SSH al puerto del contenedor `panel` en producción (8080→18000 local); nunca a `web` directamente |
-| `make localprod-up` | L1: reproduce producción en local (Caddy con TLS, `deploy.sh` real, registro Docker local), proyecto `autobot-localprod` aparte de `make up` |
-| `make localprod-backup` | L2: `backup.sh` real contra un repositorio restic en `var/localprod/restic` |
-| `make localprod-restore` | L2: `restore.sh` real; reemplaza el volumen de BD de `localprod` |
+
+### Entorno local completo (localprod)
+
+| Comando | Qué hace |
+|---|---|
+| `make localprod-up` | Reproduce producción en local (Caddy con TLS, `deploy.sh` real, registro Docker local), proyecto `autobot-localprod` aparte de `make up` |
+| `make localprod-backup` | `backup.sh` real contra un repositorio restic en `var/localprod/restic` |
+| `make localprod-restore` | `restore.sh` real; reemplaza el volumen de BD de `localprod` |
 | `make localprod-down` | Para y borra los contenedores y el registro local de `localprod` |
+
+### Instalación y traslado
+
+| Comando | Qué hace |
+|---|---|
 | `make install-vm [ARGS="..."]` | Se ejecuta **dentro de la VM**: `sudo deploy/scripts/install-vm.sh` (ADR-017). Instala/repara de forma idempotente: clave de CI, paquetes y Docker, cuentas, `.env`, primer despliegue, salud, endurecimiento de SSH y marcador `bootstrap-complete`; `--only`/`--skip PASO`, `--check`, `--restore-target`, `--public-host`, `--google-sa`, `--env-file`, `--rotate-ci-key`, `--yes` |
-| `make server-migrate FROM= TO= [ONLY=paso]` | Traslada el despliegue de `FROM` a `TO` (T4, ADR-012); `TO` ya debe tener `install-vm.sh --restore-target` ejecutado; exige `FROM` ≠ `TO` y un destino sin despliegue |
+| `make server-migrate FROM= TO= [ONLY=paso]` | Traslada el despliegue de `FROM` a `TO` (ADR-012); `TO` ya debe tener `install-vm.sh --restore-target` ejecutado; exige `FROM` ≠ `TO` y un destino sin despliegue |
+
+### Producción
+
+| Comando | Qué hace |
+|---|---|
 | `make deploy [SHA=]` | Sin `SHA`, usa `origin/main`; comprueba con `gh` que su CI está en verde y lanza el workflow de despliegue |
 | `make rollback` | Lee del servidor el `previous` del último despliegue correcto y, con confirmación, ejecuta `make deploy SHA=<previous>`; se niega a encadenar un segundo rollback sobre el SHA roto |
 | `make backup-now` | Ejecuta `deploy/scripts/backup.sh` en el servidor por SSH |
 | `make restore-test` | `bash deploy/scripts/restore-test.sh`: simulacro de restauración |
 | `make prod-manage CMD="..." [TTY=1]` | Ejecuta el comando con la imagen desplegada mediante SSH; `TTY=1` para comandos interactivos, sin TTY para streams binarios |
 | `make prod-compose ARGS="..." [TTY=1]` | Ejecuta un comando de `docker compose` (p. ej. `exec`, `logs`) contra el servidor por SSH, con `SHA` y `--env-file` ya puestos |
-| `make tenant-push SLUG=<slug> [SECRETS=<yaml>]` | Exporta la BD local y la importa por SSH. El YAML privado aporta solo la entrada del slug; el temporal se borra al salir |
 
 `HOST ?= autobot` usa el alias de `~/.ssh/config`; se puede sobrescribir en cada
 comando. `NGROK_DOMAIN` no tiene valor por defecto: `make ngrok` lo lee de `.env` y
@@ -60,6 +106,7 @@ también se puede pasar en la línea de comandos.
 
 | Comando | Qué hace |
 |---|---|
+| `chat <pack> [--channel whatsapp\|telegram]` | Chat de prueba por terminal con la plantilla de demo de un pack, sin canal real ni BD; lo usa `make chat` |
 | `migrate` | El `migrate` de Django, pero corre por defecto sobre el alias `owner` (`fp_app` no puede hacer DDL) |
 | `apply_grants` | Reaplica los permisos deseados de PostgreSQL (`autobot/db/grants.py`); se ejecuta tras `migrate`, en cada despliegue y tras cada restauración |
 | `tenant_health <slug>` | Comprueba la salud del pack y del canal de un negocio, forzando la comprobación |
