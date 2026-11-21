@@ -23,7 +23,7 @@ Revisándolo aparecieron tres problemas y una petición:
   `env`, `deploy`, `health`, `harden-ssh`, `marker`, `github`; `--only`, `--skip`,
   `--check`). Reutiliza `bootstrap-server.sh` (paquetes, Docker, cuentas, timers, ufw y
   sshd), `ensure-env.sh` y `deploy.sh`. Nunca inventa credenciales ni ejecuta
-  `restic init` (A3); termina con un resumen de pasos manuales.
+  `restic init`; termina con un resumen de pasos manuales.
 - **Endurecer SSH va al final y con confirmación explícita**: comprueba que la clave del
   operador está en `admin` y `deploy` y que sshd escucha solo en el 22, pide abrir una
   segunda sesión y confirmar. Sin terminal y sin `--yes`, se omite y queda pendiente.

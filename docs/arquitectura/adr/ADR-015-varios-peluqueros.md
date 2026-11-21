@@ -22,8 +22,7 @@ contrato (`Periodic`) y conviene resolverlo a la vez.
 `record_calendar(tenant_id, channel, status)` escribe `calendar_errors` y
 `calendar_unavailable` en una sola entrada de caché por canal. Con varios calendarios,
 una llamada "ok" a un calendario resetearía `calendar_unavailable` aunque otro calendario
-del mismo canal esté caído: el estado de uno tapa el de otro (trampa ya identificada en
-el plan de lanzamiento).
+del mismo canal esté caído: el estado de uno tapa el de otro (trampa ya identificada al diseñarlo).
 
 ## Decisión
 
@@ -88,7 +87,7 @@ el plan de lanzamiento).
   disponibilidad de los N para poder unirla y elegir). Con el tope de 8, 34 llamadas en
   el peor caso. Se acepta: ya es el límite acordado y no hay reserva por lotes en la API
   de Calendar que lo evite sin cambiar de proveedor.
-- **Preguntas del plan (D8), resueltas así:**
+- **Preguntas abiertas del diseño, resueltas así:**
   - **«Me da igual»:** unión de huecos de todos los peluqueros con ese servicio, elige
     al de menos citas confirmadas ese día (empate: el primero por clave) y lo dice en la
     confirmación («Te atenderá Ana»).
@@ -106,11 +105,12 @@ el plan de lanzamiento).
 - **Migración de un tenant con un solo peluquero:** `SalonConfig.calendar_id` (una
   cadena) se sustituye por `SalonConfig.stylists: dict[str, Stylist]` (clave de
   peluquero → nombre, calendar_id, horario y servicios propios opcionales), con mínimo
-  una entrada. `salon/migration.py` (ya existe para otra migración de este pack) gana el
-  paso `calendar_id` → `stylists: {main: {calendar_id: ...}}` para cualquier documento
-  guardado con el esquema antiguo, igual que ya migra otros campos. Un negocio con un
+  una entrada. El paso `calendar_id` → `stylists: {main: {calendar_id: ...}}` para un
+  documento guardado con el esquema antiguo se hará con una migración puntual de los
+  documentos de config (la migración del bot anterior, `salon/migration.py`, se retiró el
+  2026-11-20 y ya no existe). Un negocio con un
   solo peluquero usa la clave `main` por convención (no elegible por el operador) y su
-  flujo de conversación no pregunta «¿con quién?» — ver E4.
+  flujo de conversación no pregunta «¿con quién?».
 
 ## Alternativas consideradas
 
@@ -127,7 +127,7 @@ el plan de lanzamiento).
   para evitar la doble reserva real (dos clientes sobre el mismo hueco del mismo
   peluquero) sin bloquear reservas simultáneas de peluqueros distintos.
 - **Resolver «me da igual» sin guardar la asignación en `ctx.effects` (recalcular en cada
-  reintento):** descartada explícitamente por el plan: un reintento podría elegir otro
+  reintento):** descartada explícitamente en el diseño: un reintento podría elegir otro
   peluquero y duplicar la cita.
 
 ## Consecuencias
@@ -137,10 +137,10 @@ el plan de lanzamiento).
   `packs/salon/` cambian de contrato; `bus` (sin calendario) y `toy_pack` no se tocan
   más allá de ajustar la forma del campo si `needs_calendar` deja de existir como tal.
 - El panel necesita una pantalla nueva para dar de alta cada peluquero y comprobar su
-  calendario por separado (E7, ya puede reusar `check_write_access` de D3).
+  calendario por separado (puede reusar `check_write_access`).
 - Los escenarios de conversación de `salon` se amplían para cubrir «con quién» y «me da
-  igual», respetando los límites de cada canal (E5).
-- La demo de `salon` pasa a tener dos peluqueros por defecto (E6), lo que exige un
+  igual», respetando los límites de cada canal.
+- La demo de `salon` pasa a tener dos peluqueros por defecto, lo que exige un
   `dev-reset` (dos calendarios de demo nuevos) y no es retrocompatible con el estado de
   demo actual sin ese reinicio.
 - Un negocio real sigue funcionando igual con un solo peluquero (clave `main`), sin que

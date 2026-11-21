@@ -3,7 +3,7 @@
 **Síntoma:** no hay servidor listo, el despliegue SSH falla, o hay que repetir/reparar la
 instalación. **Diagnóstico:** `sudo deploy/scripts/install-vm.sh --check` dice qué pasos
 están hechos y cuáles pendientes. El agente no lo ejecuta contra un servidor real.
-Decisión y motivos: ADR-017 (sustituye `server-init.sh`).
+Decisiones y motivos: ADR-012 y ADR-017.
 
 ## Instalación: un comando, dentro de la VM
 
@@ -64,9 +64,9 @@ Al final imprime un **resumen de pasos manuales pendientes**. Lo habitual:
   obligatorios (Settings → Environments); sin eso cualquier rama con acceso al workflow
   puede usar la clave de despliegue.
 - **Backups**: `var/backup.env`, `var/restic-password` (cópiala a tu gestor de
-  contraseñas), `restic init` **a mano** (A3, nunca automático), un `backup.sh`, y
+  contraseñas), `restic init` **a mano** (nunca automático), un `backup.sh`, y
   `sudo systemctl start autobot-backup.timer`. Fija también la retención de GHCR para
-  cubrir los 6 meses de `--keep-monthly 6` (A14, `restaurar.md`).
+  cubrir los 6 meses de `--keep-monthly 6` (`restaurar.md`).
 - **Healthchecks.io** (`HEALTHCHECKS_PING_URL`, `HEALTHCHECKS_BACKUP_PING_URL`), Sentry,
   chat de avisos y tokens de Telegram en `.env` (como `deploy`), y relanzar el despliegue.
 - **Google**: la cuenta de servicio real si se instaló el marcador vacío.
@@ -79,12 +79,12 @@ y repetir la entrega. Para preparar una VM solo para restaurar o recibir un tras
 
 **Verificación:** `install-vm.sh --check` sin pendientes, sesiones de `deploy` y `admin`
 funcionando, la clave de CI rechaza comandos distintos del despliegue, los timers activos,
-`ufw` solo abre 22/80/443 (`ufw status numbered`; desde otra máquina, escanea los puertos
-públicos) y repetir `install-vm.sh` no cambia nada. Los puertos 8000 (`web`) y 8080
-(`panel`) escuchan solo en 127.0.0.1. El escaneo externo es un paso del plan de lanzamiento
-(`docs/plan-lanzamiento.md`).
+`ufw` solo abre 22/80/443 (`ufw status numbered`) y repetir `install-vm.sh` no cambia
+nada. Los puertos 8000 (`web`) y 8080 (`panel`) escuchan solo en 127.0.0.1. Comprueba
+además desde otra máquina, con un escaneo de puertos contra la IP pública, que solo
+responden 22, 80 y 443.
 
-El Django Admin se eliminó (ADR-008); el panel (`docs/procedimientos/panel.md`) solo se
+El panel (`docs/procedimientos/panel.md`) solo se
 alcanza por `make panel-tunnel` (túnel al puerto 8080 del contenedor `panel`), nunca
 por el Caddy público. La operación tras el despliegue se hace por SSH con la clave
 de operación como `deploy` y `deploy/scripts/manage.sh python manage.py <comando>`
@@ -146,3 +146,39 @@ antes. `deploy/scripts/deploy.sh` lo actualiza en cada despliegue, pero su
 caída nunca aborta ni hace retroceder uno: el `VictoriaLogsHandler` descarta en
 silencio lo que no puede enviar. Para consultarlo, usa la pantalla Logs del panel
 (ADR-008); no está expuesto fuera de la red interna.
+
+## Traslado a otro servidor
+
+Para cambiar de proveedor o ampliar la máquina cuando el proveedor no permite hacerlo
+sobre la misma. Si lo permite, basta un reinicio y no hace falta nada de esto. Con el
+mismo dominio no hay que tocar los webhooks. Si en cambio se ha perdido la máquina
+original, ver `docs/incidencias/perdida-total.md`.
+
+**Qué viaja en el backup:** base de datos, `.env` (incluye la clave de cifrado),
+`google_sa.json`, `.deployed-sha`, certificados y estado de Caddy (`var/state/caddy-*`)
+y `deploys.jsonl`. **Guárdalos en el gestor de contraseñas, fuera del backup:** la
+contraseña de restic, las claves S3 y las claves SSH.
+
+`make server-migrate FROM=<a> TO=<b>` (`deploy/scripts/server-migrate.sh`; pasos
+`rehearse`, `freeze`, `cutover`, `start-destination`, `finish`, repetibles con
+`ONLY=<paso>`; pide confirmación antes de cada paso destructivo o visible desde fuera):
+
+1. 24 horas antes, baja el TTL del DNS a 60-300 s.
+2. En el destino, `install-vm.sh --restore-target`: deja la VM lista sin `.env` ni despliegue (ver `restaurar.md`).
+3. Ensayo en el destino (`AUTOBOT_RESTORE_DB_ONLY=true`) y comparación de conteos por
+   negocio; `down -v` antes del corte real.
+4. Corte en el origen: crea `var/.frozen` (que `deploy.sh` y `restore.sh` respetan),
+   desactiva el workflow de despliegue, para `worker-inbound`, `worker-outbound`, `web`,
+   `panel`, `caddy` y el timer de backup, y hace un backup final; anota el id del snapshot.
+5. En el destino, restaura **ese snapshot concreto** (`AUTOBOT_RESTORE_SNAPSHOT=<id>`,
+   nunca `latest`), con `DEPLOY_UID`, roles, permisos y certificados.
+6. Arranca todo menos los workers y verifica con `curl --resolve`. Comprueba que el origen
+   no tiene ningún contenedor de aplicación en marcha y arranca los workers del destino
+   con `deploy/scripts/compose.sh up -d worker-inbound worker-outbound`.
+7. Cambia el DNS a mano.
+8. Actualiza `DEPLOY_HOST` y `DEPLOY_KNOWN_HOSTS` en GitHub, reactiva el workflow y el
+   timer del destino, y conserva el origen parado (con `var/.frozen`) 7 días.
+
+Corte estimado (no medido todavía): 15-30 minutos más el TTL del DNS, sin pérdida de datos
+salvo logs técnicos. En una pérdida de la máquina, se pierde como mucho la última hora
+(el backup es horario) y la recuperación tarda 1-2 horas.

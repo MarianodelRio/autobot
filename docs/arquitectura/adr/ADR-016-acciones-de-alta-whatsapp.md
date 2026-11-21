@@ -11,8 +11,8 @@ configurar el webhook de la app, registrar el número en la Cloud API (con el PI
 verificación en dos pasos) y suscribir la app a la cuenta de WhatsApp (WABA,
 `subscribed_apps`). Son tres llamadas sencillas y repetitivas en cada alta, y
 equivocarse en una (otra URL, otro `verify_token`, la app sin suscribir) deja un
-número que no recibe nada sin que nadie lo vea. El plan las recoge como **C18**
-`[Aprobación]`, porque dos de ellas activan de verdad la recepción de mensajes de un
+número que no recibe nada sin que nadie lo vea. Requiere aprobación humana
+explícita, porque dos de ellas activan de verdad la recepción de mensajes de un
 número real; la persona lo ha aprobado explícitamente.
 
 ## Decisión
@@ -64,7 +64,7 @@ número real; la persona lo ha aprobado explícitamente.
   secretos (`WhatsAppSecrets`) y su cifrado, que requieren su propia aprobación,
   para algo que se hace una vez por número.
 - **Un comando de terminal en vez de botones en el panel:** es lo que ya se puede
-  hacer a mano con `curl`; el valor de C18 es precisamente que el alta guiada de la
+  hacer a mano con `curl`; el valor de estos pasos es precisamente que el alta guiada de la
   pestaña llegue hasta el final sin salir del panel.
 - **Añadir y verificar el número con el código desde el panel:** exige pedir el
   código, esperar el SMS y gestionar sus propios límites de Meta; es raro (una vez

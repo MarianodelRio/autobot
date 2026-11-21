@@ -3,7 +3,7 @@
 ## Alta
 
 1. Preparar un directorio con `document.yaml` y los datasets necesarios en
-   `datasets/<nombre>/` (el nombre antiguo `tenant.yaml` ya no se acepta al importar).
+   `datasets/<nombre>/`.
    Usar un UUIDv7 propio, `public_id` aleatorio y `status: onboarding`. Completar la
    config según `docs/referencia/packs/<pack>.md`; en el panel, `Clientes → Nuevo cliente` hace
    lo mismo con un asistente.

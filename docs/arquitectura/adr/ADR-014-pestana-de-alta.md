@@ -4,11 +4,11 @@
 
 ## Contexto
 
-El alta de un cliente (C1–C15) ya funciona, pero está repartida entre la pestaña
+El alta de un cliente ya funcionaba, pero está repartida entre la pestaña
 «Configuración» (canal, dueño, calendario, horarios) y el diálogo «Activar», sin un
-sitio único que diga, paso a paso, qué falta y por qué. El plan (C12) pide una
+sitio único que diga, paso a paso, qué falta y por qué. Se pide una
 pestaña «Alta» con esa vista: cada paso con su estado, por qué importa, qué hacer, un
-botón «Comprobar» cuando aplica, y valores con copiar. C1–C15 ya dejaron construida
+botón «Comprobar» cuando aplica, y valores con copiar. Ya estaba construida
 casi toda la información que esa pestaña necesita mostrar (la lista de
 `autobot.tenancy.activation.checklist`, el estado del webhook de Telegram, los
 secretos, el email de la cuenta de servicio, el estado de los horarios); falta
@@ -34,9 +34,9 @@ reunirla en un solo sitio con una forma común.
   en caché (nunca llama a un proveedor externo en una petición de lectura).
   **`POST /tenants/{slug}/setup/check/{step}`** ejecuta la comprobación real de ese
   paso concreto (salud del canal, registro del webhook, o la prueba de escritura del
-  calendario, D3) fuera de cualquier transacción, audita el resultado y devuelve el
+  calendario) fuera de cualquier transacción, audita el resultado y devuelve el
   paso actualizado.
-- **D3 (prueba de escritura del calendario)** se construye como un paso más de
+- **La prueba de escritura del calendario** se construye como un paso más de
   `salon`: `CalendarClient.check_write_access()` inserta un evento con id aleatorio,
   en el año 2000, con `private.fp_probe=1` (nunca `fp_key` ni `fp_contact`, para que
   ni el barrido ni el resumen lo confundan con una cita), comprueba que se insertó y
@@ -48,7 +48,7 @@ reunirla en un solo sitio con una forma común.
   tiene «Comprobar»: solo lee `tenant_dataset_status`, nunca llama a un proveedor.
   Se busca por `document.pack`, no por `tenant.pack` (que es `None` en un tenant
   degradado por falta justo de ese dataset — el caso donde este paso importa más).
-- **La pestaña reemplaza el componente muerto `missing-checklist.tsx`** (C1): se
+- **La pestaña reemplaza el componente muerto `missing-checklist.tsx`**: se
   borra, porque la pestaña «Alta» cubre lo mismo y más.
 - **Los pasos no bloqueantes** (dueño, por ejemplo) se muestran igual, sin impedir
   «Activar».
@@ -56,7 +56,7 @@ reunirla en un solo sitio con una forma común.
 ## Alternativas consideradas
 
 - **Un hook `Pack.setup`/método `ChannelAdapter.setup_steps` desde el principio**
-  (la idea original del plan): más generalizable, pero cambia el contrato de `core`
+  (la idea original): más generalizable, pero cambia el contrato de `core`
   y de los dos adaptadores para un solo pack con calendario y un solo canal con
   webhook; con dos packs y dos canales, la rama-por-caso de `tenant_setup` es más
   simple de auditar y no obliga a ningún pack futuro a implementar un hook que no
@@ -73,7 +73,7 @@ reunirla en un solo sitio con una forma común.
   la vista guiada, la segunda sigue para editar.
 - Un pack o canal nuevo con pasos propios obliga a tocar `tenant_setup` (una función
   de servicio), no un contrato nuevo; aceptable mientras sean pocos.
-- D3 escribe de verdad en el calendario del cliente durante «Comprobar», aunque sea
+- La prueba de escritura escribe de verdad en el calendario del cliente durante «Comprobar», aunque sea
   un evento de prueba borrado al momento; debe documentarse así para quien dé de
   alta a un cliente real.
 

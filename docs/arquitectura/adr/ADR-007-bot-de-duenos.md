@@ -44,7 +44,7 @@ conocerlo todavía.
 - **Menú declarativo** (`autobot/owner/menu.py`): cada opción es una entrada de `MENU`
   (id `owner:<nombre>`, título, respuesta y disponibilidad). Hoy hay tres: "📊 Cómo va
   el mes", "✉️ Contacto" (solo si `OWNER_SUPPORT_EMAIL` está definido) y "🔗 Mi enlace"
-  (C14: un enlace nuevo por negocio de ese chat, el mismo que genera el panel o
+  (un enlace nuevo por negocio de ese chat, el mismo que genera el panel o
   `owner_invite`, para que el dueño conecte él mismo un dispositivo de repuesto sin
   pedírselo al operador; avisa si sustituirá al chat ya conectado). Hasta 3 opciones
   van como botones; de 4 a 10, como lista.

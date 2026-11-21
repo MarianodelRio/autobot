@@ -47,7 +47,7 @@ archivos existentes y enlaces simbólicos. El operador debe custodiar, entregar 
 retirar ese archivo según el procedimiento del negocio. El contenido no se imprime en
 el terminal ni en logs.
 
-El panel ofrece el mismo export/olvido (C16), sin necesidad de terminal: «Exportar
+El panel ofrece el mismo export/olvido, sin necesidad de terminal: «Exportar
 datos» y «Olvidar contacto» en la conversación del contacto (pestaña «Contactos») y
 «Exportar datos del negocio» en el menú «⋯» de la ficha. El JSON se descarga en el
 navegador del operador en vez de escribirse en el servidor; las mismas reglas de
@@ -85,3 +85,6 @@ locales y los accesos externos. No se retira la entrada del registro antes del b
 recorre ese registro. `synced_at` se actualiza al publicar configuración y nunca demuestra
 la fecha de baja. La gestión de calendarios pertenece al negocio y la retención de
 backups corresponde a restic (`deploy/scripts/backup.sh`); estos comandos no modifican ninguno de ellos.
+
+Fuentes útiles (AEPD, consultadas el 2026-11-09): [contratos de encargo](https://www.aepd.es/es/node/813)
+y [pymes y Facilita](https://www.aepd.es/derechos-y-deberes/cumple-tus-deberes/directrices-de-aplicacion/pymes).

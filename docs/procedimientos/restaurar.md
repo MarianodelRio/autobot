@@ -5,7 +5,7 @@ en restic el último snapshot con tag `autobot`, su fecha y el ping del backup.
 Revisa que dispones de la contraseña y las credenciales S3 fuera del repositorio.
 No restaures sobre una instalación con volumen de BD existente.
 
-**Dependencia con GHCR (A14):** `restore.sh` necesita descargar la imagen del SHA del
+**Dependencia con GHCR:** `restore.sh` necesita descargar la imagen del SHA del
 snapshot (`${AUTOBOT_IMAGE}:${SHA}`); si la política de retención de paquetes de GHCR
 ya la borró, falla al levantar `web`/`worker-*`, aunque el volcado de la BD sea
 correcto. La política de retención de GHCR debe cubrir, como mínimo, el snapshot más
@@ -19,11 +19,11 @@ endurecimiento de SSH (nada más lo crea). Crea `var/backup.env` y `var/restic-p
 como `deploy` con modo 0600 (el repositorio ya queda clonado en `/srv/autobot`). Ejecuta `deploy/scripts/restore.sh --confirm-empty-target`.
 El script hace checkout del SHA del snapshot, restaura `.env`, `google_sa.json`, el
 `Caddyfile` y, si estaban en el snapshot, el estado de Caddy (certificados/cuenta
-ACME) y `deploys.jsonl` (T2; ninguno es obligatorio). Reaplica los roles de
+ACME) y `deploys.jsonl` (ninguno es obligatorio). Reaplica los roles de
 PostgreSQL (`init-roles.sh`) y los permisos (`manage.py apply_grants`) después de
 restaurar el volcado, porque `pg_restore --no-acl` los pierde. Levanta
 `web`, `panel`, `victorialogs` y `caddy`, pero no los workers: con los tokens reales,
-enviarían mensajes antes de verificar los datos o cambiar el DNS (T1). Una vez
+enviarían mensajes antes de verificar los datos o cambiar el DNS. Una vez
 restaurado, `var/.deployed-sha` ya existe, así que un segundo
 `restore.sh --confirm-empty-target` se niega («Existing deployment»); para arrancar
 los workers después de verificar, usa en su lugar

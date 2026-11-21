@@ -2,7 +2,7 @@
 
 Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de demo, por WhatsApp y Telegram, para enseñar los packs. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). Este fichero resume las reglas para trabajar en el repo.
 
-**Estado:** la plataforma está probada en local contra servicios reales (demo por Telegram y WhatsApp, bot de avisos, panel, Google Calendar); nada está desplegado todavía en producción. Los pasos manuales pendientes están en [`docs/plan-lanzamiento.md`](docs/plan-lanzamiento.md).
+**Estado:** la plataforma está probada en local contra servicios reales (demo por Telegram y WhatsApp, bot de avisos, panel, Google Calendar); nada está desplegado todavía en producción. Los pasos para ponerla en marcha están en [`docs/procedimientos/servidor.md`](docs/procedimientos/servidor.md).
 
 ## Idioma
 
@@ -26,7 +26,7 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 - Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de demo solo en `channels/demo/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio.
 - Config y datasets de cada negocio en PostgreSQL, versionados (ADR-009); nada en git ni en la imagen. Importación/exportación de la config con `tenant_config`. Los datasets de un pack (hoy, los horarios de `bus`) se suben por terminal a una biblioteca independiente de cualquier cliente (`dataset_library`, ADR-013) y el cliente se queda con una copia de la entrada elegida, nunca una referencia viva; `var/tenants/` y `var/datos/` están ignorados. Secretos de canal cifrados en la base de datos; secretos de la plataforma en `.env` del servidor. Nunca en git.
 - Cada pack nuevo incluye su plantilla en `apps/backend/src/packs/<pack>/template/` (de ahí sale su negocio de demo) y su escenario de conversación en `apps/backend/tests/packs/<pack>/`.
-- Panel interno (`apps/panel/`) en TypeScript, Biome y Vitest; sustituyó al Django Admin, que ya no existe. Su API (`/api/panel/`) solo es accesible por túnel SSH (ADR-008); el frontend nunca es la única barrera de validación ni de permisos.
+- Panel interno (`apps/panel/`) en TypeScript, Biome y Vitest. Su API (`/api/panel/`) solo es accesible por túnel SSH (ADR-008); el frontend nunca es la única barrera de validación ni de permisos.
 
 ## Reglas obligatorias
 

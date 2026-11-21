@@ -28,8 +28,7 @@ mayor, solo cambia el parche), una mayor **no es un simple cambio de imagen**: e
 formato de los ficheros de datos de PostgreSQL no es compatible entre versiones
 mayores, así que `pgdata` del volumen antiguo no arranca con el binario nuevo.
 
-**Pasos:** esto no lo hace `deploy.sh`; es un simulacro de restauración (`T1`–`T3`,
-`docs/procedimientos/restaurar.md`) sobre un proyecto Compose vacío con el `db` ya
+**Pasos:** esto no lo hace `deploy.sh`; es un simulacro de restauración (`docs/procedimientos/restaurar.md`) sobre un proyecto Compose vacío con el `db` ya
 actualizado:
 
 1. Backup reciente comprobado (`make backup-now` o esperar al timer) y simulacro de

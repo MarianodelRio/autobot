@@ -4,10 +4,10 @@
 recuperarse en otra máquina sin acceso a la original. **Diagnóstico:** confirma que
 no hay forma de recuperar la máquina original (reinicio, consola del proveedor) antes
 de tratar esto como pérdida total; si solo necesitas ampliar recursos en el mismo
-proveedor, no sigas este procedimiento (`docs/plan-lanzamiento.md`, sección T).
+proveedor, no sigas este procedimiento; para un traslado planificado, ver `docs/procedimientos/servidor.md` (sección «Traslado a otro servidor») y ADR-012.
 
 **Por qué no basta con restaurar y arrancar:** el snapshot más reciente tiene, como
-mucho, una hora de antigüedad (T5), pero no cero. Todo lo ocurrido entre ese snapshot
+mucho, una hora de antigüedad (el backup es horario), pero no cero. Todo lo ocurrido entre ese snapshot
 y la pérdida de la máquina puede estar duplicado o ser irrecuperable:
 
 - Un mensaje de WhatsApp o Telegram recibido después del snapshot y ya respondido no
@@ -43,7 +43,7 @@ y la pérdida de la máquina puede estar duplicado o ser irrecuperable:
    calendario (`calendar_sweep`) vuelve a correr con lo que la revisión del paso 2
    dejó corregido.
 4. Si cambia la IP o el dominio, sigue también los pasos de DNS/certificados del
-   traslado planificado (`T4`, pendiente de ejecución manual) en lo que aplique.
+   traslado planificado (`docs/procedimientos/servidor.md`) en lo que aplique.
 
 **Verificación:** igual que un simulacro de restauración
 (`docs/procedimientos/restaurar.md`): `/health` 200, conteos por tenant y un flujo

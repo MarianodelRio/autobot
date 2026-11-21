@@ -7,7 +7,7 @@ resumen mensual. Una sola plataforma para 5–15 negocios, en una VPS con Docker
 
 **Estado:** la plataforma está probada en local contra servicios reales (demo por
 Telegram y WhatsApp, bot de avisos, panel, Google Calendar); nada está desplegado
-todavía en producción. Pasos pendientes en [docs/plan-lanzamiento.md](docs/plan-lanzamiento.md).
+todavía en producción. Pasos para ponerla en marcha en [docs/procedimientos/servidor.md](docs/procedimientos/servidor.md).
 
 ## Arranque rápido
 

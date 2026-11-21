@@ -6,10 +6,9 @@
 
 ADR-005 fija una sola VPS con Docker Compose, pero no quién administra el acceso de
 `root`/`sudo` ni cómo se repite la instalación en una máquina nueva (traslado de
-proveedor, ampliación de recursos, o la primera instalación de verdad). El plan de
-lanzamiento (bloques A y T) exige que `make server-init` deje una VM limpia
+proveedor, ampliación de recursos, o la primera instalación de verdad). Hace falta que `make server-init` deje una VM limpia
 funcionando de forma idempotente y que `make server-migrate` traslade todo a otra VM
-sin que las dos envíen mensajes a la vez. `bootstrap-server.sh` (A1–A11) ya resuelve
+sin que las dos envíen mensajes a la vez. `bootstrap-server.sh` ya resuelve
 los errores bloqueantes del primer despliegue, pero no decide cómo se repite el
 bootstrap sin quedarse fuera por SSH, ni qué cuenta puede hacer tareas de `root`
 después de que termine.
@@ -31,15 +30,15 @@ después de que termine.
   sesión es segura. `--harden-ssh` (cierra `root` y contraseña, activa `ufw`) es una
   invocación aparte, deliberadamente manual: solo tiene sentido una vez verificado,
   desde una sesión nueva, que `deploy@` y `admin@` aceptan la clave del operador.
-- **`server-init.sh` (A15, `make server-init`)**, ejecutado por la persona desde su
+- **`server-init.sh` (`make server-init`)**, ejecutado por la persona desde su
   máquina, con `var/server.env` (no en git): valida en local (DNS, ficheros,
   `gh auth status`), sube el bootstrap y ejecuta `--base` por SSH, pide confirmar
   antes de `--harden-ssh`, sube los secretos fusionando el `.env` existente (nunca
-  lo sustituye), inicializa restic a mano y comprueba su id (A3) antes de activar el
+  lo sustituye), inicializa restic a mano y comprueba su id antes de activar el
   timer, crea el entorno `production` y sus secretos con `gh`, lanza el primer
   despliegue con comprobación estricta de HTTPS, y por último crea el usuario del
   panel y registra los webhooks. Cada paso comprueba primero si ya está hecho.
-- **`server-migrate.sh` (T4, `make server-migrate FROM= TO=`)**: ensaya la
+- **`server-migrate.sh` (`make server-migrate FROM= TO=`)**: ensaya la
   restauración en el destino con `AUTOBOT_RESTORE_DB_ONLY=true` sin marcarlo como
   desplegado; en el corte, congela el origen (`var/.frozen`, que `deploy.sh` y
   `restore.sh` respetan) antes del backup final, y el destino restaura **ese
@@ -47,14 +46,14 @@ después de que termine.
   que un origen o destino tercero pudiera escribir mientras tanto. Los workers del
   destino solo arrancan tras comprobar por SSH que el origen no tiene ningún
   contenedor de aplicación en marcha.
-- **`restic init` siempre manual (A3).** Ningún script lo ejecuta automáticamente:
+- **`restic init` siempre manual.** Ningún script lo ejecuta automáticamente:
   un `RESTIC_REPOSITORY` mal escrito crearía un repositorio nuevo, vacío, que
   ocultaría la pérdida del bueno. `backup.sh` compara el id del repositorio contra
   `var/.restic-repo-id` (que escribe la primera vez) y se niega si no coincide.
 
 ## Alternativas consideradas
 
-- **`sudoers` limitado para `deploy`** (la propuesta original de A12): más
+- **`sudoers` limitado para `deploy`** (la propuesta original): más
   complicado de lo que parece (la copia del script tiene que ser de `root`, porque
   si no `deploy` la modifica; `sudo` limpia el entorno, así que `REPO_URL` no
   llegaría) para una barrera que no es real, porque `deploy` ya puede hacerse
@@ -73,6 +72,10 @@ después de que termine.
   `server-init.sh`, con confirmación), no algo que un backup descubre por sí solo.
 - Si el repositorio pasa a privado, hay que añadir de nuevo una deploy key de solo
   lectura al clonado de `bootstrap-server.sh --base`.
+
+- Tiempos de corte estimados, aún sin medir en dos VMs reales: traslado planificado,
+  15-30 minutos más el TTL del DNS y sin pérdida de datos (salvo logs técnicos); pérdida
+  de la máquina, 1-2 horas y hasta una hora de datos (el backup es horario).
 
 ## Cuándo revisarla
 

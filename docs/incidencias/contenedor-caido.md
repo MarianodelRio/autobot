@@ -13,7 +13,7 @@ mató. `containers_stale` no es un contenedor caído: significa que
 timer (`systemctl status autobot-containers.timer`,
 `journalctl -u autobot-containers.service --since -10min`) antes de mirar los
 contenedores. `container_unexpected:<servicio>` señala un contenedor huérfano de un
-despliegue anterior (p. ej. el `worker` único de antes de X14), no uno de los siete
+despliegue anterior (p. ej. el `worker` único anterior a la separación en dos workers), no uno de los siete
 servicios actuales.
 
 **Pasos:**

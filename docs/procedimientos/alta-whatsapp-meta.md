@@ -120,3 +120,23 @@ papeleo), no el trabajo técnico de mover cosas de un sitio a otro.
 | Requiere alta/verificación | No | Sí, de la persona operadora |
 | Visitas presenciales necesarias | Solo la primera vez (alta inicial) | Solo la primera vez (alta inicial) |
 | Pérdida de datos al pasar de uno a otro | — | Ninguna |
+
+## 7. Coste y requisitos de pago
+
+- Meta exige **un método de pago** en la cuenta de WhatsApp del negocio; hay que
+  avisarlo al negocio en el alta.
+- Desde el 1/10/2026 Meta cobra las respuestas dentro de la ventana de atención y los
+  mensajes de tipo utility; cada número tiene 1.000 conversaciones de servicio gratis al
+  mes. Como referencia, 200 citas con confirmación y recordatorio salen por unos 6,64 EUR
+  al mes sin IVA. La tarifa exacta para España y los requisitos de Meta para autónomos
+  hay que confirmarlos en la documentación de Meta antes de fijar el precio al cliente.
+- Meta pide datos de entidad legal y documentos oficiales para la verificación de negocio
+  del modelo centralizado (punto 4).
+
+Fuentes (consultadas el 2026-11-09):
+[precios](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing),
+[límites de mensajería](https://developers.facebook.com/documentation/business-messaging/whatsapp/messaging-limits),
+[política](https://whatsappbusiness.com/es-la/policy/),
+[Embedded Signup](https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/overview),
+[Tech Provider](https://developers.facebook.com/documentation/business-messaging/whatsapp/solution-providers/get-started-for-tech-providers),
+[QR](https://developers.facebook.com/documentation/business-messaging/whatsapp/qr-codes).

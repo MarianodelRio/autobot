@@ -24,7 +24,19 @@
 - **Buscar un comando** → [referencia/comandos.md](referencia/comandos.md)
 - **Buscar una variable de entorno** → [referencia/variables-entorno.md](referencia/variables-entorno.md)
 - **Configurar un pack concreto** → [referencia/packs/](referencia/packs/)
-- **Qué queda pendiente antes de producción** → [plan-lanzamiento.md](plan-lanzamiento.md)
+
+## Tareas habituales
+
+| Quiero… | Cómo |
+|---|---|
+| Añadir un cliente | Panel → Nuevo cliente → pestaña Alta ([alta-baja-negocio.md](procedimientos/alta-baja-negocio.md)) |
+| Cambiar horarios, servicios, textos | Ficha del cliente en el panel, sin desplegar |
+| Subir horarios de `bus` | `make bus-subir NOMBRE=x DIR=var/datos/x COMMENT=… PROD=1` ([horarios-bus.md](procedimientos/horarios-bus.md)) |
+| Cambiar los horarios de un cliente | Ficha del cliente → Horarios → Aplicar |
+| Desplegar un cambio | Commit en `main`, CI en verde, `make deploy` ([servidor.md](procedimientos/servidor.md)) |
+| Volver atrás | `make rollback` ([volver-atras.md](incidencias/volver-atras.md)) |
+| Probar el despliegue en local | `make localprod-up` ([entorno-local.md](desarrollo/entorno-local.md)) |
+| Ampliar la máquina o cambiar de proveedor | Ampliarla en el proveedor, o `make server-migrate` ([servidor.md](procedimientos/servidor.md)) |
 
 Reglas para trabajar en el repo (idioma, forma de trabajo, arquitectura, reglas
 obligatorias): [`CLAUDE.md`](../CLAUDE.md).

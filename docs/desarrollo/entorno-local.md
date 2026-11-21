@@ -70,7 +70,7 @@ gestionan las versiones en PostgreSQL; los datasets de un pack se suben a una
 biblioteca independiente con `dataset_library` (ADR-013). Ver
 [comandos](../referencia/comandos.md). La publicación no requiere commits ni reinicios.
 
-## Reproducir producción en local (L1/L2)
+## Reproducir producción en local
 
 `make up`/`make local` son para desarrollo: código montado, gunicorn con recarga, sin Caddy
 ni TLS. Para probar de verdad `deploy.sh`, `backup.sh` y `restore.sh` tal cual corren
@@ -89,8 +89,14 @@ Proyecto (`autobot-localprod`), puertos (8443/8081 Caddy, 18000 web, 18080 panel
 volúmenes son todos distintos de `make up`: los dos pueden estar levantados a la vez.
 `var/localprod/` (la copia de este checkout que despliega, incluidos cambios sin
 commitear) está en `var/`, que git ignora. `https://localhost:8443` usa el certificado
-interno de Caddy (`curl -k`). Detalles y lo que este ensayo ya encontró en
-`docs/plan-lanzamiento.md` (bloque L).
+interno de Caddy (`curl -k`). Dos trampas que este ensayo ya encontró y `localprod.sh` evita:
+
+- Docker crea `var/state/{caddy-data,caddy-config,ops}` como `root` si no existen en el primer
+  `up`; el script los crea antes, igual que `bootstrap-server.sh`.
+- Un `docker compose down` contra `compose.prod.yaml` sin `SHA` no aborta: resuelve el
+  proyecto por `COMPOSE_PROJECT_NAME` del `.env` e ignora `--project-name`, así que un
+  `down -v` podía borrar el volumen de BD del entorno de desarrollo normal. El script fija
+  siempre un `SHA` real antes de cualquier `down`; haz lo mismo si lanzas `down` a mano.
 
 Las acciones de producción se ejecutan con `make prod-manage HOST=<servidor> CMD="..."`;
 `TTY=1` permite confirmaciones interactivas. `make tenant-push HOST=<servidor> SLUG=<slug>`

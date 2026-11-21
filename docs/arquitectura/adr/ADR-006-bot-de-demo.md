@@ -49,6 +49,10 @@ negocio real.
   credenciales y coste (cada número de WhatsApp de Meta tiene un coste de
   mantenimiento) sin ganar nada; el selector ya resuelve "qué negocio" sin necesitar
   una puerta por negocio.
+- **Un BSP (proveedor de WhatsApp) o un número compartido para clientes reales**:
+  descartados. Un BSP (p. ej. 360dialog, desde 49 EUR por número y mes) añade coste fijo
+  por negocio, y un número compartido mezcla la identidad y la reputación de varios
+  negocios. La demo sí comparte número porque no atiende a clientes reales.
 - **Mantener el canal de pruebas por cliente**: seguiría mezclando dos problemas
   (probar un negocio real vs. enseñar la plataforma) y cada pack seguiría cargando con
   un calendario y una lista de testers que solo existen por eso.
@@ -64,7 +68,7 @@ negocio real.
 - Las dos puertas se pueden probar en local: la de Telegram con un bot de desarrollo
   propio, y la de WhatsApp con un túnel ngrok y una app de WhatsApp de desarrollo.
 
-## Modificación (2026-11-16) — código de invitación (D5)
+## Modificación (2026-11-16) — código de invitación
 
 Editar `DEMO_TELEGRAM_USERS`/`DEMO_WHATSAPP_USERS` a mano y reiniciar los tres
 contenedores no servía para dar acceso a alguien delante de quien se le está
@@ -80,6 +84,12 @@ enseñando la plataforma, y exigía conocer su id de Telegram de antemano.
   usos y caducidad limitados, nunca abre la demo a cualquiera sin invitación.
 - La lista cerrada no desaparece: sigue siendo la vía para un acceso permanente (p. ej.
   el tuyo propio), y el código, la vía para una invitación puntual.
+- **Retención de los datos de demo (2026-11-16):** el código distingue el plazo corto de un
+  negocio de demo (30 días para contactos, conversaciones y avisos al dueño; las
+  invitaciones y concesiones caducadas o revocadas se purgan también a los 30 días) del
+  anual de un cliente real. Se activa con `RETENTION_CLEANUP_ENABLED`, que sigue en `false`
+  hasta que la persona lo apruebe a mano en el `.env` del servidor (nunca lo activa
+  `install-vm.sh`, para que un traslado no lo copie sin querer).
 
 ## Cuándo revisarla
 

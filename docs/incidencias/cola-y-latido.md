@@ -3,7 +3,7 @@
 **Síntoma:** healthchecks.io avisa del worker o la cola tarda más de 30 s.
 **Diagnóstico:** mira `docker compose ps worker-inbound worker-outbound`
 y `docker compose logs --tail=100 worker-inbound worker-outbound` desde `/srv/autobot`
-(`inbound` procesa webhooks; `outbound` envía y hace las barridas periódicas, X14); en
+(`worker-inbound` procesa webhooks y las barridas periódicas; `worker-outbound` envía); en
 el panel, Incidencias → Trabajos fallidos, o Sistema → Colas, comprueba trabajos
 pendientes, fallidos y el último latido. Distingue un worker parado de errores de BD o
 de un proveedor externo.

@@ -7,7 +7,7 @@ Los tests validan estas plantillas directamente; `manage.py seed_demos` las siem
 en PostgreSQL solo la primera vez y conserva los cambios posteriores de cada demo. La primera respuesta de
 cualquier puerta pide elegir negocio; desde ahí la conversación es la del pack real de
 ese negocio. Solo una lista cerrada de personas, o quien canjee un código de invitación
-vigente (D5), puede usar cada puerta (ver ADR-006).
+vigente, puede usar cada puerta (ver ADR-006).
 
 ## Encender y apagar
 
@@ -84,7 +84,7 @@ vez del dominio propio:
 
 ## Añadir o quitar personas
 
-**Por invitación (D5, preferido):** desde el panel, pestaña «Demo», «Crear invitación»
+**Por invitación (preferido):** desde el panel, pestaña «Demo», «Crear invitación»
 (nota, usos y caducidad). La persona entra con `/start <código>` en Telegram (el panel
 da el enlace `t.me/<bot>?start=<código>` y su QR si `DEMO_TELEGRAM_BOT_USERNAME` está
 configurada; sin ella, solo el código) o enviando el código tal cual por WhatsApp. No
