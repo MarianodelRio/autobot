@@ -58,3 +58,19 @@ export function formatBytes(bytes: number): string {
   const value = bytes / 1024 ** exponent;
   return `${value.toFixed(value < 10 ? 1 : 0)} ${BYTE_UNITS[exponent]}`;
 }
+
+/** An ISO instant as the value of an `<input type="datetime-local">` (browser time zone). */
+export function toLocalInput(iso: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** The inverse: a `datetime-local` value back to an ISO instant ("" if empty or invalid). */
+export function fromLocalInput(value: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}

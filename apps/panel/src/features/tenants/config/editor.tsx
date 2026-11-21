@@ -1,16 +1,8 @@
 // The installed shadcn theme renders with the panel's existing components and styles.
 import Form from "@rjsf/shadcn";
 import DefaultObjectTemplate from "@rjsf/shadcn/lib/ObjectFieldTemplate/ObjectFieldTemplate.js";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  type ComponentProps,
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import { toast } from "sonner";
-import YAML from "yaml";
+import { useQuery } from "@tanstack/react-query";
+import { type ComponentProps, type ReactNode, useEffect, useMemo } from "react";
 import { type ApiError, api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { ErrorState } from "@/components/error-state";
@@ -28,6 +20,8 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { validator } from "@/lib/form-validator";
+import { packSchemaQueryOptions, tenantChanged } from "@/lib/queries";
+import { useApiMutation } from "@/lib/use-api-mutation";
 import { CalendarSection } from "./calendar-section";
 import { ChannelSection } from "./channel-section";
 import { DatasetSection } from "./dataset-section";
@@ -36,6 +30,7 @@ import { OpeningHoursField } from "./opening-hours-field";
 import { OwnerSection } from "./owner-section";
 import { ServicesField } from "./services-field";
 import { TimezoneWidget } from "./timezone-widget";
+import { useConfigDraft } from "./use-config-draft";
 
 type Detail = components["schemas"]["TenantDetail"];
 type ErrorSchema = NonNullable<ComponentProps<typeof Form>["extraErrors"]>;
@@ -234,53 +229,39 @@ export function ConfigEditor({
   onDirtyChange: (dirty: boolean) => void;
   initialSection?: string;
 }) {
-  const client = useQueryClient();
-  const [baseline, setBaseline] = useState(detail.document);
-  const [version, setVersion] = useState(detail.version);
-  const [draft, setDraft] = useState(detail.document);
-  const [yaml, setYaml] = useState(() => YAML.stringify(detail.document));
-  const [yamlError, setYamlError] = useState("");
-  const [mode, setMode] = useState<"form" | "yaml">("form");
-  const [comment, setComment] = useState("");
-  const [showDiff, setShowDiff] = useState(false);
-  const [errors, setErrors] = useState<string[]>([]);
-  const [conflict, setConflict] = useState(false);
-  const [latest, setLatest] = useState<Detail | null>(null);
-  const schema = useQuery({
-    queryKey: ["pack-schema", detail.pack],
-    queryFn: () =>
-      unwrap(
-        api.GET("/packs/{pack}/schema", {
-          params: { path: { pack: detail.pack } },
-        }),
-      ),
-  });
-  const dirty =
-    yamlError !== "" || JSON.stringify(draft) !== JSON.stringify(baseline);
-  useEffect(() => {
-    onDirtyChange(dirty);
-    return () => onDirtyChange(false);
-  }, [dirty, onDirtyChange]);
-  // `detail` is refetched elsewhere too (e.g. Activar/Pausar, C9): without
-  // unsaved changes, follow its version so the next save never carries a stale
-  // `base_version` and 409s. Only ever move *forward*: `detail` is a prop that can
-  // itself be a render behind a version this component already moved to on its own
-  // (a save, or "Recargar" after a conflict).
-  useEffect(() => {
-    if (dirty || detail.version === null || detail.version <= (version ?? -1))
-      return;
-    setBaseline(detail.document);
-    setDraft(detail.document);
-    setVersion(detail.version);
-    setYaml(YAML.stringify(detail.document));
-  }, [detail, dirty, version]);
+  const {
+    baseline,
+    version,
+    draft,
+    yaml,
+    yamlError,
+    mode,
+    setMode,
+    comment,
+    setComment,
+    showDiff,
+    setShowDiff,
+    errors,
+    setErrors,
+    conflict,
+    setConflict,
+    latest,
+    setLatest,
+    dirty,
+    changeForm,
+    changeYaml,
+    discard,
+    saved,
+    replaceWith,
+  } = useConfigDraft(detail, onDirtyChange);
+  const schema = useQuery(packSchemaQueryOptions(detail.pack));
   useEffect(() => {
     if (!initialSection) return;
     document
       .getElementById(`section-${initialSection}`)
       ?.scrollIntoView({ block: "start" });
   }, [initialSection]);
-  // C6: "demo" only makes sense for the platform's own demo tenants; hiding it
+  // "demo" only makes sense for the platform's own demo tenants; hiding it
   // keeps a real client's form from offering to turn it into one.
   const isDemo = Boolean(detail.document.demo);
   const ui = useMemo(
@@ -324,10 +305,10 @@ export function ConfigEditor({
     }),
     [schema.data, detail],
   );
-  const save = useMutation({
+  const save = useApiMutation({
     // The document sent is passed in, so on success the baseline is exactly what the
     // server stored, even if the person kept typing while the request was in flight.
-    mutationFn: (sent: Record<string, unknown>) =>
+    fn: (sent: Record<string, unknown>) =>
       unwrap(
         api.PUT("/tenants/{slug}/document", {
           params: { path: { slug: detail.slug } },
@@ -338,20 +319,12 @@ export function ConfigEditor({
           },
         }),
       ),
-    onSuccess: (result, sent) => {
-      setBaseline(sent);
-      setVersion(result.version);
-      setComment("");
-      setErrors([]);
-      setConflict(false);
-      setLatest(null);
-      toast.success(
-        `Guardado: versión ${result.version}; se aplica en unos segundos`,
-      );
-      void client.invalidateQueries({ queryKey: ["tenant", detail.slug] });
-      void client.invalidateQueries({ queryKey: ["overview"] });
-    },
-    onError: (error: ApiError) => {
+    success: (result) =>
+      `Guardado: versión ${result.version}; se aplica en unos segundos`,
+    invalidate: tenantChanged(detail.slug),
+    onSuccess: (result, sent) => saved(sent, result.version),
+    onError: (caught) => {
+      const error = caught as ApiError;
       if (error.status === 422) setErrors(error.details);
       else if (error.status === 409) setConflict(true);
       else setErrors([error.message || "No se pudo guardar."]);
@@ -362,38 +335,11 @@ export function ConfigEditor({
       const current = await unwrap(
         api.GET("/tenants/{slug}", { params: { path: { slug: detail.slug } } }),
       );
-      if (replace) {
-        setBaseline(current.document);
-        setDraft(current.document);
-        setVersion(current.version);
-        setYaml(YAML.stringify(current.document));
-        setYamlError("");
-        setConflict(false);
-        setLatest(null);
-        setErrors([]);
-      } else setLatest(current);
+      if (replace) replaceWith(current);
+      else setLatest(current);
     } catch {
       setErrors(["No se pudo cargar la versión más reciente."]);
     }
-  }
-  function changeYaml(value: string) {
-    setYaml(value);
-    try {
-      const parsed: unknown = YAML.parse(value);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-        throw new Error();
-      setDraft(parsed as Record<string, unknown>);
-      setYamlError("");
-    } catch {
-      setYamlError("El YAML debe contener un documento válido.");
-    }
-  }
-  function discard() {
-    setDraft(baseline);
-    setYaml(YAML.stringify(baseline));
-    setYamlError("");
-    setComment("");
-    setErrors([]);
   }
   if (schema.isPending) return <p>Cargando formulario…</p>;
   if (schema.isError || !resolvedSchema)
@@ -455,11 +401,7 @@ export function ConfigEditor({
           fields={{ OpeningHours: OpeningHoursField, Services: ServicesField }}
           formContext={formContext}
           onChange={({ formData }) => {
-            if (formData && typeof formData === "object") {
-              setDraft(formData);
-              setYaml(YAML.stringify(formData));
-              setErrors([]);
-            }
+            if (formData && typeof formData === "object") changeForm(formData);
           }}
         >
           <div />

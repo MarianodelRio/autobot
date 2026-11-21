@@ -14,7 +14,7 @@ function formatValue(value: unknown): string {
 
 type Row = { path: string; before: unknown; after: unknown };
 
-/** Every changed leaf, by field path (C17: a legible final review, not a raw
+/** Every changed leaf, by field path (a legible final review, not a raw
  * diff-library dump). Arrays and nested documents that differ are compared and
  * shown whole, never element by element — good enough to read, much simpler
  * than reconstructing jsondiffpatch's delta format. */

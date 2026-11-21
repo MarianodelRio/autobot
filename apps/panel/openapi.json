@@ -4233,7 +4233,7 @@
     },
     "/contacts/{id}/export": {
       "get": {
-        "description": "C16: the panel equivalent of `contact_export`, downloaded as JSON instead\nof written to an operator-chosen local path.",
+        "description": "The panel equivalent of `contact_export`, downloaded as JSON instead\nof written to an operator-chosen local path.",
         "operationId": "autobot_panel_routers_contacts_contact_export",
         "parameters": [
           {
@@ -4272,7 +4272,7 @@
     },
     "/contacts/{id}/forget": {
       "post": {
-        "description": "C16: the panel equivalent of `contact_forget` (right to erasure).",
+        "description": "The panel equivalent of `contact_forget` (right to erasure).",
         "operationId": "autobot_panel_routers_contacts_contact_forget",
         "parameters": [
           {

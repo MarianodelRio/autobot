@@ -21,9 +21,9 @@ function triggerDownload(fileName: string, href: string) {
   a.click();
 }
 
-/** A QR code with a correct size and margin (C13), downloadable as SVG or PNG, and
+/** A QR code with a correct size and margin, downloadable as SVG or PNG, and
  * a larger view meant for printing. Used for a channel's public link and for the
- * owner's invite link (C14). */
+ * owner's invite link. */
 export function QrCode({
   value,
   title,

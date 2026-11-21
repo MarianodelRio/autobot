@@ -27,6 +27,9 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // One jsdom per worker instead of one per file (it was ~80% of the run time),
+    // keeping each file isolated.
+    pool: "vmThreads",
     environmentOptions: { jsdom: { url: "http://127.0.0.1:8000/" } },
     setupFiles: ["./src/vitest.setup.ts"],
   },

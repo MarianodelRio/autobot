@@ -1,4 +1,3 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
@@ -17,40 +16,36 @@ import {
 } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
+import { qk } from "@/lib/queries";
+import { useApiMutation } from "@/lib/use-api-mutation";
 
 type Detail = components["schemas"]["TenantDetail"];
 type Invite = components["schemas"]["OwnerInviteOut"];
 
 export function OwnerSection({ detail }: { detail: Detail }) {
-  const client = useQueryClient();
   const [link, setLink] = useState<Invite | null>(null);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
-  const invite = useMutation({
-    mutationFn: () =>
+  const invite = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/owner-invite", {
           params: { path: { slug: detail.slug } },
         }),
       ),
-    onSuccess: (result) => {
-      setLink(result);
-      void client.invalidateQueries({ queryKey: ["tenant", detail.slug] });
-    },
+    invalidate: [qk.tenant(detail.slug)],
+    onSuccess: (result) => setLink(result),
   });
-  const unlink = useMutation({
-    mutationFn: () =>
+  const unlink = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/owner-unlink", {
           params: { path: { slug: detail.slug } },
         }),
       ),
-    onSuccess: (result) => {
-      toast.success(
-        result.had_chat ? "Dueño desconectado." : "Invitación cancelada.",
-      );
-      setConfirmUnlink(false);
-      void client.invalidateQueries({ queryKey: ["tenant", detail.slug] });
-    },
+    success: (result) =>
+      result.had_chat ? "Dueño desconectado." : "Invitación cancelada.",
+    invalidate: [qk.tenant(detail.slug)],
+    onSuccess: () => setConfirmUnlink(false),
   });
   const label = detail.owner_linked
     ? "Dueño enlazado"
@@ -130,7 +125,7 @@ export function OwnerSection({ detail }: { detail: Detail }) {
           </code>
           {link && (
             <>
-              {/* C14: the owner scans this from their own phone to open the chat
+              {/* the owner scans this from their own phone to open the chat
                * and link it; the code shows only once (the hash is all that's
                * kept), so the QR cannot be regenerated after this dialog closes. */}
               <QrCode

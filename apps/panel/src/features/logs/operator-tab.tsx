@@ -7,6 +7,7 @@ import { TenantSelect } from "@/components/tenant-select";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/errors";
+import { qk } from "@/lib/queries";
 
 export interface OperatorFilters {
   tenant: string;
@@ -22,11 +23,11 @@ export function OperatorTab({
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const actions = useQuery({
-    queryKey: ["audit-actions"],
+    queryKey: qk.auditActions(),
     queryFn: () => unwrap(api.GET("/audit/actions")),
   });
   const query = useInfiniteQuery({
-    queryKey: ["audit", filters.tenant, filters.action],
+    queryKey: qk.audit(filters.tenant ?? "", filters.action ?? ""),
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(

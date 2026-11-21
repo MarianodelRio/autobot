@@ -1,6 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { ErrorState } from "@/components/error-state";
@@ -8,10 +7,12 @@ import { StatusDot } from "@/components/status-dot";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
 import { errorDetail } from "@/lib/errors";
+import { qk } from "@/lib/queries";
+import { useApiMutation } from "@/lib/use-api-mutation";
 
 type Detail = components["schemas"]["TenantDetail"];
 
-/** C23: "Horarios en uso" and "Aplicar" for a pack with a dataset (today, `bus`'s
+/** "Horarios en uso" and "Aplicar" for a pack with a dataset (today, `bus`'s
  * "timetable"); the content itself never reaches the panel, only its origin and
  * whether a newer library version exists. */
 export function DatasetSection({
@@ -21,10 +22,9 @@ export function DatasetSection({
   detail: Detail;
   dataset: string;
 }) {
-  const client = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const status = useQuery({
-    queryKey: ["tenant-dataset", detail.slug, dataset],
+    queryKey: qk.tenantDataset(detail.slug, dataset),
     queryFn: () =>
       unwrap(
         api.GET("/tenants/{slug}/datasets/{dataset}", {
@@ -32,8 +32,8 @@ export function DatasetSection({
         }),
       ),
   });
-  const apply = useMutation({
-    mutationFn: () => {
+  const apply = useApiMutation({
+    fn: () => {
       const name = status.data?.source_name;
       if (!name) throw new Error("Sin origen conocido");
       return unwrap(
@@ -43,13 +43,9 @@ export function DatasetSection({
         }),
       );
     },
-    onSuccess: () => {
-      toast.success("Horarios actualizados.");
-      setConfirming(false);
-      void client.invalidateQueries({
-        queryKey: ["tenant-dataset", detail.slug, dataset],
-      });
-    },
+    success: "Horarios actualizados.",
+    invalidate: [qk.tenantDataset(detail.slug, dataset)],
+    onSuccess: () => setConfirming(false),
   });
   if (status.isPending) return <p className="text-sm">Cargando horarios…</p>;
   if (status.isError)
@@ -68,7 +64,7 @@ export function DatasetSection({
       <h3 className="font-medium text-muted-foreground">Horarios en uso</h3>
       {d.version === null ? (
         <p className="text-status-warning">
-          Sin horarios elegidos todavía (C22 los exige al dar de alta).
+          Sin horarios elegidos todavía (se exigen al dar de alta).
         </p>
       ) : (
         <>

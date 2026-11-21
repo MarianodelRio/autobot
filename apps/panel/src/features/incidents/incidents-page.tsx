@@ -1,11 +1,5 @@
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -25,6 +19,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { errorMessage } from "@/lib/errors";
+import { qk } from "@/lib/queries";
+import { useApiMutation } from "@/lib/use-api-mutation";
 import { IncidentRow } from "./incident-row";
 
 type Alert = components["schemas"]["AlertOut"];
@@ -47,12 +43,12 @@ function logsWindow(at: string): { start: string; end: string } {
   };
 }
 
-function invalidateIncidents(client: ReturnType<typeof useQueryClient>) {
-  void client.invalidateQueries({ queryKey: ["incidents"] });
-  void client.invalidateQueries({ queryKey: ["alerts"] });
-  void client.invalidateQueries({ queryKey: ["overview"] });
-  void client.invalidateQueries({ queryKey: ["activity"] });
-}
+const incidentsChanged = () => [
+  qk.incidents(),
+  qk.alerts(),
+  qk.overview(),
+  qk.activityAll(),
+];
 
 function GroupHeading({ children }: { children: string }) {
   return (
@@ -72,19 +68,16 @@ function EmptyGroup({ message }: { message: string }) {
 
 function ResolveAction({ alert }: { alert: Alert }) {
   const [open, setOpen] = useState(false);
-  const client = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/alerts/{id}/resolve", {
           params: { path: { id: alert.id } },
         }),
       ),
-    onSuccess: () => {
-      setOpen(false);
-      toast.success("Alerta resuelta.");
-      invalidateIncidents(client);
-    },
+    success: "Alerta resuelta.",
+    invalidate: incidentsChanged(),
+    onSuccess: () => setOpen(false),
   });
   if (alert.auto_resolves) return null;
   return (
@@ -137,18 +130,15 @@ function OpenAlerts({ alerts }: { alerts: Alert[] }) {
 }
 
 function MarkSentAction({ message }: { message: Outbound }) {
-  const client = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/outbound/{id}/mark-sent", {
           params: { path: { id: message.id } },
         }),
       ),
-    onSuccess: () => {
-      toast.success("Envío marcado como enviado.");
-      invalidateIncidents(client);
-    },
+    success: "Envío marcado como enviado.",
+    invalidate: incidentsChanged(),
   });
   if (!message.can_mark_sent) return null;
   return (
@@ -165,20 +155,17 @@ function MarkSentAction({ message }: { message: Outbound }) {
 
 function ResendAction({ message }: { message: Outbound }) {
   const [open, setOpen] = useState(false);
-  const client = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/outbound/{id}/resend", {
           params: { path: { id: message.id } },
           body: { confirm_duplicate_risk: true },
         }),
       ),
-    onSuccess: () => {
-      setOpen(false);
-      toast.success("Mensaje reenviado.");
-      invalidateIncidents(client);
-    },
+    success: "Mensaje reenviado.",
+    invalidate: incidentsChanged(),
+    onSuccess: () => setOpen(false),
   });
   if (!message.can_resend) return null;
   return (
@@ -238,16 +225,13 @@ function PendingSends({ sends }: { sends: Outbound[] }) {
 }
 
 function RetryAction({ job }: { job: Job }) {
-  const client = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/jobs/{id}/retry", { params: { path: { id: job.id } } }),
       ),
-    onSuccess: () => {
-      toast.success("Trabajo reencolado.");
-      invalidateIncidents(client);
-    },
+    success: "Trabajo reencolado.",
+    invalidate: incidentsChanged(),
   });
   if (!job.can_retry) return null;
   return (
@@ -292,7 +276,7 @@ function FailedJobs({ jobs }: { jobs: Job[] }) {
 
 function ResolvedHistory() {
   const query = useInfiniteQuery({
-    queryKey: ["alerts", "resolved"],
+    queryKey: qk.alertsResolved(),
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -357,7 +341,7 @@ function ResolvedHistory() {
 export function IncidentsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const query = useQuery({
-    queryKey: ["incidents"],
+    queryKey: qk.incidents(),
     queryFn: () => unwrap(api.GET("/incidents")),
     refetchInterval: 30_000,
   });

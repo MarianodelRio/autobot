@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, unwrap } from "@/api/client";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { PageHeader } from "@/components/page-header";
@@ -17,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { errorMessage } from "@/lib/errors";
 import { formatEur, formatNumber } from "@/lib/format";
+import { tenantsQueryOptions } from "@/lib/queries";
 
 const STATUS_LABEL: Record<string, string> = {
   active: "Activo",
@@ -29,10 +29,7 @@ export function TenantListPage() {
   const [search, setSearch] = useState("");
   const [pack, setPack] = useState("");
   const [status, setStatus] = useState("");
-  const query = useQuery({
-    queryKey: ["tenants"],
-    queryFn: () => unwrap(api.GET("/tenants")),
-  });
+  const query = useQuery(tenantsQueryOptions());
   const rows = query.data ?? [];
   const filtered = rows.filter(
     (row) =>

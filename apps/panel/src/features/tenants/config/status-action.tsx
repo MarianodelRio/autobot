@@ -1,6 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ErrorState } from "@/components/error-state";
@@ -15,6 +14,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorDetail } from "@/lib/errors";
+import { qk, tenantLifecycleChanged } from "@/lib/queries";
+import { useApiMutation } from "@/lib/use-api-mutation";
 
 export function StatusAction({
   slug,
@@ -25,7 +26,6 @@ export function StatusAction({
 }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
-  const client = useQueryClient();
   const action =
     status === "active"
       ? "pause"
@@ -41,7 +41,7 @@ export function StatusAction({
         ? "Reactivar"
         : "Activar";
   const checklist = useQuery({
-    queryKey: ["activation-checklist", slug],
+    queryKey: qk.activationChecklist(slug),
     queryFn: () =>
       unwrap(
         api.GET("/tenants/{slug}/activation-checklist", {
@@ -53,8 +53,8 @@ export function StatusAction({
     // Reading never calls Meta, Telegram or Google: only «Comprobar» does.
     refetchOnWindowFocus: false,
   });
-  const refresh = useMutation({
-    mutationFn: () =>
+  const refresh = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/setup/check/{step}", {
           params: { path: { slug, step: "health" } },
@@ -62,8 +62,8 @@ export function StatusAction({
       ),
     onSuccess: () => void checklist.refetch(),
   });
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/status", {
           params: { path: { slug } },
@@ -73,13 +73,11 @@ export function StatusAction({
           },
         }),
       ),
+    success: "Estado actualizado.",
+    invalidate: tenantLifecycleChanged(slug),
     onSuccess: () => {
       setOpen(false);
       setTyped("");
-      toast.success("Estado actualizado.");
-      void client.invalidateQueries({ queryKey: ["tenant", slug] });
-      void client.invalidateQueries({ queryKey: ["tenants"] });
-      void client.invalidateQueries({ queryKey: ["overview"] });
     },
   });
   if (!action) return null;

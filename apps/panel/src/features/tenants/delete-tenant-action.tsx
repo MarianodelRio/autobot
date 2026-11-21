@@ -1,4 +1,3 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
@@ -22,33 +21,32 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { downloadJson } from "@/lib/download";
-import { errorDetail, errorMessage } from "@/lib/errors";
+import { errorMessage } from "@/lib/errors";
+import { tenantRemoved } from "@/lib/queries";
+import { useApiMutation } from "@/lib/use-api-mutation";
 
 type Detail = components["schemas"]["TenantDetail"];
 
 export function DeleteTenantAction({ detail }: { detail: Detail }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
-  const client = useQueryClient();
   const navigate = useNavigate();
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/delete", {
           params: { path: { slug: detail.slug } },
           body: { confirm_slug: detail.slug },
         }),
       ),
+    success: "Cliente eliminado.",
+    invalidate: tenantRemoved(),
     onSuccess: (result) => {
-      toast.success("Cliente eliminado.");
       if (result.telegram_webhook_removed === false) {
         toast.warning(
           "No se pudo retirar el webhook de Telegram. Retíralo manualmente si procede.",
         );
       }
-      void client.invalidateQueries({ queryKey: ["tenants"] });
-      void client.invalidateQueries({ queryKey: ["overview"] });
-      void client.invalidateQueries({ queryKey: ["incidents"] });
       void navigate({ to: "/clientes" });
     },
   });
@@ -57,8 +55,8 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
     setTyped("");
     mutation.reset();
   }
-  const exportData = useMutation({
-    mutationFn: () =>
+  const exportData = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/export", {
           params: { path: { slug: detail.slug } },
@@ -67,7 +65,7 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
     onSuccess: (result) => {
       downloadJson(`${detail.slug}-datos.json`, result);
     },
-    onError: (error) => toast.error(errorDetail(error, "No se pudo exportar.")),
+    error: "No se pudo exportar.",
   });
   if (detail.document.demo) return null;
   const active = detail.status === "active";

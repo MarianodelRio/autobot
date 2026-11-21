@@ -1,4 +1,4 @@
-// Shared rjsf validator with ajv's own error messages localized to Spanish (C7):
+// Shared rjsf validator with ajv's own error messages localized to Spanish:
 // without a localizer rjsf/ajv render things like "must be string" in English,
 // inconsistent with the rest of the panel.
 import { customizeValidator } from "@rjsf/validator-ajv8";

@@ -1,12 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { CopyButton } from "@/components/copy-button";
 import { ErrorState } from "@/components/error-state";
 import { QrCode } from "@/components/qr-code";
-import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
+import { StatusDot } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,36 +17,31 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorDetail, errorMessage } from "@/lib/errors";
+import { qk, tenantLifecycleChanged } from "@/lib/queries";
+import { levelOf, STEP_LEVEL } from "@/lib/status-levels";
+import { useApiMutation } from "@/lib/use-api-mutation";
 
 type SetupStep = components["schemas"]["SetupStepOut"];
 type SetupAction = components["schemas"]["SetupAction"];
 type Detail = components["schemas"]["TenantDetail"];
 
-const STEP_LEVEL: Record<SetupStep["state"], StatusDotLevel> = {
-  ok: "ok",
-  pending: "notice",
-  error: "critical",
-  "n/a": "unknown",
-};
-
 function TesterCandidates({ slug, step }: { slug: string; step: SetupStep }) {
   const client = useQueryClient();
-  const add = useMutation({
-    mutationFn: (id: string) =>
+  const add = useApiMutation({
+    fn: (id: string) =>
       unwrap(
         api.POST("/tenants/{slug}/setup/testers", {
           params: { path: { slug } },
           body: { id },
         }),
       ),
+    success: "Tester añadido.",
+    error: "No se pudo añadir el tester.",
     onSuccess: (result) => {
-      client.setQueryData<SetupStep[]>(["tenant-setup", slug], (previous) =>
+      client.setQueryData<SetupStep[]>(qk.tenantSetup(slug), (previous) =>
         previous?.map((item) => (item.key === step.key ? result : item)),
       );
-      toast.success("Tester añadido.");
     },
-    onError: (error) =>
-      toast.error(errorMessage(error, "No se pudo añadir el tester.")),
   });
   if (step.tester_candidates.length === 0) return null;
   return (
@@ -88,21 +82,21 @@ function StepActionButton({
   const [open, setOpen] = useState(false);
   const [pin, setPin] = useState("");
   const client = useQueryClient();
-  const run = useMutation({
-    mutationFn: () =>
+  const run = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/setup/action/{step}", {
           params: { path: { slug, step: step.key } },
           body: action.needs_pin ? { pin } : {},
         }),
       ),
+    success: (result) => result.detail,
     onSuccess: (result) => {
       setOpen(false);
       setPin("");
-      client.setQueryData<SetupStep[]>(["tenant-setup", slug], (previous) =>
+      client.setQueryData<SetupStep[]>(qk.tenantSetup(slug), (previous) =>
         previous?.map((item) => (item.key === step.key ? result : item)),
       );
-      toast.success(result.detail);
     },
   });
   const error = run.isError && (
@@ -175,29 +169,26 @@ function StepActionButton({
 
 function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
   const client = useQueryClient();
-  const check = useMutation({
-    mutationFn: () =>
+  const check = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/setup/check/{step}", {
           params: { path: { slug, step: step.key } },
         }),
       ),
+    // The forced health check also refreshes what «templates» and the activation
+    // checklist read from the cache.
+    invalidate: step.key === "health" ? [qk.activationChecklist(slug)] : [],
     onSuccess: (result) => {
-      client.setQueryData<SetupStep[]>(["tenant-setup", slug], (previous) =>
+      client.setQueryData<SetupStep[]>(qk.tenantSetup(slug), (previous) =>
         previous?.map((item) => (item.key === step.key ? result : item)),
       );
-      // The forced health check also refreshes what «templates» and the activation
-      // checklist read from the cache.
-      if (step.key === "health")
-        void client.invalidateQueries({
-          queryKey: ["activation-checklist", slug],
-        });
     },
   });
   return (
     <li className="space-y-1 border-b pb-3 last:border-b-0 last:pb-0">
       <div className="flex items-center gap-2">
-        <StatusDot level={STEP_LEVEL[step.state] ?? "unknown"} />
+        <StatusDot level={levelOf(STEP_LEVEL, step.state)} />
         <span className="font-medium">{step.label}</span>
         {step.blocking && (
           <span className="text-xs text-muted-foreground">(bloqueante)</span>
@@ -269,22 +260,19 @@ function QrCard({ detail }: { detail: Detail }) {
 function ActivateCard({ slug, steps }: { slug: string; steps: SetupStep[] }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
-  const client = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/status", {
           params: { path: { slug } },
           body: { action: "activate", confirm_slug: typed },
         }),
       ),
+    success: "Cliente activado.",
+    invalidate: tenantLifecycleChanged(slug),
     onSuccess: () => {
       setOpen(false);
       setTyped("");
-      toast.success("Cliente activado.");
-      void client.invalidateQueries({ queryKey: ["tenant", slug] });
-      void client.invalidateQueries({ queryKey: ["tenants"] });
-      void client.invalidateQueries({ queryKey: ["overview"] });
     },
   });
   const blocked = steps.some((step) => step.blocking && step.state !== "ok");
@@ -341,7 +329,7 @@ function ActivateCard({ slug, steps }: { slug: string; steps: SetupStep[] }) {
 
 export function SetupTab({ slug, detail }: { slug: string; detail: Detail }) {
   const q = useQuery({
-    queryKey: ["tenant-setup", slug],
+    queryKey: qk.tenantSetup(slug),
     queryFn: () =>
       unwrap(api.GET("/tenants/{slug}/setup", { params: { path: { slug } } })),
     staleTime: 0,

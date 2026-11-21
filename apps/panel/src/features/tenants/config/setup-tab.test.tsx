@@ -163,7 +163,7 @@ test("lists recent non-tester senders and adds one as a tester", async () => {
   expect(screen.queryByText("id 999")).not.toBeInTheDocument();
 });
 
-test("C13: shows a downloadable QR for the public link", async () => {
+test("shows a downloadable QR for the public link", async () => {
   renderAt({});
   await screen.findByText("QR del canal");
   expect(
@@ -171,11 +171,11 @@ test("C13: shows a downloadable QR for the public link", async () => {
   ).toBeInTheDocument();
 });
 
-test("C12: Activar in the Alta tab stays disabled while a blocking step isn't ok", async () => {
+test("Activar in the Alta tab stays disabled while a blocking step isn't ok", async () => {
   const user = userEvent.setup();
   renderAt({});
   const openButtons = await screen.findAllByRole("button", { name: "Activar" });
-  await user.click(openButtons[0]!);
+  await user.click(openButtons[0] as HTMLElement);
   await user.type(screen.getByLabelText("Escribe demo"), "demo");
   const confirm = screen.getAllByRole("button", { name: "Activar" }).at(-1);
   expect(confirm).toBeDisabled(); // STEPS has blocking webhook/tester steps still pending
@@ -248,7 +248,7 @@ async function openAlta() {
   return user;
 }
 
-test("C18: registering a number asks for a 6-digit PIN and sends it", async () => {
+test("registering a number asks for a 6-digit PIN and sends it", async () => {
   const actions = renderWhatsApp(200, {
     ...WA_STEPS[0],
     state: "ok",
@@ -274,7 +274,7 @@ test("C18: registering a number asks for a 6-digit PIN and sends it", async () =
   ]);
 });
 
-test("C18: subscribing the app needs an explicit confirmation", async () => {
+test("subscribing the app needs an explicit confirmation", async () => {
   const actions = renderWhatsApp(200, {
     ...WA_STEPS[1],
     state: "ok",
@@ -294,7 +294,7 @@ test("C18: subscribing the app needs an explicit confirmation", async () => {
   expect(actions[0]?.body).toEqual({});
 });
 
-test("C18: a failed action shows the server's message", async () => {
+test("a failed action shows the server's message", async () => {
   renderWhatsApp(502, {
     code: "unavailable",
     message: "Resultado desconocido: pulsa «Comprobar» antes de repetirlo.",

@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { errorMessage } from "@/lib/errors";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, fromLocalInput, toLocalInput } from "@/lib/format";
+import { qk } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { LogDetailSheet } from "./log-detail-sheet";
 
@@ -40,20 +41,6 @@ const LEVEL_COLOR: Record<string, string> = {
   CRITICAL: "text-status-critical",
 };
 
-function toLocalInput(iso: string): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function fromLocalInput(value: string): string {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-
 function field(item: Record<string, unknown>, ...keys: string[]): string {
   for (const key of keys) {
     const value = item[key];
@@ -82,7 +69,7 @@ export function TechnicalTab({
     300,
   );
   const query = useQuery({
-    queryKey: ["logs", filters],
+    queryKey: qk.logs(filters),
     queryFn: () =>
       unwrap(
         api.GET("/logs", {

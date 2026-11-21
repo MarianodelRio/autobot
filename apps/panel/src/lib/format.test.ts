@@ -6,6 +6,8 @@ import {
   formatEur,
   formatNumber,
   formatRelative,
+  fromLocalInput,
+  toLocalInput,
 } from "./format";
 
 describe("formatDateTime", () => {
@@ -70,5 +72,24 @@ describe("formatBytes", () => {
 
   test("megabytes", () => {
     expect(formatBytes(5 * 1024 * 1024)).toBe("5.0 MB");
+  });
+});
+
+describe("datetime-local conversion", () => {
+  test("round-trips an instant to the minute", () => {
+    const iso = "2026-11-04T22:30:00.000Z";
+    expect(fromLocalInput(toLocalInput(iso))).toBe(iso);
+  });
+
+  test("formats as yyyy-MM-ddTHH:mm in the browser time zone", () => {
+    const iso = new Date(2026, 10, 4, 9, 5).toISOString();
+    expect(toLocalInput(iso)).toBe("2026-11-04T09:05");
+  });
+
+  test("empty or invalid input gives an empty string", () => {
+    expect(toLocalInput("")).toBe("");
+    expect(toLocalInput("not a date")).toBe("");
+    expect(fromLocalInput("")).toBe("");
+    expect(fromLocalInput("not a date")).toBe("");
   });
 });

@@ -1,12 +1,6 @@
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { toast } from "sonner";
-import { type ApiError, api, unwrap } from "@/api/client";
+import { api, unwrap } from "@/api/client";
 import { ErrorState } from "@/components/error-state";
 import { JsonDiff } from "@/components/json-diff";
 import { TimeAgo } from "@/components/time-ago";
@@ -19,9 +13,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { qk } from "@/lib/queries";
+import { useApiMutation } from "@/lib/use-api-mutation";
 
-/** C16: the version-history and rollback API already existed; this is its panel
- * UI, with a legible diff (C17's JsonDiff) against the current document. */
+/** the version-history and rollback API already existed; this is its panel
+ * UI, with a legible diff (JsonDiff) against the current document. */
 export function HistorySection({
   slug,
   current,
@@ -37,9 +33,8 @@ export function HistorySection({
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<number | null>(null);
   const [comment, setComment] = useState("");
-  const client = useQueryClient();
   const versions = useInfiniteQuery({
-    queryKey: ["tenant-versions", slug],
+    queryKey: qk.tenantVersions(slug),
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -54,7 +49,7 @@ export function HistorySection({
   });
   const items = versions.data?.pages.flat() ?? [];
   const version = useQuery({
-    queryKey: ["tenant-version", slug, preview],
+    queryKey: qk.tenantVersion(slug, preview),
     queryFn: () =>
       unwrap(
         api.GET("/tenants/{slug}/versions/{version}", {
@@ -63,25 +58,23 @@ export function HistorySection({
       ),
     enabled: preview !== null,
   });
-  const rollback = useMutation({
-    mutationFn: (toVersion: number) =>
+  const rollback = useApiMutation({
+    fn: (toVersion: number) =>
       unwrap(
         api.POST("/tenants/{slug}/rollback", {
           params: { path: { slug } },
           body: { version: toVersion, comment: comment.trim() },
         }),
       ),
+    success: "Restaurado: se aplica en unos segundos",
+    error: "No se pudo restaurar.",
+    invalidate: [qk.tenant(slug), qk.tenantVersions(slug)],
     onSuccess: () => {
-      toast.success("Restaurado: se aplica en unos segundos");
       setComment("");
       setPreview(null);
       setOpen(false);
-      void client.invalidateQueries({ queryKey: ["tenant", slug] });
-      void client.invalidateQueries({ queryKey: ["tenant-versions", slug] });
       onRolledBack();
     },
-    onError: (error: ApiError) =>
-      toast.error(error.message || "No se pudo restaurar."),
   });
 
   return (

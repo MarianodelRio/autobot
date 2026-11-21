@@ -1,12 +1,9 @@
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions } from "@tanstack/react-query";
+import { qk } from "@/lib/queries";
 import { fetchMe } from "./api";
 
 export const meQueryOptions = queryOptions({
-  queryKey: ["me"],
+  queryKey: qk.me(),
   queryFn: fetchMe,
   retry: false,
 });
-
-export function useMe() {
-  return useQuery(meQueryOptions);
-}

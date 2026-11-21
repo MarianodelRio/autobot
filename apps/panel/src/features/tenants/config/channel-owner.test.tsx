@@ -61,14 +61,14 @@ test.each([
   expect(await screen.findByText(label)).toBeInTheDocument();
 });
 
-test("C13: a missing public link warns instead of just hiding the QR", async () => {
+test("a missing public link warns instead of just hiding the QR", async () => {
   setup(<ChannelSection detail={detail} />, () => secrets);
   expect(
     await screen.findByText(/Falta el usuario del bot/),
   ).toBeInTheDocument();
 });
 
-test("C12: a public link points to the QR in the Alta tab instead of showing it here", async () => {
+test("a public link points to the QR in the Alta tab instead of showing it here", async () => {
   setup(
     <ChannelSection
       detail={{ ...detail, public_link: "https://t.me/mi_bot" }}
@@ -169,7 +169,7 @@ const salonDetail = {
   document: { config: { calendar_id: "demo@group.calendar.google.com" } },
 } as unknown as components["schemas"]["TenantDetail"];
 
-test("D1: shows the service account email with a copy affordance", async () => {
+test("shows the service account email with a copy affordance", async () => {
   setup(<CalendarSection detail={salonDetail} />, () => ({
     configured: true,
     email: "autobot@proyecto.iam.gserviceaccount.com",
@@ -180,7 +180,7 @@ test("D1: shows the service account email with a copy affordance", async () => {
   expect(screen.queryByText(/Gmail personal/)).not.toBeInTheDocument();
 });
 
-test("D4: warns when calendar_id is a personal Gmail account", async () => {
+test("warns when calendar_id is a personal Gmail account", async () => {
   setup(
     <CalendarSection
       detail={{
@@ -208,7 +208,7 @@ test("warns when the server has no service account configured", async () => {
   ).toBeInTheDocument();
 });
 
-test("C14: shows a pending invitation and lets you disconnect it", async () => {
+test("shows a pending invitation and lets you disconnect it", async () => {
   const toastSpy = vi.spyOn(toast, "success");
   const user = userEvent.setup();
   setup(
@@ -224,7 +224,7 @@ test("C14: shows a pending invitation and lets you disconnect it", async () => {
   );
 });
 
-test("C14: disconnecting a linked owner says so", async () => {
+test("disconnecting a linked owner says so", async () => {
   const toastSpy = vi.spyOn(toast, "success");
   const user = userEvent.setup();
   setup(<OwnerSection detail={{ ...detail, owner_linked: true }} />, () => ({
@@ -246,7 +246,7 @@ const busDetail = {
   document: { config: {} },
 } as unknown as components["schemas"]["TenantDetail"];
 
-test("C23: warns without any dataset chosen yet", async () => {
+test("warns without any dataset chosen yet", async () => {
   setup(<DatasetSection detail={busDetail} dataset="timetable" />, () => ({
     version: null,
     author: null,
@@ -261,7 +261,7 @@ test("C23: warns without any dataset chosen yet", async () => {
   ).toBeInTheDocument();
 });
 
-test("C23: offers Aplicar when a newer library version exists", async () => {
+test("offers Aplicar when a newer library version exists", async () => {
   const toastSpy = vi.spyOn(toast, "success");
   const user = userEvent.setup();
   setup(<DatasetSection detail={busDetail} dataset="timetable" />, (url) =>

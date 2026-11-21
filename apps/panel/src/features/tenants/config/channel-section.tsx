@@ -1,5 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { CopyButton } from "@/components/copy-button";
@@ -7,14 +6,15 @@ import { ErrorState } from "@/components/error-state";
 import { StatusDot } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/errors";
+import { qk } from "@/lib/queries";
+import { useApiMutation } from "@/lib/use-api-mutation";
 import { SecretsForm } from "./secrets-form";
 
 type Detail = components["schemas"]["TenantDetail"];
 
 export function ChannelSection({ detail }: { detail: Detail }) {
-  const client = useQueryClient();
   const secrets = useQuery({
-    queryKey: ["tenant-secrets", detail.slug],
+    queryKey: qk.tenantSecrets(detail.slug),
     queryFn: () =>
       unwrap(
         api.GET("/tenants/{slug}/secrets", {
@@ -25,7 +25,7 @@ export function ChannelSection({ detail }: { detail: Detail }) {
   });
   const isTelegram = detail.channel_type === "telegram";
   const webhookStatus = useQuery({
-    queryKey: ["tenant-webhook", detail.slug],
+    queryKey: qk.tenantWebhook(detail.slug),
     queryFn: () =>
       unwrap(
         api.GET("/tenants/{slug}/telegram-webhook", {
@@ -36,20 +36,15 @@ export function ChannelSection({ detail }: { detail: Detail }) {
     retry: false,
   });
   const registered = webhookStatus.data?.registered ?? null;
-  const webhook = useMutation({
-    mutationFn: () =>
+  const webhook = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/tenants/{slug}/telegram-webhook", {
           params: { path: { slug: detail.slug } },
         }),
       ),
-    onSuccess: () => {
-      toast.success("Webhook registrado.");
-      void client.invalidateQueries({ queryKey: ["tenant", detail.slug] });
-      void client.invalidateQueries({
-        queryKey: ["tenant-webhook", detail.slug],
-      });
-    },
+    success: "Webhook registrado.",
+    invalidate: [qk.tenant(detail.slug), qk.tenantWebhook(detail.slug)],
   });
   if (detail.channel_type === null) return null;
   return (
@@ -68,7 +63,7 @@ export function ChannelSection({ detail }: { detail: Detail }) {
           </p>
         </div>
       ) : (
-        // C13: shown, never hidden — there is no QR until this is fixed.
+        // shown, never hidden — there is no QR until this is fixed.
         <div className="flex items-center gap-2 text-sm">
           <StatusDot level="warning" />
           <span className="text-status-warning">

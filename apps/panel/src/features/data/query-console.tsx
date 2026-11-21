@@ -1,4 +1,3 @@
-import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
@@ -7,6 +6,7 @@ import { TenantSelect } from "@/components/tenant-select";
 import { Button } from "@/components/ui/button";
 import { downloadCsv, toDelimited } from "@/lib/csv";
 import { errorMessage } from "@/lib/errors";
+import { useApiMutation } from "@/lib/use-api-mutation";
 import { sqlSchemaFrom, useTables } from "./use-tables";
 
 const STORAGE_KEY = "autobot.panel.data.lastQuery";
@@ -46,9 +46,8 @@ export function QueryConsole({
 }) {
   const [tenant, setTenant] = useState(() => readLastQuery()?.tenant || "");
   const tables = useTables();
-  const run = useMutation({
-    mutationFn: () =>
-      unwrap(api.POST("/data/query", { body: { sql, tenant } })),
+  const run = useApiMutation({
+    fn: () => unwrap(api.POST("/data/query", { body: { sql, tenant } })),
     onSuccess: () => writeLastQuery({ sql, tenant }),
   });
   const result = run.data;

@@ -7,13 +7,14 @@ import { fetchCsrf } from "@/features/auth/api";
 import { queryClient } from "@/lib/query-client";
 import { router } from "@/router";
 import "./styles/globals.css";
+import { qk } from "@/lib/queries";
 
 // Sets the CSRF cookie the login form will need; nothing in the UI
 // depends on the result, so no need to await it before rendering.
 fetchCsrf().catch(() => {});
 
 setUnauthorizedHandler(() => {
-  queryClient.removeQueries({ queryKey: ["me"] });
+  queryClient.removeQueries({ queryKey: qk.me() });
   router.navigate({
     to: "/login",
     search: { redirect: router.state.location.pathname },

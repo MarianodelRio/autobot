@@ -147,7 +147,7 @@ test("conflict offers differences and reload", async () => {
     expect(screen.getByLabelText("Nombre")).toHaveValue("Remoto"),
   );
 });
-test("a status change elsewhere (Activar/Pausar) is picked up without clobbering an in-progress edit (C9)", async () => {
+test("a status change elsewhere (Activar/Pausar) is picked up without clobbering an in-progress edit", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => json(schema)),
@@ -179,7 +179,7 @@ test("a status change elsewhere (Activar/Pausar) is picked up without clobbering
     expect(screen.getByLabelText("Nombre")).toHaveValue("Tras pausar"),
   );
 });
-test("C17: opening_hours and services use their own editors, timezone a dropdown", async () => {
+test("opening_hours and services use their own editors, timezone a dropdown", async () => {
   const salonDetail: components["schemas"]["TenantDetail"] = {
     ...detail,
     pack: "salon",
@@ -338,7 +338,7 @@ test("secret form shows an error on failure without caching the typed value", as
   expect(client.getMutationCache().getAll()).toHaveLength(0);
 });
 
-test("a secrets change tells when the Telegram webhook could not be re-registered (C10)", async () => {
+test("a secrets change tells when the Telegram webhook could not be re-registered", async () => {
   const toastSpy = vi.spyOn(toast, "warning");
   vi.stubGlobal(
     "fetch",

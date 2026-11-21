@@ -13,6 +13,7 @@ import { ErrorState } from "@/components/error-state";
 import { TimeAgo } from "@/components/time-ago";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { qk } from "@/lib/queries";
 
 const KIND_ICON: Record<string, typeof MessageSquareText> = {
   inbound: MessageSquareText,
@@ -38,7 +39,7 @@ export const STATUS_LABEL: Record<string, string> = {
 
 function ActivityDetailBody({ kind, id }: { kind: string; id: string }) {
   const query = useQuery({
-    queryKey: ["activity-detail", kind, id],
+    queryKey: qk.activityDetail(kind, id),
     queryFn: () =>
       unwrap(
         api.GET("/activity/{kind}/{id}", {
@@ -92,7 +93,7 @@ export function Timeline({
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const query = useInfiniteQuery({
-    queryKey: ["activity", tenant, kinds, status],
+    queryKey: qk.activity(tenant ?? "", kinds ?? "", status ?? ""),
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(

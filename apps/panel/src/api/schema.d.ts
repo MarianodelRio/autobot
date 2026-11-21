@@ -217,7 +217,7 @@ export interface paths {
         };
         /**
          * Contact Export
-         * @description C16: the panel equivalent of `contact_export`, downloaded as JSON instead
+         * @description The panel equivalent of `contact_export`, downloaded as JSON instead
          *     of written to an operator-chosen local path.
          */
         get: operations["autobot_panel_routers_contacts_contact_export"];
@@ -240,7 +240,7 @@ export interface paths {
         put?: never;
         /**
          * Contact Forget
-         * @description C16: the panel equivalent of `contact_forget` (right to erasure).
+         * @description The panel equivalent of `contact_forget` (right to erasure).
          */
         post: operations["autobot_panel_routers_contacts_contact_forget"];
         delete?: never;

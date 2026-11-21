@@ -89,7 +89,9 @@ test("viewing changes shows a legible diff against the current document", async 
   );
   await user.click(screen.getByRole("button", { name: "Historial" }));
   await user.click(
-    (await screen.findAllByRole("button", { name: "Ver cambios" }))[1]!,
+    (await screen.findAllByRole("button", { name: "Ver cambios" })).at(
+      1,
+    ) as HTMLElement,
   );
   expect(await screen.findByText("name")).toBeInTheDocument();
   expect(screen.getByText("Vieja")).toBeInTheDocument();
@@ -115,7 +117,7 @@ test("rolling back asks for confirmation and invalidates the tenant", async () =
   await user.click(
     (
       await screen.findAllByRole("button", { name: "Volver a esta versión" })
-    )[0]!,
+    ).at(0) as HTMLElement,
   );
   expect(window.confirm).toHaveBeenCalled();
 });
@@ -137,7 +139,7 @@ test("rolling back with unsaved changes warns before confirming", async () => {
   await user.click(
     (
       await screen.findAllByRole("button", { name: "Volver a esta versión" })
-    )[0]!,
+    ).at(0) as HTMLElement,
   );
   expect(confirmSpy).toHaveBeenCalledWith(
     "Hay cambios sin guardar que se perderán. ¿Continuar?",

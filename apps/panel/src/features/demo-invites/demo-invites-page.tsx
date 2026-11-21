@@ -1,11 +1,5 @@
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
-import { toast } from "sonner";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -27,14 +21,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { errorDetail } from "@/lib/errors";
+import { qk } from "@/lib/queries";
+import { useApiMutation } from "@/lib/use-api-mutation";
 
 type Invite = components["schemas"]["DemoInviteOut"];
 
 const PAGE = 50;
-
-function invalidate(client: ReturnType<typeof useQueryClient>) {
-  void client.invalidateQueries({ queryKey: ["demo-invites"] });
-}
 
 function status(invite: Invite): {
   label: string;
@@ -49,13 +41,12 @@ function status(invite: Invite): {
 }
 
 function CreateInviteForm() {
-  const client = useQueryClient();
   const [note, setNote] = useState("");
   const [maxUses, setMaxUses] = useState("1");
   const [expiresInDays, setExpiresInDays] = useState("7");
   const [neverExpires, setNeverExpires] = useState(false);
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/demo/invites", {
           body: {
@@ -65,11 +56,9 @@ function CreateInviteForm() {
           },
         }),
       ),
-    onSuccess: () => {
-      toast.success("Invitación creada.");
-      setNote("");
-      invalidate(client);
-    },
+    success: "Invitación creada.",
+    invalidate: [qk.demoInvites()],
+    onSuccess: () => setNote(""),
   });
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -138,19 +127,16 @@ function CreateInviteForm() {
 
 function RevokeAction({ invite }: { invite: Invite }) {
   const [open, setOpen] = useState(false);
-  const client = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: () =>
+  const mutation = useApiMutation({
+    fn: () =>
       unwrap(
         api.POST("/demo/invites/{id}/revoke", {
           params: { path: { id: invite.id } },
         }),
       ),
-    onSuccess: () => {
-      setOpen(false);
-      toast.success("Invitación revocada.");
-      invalidate(client);
-    },
+    success: "Invitación revocada.",
+    invalidate: [qk.demoInvites()],
+    onSuccess: () => setOpen(false),
   });
   if (invite.revoked_at) return null;
   return (
@@ -177,7 +163,7 @@ function InviteQr({ invite }: { invite: Invite }) {
   const [open, setOpen] = useState(false);
   // Drawn by the backend only when someone opens it, never for every row.
   const qr = useQuery({
-    queryKey: ["demo-invite-qr", invite.id],
+    queryKey: qk.demoInviteQr(invite.id),
     queryFn: () =>
       unwrap(
         api.GET("/demo/invites/{id}/qr", {
@@ -227,7 +213,7 @@ function InviteQr({ invite }: { invite: Invite }) {
 
 export function DemoInvitesPage() {
   const query = useInfiniteQuery({
-    queryKey: ["demo-invites"],
+    queryKey: qk.demoInvites(),
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -245,7 +231,7 @@ export function DemoInvitesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Invitaciones de demo"
-        description="Acceso a la demo por código (D5), sin tocar el .env del servidor."
+        description="Acceso a la demo por código, sin tocar el .env del servidor."
       />
       <CreateInviteForm />
       {query.isPending ? (

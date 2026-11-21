@@ -41,7 +41,7 @@ Telegram no bloquea por sí mismo, pero un webhook sin registrar hace fallar «S
 del canal», que sí bloquea. «Añadir» un tester solo acepta a quien de verdad escribió. El paso del tester lista
 los últimos que escribieron sin estarlo, con «Añadir» para sumarlos a
 `testers.main` sin pasar por Configuración. Al final de la pestaña, el QR del canal
-(C13: tamaño y margen correctos, descarga en SVG/PNG, vista para imprimir) y, mientras
+(con tamaño y margen correctos, descarga en SVG/PNG y vista para imprimir) y, mientras
 el negocio está en `onboarding`, «Activar» (exige completar los pasos bloqueantes y
 escribir el slug); pausar o reactivar un negocio ya activo sigue en la cabecera de la
 ficha.
@@ -51,11 +51,11 @@ volcado de la librería de diferencias) y comentario opcional, e incluye el cana
 admiten — el QR está en Alta) y el dueño («Invitar al dueño», con el enlace mostrado una sola vez, su
 caducidad y el aviso de que sustituirá al chat ya conectado). En `salon`, el horario
 de apertura tiene un editor por día (abierto/cerrado y tramos con hora) y los
-servicios una tabla con id automático (C17); la zona horaria se elige de una lista,
+servicios una tabla con id automático; la zona horaria se elige de una lista,
 no se escribe a mano. En Telegram, el estado del webhook («Registrado», «Sin
 registrar» o «Sin comprobar») se consulta a Telegram (`getWebhookInfo`) y se
 refresca al registrarlo; «Sin comprobar» significa que no se pudo saberlo.
-«Historial» (junto a «Editar YAML», C16) lista las versiones guardadas con autor y
+«Historial» (junto a «Editar YAML») lista las versiones guardadas con autor y
 comentario, con «Ver cambios» (el mismo diff legible contra el documento actual) y
 «Volver a esta versión», que crea una versión nueva con ese contenido tras pedir
 confirmación. Actividad usa la misma lista que Logs → Conversaciones, limitada a
@@ -63,7 +63,7 @@ este cliente. Cada consulta de una conversación desde Contactos queda auditada,
 desde ahí también se puede «Exportar datos» (descarga un JSON) u «Olvidar contacto»
 (borrado irreversible, con confirmación) de ese contacto; «Exportar datos del
 negocio» (`POST`, pues audita), en el menú «⋯» de la ficha, hace lo mismo a nivel de
-negocio, con un tope de 50 000 filas (más allá, el comando `tenant_data_export`) (C16; ver
+negocio, con un tope de 50 000 filas (más allá, el comando `tenant_data_export`) (ver
 `docs/procedimientos/retencion-rgpd.md`). El panel pide confirmación para pausar o
 reactivar.
 

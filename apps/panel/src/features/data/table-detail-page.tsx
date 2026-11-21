@@ -14,10 +14,11 @@ import {
 } from "@/components/ui/table";
 import { errorMessage } from "@/lib/errors";
 import { formatBytes, formatNumber } from "@/lib/format";
+import { qk } from "@/lib/queries";
 
 export function TableDetailPage({ table }: { table: string }) {
   const query = useQuery({
-    queryKey: ["data-table", table],
+    queryKey: qk.dataTable(table),
     queryFn: () =>
       unwrap(
         api.GET("/data/tables/{name}", { params: { path: { name: table } } }),

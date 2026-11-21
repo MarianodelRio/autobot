@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, unwrap } from "@/api/client";
+import { tenantsQueryOptions } from "@/lib/queries";
 
 export function TenantSelect({
   value,
@@ -10,10 +10,7 @@ export function TenantSelect({
   onChange: (value: string) => void;
   className?: string;
 }) {
-  const tenants = useQuery({
-    queryKey: ["tenants"],
-    queryFn: () => unwrap(api.GET("/tenants")),
-  });
+  const tenants = useQuery(tenantsQueryOptions());
   return (
     <select
       className={

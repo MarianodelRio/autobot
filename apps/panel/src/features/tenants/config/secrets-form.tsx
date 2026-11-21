@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorDetail } from "@/lib/errors";
+import { invalidateKeys, qk } from "@/lib/queries";
 
 type SecretField = components["schemas"]["SecretField"];
 
@@ -59,7 +60,7 @@ export function SecretsForm({
       });
       if (!result.response.ok)
         throw normalizeError(result.error, result.response.status);
-      // C10: the backend re-registers the Telegram webhook right after a change
+      // The backend re-registers the Telegram webhook right after a change
       // (the old one would otherwise stay registered with the previous secret).
       if (result.data?.telegram_webhook_registered === false) {
         toast.warning(
@@ -70,9 +71,11 @@ export function SecretsForm({
       }
       setOpen(false);
       reset();
-      void client.invalidateQueries({ queryKey: ["tenant-secrets", slug] });
-      void client.invalidateQueries({ queryKey: ["tenant", slug] });
-      void client.invalidateQueries({ queryKey: ["tenant-webhook", slug] });
+      invalidateKeys(client, [
+        qk.tenantSecrets(slug),
+        qk.tenant(slug),
+        qk.tenantWebhook(slug),
+      ]);
     } catch (caught) {
       // The typed values stay in the form: only a success clears them.
       setError(

@@ -5,7 +5,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 
 function renderAt(path: string) {
@@ -22,6 +22,12 @@ function renderAt(path: string) {
   );
   return router;
 }
+
+// Route chunks load lazily: warm the heavy page so the first render stays inside
+// the test's own timeout.
+beforeAll(async () => {
+  await import("@/features/system/system-page");
+}, 60_000);
 
 afterEach(() => {
   vi.unstubAllGlobals();

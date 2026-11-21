@@ -15,7 +15,7 @@ import { KpiCard } from "@/components/kpi-card";
 import { Meter } from "@/components/meter";
 import { PageHeader } from "@/components/page-header";
 import { type Status, StatusBadge } from "@/components/status-badge";
-import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
+import { StatusDot } from "@/components/status-dot";
 import { TimeAgo } from "@/components/time-ago";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -27,6 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatEur, formatNumber } from "@/lib/format";
+import { backupLevel, tlsLevel } from "@/lib/status-levels";
 import { useOverview } from "./use-overview";
 
 type Overview = components["schemas"]["Overview"];
@@ -58,18 +59,6 @@ function statusLabel(value: string) {
   ) : (
     value
   );
-}
-
-function backupLevel(ok: boolean | null): StatusDotLevel {
-  if (ok === null) return "unknown";
-  return ok ? "ok" : "critical";
-}
-
-function tlsLevel(daysLeft: number | null): StatusDotLevel {
-  if (daysLeft === null) return "unknown";
-  if (daysLeft < 7) return "critical";
-  if (daysLeft < 20) return "warning";
-  return "ok";
 }
 
 export function OverviewContent({ data }: { data: Overview }) {

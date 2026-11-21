@@ -120,7 +120,7 @@ test.each([
   setup(status);
   expect(await screen.findByRole("button", { name: action })).toBeEnabled();
 });
-test("C12: an onboarding tenant has no header action, only Activar in Alta", async () => {
+test("an onboarding tenant has no header action, only Activar in Alta", async () => {
   setup("onboarding");
   await screen.findByRole("heading", { name: "Negocio" });
   expect(
@@ -162,7 +162,7 @@ test("health check is sent from the summary tab and displays its result", async 
     fetcher.mock.calls.some((call) => (call[0] as Request).method === "POST"),
   ).toBe(true);
 });
-test("C16: a contact's data can be exported and the contact forgotten", async () => {
+test("a contact's data can be exported and the contact forgotten", async () => {
   const clickSpy = vi
     .spyOn(HTMLAnchorElement.prototype, "click")
     .mockImplementation(() => {});

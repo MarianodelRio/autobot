@@ -78,7 +78,9 @@ test("removing a service deletes only its own row", async () => {
       )}
     />,
   );
-  await user.click(screen.getAllByRole("button", { name: "Eliminar" })[0]!);
+  await user.click(
+    screen.getAllByRole("button", { name: "Eliminar" }).at(0) as HTMLElement,
+  );
   expect(onChange).toHaveBeenCalledWith(
     { "2": { name: "Tinte", duration_min: 60, client_presence_min: 90 } },
     [],

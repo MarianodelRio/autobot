@@ -4,17 +4,18 @@ import type { components } from "@/api/schema";
 import { CopyButton } from "@/components/copy-button";
 import { ErrorState } from "@/components/error-state";
 import { StatusDot } from "@/components/status-dot";
+import { qk } from "@/lib/queries";
 
 type Detail = components["schemas"]["TenantDetail"];
 
-// D4: Google does not cover a personal account with its data-processing addendum;
+// Google does not cover a personal account with its data-processing addendum;
 // only a few domains can be told apart for sure, the rest (Workspace or not) need
 // asking in person.
 const PERSONAL_GMAIL = /@(gmail|googlemail)\.com$/i;
 
 export function CalendarSection({ detail }: { detail: Detail }) {
   const account = useQuery({
-    queryKey: ["calendar-service-account"],
+    queryKey: qk.calendarServiceAccount(),
     queryFn: () => unwrap(api.GET("/calendar/service-account")),
   });
   const calendarId =

@@ -6,8 +6,14 @@ import {
 } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
+
+// The route chunks are loaded lazily: the first render would otherwise pay for
+// transforming the whole page (rjsf, CodeMirror...) inside the test's own timeout.
+beforeAll(async () => {
+  await import("@/features/tenants/detail-page");
+}, 60_000);
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -111,7 +117,7 @@ test("hidden for a demo tenant", async () => {
   ).not.toBeInTheDocument();
 }, 10_000);
 
-test("C16: exports the tenant's data as a downloaded file", async () => {
+test("exports the tenant's data as a downloaded file", async () => {
   const user = userEvent.setup();
   const clickSpy = vi
     .spyOn(HTMLAnchorElement.prototype, "click")

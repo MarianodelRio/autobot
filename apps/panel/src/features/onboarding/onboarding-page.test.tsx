@@ -2,12 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import {
-  OnboardingPage,
-  slugFromName,
-  stepForErrors,
-  validSlug,
-} from "./onboarding-page";
+import { slugFromName, stepForErrors, validSlug } from "./draft";
+import { OnboardingPage } from "./onboarding-page";
 
 function provider(child: React.ReactNode) {
   const client = new QueryClient({
@@ -134,7 +130,7 @@ test("submits the review step as the POST body and creates the tenant", async ()
   });
 });
 
-test("C22: a pack with datasets requires choosing one before the config step", async () => {
+test("a pack with datasets requires choosing one before the config step", async () => {
   const busPacks = [
     {
       name: "bus",
