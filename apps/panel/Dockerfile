@@ -16,7 +16,7 @@ RUN pnpm build
 # Documentation site (ADR-018). Zensical comes from the `docs` dependency group of
 # apps/backend/pyproject.toml, pinned by uv.lock (zensical==0.1.3), the same as
 # `make docs-check`.
-FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
 
 FROM python:3.14-slim AS docs
 COPY --from=uv /uv /uvx /usr/local/bin/
