@@ -61,7 +61,7 @@ jobs:
         # `source "$(dirname "$0")/lib.sh"` (a dynamic path, so shellcheck won't
         # resolve it on its own) to the real deploy/scripts/lib.sh.
         run: shellcheck -x -P deploy/scripts deploy/scripts/*.sh deploy/postgres/*.sh apps/backend/src/tools/*/*.sh
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: apps/backend/.mypy_cache
           key: mypy-${{ runner.os }}-${{ hashFiles('apps/backend/uv.lock') }}-${{ github.sha }}
