@@ -45,11 +45,12 @@ Todo en la VPS, como `deploy`, en `/srv/autobot`.
     ```
 
     Sigue los logs; si vuelve a caer, es un fallo de arranque (migración pendiente, secreto mal configurado) y no un problema transitorio.
-2. Healthcheck fallando (`web`, `panel`, `db`) sin que el contenedor esté parado: comprueba a mano antes de reiniciar. Los puertos solo escuchan en `127.0.0.1` de la VPS:
+2. Healthcheck fallando (`web`, `web-panel`, `panel`, `db`) sin que el contenedor esté parado: comprueba a mano antes de reiniciar. Los puertos solo escuchan en `127.0.0.1` de la VPS:
 
     ```bash
     curl -s http://127.0.0.1:8000/health     # web
     curl -s http://127.0.0.1:8080/healthz    # panel
+    deploy/scripts/compose.sh ps web-panel   # web-panel no publica puerto: mira la columna de salud
     deploy/scripts/compose.sh exec -T db pg_isready
     ```
 

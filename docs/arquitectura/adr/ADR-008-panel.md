@@ -1,6 +1,6 @@
 # ADR-008 — Panel interno: arquitectura, acceso y observabilidad
 
-**Estado:** vigente
+**Estado:** vigente; actualizado por [ADR-020](ADR-020-api-del-panel-aparte.md) (la API del panel corre en `web-panel`, no en `web`)
 
 ## Contexto
 
@@ -12,7 +12,7 @@ deshacer.
 ## Decisión
 
 - **Dos contenedores nuevos:** `panel` (Caddy interno, sirve una SPA estática con Vite y
-  hace de proxy de `/api/` hacia `web:8000`) y `victorialogs` (almacén de logs, 31 días,
+  hace de proxy de `/api/` hacia `web:8000`; desde el ADR-020, hacia `web-panel:8000`) y `victorialogs` (almacén de logs, 31 días,
   solo red interna, sin puerto publicado: se consulta desde la pantalla Logs del
   panel, nunca directamente). `panel` escucha en `127.0.0.1:8080`; nada nuevo queda
   expuesto a internet.

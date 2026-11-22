@@ -20,9 +20,10 @@ from autobot.owner import links, menu, texts
 from autobot.runtime.event_flow import finish, finish_and_send, finish_limited
 from autobot.runtime.jobs import HANDLE_OWNER_EVENT, INBOUND
 from autobot.runtime.locks import owner_chat_lock
-from autobot.runtime.models import OwnerEvent
+from autobot.runtime.models import OwnerEvent, OwnerLink
 from autobot.runtime.notifications import bot_secrets, deliver
 from autobot.runtime.queue import enqueue
+from autobot.tenancy.registry import LoadedTenant
 from core.replies import Reply, Text
 
 log = logging.getLogger(__name__)
@@ -30,6 +31,16 @@ log = logging.getLogger(__name__)
 # A chat without a tenant gets the "not linked" refusal at most 3 times an hour
 # (worker memory); past that, silence.
 NOT_LINKED_LIMIT = WindowLimiter(limit=3, window_s=3600)
+
+# Events accepted per chat (any chat): past it they are dropped before being saved
+# (webhook process memory).
+CHAT_EVENTS_PER_MINUTE = 30
+chat_limiter = WindowLimiter(limit=CHAT_EVENTS_PER_MINUTE, window_s=60)
+
+# Events accepted per minute from chats not connected to any business, all together:
+# bounds what a flood of strangers can write to `owner_event` and queue.
+STRANGER_EVENTS_PER_MINUTE = 60
+stranger_limiter = WindowLimiter(limit=STRANGER_EVENTS_PER_MINUTE, window_s=60)
 
 INSERT_EVENT = """
     INSERT INTO owner_event (id, provider_event_id, payload, status, received_at)
@@ -41,7 +52,15 @@ INSERT_EVENT = """
 
 def store_owner_event(item: InboundItem) -> bool:
     """Save an owner bot item and queue its handling; False if already received (the
-    provider retried). Writes no table with RLS."""
+    provider retried) or dropped for exceeding a limit. Writes no table with RLS."""
+    if chat_limiter.hit(item.external_id):
+        log.warning("owner bot events of a chat over the limit dropped")
+        return False
+    if not OwnerLink.objects.filter(chat_id=int(item.external_id)).exists() and (
+        stranger_limiter.hit("all")
+    ):
+        log.warning("owner bot events of unlinked chats over the limit dropped")
+        return False
     event_id = uuid.uuid7()
     bind(event_id=str(event_id))
     with transaction.atomic(using="default"), connections["default"].cursor() as cursor:
@@ -67,6 +86,13 @@ def handle_owner_event(event_id: UUID) -> None:
     if event is None or event.status != OwnerEvent.Status.PENDING:
         return
     bind(event_id=str(event_id))
+    _process(event)
+    # Done (a retry raised before reaching here): the update, which may hold a link
+    # code or a chat's text, is no longer needed. `provider_event_id` still dedupes.
+    OwnerEvent.objects.filter(id=event.id, status=OwnerEvent.Status.DONE).update(payload={})
+
+
+def _process(event: OwnerEvent) -> None:
     items = TELEGRAM.parse(event.payload, None)
     item = items[0] if items else None
     if not isinstance(item, InboundItem):
@@ -109,7 +135,22 @@ def _handle_start_code(event: OwnerEvent, chat_id: int, code: str) -> tuple[str,
     if result.status == "taken":
         return texts.chat_taken(), None
     assert result.tenant is not None
+    if result.replaced_chat_id is not None:
+        _notify_replaced_chat(event, result.replaced_chat_id, result.tenant)
     return texts.linked(result.tenant), result.tenant.slug
+
+
+def _notify_replaced_chat(event: OwnerEvent, old_chat_id: int, tenant: LoadedTenant) -> None:
+    """Tell the chat that was connected that it no longer is (someone with a link took
+    its place). Sent once, right after the link changed hands (a retry of the event
+    finds the code spent), through the notify bot like any other message; no transaction
+    is open. Never retried blindly: a failure is only logged, without the chat id."""
+    outcome = deliver(Text(texts.chat_replaced(tenant)), str(old_chat_id), event.id)
+    if not isinstance(outcome, Sent):
+        log.warning(
+            "owner bot notice to the replaced chat not sent: %s",
+            type(outcome).__name__ if outcome is not None else "bot unconfigured",
+        )
 
 
 def _reply_limited(event: OwnerEvent, chat_id: int, body: str) -> None:

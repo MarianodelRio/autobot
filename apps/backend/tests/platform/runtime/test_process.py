@@ -205,7 +205,9 @@ def test_an_unexpected_pack_error_gives_the_recovery_text(
     tenants(wa_tenant())
     event = receive(wa_text("hola"))
     assert (event.status, event.error) == ("failed", "KeyError")
-    assert bodies(event) == [RECOVERY_TEXT]
+    # The first-contact notice goes first (and is merged into the same text).
+    assert bodies(event)[0].startswith("Soy el asistente automático")
+    assert bodies(event)[0].endswith(RECOVERY_TEXT)
 
 
 def test_a_reply_that_cannot_be_planned_gives_the_recovery_text_not_silence(

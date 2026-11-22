@@ -5,7 +5,9 @@
 :8080 {
     encode zstd gzip
     header {
-        Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
+        Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+        Cross-Origin-Opener-Policy same-origin
+        Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
         X-Frame-Options DENY
         Referrer-Policy no-referrer
         X-Content-Type-Options nosniff
@@ -14,18 +16,19 @@
         respond "ok" 200
     }
     handle /api/* {
-        reverse_proxy web:8000 {
+        header Cache-Control "no-store"
+        reverse_proxy web-panel:8000 {
             header_up -X-Autobot-Edge
         }
     }
     # Documentation site (ADR-018), built into the image at /srv/docs. It needs a panel
-    # session: `forward_auth` asks `web` whether the cookie is a verified staff session
+    # session: `forward_auth` asks `web-panel` whether the cookie is a verified staff session
     # (the same check as every panel API call) and sends anyone else to the login screen.
     handle /docs {
         redir * /docs/ 308
     }
     handle /docs/* {
-        forward_auth web:8000 {
+        forward_auth web-panel:8000 {
             uri /api/panel/auth/me
             header_up -X-Autobot-Edge
             @denied status 401 403

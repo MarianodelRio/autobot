@@ -18,9 +18,16 @@ from cryptography.fernet import Fernet
 
 from tools.ops import check_prod_config as check
 
+_HARDENING = {"cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"]}
+
 
 def _good_services() -> dict[str, Any]:
-    worker = {"read_only": True, "environment": {"DB_APP_URL": "x"}}
+    worker = {
+        "read_only": True,
+        "environment": {"DB_APP_URL": "x"},
+        "networks": {"egress": None, "data": None, "logs": None},
+        **_HARDENING,
+    }
     return {
         "web": {
             "ports": [{"host_ip": "127.0.0.1"}],
@@ -30,11 +37,31 @@ def _good_services() -> dict[str, Any]:
             ],
             "read_only": True,
             "user": "10001",
+            "environment": {"DB_OWNER_URL": "", "DB_READONLY_URL": ""},
+            "networks": {"edge": None, "data": None, "logs": None},
+            **_HARDENING,
         },
-        "db": {"environment": {"POSTGRES_PASSWORD": "x"}},
-        "victorialogs": {},
-        "caddy": {"user": "10001", "environment": {"PUBLIC_HOST": "x"}},
-        "panel": {"ports": [{"host_ip": "127.0.0.1"}], "read_only": True, "user": "10001"},
+        "web-panel": {
+            "read_only": True,
+            "user": "10001",
+            "environment": {"DB_OWNER_URL": "postgres://owner", "DB_READONLY_URL": "postgres://ro"},
+            "networks": {"panel": None, "data": None, "logs": None},
+            **_HARDENING,
+        },
+        "db": {"environment": {"POSTGRES_PASSWORD": "x"}, "networks": {"data": None}},
+        "victorialogs": {"networks": {"logs": None}, **_HARDENING},
+        "caddy": {
+            "user": "10001",
+            "environment": {"PUBLIC_HOST": "x"},
+            "networks": {"edge": None},
+        },
+        "panel": {
+            "ports": [{"host_ip": "127.0.0.1"}],
+            "read_only": True,
+            "user": "10001",
+            "networks": {"panel": None},
+            **_HARDENING,
+        },
         "worker-inbound": deepcopy(worker),
         "worker-outbound": deepcopy(worker),
     }
@@ -61,6 +88,16 @@ def test_good_compose_services_pass() -> None:
         lambda s: s["worker-outbound"].update(read_only=False),
         lambda s: s["db"]["environment"].update(DJANGO_SECRET_KEY="x"),
         lambda s: s["caddy"]["environment"].update(DB_APP_URL="postgres://app"),
+        lambda s: s["web"]["environment"].update(DB_OWNER_URL="postgres://owner"),
+        lambda s: s["web"]["environment"].update(DB_READONLY_URL="postgres://ro"),
+        lambda s: s["web-panel"]["environment"].update(DB_OWNER_URL=""),
+        lambda s: s["web-panel"].update(ports=[{"published": 8000}]),
+        lambda s: s["web-panel"]["networks"].update(edge=None),
+        lambda s: s["web"]["networks"].update(panel=None),
+        lambda s: s["web-panel"].update(cap_drop=[]),
+        lambda s: s["victorialogs"].update(security_opt=[]),
+        lambda s: s["caddy"]["networks"].update(data=None),
+        lambda s: s["db"]["networks"].update(edge=None),
     ],
 )
 def test_weakened_compose_services_fail(mutate: Any) -> None:
@@ -68,6 +105,10 @@ def test_weakened_compose_services_fail(mutate: Any) -> None:
     mutate(services)
     with pytest.raises(AssertionError):
         check.check_compose_services(services)
+
+
+def test_the_panel_caddyfile_points_at_web_panel_only() -> None:
+    check.check_panel_caddyfile()
 
 
 def test_compose_env_has_a_valid_throwaway_key_and_no_real_secret() -> None:

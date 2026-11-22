@@ -241,6 +241,33 @@ def msg_resultado(
     fecha: date,
     hoy: date | None = None,
 ) -> str:
+    """El resultado de una consulta, cerrado con el aviso de horarios orientativos
+    (`cfg.schedule_disclaimer`) cuando el mensaje habla de horarios. El aviso siempre
+    cabe: el cuerpo se recorta antes para dejarle sitio."""
+    aviso = cfg.schedule_disclaimer.strip()
+    reserva = len(aviso) + 2 if aviso else 0
+    texto = _msg_resultado(
+        cfg, consulta, horarios, origen_nombre, destino_nombre, fecha, hoy, MAX_TEXT - reserva
+    )
+    if aviso and consulta.estado not in _SIN_AVISO:
+        return f"{texto}\n\n{aviso}"
+    return texto
+
+
+# Estados que no hablan de horarios: no llevan el aviso.
+_SIN_AVISO = frozenset({"no_vendible", "sin_trayecto"})
+
+
+def _msg_resultado(
+    cfg: BusConfig,
+    consulta: Consulta,
+    horarios: Horarios,
+    origen_nombre: str,
+    destino_nombre: str,
+    fecha: date,
+    hoy: date | None = None,
+    limite: int = MAX_TEXT,
+) -> str:
     """Mensaje de resultado. `consulta.estado` decide el
     contenido; nunca se deriva de si `salidas` está vacío (`sin_datos`
     también produce salidas vacías)."""
@@ -305,9 +332,9 @@ def msg_resultado(
         texto = _texto_salidas(
             cfg, consulta, horarios, cabecera, fecha, hoy, listadas, visibles, ya_salidas
         )
-        if len(texto) <= MAX_TEXT:
+        if len(texto) <= limite:
             return texto
-    return texto[: MAX_TEXT - 1] + "…"  # una sola salida con notas enormes: no debería pasar
+    return texto[: limite - 1] + "…"  # una sola salida con notas enormes: no debería pasar
 
 
 def _texto_salidas(

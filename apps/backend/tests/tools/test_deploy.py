@@ -51,8 +51,19 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
         "  printf 'DUMPDATA'\n"
         "fi\n"
         "[[ $* != *'caddy reload'* || ${CADDY_RELOAD_FAIL:-} != 1 ]] || exit 1\n"
+        # The services the checked-out compose file defines (LEGACY_COMPOSE=1: from before
+        # ADR-020, with no web-panel).
+        "if [[ $* == *'config --services'* ]]; then\n"
+        "  printf 'caddy\\nweb\\nworker-inbound\\nworker-outbound\\npanel\\ndb\\nvictorialogs\\n'\n"
+        "  [[ ${LEGACY_COMPOSE:-} == 1 ]] || echo web-panel\n"
+        "fi\n"
         "if [[ $* == *'ps -q worker'* ]]; then echo worker-id; fi\n"
-        "if [[ $1 == inspect ]]; then\n"
+        "if [[ $* == *'ps -q web-panel'* ]]; then echo web-panel-id; fi\n"
+        # web-panel publishes no port: deploy.sh reads its Docker health status.
+        "if [[ $1 == inspect && $* == *Health* ]]; then\n"
+        '  if [[ ${BROKEN_PANEL_API_SHA:-} == "$SHA" ]]; then echo unhealthy;'
+        " else echo healthy; fi\n"
+        "elif [[ $1 == inspect ]]; then\n"
         '  if [[ ${BROKEN_WORKER_SHA:-} == "$SHA" ]]; then echo "true 1"; else echo "true 0"; fi\n'
         "fi\n"
     )
@@ -63,12 +74,12 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
         "[[ $* != *https://* || ${BROKEN_HTTPS:-} != 1 ]] || exit 28\n"
         '[[ ${BROKEN_SHA:-} != "$SHA" ]] || exit 22\n'
         # DEGRADED_AFTER while NEW's containers are the last ones started with "up
-        # --no-deps [--remove-orphans] -d web worker-inbound worker-outbound panel"
+        # --no-deps [--remove-orphans] -d web web-panel worker-inbound worker-outbound panel"
         # (not yet, or restored to a previous sha by a rollback: DEGRADED_BEFORE). Lets
         # a test simulate a tenant already degraded ahead of the deploy, or one that
         # becomes degraded because of it.
         "last=$(grep -E"
-        " 'up --no-deps (--remove-orphans )?-d web worker-inbound worker-outbound panel'"
+        " 'up --no-deps (--remove-orphans )?-d web web-panel worker-inbound worker-outbound panel'"
         ' "$TEST_LOG" 2>/dev/null | tail -1)\n'
         f'if [[ $last == "{NEW} "* ]]; then\n'
         "  degraded=${DEGRADED_AFTER:-0}\n"
@@ -153,7 +164,8 @@ def test_success_records_image_after_health(tmp_path: Path) -> None:
     # The single `worker` from before X14 must not survive the deploy as an orphan.
     assert any(
         line.startswith(NEW)
-        and "up --no-deps --remove-orphans -d web worker-inbound worker-outbound panel" in line
+        and "up --no-deps --remove-orphans -d web web-panel worker-inbound worker-outbound panel"
+        in line
         for line in lines
     )
     assert lines[-1].startswith(NEW) and "deploy_ok" in lines[-1]
@@ -219,7 +231,7 @@ def test_health_failure_restores_previous_image_and_alerts(tmp_path: Path) -> No
     assert result.returncode == 1
     assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == OLD
     lines = (tmp_path / "docker.log").read_text().splitlines()
-    assert any(line.startswith(OLD) and "-d web worker" in line for line in lines)
+    assert any(line.startswith(OLD) and "-d web web-panel worker" in line for line in lines)
     assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
     assert deploy_results(tmp_path) == ["rolled_back"]
 
@@ -230,10 +242,52 @@ def test_worker_restarting_restores_previous_image_and_alerts(tmp_path: Path) ->
     assert result.returncode == 1
     assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == OLD
     lines = (tmp_path / "docker.log").read_text().splitlines()
-    assert any(line.startswith(OLD) and "-d web worker" in line for line in lines)
+    assert any(line.startswith(OLD) and "-d web web-panel worker" in line for line in lines)
     assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
     assert not any(line.startswith(NEW) and "-d caddy" in line for line in lines)
     assert deploy_results(tmp_path) == ["rolled_back"]
+
+
+def test_an_unhealthy_web_panel_restores_previous_image(tmp_path: Path) -> None:
+    """ADR-020: web-panel publishes no port, so its Docker health is what gates the deploy."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, BROKEN_PANEL_API_SHA=NEW)
+    assert result.returncode == 1
+    assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == OLD
+    lines = (tmp_path / "docker.log").read_text().splitlines()
+    assert any(line.startswith(OLD) and "deploy_rollback" in line for line in lines)
+    assert deploy_results(tmp_path) == ["rolled_back"]
+
+
+def test_one_off_commands_run_in_web_panel_and_the_alert_in_web(tmp_path: Path) -> None:
+    """ADR-020: migrate/grants need `owner` (web-panel); the ops alert needs only fp_app."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries)
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "docker.log").read_text()
+    for command in ("migrate --noinput", "apply_grants", "tenant_config validate", "seed_demos"):
+        assert f"run --rm web-panel python manage.py {command}" in log
+    assert "run --rm web python manage.py shell" in log
+    assert "run --rm web python manage.py migrate" not in log
+
+
+def test_a_checkout_without_web_panel_uses_web_for_everything(tmp_path: Path) -> None:
+    """ADR-020: rolling back to a commit from before the split must not ask for web-panel."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, LEGACY_COMPOSE="1")
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "docker.log").read_text()
+    assert "web-panel" not in log
+    assert "run --rm web python manage.py migrate --noinput" in log
+    assert "up --no-deps --remove-orphans -d web worker-inbound worker-outbound panel" in log
+
+
+def test_a_failed_deploy_realigns_db_with_the_restored_compose(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, BROKEN_WORKER_SHA=NEW)
+    assert result.returncode == 1
+    lines = (tmp_path / "docker.log").read_text().splitlines()
+    assert any(line.startswith(OLD) and "up -d --wait db" in line for line in lines)
 
 
 def test_db_and_caddy_are_pulled_explicitly(tmp_path: Path) -> None:
@@ -330,7 +384,7 @@ def test_migration_failure_never_switches_web(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == OLD
     log = (tmp_path / "docker.log").read_text()
-    assert "-d web worker" not in log
+    assert "-d web web-panel worker" not in log
     assert any(line.startswith(OLD) and "deploy_aborted" in line for line in log.splitlines())
     assert deploy_results(tmp_path) == ["aborted"]
     # init-roles.sh already ran and gave fp_app its broad grants: the abort must reapply
@@ -352,7 +406,7 @@ def test_failure_before_switch_restores_previous_checkout(tmp_path: Path) -> Non
     log = (tmp_path / "docker.log").read_text()
     assert f"git checkout --quiet --detach {OLD}" in log
     assert "migrate" not in log
-    assert "-d web worker" not in log
+    assert "-d web web-panel worker" not in log
     assert any(
         line.startswith(OLD) and "manage.py apply_grants" in line for line in log.splitlines()
     )

@@ -6,6 +6,7 @@ import pytest
 from django.core.cache import cache
 from django.db import connections
 
+from autobot.db.grants import SENSITIVE_TABLES
 from autobot.ops.models import AuditEvent
 from autobot.panel.errors import ApiError
 from autobot.panel.services import catalog
@@ -61,8 +62,10 @@ def test_catalog_and_seven_hidden_columns(authed_client: Any, tenants: Any) -> N
         data = result.json()
         index = next(i for i, column in enumerate(data["columns"]) if column["name"] == field)
         assert data["columns"][index]["hidden"]
-        assert data["rows"], table
-        assert all(row[index] == "<oculto>" for row in data["rows"])
+        if table in SENSITIVE_TABLES:
+            assert data["rows"] == [], table
+        elif data["rows"]:
+            assert all(row[index] == "<oculto>" for row in data["rows"])
     assert get(authed_client, "data/tables/does_not_exist").status_code == 404
 
 
@@ -152,3 +155,27 @@ def test_uncatalogued_name_with_quote(authed_client: Any, monkeypatch: pytest.Mo
             assert estimated["row_count"] == 100000 and estimated["approx"]
         finally:
             cursor.execute('DROP TABLE "catalog_""quoted"')
+
+
+def test_sensitive_tables_show_no_rows_and_payload_columns_are_hidden(
+    authed_client: Any, tenants: Any
+) -> None:
+    tenants(tg_tenant())
+    AuditEvent.objects.using("owner").create(
+        actor="x", action="data.query", summary="s", details={"sql": "SELECT 'secret-phone'"}
+    )
+    for table in SENSITIVE_TABLES:
+        response = get(authed_client, f"data/tables/{table}")
+        assert response.status_code == 200, (table, response.content)
+        assert response.json()["rows"] == [], table
+    for table, column in [
+        ("inbound_event", "payload"),
+        ("outbound_message", "payload"),
+        ("demo_event", "payload"),
+        ("owner_event", "payload"),
+        ("notification", "text"),
+        ("conversation", "state"),
+    ]:
+        assert (table, column) in catalog.HIDDEN_COLUMNS
+        columns = get(authed_client, f"data/tables/{table}").json()["columns"]
+        assert next(c for c in columns if c["name"] == column)["hidden"]

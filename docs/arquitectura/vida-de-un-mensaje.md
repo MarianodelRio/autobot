@@ -69,7 +69,8 @@ Esta entrada la comparten los webhooks, el sondeo de Telegram (`telegram_poll`) 
 
 - `acknowledge` del adaptador (Telegram responde al `callback_query`). Si falla, no detiene el mensaje.
 - Limite por contacto: más de 20 mensajes en 60 s se guardan y no se contestan (`contact_limiter`; solo cuenta en el primer intento).
-- Órdenes globales (`global_command`): baja y alta de mensajes (`opt_out`/`opt_in`) se atienden siempre, incluso con el negocio degradado; `menu` reinicia el estado.
+- Órdenes globales (`global_command`): baja y alta de mensajes (`opt_out`/`opt_in`) y `persona` (`human`) se atienden siempre, incluso con el negocio degradado; `menu` reinicia el estado. En un paso de texto libre esas palabras provocan una pregunta («¿orden o nombre?») en lugar de actuar.
+- Aviso de primera capa de privacidad: si el contacto aún no lo ha recibido (y el negocio puede contestar) se antepone a las respuestas ([Aviso inicial](packs.md#aviso-inicial-y-ordenes-de-atencion)).
 - Si el negocio no tiene pack o está degradado, el contacto recibe un texto genérico (`UNAVAILABLE_TEXT`) y su conversación no se toca.
 - En el caso normal, `_run_pack` construye el `PackContext` y llama a `Pack.handle_message`.
 

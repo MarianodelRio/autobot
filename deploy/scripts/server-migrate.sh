@@ -5,7 +5,11 @@
 # thing it reads from var/server.env (deploy/env/server.env.example) is PUBLIC_HOST,
 # for the health check through the new machine; images, Google service account and
 # restic destination travel with the backed-up .env, so the same domain and backup
-# repository are kept and only the machine changes.
+# repository are kept and only the machine changes. The one thing that does NOT travel in
+# the backup is SECRETS_ENCRYPTION_KEY (ADR-021): copy it from where it is kept to TO first,
+# as a mode-0600 file (default /srv/autobot/var/secrets-key, or AUTOBOT_MIGRATE_SECRETS_KEY_FILE
+# for another path on TO); restore.sh reads it from there, and it can be deleted afterwards
+# (the restored .env keeps it).
 #
 # TO must have been prepared with `install-vm.sh --restore-target` (ADR-017) run on
 # that VM: users, Docker, timers, SSH hardening and the bootstrap marker, but no
@@ -42,6 +46,9 @@ source "$server_env"
 set +a
 : "${PUBLIC_HOST:?Set PUBLIC_HOST in $server_env}"
 
+# Where, on TO, restore.sh finds the encryption key (it is not inside the snapshot).
+secrets_key_file=${AUTOBOT_MIGRATE_SECRETS_KEY_FILE:-/srv/autobot/var/secrets-key}
+
 ssh_opts=(-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new)
 # shellcheck disable=SC2029  # intentional: every caller's command string is meant
 # to expand locally (sha, snapshot id, counts_sql...) before reaching the remote shell.
@@ -74,6 +81,13 @@ guard_distinct_hosts() {
 # TO must be an empty target: no recorded deployment and no application container
 # running. A rehearsal restores into it and then `down -v` wipes its database volume,
 # which on a deployed machine would destroy the live database.
+# Ids of the application containers running on a host. One `docker ps` per service: repeated
+# `--filter label=...service=X` filters are ANDed by Docker (a container has one service
+# label), so a single command with all of them would match nothing and the guards below
+# would never fire.
+# shellcheck disable=SC2016  # intentional: $s expands on the remote host, not here.
+app_containers_cmd='for s in web web-panel worker-inbound worker-outbound; do docker ps -q --filter label=com.docker.compose.project=autobot --filter label=com.docker.compose.service=$s; done'
+
 guard_empty_target() {
   if ssh_deploy "$to" 'test -f /srv/autobot/var/.deployed-sha'; then
     echo "TO ($to) already has a deployment (var/.deployed-sha); refusing to touch its volumes" >&2
@@ -81,7 +95,7 @@ guard_empty_target() {
   fi
   local running
   running=$(ssh_deploy "$to" \
-    "docker ps -q --filter label=com.docker.compose.project=autobot --filter label=com.docker.compose.service=web --filter label=com.docker.compose.service=worker-inbound --filter label=com.docker.compose.service=worker-outbound")
+    "$app_containers_cmd")
   if [[ -n $running ]]; then
     echo "TO ($to) has application containers running; refusing to touch its volumes" >&2
     return 1
@@ -94,8 +108,12 @@ guard_empty_target() {
 step_rehearse() {
   guard_distinct_hosts
   guard_empty_target
+  ssh_deploy "$to" "test -s $secrets_key_file" || {
+    echo "TO has no encryption key at $secrets_key_file (it never travels in the backup, ADR-021): copy it there, mode 0600, and retry" >&2
+    return 1
+  }
   # restore.sh installs the snapshot's .env and runs ensure-env.sh itself.
-  ssh_deploy "$to" 'AUTOBOT_RESTORE_DB_ONLY=true /srv/autobot/deploy/scripts/restore.sh --confirm-empty-target'
+  ssh_deploy "$to" "AUTOBOT_SECRETS_KEY_FILE=$secrets_key_file AUTOBOT_RESTORE_DB_ONLY=true /srv/autobot/deploy/scripts/restore.sh --confirm-empty-target"
   # Via `db`'s own postgres superuser, like restore-test.sh: RLS would otherwise
   # hide everything from fp_app without a tenant context set.
   local counts_sql="SELECT t.slug, count(c.id) FROM tenant t LEFT JOIN contact c ON c.tenant_id=t.id GROUP BY t.slug ORDER BY t.slug"
@@ -120,7 +138,7 @@ step_freeze() {
     gh workflow disable deploy.yml || echo 'Could not disable deploy.yml; disable it by hand' >&2
   fi
   ssh_admin "$from" 'sudo systemctl stop autobot-backup.timer'
-  ssh_deploy "$from" '/srv/autobot/deploy/scripts/compose.sh stop worker-inbound worker-outbound web panel caddy'
+  ssh_deploy "$from" '/srv/autobot/deploy/scripts/compose.sh stop worker-inbound worker-outbound web web-panel panel caddy'
   ssh_deploy "$from" '/srv/autobot/deploy/scripts/backup.sh'
   # shellcheck disable=SC2016  # intentional: expands remotely inside the ssh'd shell, not here.
   snapshot=$(ssh_deploy "$from" \
@@ -138,7 +156,7 @@ step_cutover() {
     return 1
   }
   ssh_deploy "$to" \
-    "AUTOBOT_RESTORE_SNAPSHOT=$snapshot /srv/autobot/deploy/scripts/restore.sh --confirm-empty-target"
+    "AUTOBOT_SECRETS_KEY_FILE=$secrets_key_file AUTOBOT_RESTORE_SNAPSHOT=$snapshot /srv/autobot/deploy/scripts/restore.sh --confirm-empty-target"
   ssh_deploy "$to" "curl --silent --show-error --fail --max-time 5 --resolve '$PUBLIC_HOST:443:127.0.0.1' https://$PUBLIC_HOST/health"
   echo 'TO answers on HTTPS without the workers running. Verify it by hand, then:'
 }
@@ -147,7 +165,7 @@ step_start_destination() {
   # Never start sending from TO while FROM might still have an app container
   # up: a real double-send would duplicate outbound messages.
   running=$(ssh_deploy "$from" \
-    "docker ps -q --filter label=com.docker.compose.project=autobot --filter label=com.docker.compose.service=web --filter label=com.docker.compose.service=worker-inbound --filter label=com.docker.compose.service=worker-outbound")
+    "$app_containers_cmd")
   if [[ -n $running ]]; then
     echo "FROM ($from) still has application containers running; refusing to start TO's workers" >&2
     return 1

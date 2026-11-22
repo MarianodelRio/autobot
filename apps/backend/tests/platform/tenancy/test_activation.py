@@ -21,6 +21,12 @@ def packs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("packs.registry.PACKS", PACKS)
 
 
+LEGAL: dict[str, Any] = {
+    "privacy": {"policy_url": "https://example.invalid/privacidad"},
+    "support": {"human_contact": "Tel. 600 000 000"},
+}
+
+
 def create(doc: dict[str, Any], secrets: dict[str, str]) -> None:
     store.create_tenant(document=doc, secrets=secrets, actor="test", comment="Initial")
 
@@ -40,7 +46,7 @@ def inbound(doc: dict[str, Any], channel: str = "main") -> None:
 def test_checklist_and_activation_have_no_external_transaction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    doc = tg_tenant()
+    doc = tg_tenant(**LEGAL)
     create(doc, TG_SECRETS)
     calls = []
 
@@ -66,7 +72,7 @@ def test_checklist_and_activation_have_no_external_transaction(
 
 
 def test_whatsapp_templates_and_red_health_block(monkeypatch: pytest.MonkeyPatch) -> None:
-    doc = wa_tenant()
+    doc = wa_tenant(**LEGAL)
     doc["channel"]["display_phone"] = "+34600000000"
     create(doc, WA_SECRETS)
     inbound(doc)
@@ -87,7 +93,7 @@ def test_wa_channel_without_display_phone_blocks_activation(
 ) -> None:
     # `complete` alone (app/waba/phone_number_id) leaves no public link and no
     # QR without `display_phone`; the checklist must not call that "ok".
-    doc = wa_tenant()
+    doc = wa_tenant(**LEGAL)
     create(doc, WA_SECRETS)
     inbound(doc)
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
@@ -99,7 +105,7 @@ def test_an_ignored_message_from_a_stranger_does_not_count_as_a_tester(
 ) -> None:
     # During onboarding, a non-tester's message is saved as `ignored`
     # (runtime.inbound), never answered; it must not satisfy "tester".
-    doc = tg_tenant()
+    doc = tg_tenant(**LEGAL)
     create(doc, TG_SECRETS)
     InboundEvent.objects.using("owner").create(
         tenant_id=doc["id"],
@@ -118,7 +124,7 @@ def test_an_ignored_message_from_a_stranger_does_not_count_as_a_tester(
 
 
 def test_activation_rechecks_state_after_provider_call(monkeypatch: pytest.MonkeyPatch) -> None:
-    doc = tg_tenant()
+    doc = tg_tenant(**LEGAL)
     create(doc, TG_SECRETS)
     inbound(doc)
 
@@ -130,3 +136,19 @@ def test_activation_rechecks_state_after_provider_call(monkeypatch: pytest.Monke
     with pytest.raises(store.StoreError) as error:
         store.change_status("tg", action="activate", actor="user", confirm_slug="tg")
     assert error.value.code == "invalid_status"
+
+
+def test_privacy_and_support_are_required_to_activate(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
+    doc = tg_tenant()
+    create(doc, TG_SECRETS)
+    inbound(doc)
+    assert activation.checklist("tg").blocking == ["privacy"]
+    with pytest.raises(store.StoreError):
+        store.change_status("tg", action="activate", actor="user", confirm_slug="tg")
+    # One of the two is not enough.
+    legal = {"privacy": LEGAL["privacy"]}
+    other = tg_tenant("tg2", **legal)
+    create(other, TG_SECRETS)
+    inbound(other)
+    assert activation.checklist("tg2").blocking == ["privacy"]

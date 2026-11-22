@@ -1,9 +1,12 @@
 """Contact search and audited conversation detail."""
 
+import hashlib
+import hmac
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
@@ -18,6 +21,7 @@ from autobot.panel.services.activity import (
     describe_outbound,
     encode_cursor,
 )
+from autobot.panel.stepup import require_recent_reauth
 from autobot.runtime import privacy
 from autobot.runtime.models import Contact, Conversation, OutboundMessage
 from autobot.tenancy.models import Tenant
@@ -74,6 +78,13 @@ class ContactDetail(Schema):
     state: dict[str, Any] | None
 
 
+def _search_fingerprint(term: str) -> str:
+    """Keyed hash of a search term, so the audit log can tell two searches apart without
+    ever holding a phone number or name in clear."""
+    key = hashlib.sha256(b"autobot-audit-search:" + settings.SECRET_KEY.encode()).digest()
+    return hmac.new(key, term.casefold().encode(), hashlib.sha256).hexdigest()[:16]
+
+
 @router.get("/tenants/{slug}/contacts", response=ContactPage)
 def contacts(
     request: HttpRequest,
@@ -85,6 +96,19 @@ def contacts(
     limit = max(1, min(limit, 100))
     tenant = get_object_or_404(Tenant.objects.using("owner"), slug=slug)
     qs = Contact.objects.using("owner").filter(tenant=tenant).select_related("tenant")
+    # Reading a tenant's contact list (phones, names) is a PII read: audited before it
+    # runs, never with the term itself.
+    record(
+        actor=request.user.username,
+        action="contact.search" if search else "contact.list",
+        summary="Búsqueda de contactos" if search else "Listado de contactos",
+        tenant_id=tenant.id,
+        target_type="tenant",
+        target_id=str(tenant.id),
+        details={"search_length": len(search), "search_hmac": _search_fingerprint(search)}
+        if search
+        else {"paged": bool(cursor)},
+    )
     if search:
         qs = qs.filter(
             Q(display_name__icontains=search)
@@ -155,6 +179,7 @@ class ContactExportOut(Schema):
 
 
 @router.get("/contacts/{id}/export", response=ContactExportOut)
+@require_recent_reauth()
 def contact_export(request: HttpRequest, id: UUID) -> ContactExportOut:
     """The panel equivalent of `contact_export`, downloaded as JSON instead
     of written to an operator-chosen local path."""
@@ -178,6 +203,7 @@ class ContactForgetOut(Schema):
 
 
 @router.post("/contacts/{id}/forget", response=ContactForgetOut)
+@require_recent_reauth()
 def contact_forget(request: HttpRequest, id: UUID) -> ContactForgetOut:
     """The panel equivalent of `contact_forget` (right to erasure)."""
     contact = get_object_or_404(Contact.objects.using("owner").select_related("tenant"), pk=id)

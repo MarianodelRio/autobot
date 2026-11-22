@@ -30,6 +30,7 @@ import dataclasses
 import json
 import logging
 import uuid
+from typing import Literal
 from uuid import UUID
 
 from django.core.cache import cache
@@ -81,6 +82,12 @@ refusals = WindowLimiter(limit=3, window_s=3600)
 EVENTS_PER_MINUTE = 30
 event_limiter = WindowLimiter(limit=EVENTS_PER_MINUTE, window_s=60)
 
+# Events accepted per door from people with no access (not on the list, no grant): past
+# it they are dropped before being saved, whoever sends them. Bounds what a flood of
+# strangers can write to `demo_event` and queue (webhook process memory).
+STRANGER_EVENTS_PER_MINUTE = 60
+stranger_limiter = WindowLimiter(limit=STRANGER_EVENTS_PER_MINUTE, window_s=60)
+
 # The "Demo · {business}" notice already sent for an event (a retry must not repeat it).
 NOTICE_SENT_KEY = "demo:picked:{event_id}"
 NOTICE_SENT_TTL_S = 3600
@@ -99,12 +106,12 @@ def store_event(door: Door, item: InboundItem) -> bool:
     if event_limiter.hit(f"{door.channel}:{item.external_id}"):
         log.warning("demo events of a person over the limit dropped")
         return False
-    if (
-        door.channel == Channel.DEMO_WA
-        and not allowed(door, item)
-        and invites.candidate_code(door, item) is None
-    ):
-        return False  # WhatsApp never answers a stranger: there is nothing to keep
+    if not allowed(door, item):
+        if door.channel == Channel.DEMO_WA and invites.candidate_code(door, item) is None:
+            return False  # WhatsApp never answers a stranger: there is nothing to keep
+        if stranger_limiter.hit(str(door.channel)):
+            log.warning("demo events of people without access over the limit dropped")
+            return False
     event_id = uuid.uuid7()
     bind(channel=str(door.channel), event_id=str(event_id))
     with transaction.atomic(using="default"), connections["default"].cursor() as cursor:
@@ -148,10 +155,15 @@ def route_demo_event(event_id: UUID) -> None:
     payload = item.message.payload or ""
     if payload.startswith((SELECT, PAGE)):
         door_.adapter.acknowledge(event.payload, door_.description, door_.secrets)
-    if not _gate_access(event, door_, item):
+    access = _gate_access(event, door_, item)
+    if access is None:
         return
     available = _available()
-    if payload.startswith(PAGE):
+    if access == "redeemed":
+        # The message *was* the code: not forwarded to any business, and not kept.
+        _finish_and_reply(event, door_, item, [business_list(available, 0)])
+        _scrub(event)
+    elif payload.startswith(PAGE):
         _handle_page(event, door_, item, available)
     elif payload.startswith(SELECT):
         _handle_select(event, door_, item, available)
@@ -161,12 +173,17 @@ def route_demo_event(event_id: UUID) -> None:
         _handle_session_message(event, door_, item, available)
 
 
-def _gate_access(event: DemoEvent, door_: Door, item: InboundItem) -> bool:
-    """True if the person may use the demo (their id is on the door's list, or they
-    redeemed an invite code). Otherwise the refusal is dealt with (Telegram: at most a
-    few times an hour; WhatsApp: never, Meta bills every message) and False returned."""
-    if allowed(door_, item) or invites.redeem(door_, item):
-        return True
+def _gate_access(
+    event: DemoEvent, door_: Door, item: InboundItem
+) -> Literal["allowed", "redeemed"] | None:
+    """`"allowed"` if the person may use the demo (their id is on the door's list or they
+    hold a grant), `"redeemed"` if this very message redeemed an invite code. Otherwise
+    the refusal is dealt with (Telegram: at most a few times an hour; WhatsApp: never,
+    Meta bills every message) and None returned."""
+    if allowed(door_, item):
+        return "allowed"
+    if invites.redeem(door_, item):
+        return "redeemed"
     log.info("demo message from a user without access")
     if door_.channel == Channel.DEMO_TG:
         finish_limited(
@@ -180,7 +197,7 @@ def _gate_access(event: DemoEvent, door_: Door, item: InboundItem) -> bool:
     else:
         finish(DemoEvent, event.id)  # WhatsApp: never answer
     _scrub(event)  # nothing of a stranger is kept
-    return False
+    return None
 
 
 def _handle_page(

@@ -14,7 +14,8 @@ from django.utils import timezone
 from autobot.runtime.models import OwnerLink
 from autobot.tenancy.registry import LoadedTenant, get_registry
 
-OWNER_INVITE_DAYS = 7
+# Short on purpose: the code is a bearer secret that sits in a chat; a new one is one tap away.
+OWNER_INVITE_HOURS = 48
 
 
 def owner_chat(tenant_id: UUID) -> int | None:
@@ -47,7 +48,7 @@ def new_invite(tenant_id: UUID) -> str:
     plaintext code: it is never stored, only its sha256."""
     code = secrets.token_urlsafe(24)
     digest = hashlib.sha256(code.encode()).hexdigest()
-    expires = timezone.now() + timedelta(days=OWNER_INVITE_DAYS)
+    expires = timezone.now() + timedelta(hours=OWNER_INVITE_HOURS)
     OwnerLink.objects.update_or_create(
         tenant_id=tenant_id, defaults={"invite_hash": digest, "invite_expires_at": expires}
     )
@@ -68,6 +69,7 @@ def unlink(tenant_id: UUID) -> bool:
 class LinkResult:
     status: Literal["linked", "invalid", "taken"]
     tenant: LoadedTenant | None = None
+    replaced_chat_id: int | None = None  # the chat that was connected and no longer is
 
 
 def start_link(code: str, chat_id: int) -> LinkResult:
@@ -84,12 +86,13 @@ def start_link(code: str, chat_id: int) -> LinkResult:
         return LinkResult("invalid")
     if not tenant.is_demo and _chat_taken_by_another_real_tenant(chat_id, tenant.id):
         return LinkResult("taken")
+    previous = link.chat_id if link.chat_id != chat_id else None
     updated = OwnerLink.objects.filter(id=link.id, invite_hash=digest).update(
         chat_id=chat_id, linked_at=timezone.now(), invite_hash=None, invite_expires_at=None
     )
     if not updated:  # consumed by a concurrent request between the read and here
         return LinkResult("invalid")
-    return LinkResult("linked", tenant)
+    return LinkResult("linked", tenant, previous)
 
 
 def _chat_taken_by_another_real_tenant(chat_id: int, tenant_id: UUID) -> bool:

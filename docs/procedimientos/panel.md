@@ -225,7 +225,11 @@ los comandos se lanzan desde el portátil, con la clave de operación y el alias
   `web:8000`; aun así, `PanelGateMiddleware` responde 404 si esa cabecera llegara por
   algún otro camino, y 503 si el proceso no tiene el alias `owner` (`DB_OWNER_URL`
   sin configurar).
-- Sesión de 12 horas, cookies `autobot_panel_session` y `autobot_panel_csrftoken`
+- Sesión de 12 horas como máximo y 30 minutos de inactividad: pasado ese tiempo sin
+  peticiones hay que volver a entrar. Las acciones sensibles (borrar o dar de baja un
+  negocio, exportar datos, olvidar un contacto, secretos, restaurar una versión,
+  activar el canal real) piden además un código TOTP nuevo, válido 5 minutos; no sirve
+  el código con el que acabas de entrar, hay que esperar al siguiente (30 s). Cookies `autobot_panel_session` y `autobot_panel_csrftoken`
   (nombres propios para no chocar con otra app en `127.0.0.1`). Toda escritura exige
   la cabecera `X-CSRFToken`.
 - 5 fallos de login en 15 minutos bloquean ese usuario 15 minutos; además hay un tope de

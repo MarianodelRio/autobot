@@ -11,9 +11,16 @@ from autobot.ops.models import AuditEvent
 from autobot.runtime.models import Contact, InboundEvent, OutboundMessage
 from autobot.tenancy.registry import get_registry
 from tests.helpers.integration import wa_tenant
-from tests.platform.panel.conftest import get, post
+from tests.platform.panel.conftest import get, post, step_up
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+
+
+@pytest.fixture
+def authed_client(authed_client: Any, user: Any) -> Any:
+    """These tests exercise actions that need a recent step-up (see test_stepup.py)."""
+    assert step_up(authed_client, user).status_code == 200
+    return authed_client
 
 
 def tenant_id(slug: str) -> Any:
@@ -115,3 +122,30 @@ def test_tenant_export_is_post_only_and_capped(
     response = post(authed_client, "tenants/a/export")
     assert response.status_code == 413
     assert response.json()["code"] == "too_large"
+
+
+def test_contact_list_and_search_are_audited_without_the_term(
+    authed_client: Any, tenants: Any
+) -> None:
+    tenants(wa_tenant("a"))
+    Contact.objects.using("owner").create(
+        tenant_id=tenant_id("a"), channel="main", external_id="34600111222", display_name="Ana"
+    )
+    assert get(authed_client, "tenants/a/contacts").status_code == 200
+    listed = AuditEvent.objects.using("owner").get(action="contact.list")
+    assert listed.tenant_id == tenant_id("a")
+    body = get(authed_client, "tenants/a/contacts?search=34600111222").json()
+    assert [c["external_id"] for c in body["items"]] == ["34600111222"]
+    searched = AuditEvent.objects.using("owner").get(action="contact.search")
+    assert searched.details["search_length"] == 11
+    assert len(searched.details["search_hmac"]) == 16
+    dump = str(searched.details) + searched.summary + searched.actor + searched.target_id
+    assert "34600111222" not in dump
+    # Same term, same fingerprint; another term, another one.
+    get(authed_client, "tenants/a/contacts?search=34600111222")
+    get(authed_client, "tenants/a/contacts?search=Ana")
+    fingerprints = [
+        e.details["search_hmac"]
+        for e in AuditEvent.objects.using("owner").filter(action="contact.search").order_by("at")
+    ]
+    assert fingerprints[0] == fingerprints[1] != fingerprints[2]

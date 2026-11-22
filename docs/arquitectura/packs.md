@@ -39,7 +39,7 @@ La definición de `Pack`:
 Notas sobre los campos:
 
 - `state_version` y `conversation_timeout_min`: si cambia la forma del estado tras un despliegue, o pasa más del plazo sin mensajes, `core/conversation.py` (`effective_state`) reinicia el estado antes de llamar al pack.
-- `expects_free_text`: cuando el paso actual espera texto libre (un nombre), la plataforma no interpreta `alta` ni `baja` como órdenes y se las pasa al pack.
+- `expects_free_text`: cuando el paso actual espera texto libre (un nombre), la plataforma no interpreta `alta`, `baja`, `stop`, `parar` ni `persona` como órdenes ni se las pasa al pack sin más: pregunta qué se quiso decir (ver [Aviso inicial y órdenes de atención](#aviso-inicial-y-ordenes-de-atencion)).
 - `load_data` y `dataset_summary`: el primero carga los datasets del negocio desde un directorio temporal; el segundo valida un dataset suelto para la biblioteca ([Config y registro](config-y-registro.md#biblioteca-de-datasets)).
 - `template` y `template_blank`: la plantilla de la demo, ver más abajo.
 - `needs_calendar` y `test_calendar`: solo `salon` usa calendario; `test_calendar` da un doble en memoria a `manage.py chat`.
@@ -92,8 +92,18 @@ Un pack construye respuestas que caben en **los dos** canales, así que se aplic
 `apps/backend/src/core/conversation.py` agrupa funciones puras que el runtime y el arnés de tests llaman en el mismo orden, de modo que un escenario ejecuta el pack igual que producción:
 
 - `effective_state`: reinicio por caducidad (silencioso) o por cambio de `state_version` (con aviso «he tenido que empezar de nuevo»).
-- `global_command`: `menu`, `menú`, `inicio` y `/start` abren el menú; `baja` y `alta` activan o desactivan los avisos del contacto.
-- `opt_result` y `recovery_result`: respuesta a `baja`/`alta` y disculpa tras un error inesperado.
+- `global_command`: `menu`, `menú`, `inicio` y `/start` abren el menú; `baja`, `stop` y `parar` desactivan los avisos del contacto y `alta` los reactiva; `persona`, `humano` y `hablar con una persona` piden atención humana. En un paso de texto libre devuelve `ask` en lugar de la orden.
+- `command_result`, `opt_result`, `human_result`, `ask_result` y `recovery_result`: respuesta a cada orden y disculpa tras un error inesperado.
+- `first_contact_notice`: aviso de primera capa (ver abajo).
+
+### Aviso inicial y órdenes de atención
+
+El negocio es el responsable del tratamiento y la plataforma su encargada; por eso estas reglas viven en la plataforma y no en cada pack:
+
+- **Primer contacto.** La primera vez que un contacto escribe (`Contact.notice_sent_at` nulo; si se olvida al contacto, vuelve a nulo) el runtime antepone un texto aparte, antes de la respuesta del pack: «Soy el asistente automático de {negocio}, no una persona. Uso tus datos solo para atender lo que me pidas. Responsable: {responsable}. Más información y tus derechos: {enlace}. Escribe *PERSONA* para hablar con alguien o *BAJA* para dejar de recibir avisos.». Sin `privacy.policy_url`, la frase del enlace se sustituye por «Para ejercer tus derechos (acceso, rectificación, supresión) contacta con el negocio.». Se marca como enviado en la misma transacción que las respuestas (tx2), así que un reintento no lo duplica y un fallo no lo pierde. En el bot de demo lo redacta `channels/demo/notice.py` con la plataforma como responsable y `PLATFORM_PRIVACY_URL` como enlace opcional.
+- **`PERSONA`.** Responde con `support.human_contact` (o, sin él, «contacta directamente con {negocio}») y emite un aviso al dueño del tipo `human_requested`, como mucho uno por contacto y hora, sin teléfono ni ids (solo el nombre que el contacto diera). Ese tipo se entrega aunque no esté en `owner.notify`: es una obligación de atención a la clientela, y los negocios anteriores a este cambio no lo tienen marcado. Sin dueño enlazado solo se registra en el log. El estado de la conversación no cambia.
+- **`BAJA`/`STOP`/`PARAR`.** Desactivan los avisos y recordatorios; el texto aclara que se puede seguir escribiendo, cómo volver (`alta`) y que para borrar los datos hay que contactar con el negocio.
+- **Paso de texto libre.** Si el cliente escribe una de esas palabras donde se espera un nombre, el bot no adivina: pregunta «¿Quieres darte de baja de los avisos o es tu nombre?» (o la variante de `alta` / `persona`) con dos botones, la orden y «Es mi nombre». El estado se conserva, así que «Es mi nombre» sigue con la reserva usando esa palabra como nombre.
 
 El bot nunca adivina en silencio: o hay una respuesta única, o pregunta.
 

@@ -23,6 +23,16 @@ SENSITIVE_TABLES: tuple[str, ...] = (
     "owner_event",
     "demo_session",
     "demo_access_grant",
+    # `details` and `summary` carry the SQL console's literals (phones, names typed into
+    # a WHERE) and contact ids: the audit log is read through the panel's own view
+    # (owner connection), never through the console.
+    "audit_event",
+    # The full tenant document: it lists the testers' phone numbers and ids. The panel
+    # reads it through `tenancy.store` / its own services (owner), not through fp_readonly.
+    "tenant_document_version",
+    # The suppression ledger (ADR-019): ids and keyed hashes only, but a record of whose
+    # data was erased; not for the SQL console.
+    "privacy_suppression",
 )
 # Config tables (ADR-009): fp_app keeps SELECT, but only fp_owner (the panel, the
 # commands) writes.
@@ -84,6 +94,8 @@ def statements() -> list[str]:
         "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO fp_app",
         "REVOKE INSERT, UPDATE, DELETE ON tenant FROM fp_app",
         _revoke_if_exists("audit_event", "fp_app"),
+        # Only the operator commands (fp_owner) write or read the suppression ledger.
+        _revoke_if_exists("privacy_suppression", "fp_app"),
         _revoke_if_exists("ops_alert", "fp_app", "DELETE"),
         # ADR-013: the registry never reads this table (only `tenancy.store`, as
         # `fp_owner`, copies from it into `tenant_dataset_version`), unlike the

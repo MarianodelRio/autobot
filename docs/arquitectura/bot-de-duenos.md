@@ -23,8 +23,9 @@ sequenceDiagram
     B-->>D: confirmación y menú
 ```
 
-- **Invitación** (`owner/links.py` `new_invite`, `owner/invites.py` `create_invite_link`): código aleatorio de un solo uso que caduca a los 7 días (`OWNER_INVITE_DAYS`). Solo se guarda su sha256 (`invite_hash`); el código en claro aparece únicamente en el enlace que ve quien lo pide, nunca en logs ni auditoría. Generar otro sustituye al pendiente. Se crea desde el panel («Invitar al dueño»), con `manage.py owner_invite <slug>` o desde el propio bot («Mi enlace»).
+- **Invitación** (`owner/links.py` `new_invite`, `owner/invites.py` `create_invite_link`): código aleatorio de un solo uso que caduca a las 48 horas (`OWNER_INVITE_HOURS`; es un secreto que queda en un chat, y generar otro cuesta un toque). Solo se guarda su sha256 (`invite_hash`); el código en claro aparece únicamente en el enlace que ve quien lo pide, nunca en logs ni auditoría. Generar otro sustituye al pendiente. Se crea desde el panel («Invitar al dueño»), con `manage.py owner_invite <slug>` o desde el propio bot («Mi enlace»).
 - **Canje** (`start_link`): el código es de un solo uso; vincular borra la invitación, así que repetirlo da `invalid`. Un negocio dado de baja no se puede vincular.
+- **Chat sustituido**: si el canje cambia el chat conectado de un negocio por otro, `start_link` devuelve el chat anterior (`replaced_chat_id`) y el bot le envía «Este chat ha dejado de recibir los avisos de <negocio>…» (`texts.chat_replaced`) por la vía normal del bot (`deliver`), sin transacción abierta y una sola vez: si falla solo se registra, sin id de chat, y no se reintenta a ciegas. Volver a canjear desde el mismo chat no avisa.
 - **Un chat, un negocio real**: un chat se conecta como mucho a un negocio real (`taken` en otro caso); solo los negocios de demo pueden compartir chat. La comprobación está en código (`_chat_taken_by_another_real_tenant`), no en una restricción de base de datos, porque la demo la rompe a propósito.
 - **Desvincular**: `manage.py owner_unlink` (cambio de dueño, petición RGPD). Los vínculos no dependen de los secretos del bot, así que rotarlos no los rompe.
 
@@ -32,8 +33,8 @@ sequenceDiagram
 
 El webhook `POST /webhooks/telegram-notify` (`autobot/owner/views.py`) lleva `secret_token` (`NOTIFY_BOT_WEBHOOK_SECRET`); sin él responde 404, como la puerta de demo. Solo escribe `owner_event` (sin RLS). El tratamiento (`autobot/owner/inbox.py`) sigue el patrón del [selector de demo](bot-de-demo.md):
 
-1. `store_owner_event` inserta con `ON CONFLICT DO NOTHING` (idempotente por `update_id`) y encola `handle_owner_event` con un candado por chat (`owner_chat_lock`, solo un hash).
-2. `handle_owner_event` marca el evento como hecho **antes** de responder (`finish_and_send`), de modo que un reintento nunca repite una respuesta.
+1. `store_owner_event` descarta sin guardar (el webhook sigue respondiendo 200) lo que supera un límite en memoria del proceso web: 30 eventos por minuto y chat (`CHAT_EVENTS_PER_MINUTE`) y 60 por minuto en total de chats no vinculados a ningún negocio (`STRANGER_EVENTS_PER_MINUTE`), para que una avalancha de desconocidos no llene `owner_event` ni la cola. Después inserta con `ON CONFLICT DO NOTHING` (idempotente por `update_id`) y encola `handle_owner_event` con un candado por chat (`owner_chat_lock`, solo un hash).
+2. `handle_owner_event` marca el evento como hecho **antes** de responder (`finish_and_send`), de modo que un reintento nunca repite una respuesta. Una vez procesado, vacía su `payload` (puede llevar un código de enlace o el texto del chat); `provider_event_id` se conserva para deduplicar.
 3. Si el texto es `/start <código>`, canjea el código. Si el chat no está vinculado a ningún negocio utilizable, contesta «no vinculado» como mucho 3 veces por hora y chat; pasado eso, silencio.
 4. Si no, responde según el botón pulsado y adjunta el menú.
 

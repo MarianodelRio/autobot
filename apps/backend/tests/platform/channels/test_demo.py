@@ -17,7 +17,14 @@ from pytest_django import Settings
 from autobot.channels.demo import selector
 from autobot.channels.demo.doors import door
 from autobot.channels.ratelimit import WindowLimiter
-from autobot.runtime.models import Contact, DemoEvent, InboundEvent, Notification, OutboundMessage
+from autobot.runtime.models import (
+    Contact,
+    DemoEvent,
+    DemoInvite,
+    InboundEvent,
+    Notification,
+    OutboundMessage,
+)
 from autobot.tenancy.registry import reset_registry
 from tests.helpers.integration import (
     TELEGRAM_DEMO_URL,
@@ -370,6 +377,27 @@ def test_a_person_over_the_event_limit_is_dropped_before_saving(
     for _ in range(selector.EVENTS_PER_MINUTE + 5):
         assert say(USER, "hola") == 200
     assert DemoEvent.objects.using("owner").count() == selector.EVENTS_PER_MINUTE
+
+
+def test_strangers_over_the_global_limit_are_dropped_before_saving(
+    tenants: Any, providers: Providers
+) -> None:
+    tenants(demo("wa"))
+    for i in range(selector.STRANGER_EVENTS_PER_MINUTE + 5):
+        assert say(10_000 + i, "hola") == 200  # a different person each time
+    assert DemoEvent.objects.using("owner").count() == selector.STRANGER_EVENTS_PER_MINUTE
+    assert say(USER, "/start") == 200  # people with access are not affected
+    assert DemoEvent.objects.using("owner").count() == selector.STRANGER_EVENTS_PER_MINUTE + 1
+
+
+def test_the_event_that_redeems_a_code_does_not_keep_it(tenants: Any, providers: Providers) -> None:
+    tenants(demo("wa"))
+    DemoInvite.objects.using("owner").create(code="CODE1234AB", max_uses=1, created_by="t")
+    assert say(STRANGER, "/start CODE1234AB") == 200
+    event = DemoEvent.objects.using("owner").get()
+    assert event.status == "done" and event.payload == {}
+    assert "CODE1234AB" not in json.dumps(providers.telegram)
+    assert providers.texts(STRANGER) and selector.NO_ACCESS_TEXT not in providers.texts(STRANGER)
 
 
 def test_a_reply_that_certainly_was_not_sent_is_retried_without_repeating_the_notice(

@@ -81,6 +81,7 @@ def test_global_menu_resets_the_state(chat: Conversation, command: str) -> None:
 
 
 def test_opt_out_and_opt_in(chat: Conversation) -> None:
+    chat.send("hola")  # the first-contact notice goes with the first message
     chat.send("baja").expect(text=OPT_OUT_TEXT)
     assert chat.contact.opt_out
     chat.send("alta").expect(text_contains="volverás")
@@ -254,7 +255,9 @@ def test_retries_before_the_recovery_text() -> None:
             raise TransientError("calendar down")
         return PackResult(replies=[Text("ok")])
 
-    chat = Conversation(dataclasses.replace(toy.pack, handle_message=flaky), attempts=3)
+    chat = Conversation(
+        dataclasses.replace(toy.pack, handle_message=flaky), attempts=3, notice=False
+    )
     chat.send("hola").expect(text="ok")
     assert calls == 3
     calls = -10  # fails on the 3 attempts of the next message

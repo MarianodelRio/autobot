@@ -1,7 +1,19 @@
 """Read-only SQL console: a single SELECT through fp_readonly, always
 rolled back. CONN_MAX_AGE=0 on the `readonly` alias closes the connection after every
-request, so nothing from a query (a GUC, a lingering transaction) can survive it."""
+request, so nothing from a query (a GUC, a lingering transaction) can survive it.
 
+Security model, honestly: the per-tenant scope (`app.tenant_id`) is a convenience, NOT a
+barrier. The query runs as `fp_readonly` and can call `set_config(...)` (directly or via
+`query_to_xml` and friends, which run SQL dynamically) to flip `app.readonly_all` or
+`statement_timeout`. `FORBIDDEN_FUNCTIONS` rejects the obvious spellings on a best-effort
+basis, but it is a filter, not a proof. The real barriers are: the `fp_readonly` role
+(SELECT only, NOBYPASSRLS, no access to `SENSITIVE_TABLES`), the read-only transaction that
+is always rolled back, and the panel being reachable only through the SSH tunnel with
+password + TOTP. Whoever can type here is already a fully trusted operator. The timeout is
+likewise enforced twice: `statement_timeout` (a GUC the SQL could reset) and a Python
+watchdog that cancels the query from outside."""
+
+import contextlib
 import json
 import math
 import re
@@ -22,6 +34,11 @@ MAX_ROWS = 1_000
 MAX_CELL_CHARS = 10_000
 MAX_RESULT_BYTES = 5_000_000
 MAX_CONCURRENT = 2
+WATCHDOG_S = 10.5  # a little over statement_timeout, so the server's own error wins normally
+FORBIDDEN_FUNCTIONS = re.compile(
+    r"\b(set_config|\w*_to_xml\w*|\w*xmlschema\w*|pg_\w*advisory\w*|dblink\w*|lo_\w+"
+    r"|pg_read\w*|pg_ls_\w*)\b"
+)
 STATEMENT = re.compile(r"^\s*(WITH\b.*?\bSELECT\b|SELECT\b|VALUES\b)", re.IGNORECASE | re.DOTALL)
 DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_\x80-\uffff][\w\x80-\uffff]*)?\$")
 
@@ -94,6 +111,67 @@ def _top_level_semicolons(sql: str) -> list[int]:
     return found
 
 
+def _normalize(sql: str) -> str:
+    """Lowercased SQL without comments, string literals, dollar-quoted bodies or the
+    quotes of identifiers, so `"Set_Config"`, `set_/**/config` and `pg_catalog."set_config"`
+    all read `set_config`, while a literal like `'set_config'` is ignored."""
+    out: list[str] = []
+    i, n = 0, len(sql)
+    while i < n:
+        ch = sql[i]
+        if sql.startswith("--", i):
+            end = sql.find("\n", i)
+            i = n if end < 0 else end
+            continue
+        if sql.startswith("/*", i):
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if sql.startswith("/*", i):
+                    depth, i = depth + 1, i + 2
+                elif sql.startswith("*/", i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    i += 1
+            out.append(" ")
+            continue
+        if ch == "'":
+            escapes = i > 0 and sql[i - 1] in "eE"
+            i += 1
+            while i < n:
+                if escapes and sql[i] == "\\":
+                    i += 2
+                    continue
+                if sql[i] == "'":
+                    if sql.startswith("'", i + 1):
+                        i += 2
+                        continue
+                    break
+                i += 1
+            i += 1
+            out.append(" ")
+            continue
+        if ch == "$" and (tag := DOLLAR_TAG.match(sql, i)) is not None:
+            end = sql.find(tag.group(), tag.end())
+            i = n if end < 0 else end + len(tag.group())
+            out.append(" ")
+            continue
+        if ch != '"':
+            out.append(ch.lower())
+        i += 1
+    return "".join(out)
+
+
+def _reject_forbidden(sql: str) -> None:
+    found = FORBIDDEN_FUNCTIONS.search(_normalize(sql))
+    if found:
+        raise ApiError(
+            "bad_request",
+            f"La consola no admite la función «{found.group()}» "
+            "(cambia la configuración o ejecuta SQL dinámico).",
+            400,
+        )
+
+
 def _strip_trailing_comments(sql: str) -> str:
     return re.sub(r"(\s|--[^\n]*(\n|$)|/\*.*?\*/)+$", "", sql, flags=re.DOTALL)
 
@@ -114,6 +192,7 @@ def _clean(sql: str) -> str:
         raise ApiError("bad_request", "La consulta está vacía.", 400)
     if not STATEMENT.match(sql):
         raise ApiError("bad_request", "Solo se admiten SELECT, WITH … SELECT o VALUES.", 400)
+    _reject_forbidden(sql)
     return sql
 
 
@@ -199,6 +278,11 @@ def _fetch(cursor: Any) -> tuple[list[list[Any]], bool]:
     return rows, truncated or bool(cursor.fetchmany(1))
 
 
+def _cancel(raw: Any) -> None:
+    with contextlib.suppress(psycopg.Error):
+        raw.cancel()
+
+
 def _run(sql: str, *, tenant_id: UUID | None, actor: str) -> QueryResult:
     # Recorded before running, not after: a failure (e.g. a CAST error that leaks a
     # value through the driver's message) must never leave a query without a trace.
@@ -210,6 +294,8 @@ def _run(sql: str, *, tenant_id: UUID | None, actor: str) -> QueryResult:
     )
     started = time.monotonic()
     connection = connections["readonly"]
+    # Out-of-band timeout: it does not depend on a GUC the SQL could reset.
+    watchdog: threading.Timer | None = None
     try:
         with transaction.atomic(using="readonly"):
             with connection.cursor() as cursor:
@@ -220,7 +306,11 @@ def _run(sql: str, *, tenant_id: UUID | None, actor: str) -> QueryResult:
                     cursor.execute("SELECT set_config('app.tenant_id', %s, true)", [str(tenant_id)])
                 else:
                     cursor.execute("SELECT set_config('app.readonly_all', 'on', true)")
-            type_registry = connection.connection.adapters.types
+            raw = connection.connection
+            watchdog = threading.Timer(WATCHDOG_S, _cancel, args=(raw,))
+            watchdog.daemon = True
+            watchdog.start()
+            type_registry = raw.adapters.types
             with connection.connection.cursor(name="panel_query") as server_cursor:
                 server_cursor.execute(sql)
                 columns = [_column(c, type_registry) for c in server_cursor.description or []]
@@ -229,5 +319,8 @@ def _run(sql: str, *, tenant_id: UUID | None, actor: str) -> QueryResult:
     except (DatabaseError, psycopg.Error, ValueError) as exc:
         # DataError, a NUL byte, an invalid cast...: always the caller's fault, never a 500.
         raise _error(exc) from None
+    finally:
+        if watchdog is not None:
+            watchdog.cancel()
     duration_ms = int((time.monotonic() - started) * 1000)
     return QueryResult(columns, rows, truncated, duration_ms)

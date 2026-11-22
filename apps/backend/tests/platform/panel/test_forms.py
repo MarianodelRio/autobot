@@ -56,7 +56,7 @@ def _refs(node: Any) -> list[str]:
 
 def test_ui_schema_groups_and_read_only_fields() -> None:
     ui = forms.ui_schema("salon")
-    assert [g["key"] for g in ui["groups"]] == ["business", "channel", "people", "config"]
+    assert [g["key"] for g in ui["groups"]] == ["business", "channel", "people", "legal", "config"]
     assert "channel.public_id" in ui["read_only"]
     assert set(ui["hidden"]) == {"id", "slug", "pack", "status"}
     assert set(ui["collapsed"]) == {"config.texts", "config.special_event"}

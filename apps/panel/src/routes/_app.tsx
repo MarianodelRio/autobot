@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
+import { ReauthDialog } from "@/features/auth/reauth-dialog";
 import { meQueryOptions } from "@/features/auth/use-me";
 
 export const Route = createFileRoute("/_app")({
@@ -19,6 +20,7 @@ function AppLayout() {
   return (
     <AppShell username={me.username}>
       <Outlet />
+      <ReauthDialog />
     </AppShell>
   );
 }

@@ -50,6 +50,10 @@ ALTER ROLE fp_app SET statement_timeout = '60s';
 ALTER ROLE fp_app SET idle_in_transaction_session_timeout = '60s';
 ALTER ROLE fp_owner SET idle_in_transaction_session_timeout = '5min';
 ALTER ROLE fp_readonly SET statement_timeout = '10s';
+-- The SQL console cannot fill the disk: a sort or hash that spills to temporary files
+-- is cancelled past 256 MB per session (within statement_timeout it could otherwise
+-- write for 10 s at disk speed). Only a superuser can set it, so it lives here.
+ALTER ROLE fp_readonly SET temp_file_limit = '256MB';
 ALTER ROLE fp_readonly SET idle_in_transaction_session_timeout = '15s';
 ALTER ROLE fp_readonly SET idle_session_timeout = '5min';
 ALTER ROLE fp_readonly CONNECTION LIMIT 10;

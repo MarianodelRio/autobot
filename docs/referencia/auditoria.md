@@ -49,6 +49,7 @@ El registro lo puede borrar solo la retención nocturna o `tenant_purge`
 | `tenant.secrets` | Se sustituyen los secretos de canal, o se recifran (`tenant_secrets_reencrypt`). | solo `fields` (nombres) o `reencrypted` |
 | `tenant.export` | Exportación de todos los datos de un negocio (panel o `tenant_data_export`). | |
 | `tenant.purge` | Borrado total tras la baja (`tenant_purge`). | `slug`; sin `tenant_id`, porque el negocio ya no existe |
+| `tenant.notifications.view` | Se abren los avisos enviados al dueño (sus textos pueden contener nombres y citas). | |
 | `tenant.owner_invite` | Se genera el enlace de invitación del dueño. | |
 | `tenant.owner_unlink` | Se desconecta al dueño, o se cancela su invitación. | |
 | `tenant.webhook_register`, `tenant.webhook_delete` | Se registra o borra el webhook de Telegram de un bot. Para los bots de plataforma (`demo`, `notify`) no hay `tenant_id` y el objeto es `bot`. | |
@@ -60,9 +61,12 @@ El registro lo puede borrar solo la retención nocturna o `tenant_purge`
 
 | Acción | Cuándo | Detalles |
 |---|---|---|
+| `contact.list` | Se lista (o se pagina) los contactos de un negocio en el panel. | `paged` |
+| `contact.search` | Se busca entre los contactos de un negocio. El término **nunca** se guarda en claro. | `search_length` y `search_hmac` (16 hex de un HMAC con clave de plataforma: permite ver si dos búsquedas son la misma) |
 | `contact.view` | Se abre la ficha de un contacto en el panel. | `contact_id` |
 | `contact.export` | Exportación de los datos de un contacto (panel o `contact_export`). | `contact_id` |
 | `contact.forget` | Borrado de un contacto (panel o `contact_forget`). | `contact_id` |
+| `privacy.reapply` | Tras restaurar un backup: reaplicación de los olvidos y purgas del libro de supresiones (`privacy_reapply`). | contadores (`entries`, `contacts`, `tenants`, `other_rows`, `blocked`) |
 
 ### Envíos y trabajos
 
@@ -86,7 +90,9 @@ Ver [envíos unknown](../incidencias/envios-unknown.md).
 | Acción | Cuándo | Detalles |
 |---|---|---|
 | `data.query` | Se ejecuta una consulta en la consola SQL. Se anota **antes** de ejecutarla. | `sql` |
-| `data.table` | Se consulta una tabla del catálogo de datos. Se anota antes de leer. | `table` |
+| `data.table` | Se consulta una tabla del catálogo de datos. Se anota antes de leer. Las tablas de `SENSITIVE_TABLES` no muestran filas y las columnas con payloads o textos libres salen como `<oculto>`. | `table` |
+
+`audit_event` está en `SENSITIVE_TABLES`: contiene el SQL de la consola (con sus literales), así que se lee solo desde la pantalla Logs, nunca desde la consola SQL.
 
 ### Conjuntos de datos
 
@@ -104,7 +110,11 @@ Ver [horarios de bus](../procedimientos/horarios-bus.md).
 | `demo_invite.create`, `demo_invite.revoke` | Se crea o se revoca una invitación de demo. |
 | `auth.login` | Inicio de sesión correcto en el panel. |
 | `auth.login_failed` | Contraseña o código TOTP incorrectos. |
-| `auth.login_blocked` | Intento bloqueado por demasiados fallos (`scope`: `ip` o `user`). |
+| `auth.step_up` | Reautenticación con un código TOTP nuevo antes de una acción destructiva (borrar, olvidar, exportar, secretos, activar, rollback); vale 5 minutos. |
+| `auth.step_up_failed` | Código TOTP incorrecto o reutilizado en la reautenticación. |
+| `auth.step_up_blocked` | Reautenticación bloqueada por demasiados fallos (comparte el límite del login). |
+| `auth.login_blocked` | Intento bloqueado por demasiados fallos (`scope`: `ip` o `user`). Como mucho una fila por ventana de bloqueo (15 min) y usuario (o dirección, en el ámbito `ip`). El actor es `login:<usuario>`, con el usuario recortado a 64 caracteres, para que un nombre escrito en el formulario no pueda hacerse pasar por un actor real. |
+| `panel_user.create`, `panel_user.set_password`, `panel_user.reset_totp` | Alta de usuario, cambio de contraseña o reinicio del TOTP con `panel_user` (actor `command:panel_user`). Los dos últimos cierran las sesiones activas del usuario y anotan cuántas (`sessions_revoked`). |
 
 ## Dónde está el código
 

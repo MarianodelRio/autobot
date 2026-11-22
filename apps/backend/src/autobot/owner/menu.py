@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from autobot.owner import texts
 from autobot.owner.invites import InviteError, create_invite_link
-from autobot.owner.links import OWNER_INVITE_DAYS
+from autobot.owner.links import OWNER_INVITE_HOURS
 from autobot.runtime import summary
 from autobot.tenancy.registry import LoadedTenant
 from core.limits import MAX_BUTTONS
@@ -85,7 +85,7 @@ def reconnect_text(chat: OwnerChat) -> str:
             texts.reconnect_line(
                 tenant,
                 invite.url,
-                days=OWNER_INVITE_DAYS,
+                hours=OWNER_INVITE_HOURS,
                 replaces_chat=invite.replaces_chat,
             )
         )

@@ -40,7 +40,7 @@ sobre el servidor de producción (instalación dentro de la VM, el resto por SSH
 |---|---|
 | `make test` | `uv run pytest` |
 | `make test-fast` | `pytest -m "not db"`, sin base de datos levantada |
-| `make check-prod-config` | Ejecuta `apps/backend/src/tools/ops/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local |
+| `make check-prod-config` | Ejecuta `apps/backend/src/tools/ops/check_prod_config.py`: prueba el allowlist de Caddy contra un *upstream* local y el endurecimiento del compose de producción (credenciales por servicio, capacidades, redes) |
 | `make check` | Puerta de calidad del backend: `ruff check`, `ruff format --check`, `mypy`, `import-linter`, `pytest` |
 | `make fix` | `ruff check --fix` y `ruff format` en el backend, `biome check --write` en `apps/panel/`, y `make api` |
 | `make api` | Regenera `apps/panel/openapi.json` (esquema de la API del panel) y `apps/panel/src/api/schema.d.ts` (tipos TypeScript) |
@@ -101,6 +101,7 @@ sobre el servidor de producción (instalación dentro de la VM, el resto por SSH
 | `make deploy [SHA=]` | Sin `SHA`, usa `origin/main`; comprueba con `gh` que su CI está en verde y lanza el workflow de despliegue |
 | `make rollback` | Lee del servidor el `previous` del último despliegue correcto y, con confirmación, ejecuta `make deploy SHA=<previous>`; se niega a encadenar un segundo rollback sobre el SHA roto |
 | `make backup-now` | Ejecuta `deploy/scripts/backup.sh` en el servidor por SSH |
+| `make backup-prune [ARGS="--dry-run"]` | Ejecuta `deploy/scripts/backup-prune.sh` **en tu máquina** (nunca en el servidor): caduca los snapshots viejos con una credencial con permiso de borrado que no vive en el servidor (ADR-021; ver [backups](../procedimientos/backups.md)) |
 | `make restore-test` | `bash deploy/scripts/restore-test.sh`: simulacro de restauración |
 | `make prod-manage CMD="..." [TTY=1]` | Ejecuta el comando con la imagen desplegada mediante SSH; `TTY=1` para comandos interactivos, sin TTY para streams binarios |
 | `make prod-compose ARGS="..." [TTY=1]` | Ejecuta un comando de `docker compose` (p. ej. `exec`, `logs`) contra el servidor por SSH, con `SHA` y `--env-file` ya puestos |
@@ -125,6 +126,8 @@ también se puede pasar en la línea de comandos.
 | `tenant_data_export <slug> --output <fichero>` | Exporta todos los datos de un negocio a un fichero privado (derechos RGPD) |
 | `contact_forget <slug> <external_id> [--channel ...]` | Borra los datos de un contacto |
 | `tenant_purge <slug>` | Solo tras la baja: borra todo lo que el sistema guarda del negocio, incluida su fila y su slug (que queda libre); exige escribir el slug |
+| `privacy_ledger_export` | Imprime el libro de supresiones (JSON lines, sin datos personales); guárdalo fuera del servidor tras cada olvido o purga (ADR-019) |
+| `privacy_reapply [--ledger FICHERO]` | Tras restaurar: vuelve a aplicar los olvidos y purgas del libro (tabla + fichero, o `--ledger -` por stdin); idempotente |
 | `outbound_resolve <uuid> (--mark-sent\|--resend) --confirm` | Resuelve un envío ambiguo a mano; sin `--confirm` explica el riesgo y no hace nada |
 | `job_retry <id>` | Reintenta un trabajo fallido idempotente a mano; rechaza los de envío (`send_message`, `send_notification`) |
 | `tenant_secrets_reencrypt` | Recifra todos los secretos de canal con la primera clave de `SECRETS_ENCRYPTION_KEY`, atómicamente y con auditoría; ver [rotación](../procedimientos/rotar-secretos.md) |

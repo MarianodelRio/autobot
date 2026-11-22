@@ -114,11 +114,52 @@ el enlace del dueño, secretos cifrados, versiones de configuración y datasets,
 alertas y su auditoría, y su propia fila `tenant`; el slug queda libre. Lo único
 que permanece es una entrada de auditoría `tenant.purge` con `tenant_id` nulo
 (prueba de que el borrado se hizo, sin datos del negocio), los logs técnicos
-(caducan a los 31 días) y las copias de seguridad (retención de restic). Conserva
+(caducan a los 31 días) y las copias de seguridad (retención de restic; ver el libro de supresiones más abajo). Conserva
 los datos de otros negocios. Todo el borrado y su auditoría ocurren en la misma
 transacción; si el canal es Telegram, el webhook se retira antes, fuera de esa
 transacción. El panel ofrece el mismo borrado desde la ficha del cliente (menú
 «⋯» → «Eliminar cliente»), con confirmación de slug.
+
+### Qué cubre y qué no cubre el olvido
+
+`contact_forget` borra, en una transacción: el contacto, su conversación, sus mensajes
+salientes, **sus avisos al dueño** (`notification`, que llevan su nombre en el texto), los
+eventos entrantes en los que aparece como remitente, y, en las puertas de demo, su sesión
+y sus **accesos por invitación** (`demo_access_grant`, por identificador y teléfono) y los
+eventos de demo vinculados. El remitente se busca en todo tipo de actualización de
+Telegram (`message`, `edited_message`, `callback_query`, `channel_post`, `my_chat_member`,
+`chat_member`, `inline_query`, `pre_checkout_query`, `message_reaction`, etc.) y de
+WhatsApp (`messages[].from`, `contacts[].wa_id`, `statuses[].recipient_id`). El contador
+`uses` de la invitación no guarda identidad y no se toca; olvidar un contacto `main` no
+toca sus accesos de demo (es otra identidad en otra puerta: olvida también el contacto de
+demo). `tenant_purge` no puede borrar accesos de demo porque no pertenecen a un negocio.
+
+**No lo cubre:**
+
+- **Google Calendar:** las citas son del calendario del negocio; el olvido no las borra.
+  El negocio debe borrarlas o anonimizarlas allí.
+- **Meta y Telegram:** su copia de los mensajes (en el móvil del contacto, en WhatsApp
+  Business, en los servidores de Telegram) está fuera de la plataforma.
+- **Logs técnicos** (VictoriaLogs): caducan a los 31 días y no se editan; no llevan
+  datos personales por diseño.
+- **Backups** (restic, hasta 6 meses): no se reescriben. Siguen conteniendo lo olvidado
+  hasta que caduca el snapshot; por eso existe el libro de supresiones (abajo).
+- **Datos de otros negocios** o eventos del selector sin negocio (caducan solos).
+
+### Libro de supresiones y restauraciones
+
+Cada `contact_forget`/`tenant_purge` (también desde el panel) escribe en la misma
+transacción una fila de `privacy_suppression` (ADR-019): ids internos y HMAC de la
+identidad, nunca el dato en claro. Como esa tabla vive en la base que se restaura, hay
+que **guardar el libro fuera del servidor** tras cada olvido o purga:
+
+```bash
+make prod-manage CMD="privacy_ledger_export" > libro-supresiones.jsonl   # acumulativo
+```
+
+Tras una restauración se reaplica con `privacy_reapply --ledger -` **antes de arrancar los
+workers** (paso obligatorio de [restaurar.md](restaurar.md)). El comando es idempotente y
+no necesita aprobación adicional más allá de la de la propia restauración.
 
 Para dar de baja un negocio, el operador registra la fecha real de baja y una
 fecha límite de borrado de como máximo 30 días en el registro operativo de la baja.
@@ -139,10 +180,14 @@ y [pymes y Facilita](https://www.aepd.es/derechos-y-deberes/cumple-tus-deberes/d
   `contact.forget`, `tenant.export` o `tenant.purge`).
 - Tras `tenant_purge`, el negocio no aparece en la lista del panel y no quedan secretos ni
   datasets.
+- El libro de supresiones está guardado fuera del servidor tras el olvido o la purga
+  (`privacy_ledger_export`).
 - La limpieza nocturna sigue apagada salvo autorización expresa
   (`RETENTION_CLEANUP_ENABLED`).
 
 ## Dónde está el código
 
 `apps/backend/src/autobot/management/commands/` (`contact_export`, `contact_forget`,
-`tenant_data_export`, `tenant_purge`, `tenant_status`), `deploy/scripts/manage.sh`.
+`tenant_data_export`, `tenant_purge`, `tenant_status`, `privacy_ledger_export`,
+`privacy_reapply`), `autobot/runtime/privacy.py`, `autobot/runtime/suppressions.py`,
+`deploy/scripts/manage.sh`.

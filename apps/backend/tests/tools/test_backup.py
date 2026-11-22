@@ -19,7 +19,7 @@ def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
     compose.mkdir()
     (compose / "compose.yaml").write_text("services: {}\n")
     (compose / "compose.prod.yaml").write_text("services: {}\n")
-    (tmp_path / ".env").write_text("x=1\n")
+    (tmp_path / ".env").write_text("x=1\nSECRETS_ENCRYPTION_KEY=fixture-key\nY=2\n")
     var = tmp_path / "var"
     var.mkdir()
     (var / ".deployed-sha").write_text("a" * 40 + "\n")
@@ -48,6 +48,11 @@ def setup(tmp_path: Path) -> tuple[Path, Path, Path]:
         "[[ ${RESTIC_FAIL:-} != 1 ]] || exit 1\n"
         "[[ $1 != cat || ${RESTIC_UNINITIALIZED:-} != 1 ]] || exit 1\n"
         "[[ $1 != check || ${RESTIC_CHECK_FAIL:-} != 1 ]] || exit 1\n"
+        "if [[ $1 == backup ]]; then\n"
+        '  for arg in "$@"; do\n'
+        '    [[ $arg != *.env ]] || cp "$arg" "$TEST_LOG.staged-env"\n'
+        "  done\n"
+        "fi\n"
         "if [[ $1 == cat ]]; then\n"
         "  id=${RESTIC_REPO_ID:-repo-id-fixture}\n"
         '  printf \'{\\n  "version": 2,\\n  "id": "%s"\\n}\\n\' "$id"\n'
@@ -95,7 +100,6 @@ def test_success_writes_backup_status_and_removes_the_dump(tmp_path: Path) -> No
     assert not (tmp_path / "var" / "backups" / "autobot.dump").exists()
     log = (tmp_path / "restic.log").read_text()
     assert "backup --tag autobot" in log
-    assert "forget --tag autobot" in log
 
 
 def test_optional_caddy_state_and_deploy_log_are_backed_up_when_present(
@@ -112,7 +116,7 @@ def test_optional_caddy_state_and_deploy_log_are_backed_up_when_present(
     result = invoke(script, binaries, config)
     assert result.returncode == 0, result.stderr
     log = (tmp_path / "restic.log").read_text()
-    backup_line = next(line for line in log.splitlines() if line.startswith("backup"))
+    backup_line = next(line for line in log.splitlines() if line.startswith("backup "))
     assert "var/state/caddy-data" in backup_line
     assert "var/state/caddy-config" in backup_line
     assert "var/state/ops/deploys.jsonl" in backup_line
@@ -123,7 +127,7 @@ def test_missing_optional_paths_do_not_block_the_backup(tmp_path: Path) -> None:
     result = invoke(script, binaries, config)
     assert result.returncode == 0, result.stderr
     log = (tmp_path / "restic.log").read_text()
-    backup_line = next(line for line in log.splitlines() if line.startswith("backup"))
+    backup_line = next(line for line in log.splitlines() if line.startswith("backup "))
     assert "caddy-data" not in backup_line
     assert "deploys.jsonl" not in backup_line
 
@@ -180,23 +184,30 @@ def test_restic_failure_is_recorded_as_not_ok(tmp_path: Path) -> None:
     assert not (tmp_path / "var" / "backups" / "autobot.dump").exists()
 
 
-def test_prune_runs_once_a_day(tmp_path: Path) -> None:
-    """T5: hourly backups would otherwise make `forget --prune` (which rewrites
-    the whole repository) run hourly too; once a day is enough."""
+def test_backup_never_forgets_or_prunes(tmp_path: Path) -> None:
+    """ADR-021: the server's credential has no delete permission; expiring snapshots is
+    deploy/scripts/backup-prune.sh, from the operator's machine."""
     script, binaries, config = setup(tmp_path)
-    first = invoke(script, binaries, config)
-    assert first.returncode == 0, first.stderr
-    log = (tmp_path / "restic.log").read_text().splitlines()
-    assert any(line.startswith("forget") and "--prune" in line for line in log)
-    marker = tmp_path / "var" / ".last-prune"
-    assert marker.exists()
+    result = invoke(script, binaries, config)
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "restic.log").read_text()
+    assert "forget" not in log and "prune" not in log
+    assert not (tmp_path / "var" / ".last-prune").exists()
 
-    (tmp_path / "restic.log").unlink()
-    second = invoke(script, binaries, config)
-    assert second.returncode == 0, second.stderr
-    log = (tmp_path / "restic.log").read_text().splitlines()
-    assert not any(line.startswith("forget") and "--prune" in line for line in log)
-    assert any(line.startswith("forget") for line in log)
+
+def test_the_encryption_key_never_travels_in_the_snapshot(tmp_path: Path) -> None:
+    """ADR-021: the staged .env lacks SECRETS_ENCRYPTION_KEY; nothing else is lost."""
+    script, binaries, config = setup(tmp_path)
+    result = invoke(script, binaries, config)
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "restic.log").read_text()
+    backup_line = next(line for line in log.splitlines() if line.startswith("backup "))
+    assert "var/backups/autobot.env" in backup_line
+    assert " .env" not in backup_line
+    staged = (tmp_path / "restic.log.staged-env").read_text()
+    assert "SECRETS_ENCRYPTION_KEY" not in staged and "fixture-key" not in staged
+    assert "x=1" in staged and "Y=2" in staged
+    assert not (tmp_path / "var" / "backups" / "autobot.env").exists()
 
 
 def test_missing_config_fails_before_writing_status(tmp_path: Path) -> None:
@@ -234,9 +245,7 @@ def test_restic_check_runs_once_a_week_and_failure_fails_the_backup(tmp_path: Pa
     (tmp_path / "restic.log").unlink()
     second = invoke(script, binaries, config)
     assert second.returncode == 0, second.stderr
-    assert not any(
-        line.startswith("check") for line in (tmp_path / "restic.log").read_text().splitlines()
-    )
+    assert not any(" check " in line for line in (tmp_path / "restic.log").read_text().splitlines())
     (tmp_path / "var" / ".last-restic-check").unlink()
     failing = invoke(script, binaries, config, RESTIC_CHECK_FAIL="1")
     assert failing.returncode != 0

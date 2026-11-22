@@ -152,7 +152,7 @@ def test_manage_wrapper_uses_deployed_sha_and_forwards_args(tmp_path: Path) -> N
         "run",
         "--rm",
         "-T",
-        "web",
+        "web-panel",
         "python",
         "manage.py",
         "tenant_config",

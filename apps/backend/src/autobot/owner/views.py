@@ -32,7 +32,8 @@ def telegram_notify(request: HttpRequest) -> HttpResponse:
     if webhooks.body_too_large(request):
         return HttpResponse(status=400)
     if not TELEGRAM.verify(request, None, secrets):
-        log.warning("Invalid owner bot webhook secret")
+        if not webhooks.limiter.blocked(webhooks.limiter_key(request, "telegram-notify")):
+            log.warning("Invalid owner bot webhook secret")
         return webhooks.reject_unauthenticated(request, "telegram-notify")
     body = webhooks.json_object(request)
     if body is None:

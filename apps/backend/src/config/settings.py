@@ -135,7 +135,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 12},
+    },
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
@@ -268,6 +271,11 @@ if NOTIFY_BOT_WEBHOOK_SECRET and len(NOTIFY_BOT_WEBHOOK_SECRET) < 32:
     raise ImproperlyConfigured("NOTIFY_BOT_WEBHOOK_SECRET must have 32 characters or more")
 OWNER_SUPPORT_EMAIL = os.environ.get("OWNER_SUPPORT_EMAIL", "")
 OPS_TELEGRAM_CHAT_ID = os.environ.get("OPS_TELEGRAM_CHAT_ID", "")
+# Privacy policy of the platform, cited by the demo bot's first-contact notice (the
+# platform is the controller there). Optional: without it the notice omits the link.
+PLATFORM_PRIVACY_URL = os.environ.get("PLATFORM_PRIVACY_URL", "")
+if PLATFORM_PRIVACY_URL and not PLATFORM_PRIVACY_URL.startswith("https://"):
+    raise ImproperlyConfigured("PLATFORM_PRIVACY_URL must start with https://")
 CACHES = {
     "default": {
         "BACKEND": "autobot.runtime.cache.CooldownCache",

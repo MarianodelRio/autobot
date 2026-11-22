@@ -8,6 +8,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 SHA = "c" * 40
+# A syntactically valid Fernet key (32 bytes, url-safe base64), and another one.
+KEY = "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM="
+OTHER_KEY = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+ENV_TEXT = (
+    "PUBLIC_HOST=api.example.com\n"
+    "DJANGO_ALLOWED_HOSTS=api.example.com,localhost,127.0.0.1\n"
+    "AUTOBOT_IMAGE=ghcr.io/example-owner/autobot\n"
+    "AUTOBOT_PANEL_IMAGE=ghcr.io/example-owner/autobot-panel\n"
+)
 
 
 def setup(tmp_path: Path, *, bootstrapped: bool = True) -> tuple[Path, Path]:
@@ -28,12 +37,8 @@ def setup(tmp_path: Path, *, bootstrapped: bool = True) -> tuple[Path, Path]:
     (snapshot / "var").mkdir(parents=True)
     (snapshot / "var" / "backups").mkdir()
     (snapshot / "deploy" / "caddy").mkdir(parents=True)
-    (snapshot / ".env").write_text(
-        "PUBLIC_HOST=api.example.com\n"
-        "DJANGO_ALLOWED_HOSTS=api.example.com,localhost,127.0.0.1\n"
-        "AUTOBOT_IMAGE=ghcr.io/example-owner/autobot\n"
-        "AUTOBOT_PANEL_IMAGE=ghcr.io/example-owner/autobot-panel\n"
-    )
+    # backup.sh stages the .env WITHOUT SECRETS_ENCRYPTION_KEY (ADR-021).
+    (snapshot / "var" / "backups" / "autobot.env").write_text(ENV_TEXT)
     (snapshot / "var" / ".deployed-sha").write_text(SHA + "\n")
     (snapshot / "var" / "google_sa.json").write_text("{}\n")
     (snapshot / "deploy" / "caddy" / "Caddyfile").write_text("example.com {\n}\n")
@@ -45,6 +50,7 @@ def setup(tmp_path: Path, *, bootstrapped: bool = True) -> tuple[Path, Path]:
     restic.write_text(
         "#!/usr/bin/env bash\n"
         'printf \'%s\\n\' "$*" >>"$TEST_LOG"\n'
+        "[[ $1 != --no-lock ]] || shift\n"
         "if [[ $1 == restore ]]; then\n"
         '  target="${*: -1}"\n'
         '  cp -r "$RESTIC_FAKE_SNAPSHOT_DIR"/. "$target"/\n'
@@ -57,6 +63,7 @@ def setup(tmp_path: Path, *, bootstrapped: bool = True) -> tuple[Path, Path]:
         'printf \'%s\\n\' "$*" >>"$TEST_LOG"\n'
         "[[ $* != *'volume inspect'* ]] || exit 1\n"
         "[[ $* != *'ps -q'* ]] || exit 0\n"
+        "[[ $* != *'manage.py shell'* || ${DECRYPT_FAIL:-} != 1 ]] || exit 1\n"
     )
     docker.chmod(0o755)
     git = binaries / "git"
@@ -78,7 +85,14 @@ def invoke(
 ) -> subprocess.CompletedProcess[str]:
     # CI exports local DB_*_URL (localhost) for the test suite; ensure-env.sh would
     # rightly reject them as a production .env, so the restore never inherits them.
-    inherited = {k: v for k, v in os.environ.items() if not k.startswith("DB_")}
+    inherited = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("DB_")
+        and k not in ("SECRETS_ENCRYPTION_KEY", "AUTOBOT_SECRETS_KEY_FILE")
+    }
+    key_file = tmp_path / "secrets-key"
+    key_file.write_text(KEY + "\n")
     env = {
         **inherited,
         "PATH": f"{binaries}:{os.environ['PATH']}",
@@ -86,6 +100,7 @@ def invoke(
         "RESTIC_FAKE_SNAPSHOT_DIR": str(tmp_path / "snapshot"),
         "AUTOBOT_BACKUP_CONFIG": str(backup_config(tmp_path)),
         "AUTOBOT_BOOTSTRAP_MARKER": str(tmp_path / "bootstrap-complete"),
+        "AUTOBOT_SECRETS_KEY_FILE": str(key_file),
     }
     return subprocess.run(
         ["bash", str(script), "--confirm-empty-target"],
@@ -114,7 +129,7 @@ def test_workers_are_not_started_by_default(tmp_path: Path) -> None:
     log = (tmp_path / "docker.log").read_text()
     assert "worker-inbound" not in log
     assert "worker-outbound" not in log
-    assert "up -d web panel victorialogs caddy" in log
+    assert "up -d web web-panel panel victorialogs caddy" in log
 
 
 def test_workers_start_when_explicitly_requested(tmp_path: Path) -> None:
@@ -227,3 +242,102 @@ def test_the_real_marker_name_is_what_install_vm_writes() -> None:
             for line in (ROOT / "deploy/scripts" / name).read_text().splitlines()
             if "bootstrap-complete" in line
         )
+
+
+def _env_lines(tmp_path: Path) -> list[str]:
+    return (tmp_path / ".env").read_text().splitlines()
+
+
+def test_the_key_comes_from_the_given_file_and_lands_in_the_restored_env(tmp_path: Path) -> None:
+    """ADR-021: the snapshot has no key; the operator's file is the only source."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert f"SECRETS_ENCRYPTION_KEY={KEY}" in _env_lines(tmp_path)
+    assert KEY not in (tmp_path / "snapshot" / "var" / "backups" / "autobot.env").read_text()
+
+
+def test_the_key_can_come_from_the_environment_instead_of_a_file(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(
+        script, binaries, tmp_path, AUTOBOT_SECRETS_KEY_FILE="", SECRETS_ENCRYPTION_KEY=OTHER_KEY
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"SECRETS_ENCRYPTION_KEY={OTHER_KEY}" in _env_lines(tmp_path)
+
+
+def test_without_a_key_it_fails_clearly_before_touching_the_target(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, tmp_path, AUTOBOT_SECRETS_KEY_FILE="")
+    assert result.returncode == 1
+    assert "AUTOBOT_SECRETS_KEY_FILE" in result.stderr
+    assert not (tmp_path / ".env").exists()
+    assert not (tmp_path / "var" / ".restore-incomplete").exists()
+    assert "pg_restore" not in (tmp_path / "docker.log").read_text()
+
+
+def test_an_unreadable_key_file_fails(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, tmp_path, AUTOBOT_SECRETS_KEY_FILE=str(tmp_path / "nope"))
+    assert result.returncode == 1
+    assert "not a readable file" in result.stderr
+
+
+def test_an_invalid_key_is_rejected(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(
+        script, binaries, tmp_path, AUTOBOT_SECRETS_KEY_FILE="", SECRETS_ENCRYPTION_KEY="short"
+    )
+    assert result.returncode == 1
+    assert "not a valid Fernet key" in result.stderr
+    assert not (tmp_path / ".env").exists()
+
+
+def test_a_key_that_does_not_decrypt_the_restored_secrets_fails(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, tmp_path, DECRYPT_FAIL="1")
+    assert result.returncode == 1
+    assert "does not decrypt" in result.stderr
+    assert not (tmp_path / "var" / ".deployed-sha").exists()
+
+
+def test_a_legacy_snapshot_with_the_key_in_its_env_still_restores(tmp_path: Path) -> None:
+    """Snapshots taken before ADR-021 carry the whole .env, key included."""
+    script, binaries = setup(tmp_path)
+    snapshot = tmp_path / "snapshot"
+    (snapshot / "var" / "backups" / "autobot.env").unlink()
+    (snapshot / ".env").write_text(ENV_TEXT + f"SECRETS_ENCRYPTION_KEY={OTHER_KEY}\n")
+    result = invoke(script, binaries, tmp_path, AUTOBOT_SECRETS_KEY_FILE="")
+    assert result.returncode == 0, result.stderr
+    assert "Legacy snapshot" in result.stderr
+    assert f"SECRETS_ENCRYPTION_KEY={OTHER_KEY}" in _env_lines(tmp_path)
+
+
+def test_the_snapshot_without_any_env_is_refused(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    (tmp_path / "snapshot" / "var" / "backups" / "autobot.env").unlink()
+    result = invoke(script, binaries, tmp_path)
+    assert result.returncode == 1
+    assert "Missing from snapshot" in result.stderr
+
+
+def test_restic_runs_without_locking(tmp_path: Path) -> None:
+    """ADR-021: the credentials on a new server may be upload-only and cannot remove locks."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "--no-lock restore" in (tmp_path / "docker.log").read_text()
+
+
+def test_several_comma_separated_keys_are_accepted(tmp_path: Path) -> None:
+    """Mid-rotation SECRETS_ENCRYPTION_KEY is `<new>,<old>` (rotar-secretos.md)."""
+    script, binaries = setup(tmp_path)
+    result = invoke(
+        script,
+        binaries,
+        tmp_path,
+        AUTOBOT_SECRETS_KEY_FILE="",
+        SECRETS_ENCRYPTION_KEY=f"{KEY},{OTHER_KEY}",
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"SECRETS_ENCRYPTION_KEY={KEY},{OTHER_KEY}" in _env_lines(tmp_path)

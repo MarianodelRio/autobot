@@ -32,6 +32,27 @@ phase=${1:-}
 base_marker=/var/lib/autobot/bootstrap-base-complete
 sshd_marker=/var/lib/autobot/bootstrap-sshd-complete
 
+# Written by --base, compared by its idempotency check (a function so both use one text).
+# Docker's own repository is an allowed origin, so docker-ce gets its security fixes too;
+# a new daemon restarts the containers (restart: unless-stopped brings them back in seconds).
+# Reboots, when a kernel update needs one, happen in a night window (server time, UTC on
+# the VPS) away from the hourly backup at :00 and the demo traffic.
+unattended_conf=/etc/apt/apt.conf.d/51autobot-unattended-upgrades
+unattended_conf_text() {
+  cat <<'CONF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+Unattended-Upgrade::Allowed-Origins {
+        "Docker:${distro_codename}";
+};
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "03:30";
+CONF
+}
+firewall_bin=/usr/local/sbin/autobot-docker-firewall
+
 case $phase in
 --base)
   shift
@@ -58,6 +79,10 @@ case $phase in
     systemctl is-enabled --quiet autobot-backup.timer &&
     systemctl is-enabled --quiet autobot-containers.timer &&
     systemctl is-enabled --quiet autobot-prune.timer &&
+    systemctl is-enabled --quiet autobot-docker-firewall.service &&
+    cmp -s <(unattended_conf_text) "$unattended_conf" &&
+    cmp -s /srv/autobot/deploy/scripts/docker-user-firewall.sh "$firewall_bin" &&
+    cmp -s /srv/autobot/deploy/systemd/autobot-docker-firewall.service /etc/systemd/system/autobot-docker-firewall.service &&
     cmp -s /home/deploy/.ssh/authorized_keys <(printf '%s\n%s\n' "$operator_key" "$ci_line") &&
     cmp -s /home/admin/.ssh/authorized_keys <(printf '%s\n' "$operator_key") &&
     id -nG admin | tr ' ' '\n' | grep -qx sudo &&
@@ -100,6 +125,8 @@ EOF
   fi
   apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable --now docker unattended-upgrades
+  unattended_conf_text >"$unattended_conf"
+  chmod 0644 "$unattended_conf"
 
   # A on a 2 vCPU/4 GB VPS: 2 GB of swap, as a cushion under real load (measured
   # properly later), never as a substitute for picking a bigger machine.
@@ -162,6 +189,9 @@ EOF
   install -m 0644 /srv/autobot/deploy/systemd/autobot-containers.timer /etc/systemd/system/
   install -m 0644 /srv/autobot/deploy/systemd/autobot-prune.service /etc/systemd/system/
   install -m 0644 /srv/autobot/deploy/systemd/autobot-prune.timer /etc/systemd/system/
+  # Root runs this one, so it is a root-owned copy, never the checkout's own (deploy's).
+  install -m 0755 -o root -g root /srv/autobot/deploy/scripts/docker-user-firewall.sh "$firewall_bin"
+  install -m 0644 /srv/autobot/deploy/systemd/autobot-docker-firewall.service /etc/systemd/system/
   systemctl daemon-reload
   # Not started yet: install-vm.sh starts the backup timer only once
   # var/backup.env and the restic password are in place; enabling it now
@@ -171,6 +201,9 @@ EOF
   systemctl enable --now autobot-containers.timer
   # only removes images no container references; safe to start right away too.
   systemctl enable --now autobot-prune.timer
+  # Rejects, before UFW even sees them, connections to any published Docker port that is not
+  # 80/443 (see docker-user-firewall.sh).
+  systemctl enable --now autobot-docker-firewall.service
   install -d -m 0755 /var/lib/autobot
   printf '%s\n' "$fingerprint" >"$base_marker"
   echo 'Base bootstrap completed. Open a NEW session as both deploy@ and admin@ with'
@@ -196,7 +229,9 @@ EOF
     ufw_rules_complete &&
     grep -q '^DEFAULT_INPUT_POLICY="DROP"$' /etc/default/ufw &&
     [[ $(sshd -T | awk '/^permitrootlogin / {print $2}') == no ]] &&
-    [[ $(sshd -T | awk '/^passwordauthentication / {print $2}') == no ]]; then
+    [[ $(sshd -T | awk '/^passwordauthentication / {print $2}') == no ]] &&
+    [[ $(sshd -T | awk '/^maxauthtries / {print $2}') == 4 ]] &&
+    [[ $(sshd -T | awk '/^logingracetime / {print $2}') == 30 ]]; then
     echo 'SSH hardening already configured'
     exit 0
   fi
@@ -211,6 +246,14 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
 AllowUsers deploy admin
+# Key-only logins need a few tries at most (4, not 3: an operator whose agent holds several
+# keys would otherwise get locked out by its own key list; `ssh -o IdentitiesOnly=yes -i`
+# avoids that) and a short window to authenticate, which keeps unauthenticated connections
+# from piling up.
+MaxAuthTries 4
+LoginGraceTime 30
+ClientAliveInterval 300
+ClientAliveCountMax 2
 EOF
   sshd -t
   if [[ $(sshd -T | awk '/^permitrootlogin / {print $2}') != no ]] ||

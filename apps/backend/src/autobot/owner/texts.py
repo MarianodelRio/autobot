@@ -47,6 +47,18 @@ def invite_invalid() -> str:
     return f"⌛ Este enlace ya no es válido. {where}"
 
 
+def chat_replaced(tenant: LoadedTenant) -> str:
+    where = (
+        f"escribe a {settings.OWNER_SUPPORT_EMAIL}."
+        if settings.OWNER_SUPPORT_EMAIL
+        else "avisa a quien te dio de alta."
+    )
+    return (
+        f"🔕 Este chat ha dejado de recibir los avisos de *{tenant.info.name}*: "
+        f"otro chat se ha conectado en su lugar. Si no has sido tú, {where}"
+    )
+
+
 def chat_taken() -> str:
     where = (
         f"escribe a {settings.OWNER_SUPPORT_EMAIL}."
@@ -63,9 +75,9 @@ def not_active(tenant: LoadedTenant) -> str:
     )
 
 
-def reconnect_line(tenant: LoadedTenant, url: str, *, days: int, replaces_chat: bool) -> str:
+def reconnect_line(tenant: LoadedTenant, url: str, *, hours: int, replaces_chat: bool) -> str:
     warn = " Si lo abres desde otro chat, ese será el nuevo conectado." if replaces_chat else ""
-    return f"*{tenant.info.name}*\n{url}\nCaduca en {days} días.{warn}"
+    return f"*{tenant.info.name}*\n{url}\nCaduca en {hours} horas.{warn}"
 
 
 def reconnect_failed(tenant: LoadedTenant) -> str:

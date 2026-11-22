@@ -25,7 +25,11 @@ Estas tablas llevan `tenant_id` pero sin RLS por diseño: son configuración de 
 - `channel`: `whatsapp` (ids de Meta, teléfono público, umbral mensual) o `telegram` (usuario del bot), con un `public_id` que forma la URL del webhook.
 - `testers.main`: los únicos ids que pueden escribir por el canal principal durante el alta.
 - `owner`: tipos de aviso (`notify`) y `summary_monthly` ([Bot de dueños](bot-de-duenos.md)).
+- `privacy` (opcional): `controller_name` (responsable del tratamiento; por defecto el nombre del negocio) y `policy_url` (`https://…`, segunda capa de información). Alimentan el aviso de primera capa del bot ([Aviso inicial y órdenes de atención](packs.md#aviso-inicial-y-ordenes-de-atencion)).
+- `support` (opcional): `human_contact`, el texto (teléfono, horario o correo) que el bot da cuando el cliente escribe `PERSONA`.
 - `demo`: marca un negocio de demo. Un demo no tiene canal ni testers y su estado es `active`, `paused` u `offboarded` ([Bot de demo](bot-de-demo.md)). Un negocio que no es demo necesita canal.
+
+Los campos `privacy` y `support` son opcionales para no romper negocios existentes: si faltan, el aviso usa el nombre del negocio como responsable, omite el enlace (y remite al negocio para ejercer los derechos) y `PERSONA` solo dice que se contacte con el negocio; nunca se inventa un dato. La lista de activación (siguiente sección) exige `privacy.policy_url` y `support.human_contact` antes de abrir el canal real.
 
 Los secretos de canal no van en el documento: `WhatsAppSecrets` (`app_secret`, `access_token`, `verify_token`) o `TelegramSecrets` (`bot_token`, `webhook_secret`).
 
@@ -89,7 +93,7 @@ Seis campos forman la identidad (`IDENTITY` en `store/errors.py`) y ni publicar 
 
 ### Activar un negocio
 
-`activate` solo se permite desde `onboarding` y exige que `activation.checklist(slug)` no tenga bloqueos (`apps/backend/src/autobot/tenancy/activation.py`). La lista comprueba: documento válido y sin degradación, ids de canal completos, secretos legibles, salud del canal sin problemas críticos, plantillas de WhatsApp aprobadas y que algún tester haya escrito por el canal principal. «Dueño enlazado» aparece pero no bloquea. La salud se fuerza **fuera** de la transacción de escritura (nunca hay una transacción abierta durante llamadas a Meta, Google o Telegram) y la lectura del panel (`refresh=False`) solo mira la caché. La lista alimenta la pestaña «Alta» ([ADR-014](adr/ADR-014-pestana-de-alta.md)).
+`activate` solo se permite desde `onboarding` y exige que `activation.checklist(slug)` no tenga bloqueos (`apps/backend/src/autobot/tenancy/activation.py`). La lista comprueba: documento válido y sin degradación, ids de canal completos, secretos legibles, salud del canal sin problemas críticos, plantillas de WhatsApp aprobadas, información de privacidad y atención completas (`privacy.policy_url` y `support.human_contact`) y que algún tester haya escrito por el canal principal. «Dueño enlazado» aparece pero no bloquea. La salud se fuerza **fuera** de la transacción de escritura (nunca hay una transacción abierta durante llamadas a Meta, Google o Telegram) y la lectura del panel (`refresh=False`) solo mira la caché. La lista alimenta la pestaña «Alta» ([ADR-014](adr/ADR-014-pestana-de-alta.md)).
 
 Los estados de salud que ve el operador (`ok`, `notice`, `warning`, `critical`, `unknown`) los centraliza `autobot/ops/status.py` (`tenant_status`); ver [Estados de negocio](../referencia/estados-de-negocio.md).
 

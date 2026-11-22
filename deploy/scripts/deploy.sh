@@ -46,6 +46,21 @@ if [[ -n $previous && ! $previous =~ ^[0-9a-f]{40}$ ]]; then
 fi
 export SHA="$target"
 
+# The service list follows the compose file that is checked out: rolling back to a commit
+# from before ADR-020 must not ask for a `web-panel` that file does not define (there, `web`
+# still holds the owner credentials and serves the panel's API). Called again whenever the
+# checkout changes.
+app_svcs=() owner_svc=web
+refresh_services() {
+  app_svcs=(web worker-inbound worker-outbound panel)
+  owner_svc=web
+  if "${compose[@]}" config --services 2>/dev/null | grep -qx web-panel; then
+    app_svcs=(web web-panel worker-inbound worker-outbound panel)
+    owner_svc=web-panel
+  fi
+}
+refresh_services
+
 # tag a deploy that exactly undoes the last recorded one as "rollback", so
 # `make rollback` (rollback_target.py) can refuse to chain a second one back onto
 # the broken image the first rollback just moved away from. The *last successful*
@@ -95,10 +110,19 @@ assert r["status"] == "ok" and t["degraded"] <= int(sys.argv[1]) and t["unreadab
   return 1
 }
 
+# The panel container (its Caddy answers /healthz by itself) and web-panel, the API behind
+# it (ADR-020): web-panel has no published port, so its own Docker healthcheck is the
+# only way to see it from the host.
 wait_panel() {
-  local deadline=$((SECONDS + 60))
-  while ((SECONDS < deadline)); do
-    curl --silent --show-error --fail --max-time 2 http://127.0.0.1:"${AUTOBOT_PANEL_HOST_PORT:-8080}"/healthz >/dev/null 2>&1 && return 0
+  local deadline=$((SECONDS + 60)) id attempt
+  for ((attempt = 0; attempt < 30 && SECONDS < deadline; attempt++)); do
+    if curl --silent --show-error --fail --max-time 2 http://127.0.0.1:"${AUTOBOT_PANEL_HOST_PORT:-8080}"/healthz >/dev/null 2>&1; then
+      [[ $owner_svc == web-panel ]] || return 0  # a pre-ADR-020 checkout has no web-panel
+      id=$("${compose[@]}" ps -q web-panel 2>/dev/null) || id=
+      if [[ -n $id && $(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$id" 2>/dev/null) == healthy ]]; then
+        return 0
+      fi
+    fi
     sleep 2
   done
   return 1
@@ -137,10 +161,20 @@ reload_caddy_if_changed() {
   fi
 }
 
+# `up --no-deps` of the application never touches `db`, but the compose files may differ in
+# how db is attached (ADR-020 moved it to its own network): after going back to another
+# checkout, bring db in line with it first (a no-op when its definition did not change, a
+# recreate of db alone, with its data volume, when it did), or the restored `web` could not
+# reach it.
+realign_db() {
+  "${compose[@]}" up -d --wait db || echo 'Could not realign db with the restored compose file; operator action required' >&2
+}
+
 restore_checkout() {
   if [[ -n $previous && -d .git ]] && ! git checkout --quiet --detach "$previous"; then
     echo 'Could not restore previous repository configuration' >&2
   fi
+  refresh_services
 }
 
 # One attempt only: ambiguous Telegram delivery must not be retried blindly. A third
@@ -153,7 +187,7 @@ alert_ops() {
     || echo 'Could not send ops alert; check deployment logs' >&2
 }
 
-# One line per attempt, read by the panel; `web` mounts var/state/ops read-only.
+# One line per attempt, read by the panel; `web-panel` mounts var/state/ops read-only.
 record_deploy() {
   printf '{"at":"%s","sha":"%s","previous":"%s","result":"%s","via":"%s"}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$target" "$previous" "$1" "$via" >>var/state/ops/deploys.jsonl
@@ -166,7 +200,7 @@ if [[ $previous == "$target" ]]; then
     exit 0
   fi
   echo 'Recorded image is unhealthy; restarting services' >&2
-  "${compose[@]}" up --no-deps -d web worker-inbound worker-outbound panel
+  "${compose[@]}" up --no-deps -d "${app_svcs[@]}"
   if wait_health && wait_panel; then
     record_deploy already
     exit 0
@@ -183,9 +217,10 @@ abort() {
   if [[ -n $previous ]]; then
     export SHA="$previous"  # the new image may not even have been pulled
   fi
+  realign_db
   # init-roles.sh creates the roles but no longer grants table access (apply_grants
   # does); reapply the real grants so an aborted deploy never leaves them half done.
-  "${compose[@]}" run --rm web python manage.py apply_grants \
+  "${compose[@]}" run --rm "$owner_svc" python manage.py apply_grants \
     || echo 'Could not reapply grants after aborting; fp_app may still have broad permissions' >&2
   alert_ops deploy_aborted '🔴 Despliegue abortado antes de cambiar la imagen: revisar logs'
   record_deploy aborted
@@ -200,7 +235,7 @@ abort() {
 # The first deployment needs PostgreSQL before a one-shot migration container.
 "${compose[@]}" up -d --wait db || abort
 "${compose[@]}" exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh || abort
-"${compose[@]}" pull web worker-inbound worker-outbound panel || abort
+"${compose[@]}" pull "${app_svcs[@]}" || abort
 # Logs are not critical: victorialogs never aborts or rolls back a deployment.
 "${compose[@]}" pull victorialogs || echo 'Could not pull victorialogs; logs will be unavailable' >&2
 "${compose[@]}" up -d victorialogs || echo 'Could not start victorialogs; logs will be unavailable' >&2
@@ -211,7 +246,7 @@ abort() {
 # expand the schema (add, never remove/rename what the previous release still reads):
 # a contract migration belongs to a later deploy, once rolling back to this one is
 # no longer a concern.
-if ! "${compose[@]}" run --rm web python manage.py migrate --check --noinput >/dev/null 2>&1; then
+if ! "${compose[@]}" run --rm "$owner_svc" python manage.py migrate --check --noinput >/dev/null 2>&1; then
   echo 'Pending migrations: dumping the database before applying them' >&2
   mkdir -p var/backups
   # It holds every client's data: owner-only, like the other backups (umask 077).
@@ -222,10 +257,10 @@ if ! "${compose[@]}" run --rm web python manage.py migrate --check --noinput >/d
     abort
   fi
 fi
-"${compose[@]}" run --rm web python manage.py migrate --noinput || abort
-"${compose[@]}" run --rm web python manage.py apply_grants || abort
-"${compose[@]}" run --rm web python manage.py tenant_config validate --all || abort
-"${compose[@]}" run --rm web python manage.py seed_demos || abort
+"${compose[@]}" run --rm "$owner_svc" python manage.py migrate --noinput || abort
+"${compose[@]}" run --rm "$owner_svc" python manage.py apply_grants || abort
+"${compose[@]}" run --rm "$owner_svc" python manage.py tenant_config validate --all || abort
+"${compose[@]}" run --rm "$owner_svc" python manage.py seed_demos || abort
 
 rollback() {
   echo 'New image failed its health checks; restoring previous image' >&2
@@ -234,7 +269,8 @@ rollback() {
     export SHA="$previous"
     restore_checkout
     local failed=0
-    if ! "${compose[@]}" up --no-deps -d web worker-inbound worker-outbound panel; then
+    realign_db
+    if ! "${compose[@]}" up --no-deps -d "${app_svcs[@]}"; then
       echo 'Could not restart previous image; operator action required' >&2
       failed=1
     fi
@@ -267,7 +303,7 @@ rollback() {
 
 # --remove-orphans: drops containers of services no longer defined (the single
 # `worker` from before the split into inbound and outbound workers), which would otherwise keep running the old image.
-"${compose[@]}" up --no-deps --remove-orphans -d web worker-inbound worker-outbound panel || rollback
+"${compose[@]}" up --no-deps --remove-orphans -d "${app_svcs[@]}" || rollback
 wait_health || rollback
 wait_worker || rollback
 wait_panel || rollback

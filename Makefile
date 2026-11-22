@@ -214,7 +214,7 @@ server-migrate: ## Traslada el despliegue de FROM a TO (FROM= TO= [ONLY=paso])
 
 SHA ?= $(shell git rev-parse origin/main)
 
-.PHONY: deploy rollback backup-now restore-test prod-manage prod-compose
+.PHONY: deploy rollback backup-now backup-prune restore-test prod-manage prod-compose
 
 deploy: ## Lanza el despliegue si el CI del SHA está en verde ([SHA=])
 	@conclusion=$$(gh run list --workflow ci.yml --commit $(SHA) --json conclusion -q '.[0].conclusion'); \
@@ -237,6 +237,9 @@ rollback: ## Redespliega el `previous` del último despliegue correcto, con conf
 
 backup-now: ## Ejecuta deploy/scripts/backup.sh en el servidor por SSH
 	ssh deploy@$(HOST) /srv/autobot/deploy/scripts/backup.sh
+
+backup-prune: ## Caduca snapshots viejos desde TU máquina, con otra credencial (ARGS="--dry-run")
+	bash deploy/scripts/backup-prune.sh $(ARGS)
 
 restore-test: ## Simulacro de restauración (bash deploy/scripts/restore-test.sh)
 	bash deploy/scripts/restore-test.sh

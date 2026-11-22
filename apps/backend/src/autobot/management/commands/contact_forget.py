@@ -34,4 +34,6 @@ class Command(BaseCommand):
             target_id=str(contact_id),
             details={"contact_id": str(contact_id)},
         )
-        self.stdout.write("Contacto borrado.")
+        self.stdout.write(
+            "Contacto borrado. Guarda fuera del servidor el libro: privacy_ledger_export."
+        )

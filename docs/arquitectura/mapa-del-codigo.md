@@ -78,10 +78,10 @@ Contiene `Caddyfile`, `Dockerfile`, `openapi.json`, `package.json` y el código 
 ## Despliegue: `deploy/`
 
 - `compose/`: `compose.yaml` (base), `compose.local.yaml`, `compose.prod.yaml`.
-- `scripts/`: `compose.sh`, `manage.sh`, `deploy.sh`, `backup.sh`, `restore.sh`, `install-vm.sh`, `bootstrap-server.sh`…
+- `scripts/`: `compose.sh`, `manage.sh`, `deploy.sh`, `backup.sh`, `backup-prune.sh` (desde el portátil), `restore.sh`, `install-vm.sh`, `bootstrap-server.sh`…
 - `caddy/`: `Caddyfile` de producción.
 - `postgres/`: `init-roles.sh`, creación de roles.
-- `systemd/`: temporizadores de copia, limpieza y vigilancia de contenedores.
+- `systemd/`: temporizadores de copia, limpieza y vigilancia de contenedores, y el servicio que filtra los puertos publicados por Docker (`DOCKER-USER`).
 - `env/`: ejemplos de `.env`. `ci/`: lista de términos prohibidos.
 
 ## Relacionado

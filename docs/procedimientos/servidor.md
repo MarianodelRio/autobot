@@ -61,11 +61,11 @@ necesitan `sudo`, como `admin`.
     | Paso | Qué hace |
     |---|---|
     | `ci-key` | Genera dentro de la VM la clave ed25519 de CI; la privada queda en `/root/autobot-ci-deploy-key` (solo root) |
-    | `base` | `bootstrap-server.sh --base`: paquetes, Docker, swap, cuentas `deploy` y `admin`, clon en `/srv/autobot`, timers de systemd. La clave de CI se instala en `deploy` con `restrict,command=".../ssh-deploy.sh"` |
+    | `base` | `bootstrap-server.sh --base`: paquetes, Docker, swap, cuentas `deploy` y `admin`, clon en `/srv/autobot`, timers de systemd, `unattended-upgrades` (también con el repositorio de Docker; reinicio automático a las 03:30 hora del servidor si hace falta) y `autobot-docker-firewall.service`. La clave de CI se instala en `deploy` con `restrict,command=".../ssh-deploy.sh"` |
     | `env` | `.env` (valores explícitos y `ensure-env.sh`, que genera los secretos internos y nunca inventa los externos) y `var/google_sa.json` |
     | `deploy` | Primer despliegue del commit del clon (o `--sha`) por el mismo `ssh-deploy.sh` que usa el CI |
-    | `health` | Comprueba web, panel, workers, HTTPS y timers |
-    | `harden-ssh` | `bootstrap-server.sh --harden-ssh`: cierra root y contraseña, solo `admin` y `deploy`, `ufw` en 22/80/443 y `fail2ban`. **Pide confirmar** que has abierto otra sesión como `admin@` y `deploy@`; rechaza seguir si `sshd` no escucha solo en el 22 o la clave no está en ambas cuentas. Sin terminal y sin `--yes`, se omite y queda pendiente |
+    | `health` | Comprueba web, web-panel, panel, workers, HTTPS y timers |
+    | `harden-ssh` | `bootstrap-server.sh --harden-ssh`: cierra root y contraseña, solo `admin` y `deploy`, `MaxAuthTries 4` y `LoginGraceTime 30`, `ufw` en 22/80/443 y `fail2ban`. **Pide confirmar** que has abierto otra sesión como `admin@` y `deploy@`; rechaza seguir si `sshd` no escucha solo en el 22 o la clave no está en ambas cuentas. Sin terminal y sin `--yes`, se omite y queda pendiente |
     | `marker` | Escribe `/var/lib/autobot/bootstrap-complete`, que exige `restore.sh`; solo con SSH endurecido |
     | `github` | Opcional: con `gh` autenticado en la VM y tu confirmación, crea el entorno `production` y sube `DEPLOY_HOST`, `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS`, y borra la clave privada con `shred` |
 
@@ -84,8 +84,10 @@ necesitan `sudo`, como `admin`.
     - **Entorno `production` de GitHub** (Settings, Environments): restringirlo a la rama
       `main` y con revisores obligatorios. Sin eso, cualquier rama con acceso al workflow
       puede usar la clave de despliegue.
-    - **Backups**, como `deploy` en la VPS: crea `var/backup.env` y `var/restic-password`
-      (cópiala a tu gestor de contraseñas), ejecuta **a mano** `restic init` (nunca es
+    - **Backups**, como `deploy` en la VPS: crea `var/backup.env` (con una credencial S3 **sin
+      permiso de borrado**; la de purga vive en tu máquina, ver [backups.md](backups.md)) y
+      `var/restic-password` (cópiala a tu gestor de contraseñas, junto a la
+      `SECRETS_ENCRYPTION_KEY`, que no viaja en los snapshots), ejecuta **a mano** `restic init` (nunca es
       automático), lanza un `deploy/scripts/backup.sh` y arranca el timer con
       `sudo systemctl start autobot-backup.timer` (como `admin`). Fija la retención de
       paquetes de GHCR para cubrir los 6 meses de `--keep-monthly 6`
@@ -127,10 +129,13 @@ necesitan `sudo`, como `admin`.
   cambia nada.
 - Sesiones de `deploy@` y `admin@` funcionando; la clave de CI rechaza cualquier orden
   distinta de `deploy.sh <sha>`.
-- `systemctl list-timers 'autobot-*'` muestra los tres timers.
+- `systemctl list-timers 'autobot-*'` muestra los tres timers, y `systemctl is-active
+  autobot-docker-firewall.service` está activo: `sudo iptables -S DOCKER-USER` muestra que solo
+  pasan las conexiones a los puertos 80 y 443 (`--ctorigdstport`) y se descarta el resto con
+  DNAT. `/etc/apt/apt.conf.d/51autobot-unattended-upgrades` fija los reinicios nocturnos.
 - `sudo ufw status numbered` solo abre 22/80/443, y un escaneo de puertos contra la IP
   pública desde otra máquina confirma que solo responden esos tres. Los puertos 8000
-  (`web`) y 8080 (`panel`) escuchan solo en `127.0.0.1`.
+  (`web`) y 8080 (`panel`) escuchan solo en `127.0.0.1`; `web-panel` no publica ningún puerto.
 - `https://<PUBLIC_HOST>/health` responde 200. El panel solo se alcanza con
   `make panel-tunnel`, nunca por el Caddy público.
 
@@ -140,7 +145,8 @@ necesitan `sudo`, como `admin`.
   `deploy/scripts/compose.sh` (o `make prod-manage` / `make prod-compose`): ver
   [despliegue.md](despliegue.md#comandos-de-operacion-en-el-servidor).
 - Copia de seguridad manual: `make backup-now`, que usa la clave de operación; la de CI no
-  puede.
+  puede. Caducar snapshots antiguos es `make backup-prune`, desde tu máquina
+  ([backups.md](backups.md)).
 - Los secretos de canal están cifrados en la BD con `SECRETS_ENCRYPTION_KEY`; configúrala
   en `.env` antes del primer despliegue y conserva su copia con los backups
   ([rotar-secretos.md](rotar-secretos.md)).
@@ -148,4 +154,4 @@ necesitan `sudo`, como `admin`.
 ## Dónde está el código
 
 `deploy/scripts/install-vm.sh`, `deploy/scripts/bootstrap-server.sh`,
-`deploy/scripts/ensure-env.sh`, `deploy/env/`, `deploy/systemd/`.
+`deploy/scripts/ensure-env.sh`, `deploy/scripts/docker-user-firewall.sh`, `deploy/env/`, `deploy/systemd/`.

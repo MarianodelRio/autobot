@@ -1,0 +1,56 @@
+# Checklist de lanzamiento
+
+Lista priorizada de lo que debe estar resuelto antes de atender datos de un **primer cliente real**. Léela antes de activar el canal real de cualquier negocio. Cada casilla remite a la página donde se explica; marca la casilla solo cuando exista la evidencia (documento firmado, comando verificado), nunca por suposición.
+
+!!! warning "No es asesoramiento jurídico"
+    Lista de trabajo. Los puntos legales deben revisarse con abogado. Activar el canal real de un negocio y activar la limpieza requieren aprobación humana explícita (`CLAUDE.md`).
+
+## Bloqueantes (sin esto no se activa un cliente real)
+
+### A. Ajustes técnicos y operativos
+
+- [ ] **Activar la limpieza de retención** (`RETENTION_CLEANUP_ENABLED=true`) con aprobación humana y reiniciar `worker-inbound`; comprobar un ciclo nocturno. Hoy está `false` por defecto ([Retención y RGPD](../procedimientos/retencion-rgpd.md#limpieza-automatica)).
+- [ ] Elegir el **proveedor VPS** en la UE y firmar su DPA ([subencargados](subencargados.md)).
+- [ ] Elegir el **almacenamiento de backups** (otro proveedor, UE) y firmar su DPA; ejecutar un simulacro de restauración ([Restaurar](../procedimientos/restaurar.md)).
+- [x] Procedimiento para **reaplicar las supresiones** tras restaurar un backup: libro de supresiones, `privacy_ledger_export` y `privacy_reapply` (ADR-019, [Restaurar](../procedimientos/restaurar.md)).
+- [ ] Guardar fuera del servidor la exportación del libro de supresiones tras cada olvido o purga (paso operativo).
+- [ ] Confirmar la ubicación y política de Healthchecks.io, y decidir si se usa Sentry (con su DPA).
+- [x] **Primera capa de información** en el primer mensaje del bot, aviso de asistente automático y comando `PERSONA` ([información](informacion-al-interesado.md)).
+- [ ] Rellenar `privacy.policy_url` y `support.human_contact` en cada negocio (la activación del canal real lo exige; los negocios ya activos deben completarlo).
+- [x] Pack `bus`: **aviso de horarios orientativos** (`schedule_disclaimer`, configurable) ([otras normas](otras-normas.md#10-pack-bus)).
+- [ ] Opt-in documentado para recordatorios de WhatsApp y plantillas aprobadas, si se activan (`reminders_enabled`).
+
+### B. Documentos y decisiones
+
+- [ ] **Revisión por abogado** de: contrato de encargado, políticas de privacidad, roles, evaluación de riesgos, bases jurídicas.
+- [ ] **Datos del titular** rellenados: `[TITULAR]`, `[NIF]`, `[DOMICILIO]`, `[EMAIL DE PRIVACIDAD]` en todos los textos.
+- [ ] **Decisión 1:** cuenta WABA del negocio o de la plataforma ([roles](roles-y-tratamientos.md#decisiones-pendientes)).
+- [ ] Decidir plazos de conservación por negocio (12 meses por defecto) y reflejarlos en el Anexo I.
+- [ ] **Contrato de encargado firmado** con el negocio (con Anexo III vigente) antes de activar su canal.
+- [ ] **Información al negocio** sobre Google Calendar con cuenta gratuita (sin DPA) y su aceptación por escrito ([roles](roles-y-tratamientos.md)).
+- [ ] **Política de privacidad del negocio** publicada (o alojada por la plataforma) y enlazada desde el bot.
+- [ ] **Política de privacidad de la plataforma** publicada y enlazada desde la demo y el bot de avisos.
+- [ ] **Política en @BotFather** para cada bot de Telegram: demo, avisos y cada cliente ([información](informacion-al-interesado.md#4-telegram-politica-en-botfather)).
+- [ ] **Registro de actividades** completado con los datos del titular y entregada su parte de encargado al negocio ([registro](registro-de-actividades.md)).
+- [ ] Contacto de guardia del negocio para brechas (Anexo I) y del equipo para avisar en 48 h ([brechas](brechas-de-seguridad.md)).
+- [ ] Revisión de `bus` con abogado antes de su primer cliente (Ley 10/2025, administración pública) ([otras normas](otras-normas.md)).
+
+## Importante antes del primer mes
+
+- [ ] Aviso legal y web de la plataforma ([LSSI](otras-normas.md#1-comercio-electronico-y-comunicaciones-comerciales)).
+- [ ] Software de facturación conforme a VeriFactu (1-01-2027 sociedades, 1-07-2027 resto).
+- [ ] Condiciones del servicio que recojan el cambio de proveedor del Reglamento de Datos (preaviso ≤ 2 meses, exportación, sin tasas desde el 12-01-2027).
+- [ ] Revisar la política de uso de datos de la API de Google y si hace falta verificación OAuth.
+- [ ] Probar el procedimiento de derechos con un contacto de prueba en local ([derechos](derechos-de-los-interesados.md)).
+- [ ] Simulacro de brecha (tabla de reloj de 72 h y plantillas) ([brechas](brechas-de-seguridad.md)).
+
+## Revisión periódica
+
+- [ ] Revisar registro, subencargados y evaluación de riesgos cada 12 meses o ante cambios.
+- [ ] Seguir el recurso C-703/25 P sobre el DPF y activar el plan B si procede ([subencargados](subencargados.md)).
+- [ ] Reevaluar EIPD y DPD si hay IA, datos de salud o crecimiento ([evaluación](evaluacion-de-riesgos.md)).
+- [ ] Ley 10/2025: revisar antes del 28-12-2026.
+
+## Relacionado
+
+[Roles y tratamientos](roles-y-tratamientos.md), [Servidor](../procedimientos/servidor.md), [Alta y baja de un negocio](../procedimientos/alta-baja-negocio.md).

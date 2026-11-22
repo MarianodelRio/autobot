@@ -96,6 +96,7 @@ def test_creates_rows_across_every_timeline_source(
     assert {
         "caddy",
         "web",
+        "web-panel",
         "worker-inbound",
         "worker-outbound",
         "panel",

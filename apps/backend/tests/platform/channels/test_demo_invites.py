@@ -117,6 +117,28 @@ def test_has_grant_ignores_an_expired_grant() -> None:
     assert not invites.has_grant(door(), item("x", external_id="222"))
 
 
+def test_a_revoked_invite_withdraws_the_grants_already_given() -> None:
+    created = invite()
+    assert invites.redeem(door(), item("/start CODE1234AB", external_id="222"))
+    assert invites.has_grant(door(), item("x", external_id="222"))
+    # Even if the grant row survived (e.g. revoked by hand in the database) ...
+    DemoInvite.objects.using("owner").filter(pk=created.pk).update(revoked_at=timezone.now())
+    assert not invites.has_grant(door(), item("x", external_id="222"))
+
+
+def test_the_panel_revoke_deletes_the_grants_of_that_invite_only() -> None:
+    from autobot.panel.services.demo_invites import revoke_invite
+
+    first, second = invite("CODE1234AB", max_uses=2), invite("OTHER1234AB")
+    assert invites.redeem(door(), item("/start CODE1234AB", external_id="222"))
+    assert invites.redeem(door(), item("/start OTHER1234AB", external_id="333"))
+    revoke_invite(first, actor="tester")
+    assert not DemoAccessGrant.objects.using("owner").filter(external_id="222").exists()
+    assert not invites.has_grant(door(), item("x", external_id="222"))
+    assert invites.has_grant(door(), item("x", external_id="333"))
+    assert second.pk is not None
+
+
 def test_generated_codes_are_long_enough_and_redeemable() -> None:
     code = invites.generate_code()
     assert len(code) >= 10

@@ -14,7 +14,11 @@ if [[ ! -f $backup_config ]]; then
   exit 1
 fi
 # This file is owned by deploy with mode 0600 and contains RESTIC_REPOSITORY,
-# RESTIC_PASSWORD_FILE, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and ping URL.
+# RESTIC_PASSWORD_FILE, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and ping URL. The S3
+# key in it must be an UPLOAD-ONLY credential (no delete permission, ADR-021): a
+# compromised server can add snapshots but cannot erase the history. Expiring old
+# snapshots (`forget --prune`) is deploy/scripts/backup-prune.sh, run from the
+# operator's machine with a different credential that never lives here.
 # shellcheck source=/dev/null
 source "$backup_config"
 : "${RESTIC_REPOSITORY:?}"
@@ -22,10 +26,15 @@ source "$backup_config"
 : "${HEALTHCHECKS_BACKUP_PING_URL:?}"
 export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 export HEALTHCHECKS_BACKUP_PING_URL
+# `restic backup` always takes a repository lock (it ignores --no-lock) and deletes it when
+# it ends, so the upload-only credential may delete objects under `locks/` and nowhere else
+# (docs/procedimientos/backups.md). That also keeps restic's locking real: a prune run from
+# the operator's machine and this backup exclude each other.
 restic_bin=${RESTIC_BIN:-restic}
 
 mkdir -p var/backups var/state/ops
 dump_tmp=$(mktemp var/backups/.autobot.dump.XXXXXXXX)
+env_stage=var/backups/autobot.env
 dump_bytes=0
 
 # Runs on every exit, success or failure: records the outcome for the panel and
@@ -33,7 +42,7 @@ dump_bytes=0
 write_status() {
   local code=$? ok=false status_tmp
   [[ $code -eq 0 ]] && ok=true
-  rm -f "$dump_tmp" var/backups/autobot.dump
+  rm -f "$dump_tmp" var/backups/autobot.dump "$env_stage"
   status_tmp=$(mktemp var/state/ops/.backup.json.XXXXXXXX)
   printf '{"finished_at":"%s","ok":%s,"dump_bytes":%s}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ok" "$dump_bytes" >"$status_tmp"
@@ -100,7 +109,20 @@ fi
 mv "$dump_tmp" var/backups/autobot.dump
 dump_bytes=$(stat -c '%s' var/backups/autobot.dump)
 
-backup_paths=(var/backups/autobot.dump .env var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile)
+# The Fernet key (SECRETS_ENCRYPTION_KEY, which decrypts every tenant_secret row of the
+# dump) must not travel in the same snapshot as the data it protects (ADR-021): the
+# snapshot gets the .env without that one line, and the operator keeps the key
+# separately (docs/procedimientos/rotar-secretos.md). restore.sh asks for it explicitly.
+# var/google_sa.json stays in the snapshot on purpose: it is not a data key, it can only
+# reach calendars shared with that service account, and it can be revoked and re-issued
+# from Google at any time.
+grep -vE '^[[:space:]]*(export[[:space:]]+)?SECRETS_ENCRYPTION_KEY=' .env >"$env_stage" || true
+if grep -qE 'SECRETS_ENCRYPTION_KEY' "$env_stage"; then
+  echo 'The staged .env still mentions SECRETS_ENCRYPTION_KEY; not uploading it' >&2
+  exit 1
+fi
+test -s "$env_stage"
+backup_paths=("$env_stage" var/backups/autobot.dump var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile)
 # Caddy's own state (its ACME account and certificates: losing them means
 # reissuing from scratch) and the deploy log. Optional: missing on a target that
 # was bootstrapped but never deployed to yet, which must not fail the backup.
@@ -108,19 +130,9 @@ for optional_path in var/state/caddy-data var/state/caddy-config var/state/ops/d
   [[ -e $optional_path ]] && backup_paths+=("$optional_path")
 done
 "$restic_bin" backup --tag autobot "${backup_paths[@]}"
-# Group by tag: the dump path stays constant and all snapshots use the same policy.
-forget_args=(--tag autobot --group-by tags --keep-daily 7 --keep-weekly 4 --keep-monthly 6)
-# hourly backups make `forget` run hourly too, but `--prune` actually rewrites
-# the repository (lists every pack in it) and most providers charge for that; once
-# a day is often enough to reclaim space from expired snapshots.
-prune_marker=var/.last-prune
-today=$(date -u +%Y-%m-%d)
-if [[ ! -f $prune_marker || $(cat "$prune_marker") != "$today" ]]; then
-  "$restic_bin" forget "${forget_args[@]}" --prune
-  printf '%s' "$today" >"$prune_marker"
-else
-  "$restic_bin" forget "${forget_args[@]}"
-fi
+# No `forget`/`--prune` here (ADR-021): expiring snapshots needs delete permission, which
+# this host's credential does not have. deploy/scripts/backup-prune.sh does it from the
+# operator's machine.
 # Weekly integrity check of a random subset of the pack data, not just the index
 # (`restic backup` only ever checks what it uploads): catches a bucket that is
 # silently corrupting or losing objects while backups keep "succeeding". It runs on

@@ -15,12 +15,15 @@ Es un monolito modular Django 5.2 con PostgreSQL 18 y Procrastinate, en una VPS 
 | Contenedor | Qué hace |
 |---|---|
 | `caddy` | Solo en producción. HTTPS automático; expone únicamente los webhooks (negocio, demo y bot de avisos) y `/health` |
-| `web` | Sirve los webhooks (verifica, guarda, encola) y la API del panel (`/api/panel/`) |
+| `web` | Público, detrás de `caddy`: sirve los webhooks (verifica, guarda, encola). Solo usa `fp_app`, sin credenciales `owner` ni `readonly` |
+| `web-panel` | Misma imagen que `web`, solo en producción: sirve la API del panel (`/api/panel/`) con `fp_owner` y `fp_readonly`. Sin puerto publicado; solo lo alcanza `panel` ([ADR-020](adr/ADR-020-api-del-panel-aparte.md)). En local, un único `web` hace las dos cosas |
 | `worker-inbound` | Procrastinate: colas `inbound`, `periodic` y `ops` |
 | `worker-outbound` | Procrastinate: colas `outbound` y `ops` |
 | `db` | PostgreSQL 18 con Row-Level Security forzada |
-| `panel` | SPA estática con su propia Caddy interna, proxy de `/api/` hacia `web`; solo accesible por túnel SSH ([ADR-008](adr/ADR-008-panel.md)) |
+| `panel` | SPA estática con su propia Caddy interna, proxy de `/api/` hacia `web-panel`; solo accesible por túnel SSH ([ADR-008](adr/ADR-008-panel.md), [ADR-020](adr/ADR-020-api-del-panel-aparte.md)) |
 | `victorialogs` | Almacén de logs técnicos (31 días), sin puerto publicado |
+
+En producción los contenedores se reparten en redes de Compose separadas (`edge`, `panel`, `egress`, `data` y `logs`; ver [ADR-020](adr/ADR-020-api-del-panel-aparte.md)): `caddy` solo alcanza `web`, y ni `caddy` ni `victorialogs` tienen camino hasta la base de datos, que además no tiene salida a internet. Todos los contenedores de la aplicación descartan todas las capacidades de Linux y no pueden ganar privilegios.
 
 Hay dos workers para que una caída de Google Calendar (que llaman los packs desde `inbound` y `periodic`) no frene los envíos. Los detalles están en [cola y workers](cola-y-workers.md).
 
@@ -36,9 +39,10 @@ flowchart LR
     WO -->|adaptador de canal| P
     WI -->|Calendar| G[Google Calendar]
     OP[Operador] -.túnel SSH.-> PA[panel]
-    PA -->|/api/| W
+    PA -->|/api/| WP[web-panel]
+    WP --> DB
     W --> DB
-    W & WI & WO --> VL[victorialogs]
+    W & WP & WI & WO --> VL[victorialogs]
     PA -.logs.-> VL
 ```
 

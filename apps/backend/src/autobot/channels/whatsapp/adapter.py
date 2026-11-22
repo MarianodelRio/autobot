@@ -8,7 +8,7 @@ import copy
 import hashlib
 import hmac
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 from uuid import UUID
 
@@ -263,6 +263,22 @@ def _single(
     }
 
 
+# Anything older is dropped at parse time: a replay of a captured webhook (the signature
+# does not cover freshness) must not be accepted after the retention of the dedupe rows.
+MAX_AGE = timedelta(hours=48)
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _too_old(value: object) -> bool:
+    """Is `value` (a Unix timestamp as Meta sends it) older than `MAX_AGE`? An absent or
+    unreadable one is not: those are judged by their own rules."""
+    when = _timestamp(value)
+    return when is not None and _now() - when > MAX_AGE
+
+
 def _timestamp(value: object) -> datetime | None:
     try:
         return datetime.fromtimestamp(int(str(value)), UTC)
@@ -291,6 +307,9 @@ def _message(
     received_at = _timestamp(message.get("timestamp"))
     if not isinstance(wamid, str) or not 0 < len(wamid) <= MAX_EVENT_ID or received_at is None:
         log.warning("WhatsApp message without a valid id or timestamp dropped")
+        return None
+    if _too_old(message.get("timestamp")):
+        log.warning("WhatsApp message older than %s dropped", MAX_AGE)
         return None
     phone, external_id = _extract_sender(message)
     if external_id is None:
@@ -352,6 +371,9 @@ def _status(entry: dict[str, Any], value: dict[str, Any], status: WaStatus) -> S
     wamid = status.get("id")
     name = status.get("status")
     if not isinstance(wamid, str) or not wamid or name not in STATUSES:
+        return None
+    if _too_old(status.get("timestamp")):
+        log.warning("WhatsApp status older than %s dropped", MAX_AGE)
         return None
     event_id = f"{wamid}:{name}"
     if len(event_id) > MAX_EVENT_ID:

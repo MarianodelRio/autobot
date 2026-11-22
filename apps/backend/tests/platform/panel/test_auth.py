@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import io
 import json
+from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
 
@@ -15,6 +16,7 @@ from django.core.management import call_command
 from django.db import connections
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from django_otp.oath import totp  # type: ignore[import-untyped]
 from django_otp.plugins.otp_totp.models import TOTPDevice  # type: ignore[import-untyped]
 
@@ -126,6 +128,7 @@ def test_lockout_after_five_failures(user: Any) -> None:
     assert AuditEvent.objects.using("owner").filter(action="auth.login_failed").count() == 5
     blocked = AuditEvent.objects.using("owner").filter(action="auth.login_blocked")
     assert blocked.count() == 1 and blocked.get().details == {"scope": "user"}
+    assert blocked.get().actor == "login:operator"
 
 
 def test_lockout_by_ip_across_usernames(user: Any, settings: Any, monkeypatch: Any) -> None:
@@ -244,3 +247,88 @@ def test_panel_user_exists(user: Any) -> None:
     call_command("panel_user", "exists", "operator")
     with pytest.raises(Exception, match="No existe"):
         call_command("panel_user", "exists", "nobody")
+
+
+def test_blocked_attempts_write_one_audit_row_per_window_and_a_prefixed_actor(
+    user: Any,
+) -> None:
+    client = Client(enforce_csrf_checks=True)
+    token = csrf(client)
+    long_name = "operator" + "x" * 200
+    for _ in range(5):
+        assert login(client, token, username=long_name, password="w", otp="0").status_code == 401
+    for _ in range(4):  # all blocked from here on
+        assert login(client, token, username=long_name, otp="0").status_code == 401
+    blocked = AuditEvent.objects.using("owner").filter(action="auth.login_blocked")
+    assert blocked.count() == 1
+    actor = blocked.get().actor
+    assert actor.startswith("login:operatorxxx") and len(actor) == len("login:") + 64
+    # The real actor name never appears un-prefixed in a block row.
+    assert not blocked.filter(actor="operator").exists()
+
+
+def test_panel_user_commands_audit_and_revoke_sessions(user: Any) -> None:
+    from django.contrib.sessions.models import Session
+
+    def logged_in_client() -> Client:
+        client = Client()
+        client.get("/api/panel/auth/csrf", HTTP_HOST=HOST)
+        otp = str(totp(TOTPDevice.objects.using("owner").get(user=user).bin_key)).zfill(6)
+        response = client.post(
+            "/api/panel/auth/login",
+            data=json.dumps({"username": "operator", "password": PASSWORD, "otp": otp}),
+            content_type="application/json",
+            HTTP_HOST=HOST,
+        )
+        assert response.status_code == 200
+        return client
+
+    audit = AuditEvent.objects.using("owner")
+    with patch("getpass.getpass", side_effect=[PASSWORD, PASSWORD]):
+        call_command("panel_user", "create", "other", stdout=io.StringIO())
+    created = audit.get(action="panel_user.create")
+    assert created.actor == "command:panel_user" and "other" in created.summary
+
+    first = logged_in_client()
+    assert first.get("/api/panel/auth/me", HTTP_HOST=HOST).status_code == 200
+    with patch("getpass.getpass", side_effect=["Another-Long-Pass-77"] * 2):
+        call_command("panel_user", "set-password", "operator")
+    assert first.get("/api/panel/auth/me", HTTP_HOST=HOST).status_code == 401
+    changed = audit.get(action="panel_user.set_password")
+    assert changed.actor == "command:panel_user" and changed.details == {"sessions_revoked": 1}
+    assert "Another-Long-Pass-77" not in str(changed.details) + changed.summary
+
+    Session.objects.using("owner").all().delete()
+    expires = timezone.now() + timedelta(days=1)
+    mine = Session.objects.using("owner").create(
+        session_key="mine",
+        expire_date=expires,
+        session_data=Session.objects.encode({"_auth_user_id": str(user.pk)}),
+    )
+    others = Session.objects.using("owner").create(
+        session_key="others",
+        expire_date=expires,
+        session_data=Session.objects.encode({"_auth_user_id": "999999"}),
+    )
+    call_command("panel_user", "reset-totp", "operator", stdout=io.StringIO())
+    reset = audit.get(action="panel_user.reset_totp")
+    assert reset.actor == "command:panel_user" and reset.details == {"sessions_revoked": 1}
+    assert not Session.objects.using("owner").filter(pk=mine.pk).exists()
+    assert Session.objects.using("owner").filter(pk=others.pk).exists()
+
+
+def test_password_validator_requires_twelve_characters() -> None:
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError
+
+    with pytest.raises(ValidationError):
+        validate_password("Corta-1234")  # 10 characters
+    validate_password("Larga-y-rara-5821")
+
+
+def test_openapi_schema_is_not_served(authed_client: Client) -> None:
+    for path in ("/api/panel/openapi.json", "/api/panel/docs"):
+        assert authed_client.get(path, HTTP_HOST=HOST).status_code == 404
+    from autobot.panel.api import api
+
+    assert api.get_openapi_schema(path_prefix="")["paths"]

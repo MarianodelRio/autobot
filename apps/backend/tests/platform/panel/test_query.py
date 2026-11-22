@@ -1,6 +1,8 @@
 """Read-only SQL console: the `readonly_all` policy itself, and the
 guards and behaviour of `panel.services.query.run`."""
 
+import threading
+import time
 from typing import Any
 
 import psycopg
@@ -268,3 +270,83 @@ def test_unknown_panel_routes_are_json_404(authed_client: Any) -> None:
         response = authed_client.get(path, HTTP_HOST="127.0.0.1")
         assert response.status_code == 404
         assert response.json()["code"] == "not_found"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT set_config('app.readonly_all', 'on', true)",
+        "SELECT SET_CONFIG('statement_timeout', '0', true)",
+        "SELECT \"set_config\"('x', 'y', true)",
+        "SELECT pg_catalog.set_config('x', 'y', true)",
+        "SELECT /* c */ set_config('x','y',true)",
+        "WITH s AS MATERIALIZED (SELECT set_config('app.readonly_all','on',true) AS x)"
+        " SELECT count(*) FROM s, contact",
+        "SELECT query_to_xml('select 1', true, false, '')",
+        "SELECT query_to_xml_and_xmlschema('select 1', true, false, '')",
+        "SELECT table_to_xml('contact'::regclass, true, false, '')",
+        "SELECT cursor_to_xml('c', 1, true, false, '')",
+        "SELECT schema_to_xmlschema('public', true, false, '')",
+        "SELECT pg_advisory_lock(1)",
+        "SELECT pg_try_advisory_xact_lock(1)",
+        "SELECT dblink('x', 'select 1')",
+        "SELECT lo_import('/etc/passwd')",
+        "SELECT pg_read_file('/etc/passwd')",
+        "SELECT pg_ls_dir('.')",
+        "SELECT * FROM pg_ls_waldir()",
+    ],
+)
+def test_rejects_functions_that_change_settings_or_run_dynamic_sql(sql: str) -> None:
+    with pytest.raises(ApiError) as excinfo:
+        query.run(sql, tenant_id=None, actor="operator")
+    assert excinfo.value.status == 400
+    assert "no admite la función" in excinfo.value.message
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 'set_config' AS word",
+        "SELECT 1 -- set_config",
+        "SELECT /* pg_read_file */ 2",
+        "SELECT $$ query_to_xml $$",
+        "SELECT 1 AS settings_config, 'lo_x' AS y",
+    ],
+)
+def test_forbidden_names_in_literals_and_comments_are_fine(sql: str) -> None:
+    assert query.run(sql, tenant_id=None, actor="operator").rows
+
+
+def test_watchdog_cuts_a_query_that_resets_its_own_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SQL can zero `statement_timeout` with set_config: the Python-side watchdog
+    must still cut it. (The best-effort filter is bypassed here to prove the watchdog.)"""
+    monkeypatch.setattr(query, "_reject_forbidden", lambda sql: None)
+    monkeypatch.setattr(query, "WATCHDOG_S", 1.0)
+    started = time.monotonic()
+    with pytest.raises(ApiError) as excinfo:
+        query.run(
+            "SELECT set_config('statement_timeout', '0', true), pg_sleep(12)",
+            tenant_id=None,
+            actor="operator",
+        )
+    assert excinfo.value.status == 400
+    assert time.monotonic() - started < 6
+
+
+def test_watchdog_timer_is_always_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
+    timers: list[Any] = []
+    real = threading.Timer
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        timer = real(*args, **kwargs)
+        timers.append(timer)
+        return timer
+
+    monkeypatch.setattr(threading, "Timer", spy)
+    query.run("SELECT 1", tenant_id=None, actor="operator")
+    with pytest.raises(ApiError):
+        query.run("SELECT * FROM tenant_secret", tenant_id=None, actor="operator")
+    assert len(timers) == 2
+    assert all(timer.finished.is_set() for timer in timers)

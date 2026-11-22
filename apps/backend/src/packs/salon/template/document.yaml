@@ -86,5 +86,9 @@ status: active
 owner:
   notify: [booking_created, booking_cancelled, booking_moved, move_cancel_failed]
   summary_monthly: true
+privacy:
+  controller_name: Autobot (demo)
+support:
+  human_contact: Es una demo y no hay nadie al otro lado; escribe a quien te dio acceso.
 demo:
   description: Reserva, mueve o cancela una cita

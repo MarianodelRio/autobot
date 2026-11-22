@@ -174,6 +174,38 @@ def test_failed_status_keeps_the_error_code_only() -> None:
     assert (item.status, item.error, item.billable) == ("failed", "131026", None)
 
 
+def _at(monkeypatch: pytest.MonkeyPatch, seconds_after_fixture: int) -> None:
+    """The adapter's clock `seconds_after_fixture` after the fixtures' timestamps, with the
+    real 48 h limit (the suite's autouse fixture disables it)."""
+    from datetime import timedelta
+
+    from autobot.channels.whatsapp import adapter
+
+    monkeypatch.setattr(adapter, "MAX_AGE", timedelta(hours=48))
+    monkeypatch.setattr(
+        adapter, "_now", lambda: RECEIVED + timedelta(seconds=seconds_after_fixture)
+    )
+
+
+def test_a_message_older_than_48_hours_is_dropped_without_pii(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _at(monkeypatch, 48 * 3600 + 1)
+    assert ADAPTER.parse(load("text.json"), CHANNEL) == []
+    assert "older than" in caplog.text
+    assert "34600" not in caplog.text and "wamid" not in caplog.text
+
+
+def test_a_message_within_48_hours_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    _at(monkeypatch, 48 * 3600 - 60)
+    assert len(ADAPTER.parse(load("text.json"), CHANNEL)) == 1
+
+
+def test_a_status_older_than_48_hours_is_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
+    _at(monkeypatch, 49 * 3600)
+    assert ADAPTER.parse(load("status_delivered.json"), CHANNEL) == []
+
+
 def test_another_phone_number_id_is_dropped() -> None:
     other = CHANNEL.model_copy(update={"phone_number_id": "999"})
     assert ADAPTER.parse(load("text.json"), other) == []

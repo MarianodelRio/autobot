@@ -48,13 +48,13 @@ Solo pueden llamar a `.using("owner")` las migraciones, los comandos de `manage.
 Cada tabla con RLS lleva dos políticas:
 
 - `tenant_isolation`: `USING` y `WITH CHECK` con `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid`. Es la que aísla.
-- `readonly_all`: `FOR SELECT TO fp_readonly`, que deja ver todas las filas solo si `app.readonly_all = 'on'`. La consola SQL (`autobot/panel/services/query.py`) fija `app.tenant_id` si el operador elige un tenant, o `app.readonly_all` si quiere ver todos, siempre en una transacción de solo lectura con límite de tiempo.
+- `readonly_all`: `FOR SELECT TO fp_readonly`, que deja ver todas las filas solo si `app.readonly_all = 'on'`. La consola SQL (`autobot/panel/services/query.py`) fija `app.tenant_id` si el operador elige un tenant, o `app.readonly_all` si quiere ver todos, siempre en una transacción de solo lectura con límite de tiempo. Elegir tenant es una comodidad, no una barrera: el SQL puede activar `app.readonly_all` con `set_config`. Lo que protege es el rol `fp_readonly`, `SENSITIVE_TABLES` y el túnel con TOTP (ver [Panel](panel.md)).
 
 ## Permisos: `db/grants.py`
 
 Los permisos de base de datos se declaran en `apps/backend/src/autobot/db/grants.py`, nunca solo en una migración. `statements()` devuelve SQL idempotente y `apply(connection)` lo ejecuta en una transacción. Se reaplica con el comando `apply_grants` tras cada despliegue y cada restauración (`pg_restore --no-acl` borra los permisos). Define:
 
-- `SENSITIVE_TABLES`: tablas que `fp_readonly` no puede leer (`auth_user`, `django_session`, `tenant_secret`, `owner_link`, `demo_event`, `owner_event`, `demo_session`, `demo_invite`, etc.). Toda tabla nueva sensible se añade aquí.
+- `SENSITIVE_TABLES`: tablas que `fp_readonly` no puede leer (`auth_user`, `django_session`, `tenant_secret`, `owner_link`, `demo_event`, `owner_event`, `demo_session`, `demo_invite`, `audit_event` por el SQL con literales que guarda, `tenant_document_version` por los teléfonos de los testers, etc.). Toda tabla nueva sensible se añade aquí.
 - `CONFIG_TABLES`: `fp_app` solo lee; escribe `fp_owner`.
 - `AUTH_TABLES`: `fp_app` no tiene ningún acceso.
 - Revocaciones concretas: `fp_app` no puede escribir `tenant`, ni tocar `audit_event`, ni borrar `ops_alert`.

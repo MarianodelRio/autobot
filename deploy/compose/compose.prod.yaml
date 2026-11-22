@@ -27,6 +27,7 @@ x-app-env: &app-env
   NOTIFY_BOT_TOKEN: ${NOTIFY_BOT_TOKEN:-}
   NOTIFY_BOT_WEBHOOK_SECRET: ${NOTIFY_BOT_WEBHOOK_SECRET:-}
   OWNER_SUPPORT_EMAIL: ${OWNER_SUPPORT_EMAIL:-}
+  PLATFORM_PRIVACY_URL: ${PLATFORM_PRIVACY_URL:-}
   OPS_TELEGRAM_CHAT_ID: ${OPS_TELEGRAM_CHAT_ID:-}
   SENTRY_DSN: ${SENTRY_DSN:-}
   HEALTHCHECKS_PING_URL: ${HEALTHCHECKS_PING_URL:-}
@@ -41,8 +42,13 @@ x-app: &app
   user: ${DEPLOY_UID:?Set the numeric uid of the deploy user}
   environment: *app-env
   read_only: true
+  # No capability is needed (everything listens on port 8000 as a non-root user) and
+  # no-new-privileges stops a setuid binary from regaining any.
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
   tmpfs:
-    - /tmp
+    - /tmp:noexec,nosuid
   volumes:
     - ../../var/google_sa.json:/run/secrets/google_sa.json:ro
     - ../../var/state/ops:/run/ops:ro
@@ -52,6 +58,24 @@ x-app: &app
     options:
       max-size: 20m
       max-file: "5"
+
+# Networks (ADR-020): nothing reaches a service it has no reason to talk to.
+#   edge   caddy, web             the public path; caddy reaches nothing else
+#   panel  panel, web-panel       the SSH-tunnelled panel and its API (ADR-008, ADR-020)
+#   egress worker-*               the workers' way out to Meta, Google and Telegram
+#   data   db, web, web-panel,    PostgreSQL; `internal`, so db has no way out to the internet
+#          worker-*
+#   logs   victorialogs, web,     VictoriaLogs; `internal` as well
+#          web-panel, worker-*
+# web and web-panel also reach the internet through edge and panel respectively.
+networks:
+  edge: {}
+  panel: {}
+  egress: {}
+  data:
+    internal: true
+  logs:
+    internal: true
 
 services:
   caddy:
@@ -76,17 +100,22 @@ services:
     logging: *logging
     mem_limit: 128m
     pids_limit: 256
+    networks: [edge]
     depends_on:
       web:
         condition: service_healthy
 
+  # The public side: webhooks and /health only, reached through caddy (ADR-005). Like
+  # the workers it runs with fp_app alone: a bug or a compromise here never holds
+  # fp_owner (BYPASSRLS) nor fp_readonly. The panel's API is web-panel (ADR-020).
   web:
     <<: *app
     environment:
       <<: *app-env
-      DB_OWNER_URL: ${DB_OWNER_URL:?Set DB_OWNER_URL}
-      DB_READONLY_URL: ${DB_READONLY_URL:?Set DB_READONLY_URL}
+      DB_OWNER_URL: ""
+      DB_READONLY_URL: ""
       SERVICE_NAME: web
+    networks: [edge, data, logs]
     # The gunicorn command (flags, graceful timeout, access log format) is the image's
     # CMD in apps/backend/Dockerfile: one source of truth.
     stop_grace_period: 60s
@@ -94,6 +123,27 @@ services:
     pids_limit: 256
     ports:
       - "127.0.0.1:${AUTOBOT_WEB_HOST_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  # The panel's API (ADR-020): the same image as web, but the only process with the
+  # fp_owner and fp_readonly credentials besides one-off operation commands. It has no
+  # published port and no edge network: only the panel container (and its Caddy) reach
+  # it, on the `panel` network, and the SSH tunnel stops at the panel (ADR-008).
+  web-panel:
+    <<: *app
+    environment:
+      <<: *app-env
+      DB_OWNER_URL: ${DB_OWNER_URL:?Set DB_OWNER_URL}
+      DB_READONLY_URL: ${DB_READONLY_URL:?Set DB_READONLY_URL}
+      SERVICE_NAME: web-panel
+    stop_grace_period: 60s
+    mem_limit: 512m
+    pids_limit: 256
+    networks: [panel, data, logs]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 10s
@@ -110,6 +160,7 @@ services:
       DB_CONN_MAX_AGE: "0"  # procrastinate's own connection handling; no idle persistent ones
     mem_limit: 384m
     pids_limit: 128
+    networks: [egress, data, logs]
 
   worker-outbound:
     <<: *app
@@ -121,6 +172,7 @@ services:
       DB_CONN_MAX_AGE: "0"
     mem_limit: 384m
     pids_limit: 128
+    networks: [egress, data, logs]
 
   panel:
     image: ${AUTOBOT_PANEL_IMAGE:?Set AUTOBOT_PANEL_IMAGE}:${SHA:?Set the published image SHA}
@@ -128,14 +180,22 @@ services:
     ports:
       - "127.0.0.1:${AUTOBOT_PANEL_HOST_PORT:-8080}:8080"
     read_only: true
+    # caddy's binary carries a file capability (cap_net_bind_service): with every
+    # capability dropped it cannot even exec ("operation not permitted"), so this
+    # one is kept although the panel listens on 8080.
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
     tmpfs:
-      - /tmp
+      - /tmp:noexec,nosuid
     restart: unless-stopped
     logging: *logging
     mem_limit: 64m
     pids_limit: 128
+    networks: [panel]
     depends_on:
-      web:
+      web-panel:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
@@ -182,9 +242,23 @@ services:
     pids_limit: 200
     restart: unless-stopped
     logging: *logging
+    networks: [data]
 
+  # Root inside the container, but with no capability, no new privileges and a read-only
+  # filesystem. A non-root user does not work: the image is scratch (no shell, no
+  # chown) and the named volume is created root-owned, so VictoriaLogs could not write
+  # /vlogs (checked 2026-11-22: it panics on start). Moving to a bind mount owned by
+  # DEPLOY_UID would mean migrating the existing production volume; logs are not
+  # critical and hold no client data (CLAUDE.md), so the residual risk is accepted.
   victorialogs:
     restart: unless-stopped
     logging: *logging
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:noexec,nosuid
     mem_limit: 320m
     pids_limit: 256
+    networks: [logs]

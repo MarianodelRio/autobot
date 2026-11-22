@@ -48,6 +48,9 @@ class Contact(TenantScoped):
     opt_out_at = models.DateTimeField(null=True, blank=True)
     unreachable = models.BooleanField(default=False, db_default=False)
     last_activity_at = models.DateTimeField(null=True, blank=True)
+    # When the first-layer privacy notice was sent; NULL = not yet (the contact is
+    # informed once; forgetting the contact deletes the row, so it is informed again).
+    notice_sent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

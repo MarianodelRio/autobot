@@ -198,8 +198,10 @@ stateDiagram-v2
 - **Nombre.** Entre 2 y 100 caracteres, con al menos una letra, sin `[cfg]`, y se limpia de
   `*`, `_`, `` ` ``, `~` y saltos de línea. Las palabras de escape (`cancelar`, `volver`,
   `atrás`, `salir`, `no`, `nada`, `hola`, `gracias`, `adiós`, `ayuda`, `menú`, `inicio`…)
-  no son nombres y vuelven al menú. En este paso `alta` y `baja` son un nombre, no los
-  comandos de avisos (`Pack.expects_free_text`).
+  no son nombres y vuelven al menú. En este paso `alta`, `baja`, `stop`, `parar` y `persona` no se toman en
+  silencio ni como nombre ni como orden: el bot pregunta «¿Quieres darte de baja de los avisos
+  o es tu nombre?» con los botones «Darme de baja» y «Es mi nombre» (`Pack.expects_free_text`;
+  ver [Aviso inicial y órdenes de atención](../../arquitectura/packs.md#aviso-inicial-y-ordenes-de-atencion)).
 - **Cancelar** pide confirmación («¿Cancelar Corte de pelo del martes 24 de marzo a las
   10:00?»). Una cita ya pasada no se puede cancelar ni mover.
 - **Mover = crear y luego cancelar.** El cliente elige la cita, el servicio, el día y la

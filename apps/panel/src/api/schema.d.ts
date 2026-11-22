@@ -174,6 +174,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/step-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Step Up
+         * @description Fresh TOTP check for the session's own user; a code already used (also by the
+         *     login) is rejected by the device's `last_t`. Shares the login's attempt limit.
+         */
+        post: operations["autobot_panel_auth_step_up"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/calendar/service-account": {
         parameters: {
             query?: never;
@@ -1974,6 +1995,11 @@ export interface components {
             /** Confirm Slug */
             confirm_slug?: string | null;
         };
+        /** StepUpIn */
+        StepUpIn: {
+            /** Otp */
+            otp: string;
+        };
         /** SummaryLineOut */
         SummaryLineOut: {
             /** Icon */
@@ -2515,6 +2541,28 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    autobot_panel_auth_step_up: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepUpIn"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {

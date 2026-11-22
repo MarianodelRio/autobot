@@ -21,3 +21,7 @@ export function logout() {
 export function fetchMe() {
   return unwrap(api.GET("/auth/me"));
 }
+
+export function stepUp(otp: string) {
+  return unwrap(api.POST("/auth/step-up", { body: { otp } }));
+}

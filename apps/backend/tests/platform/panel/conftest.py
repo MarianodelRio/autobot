@@ -51,3 +51,22 @@ def authed_client(user: Any) -> Client:
     )
     assert response.status_code == 200
     return client
+
+
+def next_otp(user: Any) -> str:
+    """The code of the next 30 s window: the login already used the current one and a
+    TOTP code is never accepted twice (the device's `last_t`). Counted from the device's
+    stored drift, which a login near a window boundary shifts by one."""
+    device = TOTPDevice.objects.using("owner").get(user=user)
+    return str(totp(device.bin_key, drift=device.drift + 1)).zfill(6)
+
+
+def step_up(client: Client, user: Any) -> Any:
+    return post(client, "auth/step-up", {"otp": next_otp(user)})
+
+
+@pytest.fixture
+def reauthed_client(authed_client: Client, user: Any) -> Client:
+    """A logged-in client that has just passed the step-up."""
+    assert step_up(authed_client, user).status_code == 200
+    return authed_client

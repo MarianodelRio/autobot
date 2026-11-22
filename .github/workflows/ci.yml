@@ -21,15 +21,15 @@ jobs:
     env:
       ENVIRONMENT: local
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The same uv as the image: its version is read from the Dockerfile, so a
       # Dependabot bump of the image's uv updates CI too.
       - id: uv
         run: |
-          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\) AS uv$|\1|p' apps/backend/Dockerfile)
+          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\)@sha256:[0-9a-f]\{64\} AS uv$|\1|p' apps/backend/Dockerfile)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.uv.outputs.version }}
           enable-cache: true
@@ -61,7 +61,7 @@ jobs:
         # `source "$(dirname "$0")/lib.sh"` (a dynamic path, so shellcheck won't
         # resolve it on its own) to the real deploy/scripts/lib.sh.
         run: shellcheck -x -P deploy/scripts deploy/scripts/*.sh deploy/postgres/*.sh apps/backend/src/tools/*/*.sh
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: apps/backend/.mypy_cache
           key: mypy-${{ runner.os }}-${{ hashFiles('apps/backend/uv.lock') }}-${{ github.sha }}
@@ -93,7 +93,7 @@ jobs:
       DB_OWNER_URL: postgres://fp_owner:fp_owner@localhost:5432/autobot
       DB_READONLY_URL: postgres://fp_readonly:fp_readonly@localhost:5432/autobot
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Database roles
         # Same script as the db container; the service cannot mount repo files.
         run: bash deploy/postgres/init-roles.sh
@@ -110,10 +110,10 @@ jobs:
       # Dependabot bump of the image's uv updates CI too.
       - id: uv
         run: |
-          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\) AS uv$|\1|p' apps/backend/Dockerfile)
+          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\)@sha256:[0-9a-f]\{64\} AS uv$|\1|p' apps/backend/Dockerfile)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.uv.outputs.version }}
           enable-cache: true
@@ -137,15 +137,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The same uv as the image: its version is read from the Dockerfile, so a
       # Dependabot bump of the image's uv updates CI too.
       - id: uv
         run: |
-          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\) AS uv$|\1|p' apps/backend/Dockerfile)
+          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\)@sha256:[0-9a-f]\{64\} AS uv$|\1|p' apps/backend/Dockerfile)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.uv.outputs.version }}
           enable-cache: true
@@ -160,23 +160,76 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: python3 deploy/scripts/check-forbidden-terms.py
+
+  secrets-scan:
+    # gitleaks over the whole history (fetch-depth 0). Allowlists live in .gitleaks.toml.
+    # The binary is pinned by version and sha256 (no third-party action, no licence key).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks (checksum verified)
+        run: |
+          version=8.30.1
+          sha256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tgz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
+          echo "$sha256  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/gitleaks" && tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP/gitleaks" gitleaks
+      - name: gitleaks
+        run: '"$RUNNER_TEMP/gitleaks/gitleaks" git --config .gitleaks.toml --redact --verbose .'
+
+  dockerfile-lint:
+    # hadolint on both Dockerfiles, plus actionlint on the workflows. Binaries pinned by
+    # version and sha256.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install hadolint (checksum verified)
+        run: |
+          version=2.15.1
+          sha256=c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507
+          curl -fsSL -o "$RUNNER_TEMP/hadolint" \
+            "https://github.com/hadolint/hadolint/releases/download/v${version}/hadolint-linux-x86_64"
+          echo "$sha256  $RUNNER_TEMP/hadolint" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/hadolint"
+      - name: hadolint
+        run: '"$RUNNER_TEMP/hadolint" apps/backend/Dockerfile apps/panel/Dockerfile'
+      - name: Install actionlint (checksum verified)
+        run: |
+          version=1.7.12
+          sha256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tgz" \
+            "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz"
+          echo "$sha256  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/actionlint" && tar -xzf "$RUNNER_TEMP/actionlint.tgz" -C "$RUNNER_TEMP/actionlint" actionlint
+      - name: actionlint
+        run: '"$RUNNER_TEMP/actionlint/actionlint" -color'
 
   panel:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: apps/panel/package.json
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: apps/panel/pnpm-lock.yaml
       - run: pnpm -C apps/panel install --frozen-lockfile
+      - name: pnpm audit (production dependencies)
+        run: pnpm -C apps/panel audit --prod --audit-level high
       - name: Generated API types are committed
         run: |
           pnpm -C apps/panel gen:api
@@ -194,13 +247,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: uv
         run: |
-          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\) AS uv$|\1|p' apps/backend/Dockerfile)
+          version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\)@sha256:[0-9a-f]\{64\} AS uv$|\1|p' apps/backend/Dockerfile)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@v10.3.2
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: ${{ steps.uv.outputs.version }}
           enable-cache: true
@@ -214,7 +267,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install restic
         run: sudo apt-get update -qq && sudo apt-get install -y -qq restic
       - name: Production compose file is valid
@@ -259,14 +312,14 @@ jobs:
         run: AUTOBOT_RESTORE_TEST_SKIP_BUILD=true bash deploy/scripts/restore-test.sh
 
   image:
-    needs: [lint, test, audit, panel, docs, forbidden-terms, deploy-smoke]
+    needs: [lint, test, audit, panel, docs, forbidden-terms, deploy-smoke, secrets-scan, dockerfile-lint]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - name: Compute image names
         run: |
@@ -279,11 +332,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Build both images locally first, scan them, and only then publish: a HIGH or
+      # CRITICAL vulnerability with a fix available stops the pipeline before any push.
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: apps/backend
           file: apps/backend/Dockerfile
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          load: true
           tags: ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha,scope=app
           cache-to: type=gha,mode=max,scope=app
@@ -291,8 +346,27 @@ jobs:
         with:
           context: .
           file: apps/panel/Dockerfile
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          load: true
           tags: ${{ env.PANEL_IMAGE }}:${{ github.sha }}
           build-args: VITE_GITHUB_REPO=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=panel
           cache-to: type=gha,mode=max,scope=panel
+      - name: Install Trivy (checksum verified)
+        run: |
+          version=0.76.2
+          sha256=bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+          curl -fsSL -o "$RUNNER_TEMP/trivy.tgz" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${version}/trivy_${version}_Linux-64bit.tar.gz"
+          echo "$sha256  $RUNNER_TEMP/trivy.tgz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/trivy" && tar -xzf "$RUNNER_TEMP/trivy.tgz" -C "$RUNNER_TEMP/trivy" trivy
+      - name: Trivy scan (HIGH/CRITICAL with a fix available fail the build)
+        run: |
+          for image in "$IMAGE:$GITHUB_SHA" "$PANEL_IMAGE:$GITHUB_SHA"; do
+            "$RUNNER_TEMP/trivy/trivy" image --scanners vuln --severity HIGH,CRITICAL \
+              --ignore-unfixed --exit-code 1 --no-progress "$image"
+          done
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        name: Publish images
+        run: |
+          docker push "$IMAGE:$GITHUB_SHA"
+          docker push "$PANEL_IMAGE:$GITHUB_SHA"

@@ -67,6 +67,8 @@ def revoke_invite(invite: DemoInvite, *, actor: str) -> None:
         DemoInvite.objects.using("owner").filter(pk=invite.pk, revoked_at__isnull=True).update(
             revoked_at=timezone.now()
         )
+        # Revoking withdraws the access already granted, not only future redemptions.
+        DemoAccessGrant.objects.using("owner").filter(invite_id=invite.pk).delete()
         record(
             actor=actor,
             action="demo_invite.revoke",

@@ -107,6 +107,43 @@ class DemoInfo(Strict):
     )
 
 
+class Privacy(Strict):
+    """What the first-contact notice tells about who handles the contacts' data (RGPD
+    art. 13, LOPDGDD art. 11). The business is the controller; the platform only
+    processes the data for it."""
+
+    controller_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        title="Responsable del tratamiento",
+        description="Nombre legal del responsable; si falta, se usa el nombre del negocio.",
+    )
+    policy_url: str | None = Field(
+        default=None,
+        max_length=300,
+        title="Enlace a la política de privacidad",
+        description="Segunda capa de información (https://…); si falta, el aviso no la cita.",
+    )
+
+    @field_validator("policy_url")
+    @classmethod
+    def https_url(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"https://[^\s]+", value):
+            raise ValueError("el enlace debe empezar por https:// y no llevar espacios")
+        return value
+
+
+class Support(Strict):
+    human_contact: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=300,
+        title="Contacto para hablar con una persona",
+        description="Teléfono, horario o correo que el bot da al escribir PERSONA.",
+    )
+
+
 class TenantDocument(Strict):
     """The common tenant document; `config` is checked later by the pack."""
 
@@ -120,6 +157,8 @@ class TenantDocument(Strict):
     testers: Testers = Field(default=Testers(), title="Testers")
     owner: Owner | None = Field(default=None, title="Dueño")
     demo: DemoInfo | None = Field(default=None, title="Demo")
+    privacy: Privacy | None = Field(default=None, title="Privacidad")
+    support: Support | None = Field(default=None, title="Atención a la clientela")
     config: dict[str, Any] = Field(default={}, title="Configuración del pack")
 
     @field_validator("id")

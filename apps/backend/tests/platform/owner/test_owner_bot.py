@@ -8,6 +8,7 @@ import io
 import json
 import re
 from collections.abc import Iterator
+from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -186,6 +187,71 @@ def test_start_code_is_single_use(tenants: Any, providers: Providers) -> None:
     assert OwnerLink.objects.get(tenant_id=get_registry().by_slug["wa"].id).chat_id == OWNER_CHAT
 
 
+def test_a_replaced_chat_is_told_it_no_longer_gets_the_notices(
+    tenants: Any, providers: Providers
+) -> None:
+    tenants(wa_tenant())
+    link("wa", OWNER_CHAT)
+    new_chat = OWNER_CHAT + 1
+    code = invite("wa")
+    assert post(say(new_chat, f"/start {code}")) == 200
+    assert OwnerLink.objects.get(tenant_id=get_registry().by_slug["wa"].id).chat_id == new_chat
+    assert "conectado" in texts(providers, new_chat)[-1]
+    (notice,) = texts(providers, OWNER_CHAT)
+    assert "dejado de recibir los avisos" in notice and "Wa" in notice
+
+
+def test_relinking_the_same_chat_does_not_notify_it_as_replaced(
+    tenants: Any, providers: Providers
+) -> None:
+    tenants(wa_tenant())
+    link("wa", OWNER_CHAT)
+    code = invite("wa")
+    assert post(say(OWNER_CHAT, f"/start {code}")) == 200
+    assert not any("dejado de recibir" in t for t in texts(providers))
+
+
+def test_the_invite_lasts_48_hours(tenants: Any) -> None:
+    tenants(wa_tenant())
+    assert links.OWNER_INVITE_HOURS == 48
+    tenant_id = get_registry().by_slug["wa"].id
+    links.new_invite(tenant_id)
+    expires = OwnerLink.objects.get(tenant_id=tenant_id).invite_expires_at
+    assert expires is not None
+    assert timedelta(hours=47) < expires - timezone.now() <= timedelta(hours=48)
+
+
+def test_a_processed_owner_event_keeps_no_payload(tenants: Any, providers: Providers) -> None:
+    tenants(wa_tenant())
+    code = invite("wa")
+    assert post(say(OWNER_CHAT, f"/start {code}")) == 200
+    assert post(say(OWNER_CHAT, "hola")) == 200
+    events = list(OwnerEvent.objects.all())
+    assert len(events) == 2
+    assert all(e.status == "done" and e.payload == {} for e in events)
+    assert code not in json.dumps([e.payload for e in events])
+
+
+def test_a_chat_over_the_limit_is_dropped_before_saving(tenants: Any, providers: Providers) -> None:
+    tenants(wa_tenant())
+    link("wa")
+    for _ in range(inbox.CHAT_EVENTS_PER_MINUTE + 5):
+        assert post(say(OWNER_CHAT, "hola")) == 200
+    assert OwnerEvent.objects.count() == inbox.CHAT_EVENTS_PER_MINUTE
+
+
+def test_unlinked_chats_over_the_global_limit_are_dropped_before_saving(
+    tenants: Any, providers: Providers
+) -> None:
+    tenants(wa_tenant())
+    link("wa")
+    for i in range(inbox.STRANGER_EVENTS_PER_MINUTE + 5):
+        assert post(say(7_000 + i, "hola")) == 200  # a different chat each time
+    assert OwnerEvent.objects.count() == inbox.STRANGER_EVENTS_PER_MINUTE
+    assert post(say(OWNER_CHAT, "hola")) == 200  # a linked chat is not affected
+    assert OwnerEvent.objects.count() == inbox.STRANGER_EVENTS_PER_MINUTE + 1
+
+
 def test_chat_taken_by_another_real_tenant_leaves_the_code_intact(
     tenants: Any, providers: Providers
 ) -> None:
@@ -335,7 +401,7 @@ def test_owner_reconnect_prints_a_fresh_link_per_tenant(
     assert post(press(OWNER_CHAT, "owner:reconnect")) == 200
     text = texts(providers)[-1]
     assert text.count("https://t.me/AvisosBot?start=") == 2
-    assert "Caduca en 7 días" in text
+    assert "Caduca en 48 horas" in text
 
 
 def test_owner_reconnect_warns_the_tenant_is_already_connected(

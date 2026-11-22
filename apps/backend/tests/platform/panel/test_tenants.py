@@ -8,7 +8,7 @@ from uuid import uuid7
 import pytest
 
 from autobot.ops import health
-from autobot.ops.models import OpsAlert
+from autobot.ops.models import AuditEvent, OpsAlert
 from autobot.runtime.models import Contact, InboundEvent, MetricEvent, Notification, OutboundMessage
 from autobot.tenancy.models import TenantSecret
 from autobot.tenancy.registry import get_registry
@@ -198,6 +198,10 @@ def test_notifications_are_isolated_per_tenant(authed_client: Any, tenants: Any)
     )
     body = get(authed_client, "tenants/a/notifications").json()
     assert [n["text"] for n in body] == ["Nueva cita"]
+    event = AuditEvent.objects.using("owner").get(action="tenant.notifications.view")
+    assert event.tenant_id == tenant_id("a")
+    assert event.actor == "operator"
+    assert "Nueva cita" not in str(event.details) + event.summary
 
 
 def test_health_check_forces_the_cache(authed_client: Any, tenants: Any, monkeypatch: Any) -> None:

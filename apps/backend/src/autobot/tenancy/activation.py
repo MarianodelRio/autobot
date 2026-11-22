@@ -42,6 +42,19 @@ def _channel_complete(channel: Channel | None) -> bool:
     )
 
 
+def _privacy_complete(tenant: LoadedTenant) -> bool:
+    """The first-contact notice cites `privacy.policy_url` and `PERSONA` answers with
+    `support.human_contact`: a real channel must not open without them (RGPD art. 13,
+    Ley 10/2025). Optional in the document so existing tenants keep loading."""
+    document = tenant.document
+    return bool(
+        document.privacy
+        and document.privacy.policy_url
+        and document.support
+        and document.support.human_contact
+    )
+
+
 def _health_issues(tenant: LoadedTenant, refresh: bool) -> tuple[bool, list[health.Issue]]:
     """Whether the health is known, and its issues (the cache holds them when not
     refreshing)."""
@@ -71,11 +84,12 @@ def checklist(slug: str, *, refresh: bool = True) -> Checklist:
     store.find_source(slug, sources)
     tenant = load_registry(sources, packs_registry.PACKS).by_slug.get(slug)
     valid = tenant is not None and not tenant.is_degraded and not tenant.ambiguous
-    channel_ok = secrets_ok = healthy = templates_ok = inbound = owner = False
+    channel_ok = secrets_ok = healthy = templates_ok = inbound = owner = privacy_ok = False
     checked = True
     if tenant is not None:
         channel = tenant.document.channel
         channel_ok = _channel_complete(channel)
+        privacy_ok = _privacy_complete(tenant)
         secrets_ok = tenant.secrets is not None and not any(
             "decrypt" in issue for issue in tenant.main_disabled
         )
@@ -93,6 +107,12 @@ def checklist(slug: str, *, refresh: bool = True) -> Checklist:
         ("secrets", "Secretos presentes y legibles", secrets_ok, True),
         ("health", "Salud del canal sin problemas críticos", healthy, True),
         ("templates", "Plantillas de WhatsApp aprobadas", templates_ok, True),
+        (
+            "privacy",
+            "Privacidad y atención: enlace a la política y contacto para hablar con una persona",
+            privacy_ok,
+            True,
+        ),
         ("tester", "Algún tester ha escrito por el canal principal", inbound, True),
         ("owner", "Dueño enlazado", owner, False),
     ]

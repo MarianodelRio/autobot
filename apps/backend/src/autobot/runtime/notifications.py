@@ -24,6 +24,7 @@ from autobot.runtime.summary import OWNER_SUMMARY_KIND
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.schema import TelegramSecrets
 from autobot.tenancy.tx import tenant_tx
+from core.conversation import HUMAN_REQUESTED
 from core.replies import Text
 from core.serialization import Outbound
 
@@ -77,10 +78,15 @@ def send_notification(
         if row.status != Notification.Status.PENDING:
             return
         owner = tenant.document.owner
-        # owner.notify only gates per-event notices; the summary has its own toggle
+        # owner.notify only gates per-event notices; the summary has its own toggle and a
+        # contact's request for a person is always delivered
         # (owner.summary_monthly), already checked when send_owner_summary created this
         # row.
-        allowed = row.kind == OWNER_SUMMARY_KIND or row.kind in owner.notify if owner else False
+        allowed = (
+            row.kind in (OWNER_SUMMARY_KIND, HUMAN_REQUESTED) or row.kind in owner.notify
+            if owner
+            else False
+        )
         chat = links.owner_chat(tenant_id) if allowed else None
         # Claim durably before network I/O. A crash or ambiguous result stays failed:
         # notification has no unknown state, and must never be resent blindly.

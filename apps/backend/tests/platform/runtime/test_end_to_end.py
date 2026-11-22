@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from typing import Any
@@ -43,6 +44,7 @@ pytestmark = [
 ]
 
 MENU_BODY = "¡Hola! ¿Qué quieres hacer?"
+NOTICE = r"^Soy el asistente automático.*?dejar de recibir avisos\.\n*"
 
 
 class Meta:
@@ -64,6 +66,11 @@ class Meta:
         return answer
 
     def bodies(self) -> list[str]:
+        """What went out, without the first-contact notice (it is merged into the body of
+        the contact's first message; `test_first_contact.py` covers it)."""
+        return [re.sub(NOTICE, "", b, flags=re.S) for b in self._bodies()]
+
+    def _bodies(self) -> list[str]:
         out = []
         for body in self.sent:
             if body["type"] == "text":
@@ -135,7 +142,10 @@ def test_webhook_queue_worker_send(tenants: Any, meta: Meta) -> None:
     assert post_wa(wa_text("hola")) == 200
     run_worker()
     (sent,) = meta.sent
-    assert sent["to"] == "34600000001" and sent["interactive"]["body"]["text"] == MENU_BODY
+    assert sent["to"] == "34600000001"
+    # The first-contact notice is the start of that first message.
+    assert sent["interactive"]["body"]["text"].startswith("Soy el asistente automático")
+    assert sent["interactive"]["body"]["text"].endswith(MENU_BODY)
     (event,) = events()
     (message,) = OutboundMessage.objects.using("owner").all()
     assert (event.status, message.status, message.provider_message_id) == (

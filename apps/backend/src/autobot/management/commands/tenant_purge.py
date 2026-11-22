@@ -22,4 +22,6 @@ class Command(BaseCommand):
         if confirmation != tenant.slug:
             raise CommandError("Confirmación incorrecta: no se ha borrado nada.")
         privacy.purge(tenant)
-        self.stdout.write("Datos del negocio borrados.")
+        self.stdout.write(
+            "Datos del negocio borrados. Guarda fuera del servidor el libro: privacy_ledger_export."
+        )

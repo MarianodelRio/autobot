@@ -10,6 +10,7 @@ from ninja import Query, Router, Schema
 from autobot.panel.services import setup as setup_service
 from autobot.panel.services import tenants as service
 from autobot.panel.services.overview import TenantRow, tenant_rows
+from autobot.panel.stepup import has_recent_reauth, reauth_required, require_recent_reauth
 from autobot.tenancy import store
 from autobot.tenancy.models import Tenant
 
@@ -128,6 +129,7 @@ def publish_document(request: HttpRequest, slug: str, payload: DocumentIn) -> Ve
 
 
 @router.post("/tenants/{slug}/rollback", response=VersionOut)
+@require_recent_reauth()
 def rollback_document(request: HttpRequest, slug: str, payload: RollbackIn) -> VersionOut:
     return VersionOut(
         version=store.rollback(slug, actor=request.user.username, **payload.model_dump())
@@ -138,6 +140,8 @@ def rollback_document(request: HttpRequest, slug: str, payload: RollbackIn) -> V
 def change_status(request: HttpRequest, slug: str, payload: StatusIn) -> VersionOut:
     if payload.action not in ("activate", "pause", "resume"):
         raise store.StoreError("bad_request", "Acción de estado no válida")
+    if payload.action == "activate" and not has_recent_reauth(request):
+        raise reauth_required()  # going live on the real channel
     return VersionOut(
         version=store.change_status(
             slug,
@@ -149,6 +153,7 @@ def change_status(request: HttpRequest, slug: str, payload: StatusIn) -> Version
 
 
 @router.put("/tenants/{slug}/secrets", response=service.SecretsUpdateOut)
+@require_recent_reauth()
 def set_secrets(request: HttpRequest, slug: str, payload: SecretsIn) -> service.SecretsUpdateOut:
     return service.update_secrets(slug, secrets=payload.secrets, actor=request.user.username)
 
@@ -219,7 +224,7 @@ def tenant_summary(request: HttpRequest, slug: str) -> service.SummaryOut:
 
 @router.get("/tenants/{slug}/notifications", response=list[service.NotificationOut])
 def tenant_notifications(request: HttpRequest, slug: str) -> list[service.NotificationOut]:
-    return service.tenant_notifications(slug)
+    return service.tenant_notifications(slug, actor=request.user.username)
 
 
 @router.post("/tenants/{slug}/health-check", response=list[service.HealthIssueOut])
@@ -248,11 +253,13 @@ def tenant_owner_unlink(request: HttpRequest, slug: str) -> service.OwnerUnlinkO
 
 
 @router.post("/tenants/{slug}/export", response=service.ExportOut)
+@require_recent_reauth()
 def tenant_export(request: HttpRequest, slug: str) -> service.ExportOut:
     return service.tenant_export(slug, actor=request.user.username)
 
 
 @router.post("/tenants/{slug}/delete", response=service.DeleteTenantOut)
+@require_recent_reauth()
 def delete_tenant(
     request: HttpRequest, slug: str, payload: DeleteTenantIn
 ) -> service.DeleteTenantOut:

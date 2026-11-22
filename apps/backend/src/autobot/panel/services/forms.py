@@ -68,6 +68,7 @@ GROUPS: tuple[tuple[str, str, list[str]], ...] = (
     ("business", "Negocio", ["name", "timezone", "demo"]),
     ("channel", "Canal", ["channel"]),
     ("people", "Dueño y testers", ["owner", "testers"]),
+    ("legal", "Privacidad y atención", ["privacy", "support"]),
     ("config", "Ajustes del pack", ["config"]),
 )
 HIDDEN = ("id", "slug", "pack", "status")

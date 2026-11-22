@@ -64,6 +64,8 @@ def compose_env() -> dict[str, str]:
         **os.environ,
         "SECRETS_ENCRYPTION_KEY": Fernet.generate_key().decode(),
         "SHA": "a" * 40,
+        "AUTOBOT_IMAGE": "ghcr.io/example-owner/autobot",
+        "AUTOBOT_PANEL_IMAGE": "ghcr.io/example-owner/autobot-panel",
         "PUBLIC_HOST": "localhost",
         "DJANGO_SECRET_KEY": "local-config-check-only",
         "DJANGO_ALLOWED_HOSTS": "localhost",
@@ -81,6 +83,23 @@ def compose_env() -> dict[str, str]:
 def check_compose_services(services: dict[str, Any]) -> None:
     """Assert the production hardening of the rendered Compose services."""
     assert services["web"]["ports"][0]["host_ip"] == "127.0.0.1"
+    # ADR-020: the public web holds fp_app alone; the panel's API (web-panel) is the only
+    # long-running service with fp_owner/fp_readonly, and it publishes no port at all.
+    assert not services["web"]["environment"].get("DB_OWNER_URL")
+    assert not services["web"]["environment"].get("DB_READONLY_URL")
+    assert services["web-panel"]["environment"].get("DB_OWNER_URL")
+    assert services["web-panel"]["environment"].get("DB_READONLY_URL")
+    assert not services["web-panel"].get("ports")
+    assert services["web-panel"]["read_only"]
+    assert services["web-panel"]["user"] == "10001"
+    for name in ("web", "web-panel", "worker-inbound", "worker-outbound", "panel", "victorialogs"):
+        assert services[name]["cap_drop"] == ["ALL"], name
+        assert "no-new-privileges:true" in services[name]["security_opt"], name
+    networks = {name: set(service.get("networks", {})) for name, service in services.items()}
+    assert networks["caddy"] == {"edge"}
+    assert networks["panel"] == {"panel"} and "panel" in networks["web-panel"]
+    assert "edge" not in networks["web-panel"] and "panel" not in networks["web"]
+    assert networks["db"] == {"data"} and networks["victorialogs"] == {"logs"}
     assert not services["db"].get("ports")
     assert not services["victorialogs"].get("ports")
     web_mounts = {mount["target"]: mount for mount in services["web"]["volumes"]}
@@ -99,6 +118,13 @@ def check_compose_services(services: dict[str, Any]) -> None:
         assert not services[worker]["environment"].get("FP_OWNER_PASSWORD")
     assert not services["db"]["environment"].get("DJANGO_SECRET_KEY")
     assert not services["caddy"]["environment"].get("DB_APP_URL")
+
+
+def check_panel_caddyfile() -> None:
+    """The panel's own Caddy proxies to web-panel, never to the public web (ADR-020)."""
+    caddyfile = (ROOT / "apps" / "panel" / "Caddyfile").read_text()
+    assert "web:8000" not in caddyfile.replace("web-panel:8000", "")
+    assert "web-panel:8000" in caddyfile
 
 
 def check_routes(port: str | int) -> None:
@@ -137,6 +163,7 @@ def main() -> None:
         check=True,
     )
     check_compose_services(json.loads(config.stdout)["services"])
+    check_panel_caddyfile()
 
     state = Path(tempfile.mkdtemp(prefix="fp-caddy-"))
     (state / "data").mkdir()

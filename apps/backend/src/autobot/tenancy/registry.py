@@ -77,7 +77,15 @@ class LoadedTenant:
     @property
     def info(self) -> TenantInfo:
         f = self.document
-        return TenantInfo(id=f.id, slug=f.slug, name=f.name, timezone=ZoneInfo(f.timezone))
+        return TenantInfo(
+            id=f.id,
+            slug=f.slug,
+            name=f.name,
+            timezone=ZoneInfo(f.timezone),
+            controller_name=f.privacy.controller_name if f.privacy else None,
+            policy_url=f.privacy.policy_url if f.privacy else None,
+            human_contact=f.support.human_contact if f.support else None,
+        )
 
 
 @dataclass

@@ -26,6 +26,7 @@ from django.utils import timezone
 from autobot.channels.adapters import endpoint
 from autobot.channels.base import InboundItem, StatusItem, parse_stored
 from autobot.channels.demo.doors import allowed_identity, door
+from autobot.channels.demo.notice import demo_first_contact_notice
 from autobot.channels.ratelimit import WindowLimiter
 from autobot.ops.logging import bind, contextual
 from autobot.ops.state import record
@@ -49,11 +50,14 @@ from autobot.tenancy.schema import PHONE
 from autobot.tenancy.tx import tenant_tx
 from core.actions import Action, NotifyOwner, RecordMetric, SendProactive, UpdateContact
 from core.conversation import (
+    HUMAN_REQUESTED,
     EffectiveState,
+    command_result,
     effective_state,
+    first_contact_notice,
     global_command,
     menu_message,
-    opt_result,
+    pack_message,
     recovery_result,
 )
 from core.errors import TransientError
@@ -108,6 +112,7 @@ def process_event(
         conversation, _ = Conversation.objects.get_or_create(tenant_id=tenant.id, contact=contact)
         effective = _effective_state(tenant, conversation, now)
         info = _contact_info(contact, aliases_for(contact))  # needs this tenant_tx
+        informed = contact.notice_sent_at is not None
 
     # ── No transaction: acknowledge, then the pack ────────────────────────
     try:
@@ -128,11 +133,12 @@ def process_event(
     if over_limit:
         log.warning("contact over its message limit: event %s saved, not answered", event.id)
         result, notices, keep_conversation = PackResult(), [], True
-    elif command == "opt_out" or command == "opt_in":
-        # An RGPD-protected request: always honoured and recorded, even for a
-        # degraded tenant (checked next) that would otherwise only get the generic
-        # unavailable text, with no UpdateContact action to register it.
-        result = opt_result(command)
+    elif command is not None and command != "menu":
+        # opt-out/in, "persona" and the "command or name?" question: an RGPD and
+        # customer-service request, always honoured and recorded, even for a degraded
+        # tenant (checked next) that would otherwise only get the generic unavailable
+        # text, with no UpdateContact action to register it.
+        result = command_result(command, message, tenant.info, info)
         if tenant.pack is None:
             keep_conversation = True  # tx2 needs a pack to touch conversation.state
     elif tenant.pack is None or tenant.is_degraded:
@@ -141,8 +147,19 @@ def process_event(
     else:
         if command == "menu":
             state, message = {}, menu_message(message.received_at)
+        else:
+            message = pack_message(message)
         result, error = _run_pack(
             tenant, event, info, state, message, last_attempt=last_attempt, calendars=calendars
+        )
+
+    # The first-layer privacy notice, once per contact, before anything else.
+    intro: Reply | None = None
+    if not informed and not over_limit and tenant.pack is not None and not tenant.is_degraded:
+        intro = (
+            demo_first_contact_notice(tenant.document.name)
+            if event.channel in DEMO_CHANNELS
+            else first_contact_notice(tenant.info)
         )
 
     # ── tx2: persist ──────────────────────────────────────────────────────
@@ -158,6 +175,7 @@ def process_event(
             error,
             keep_conversation=keep_conversation,
             now=now,
+            intro=intro,
         )
     except RETRYABLE:
         raise  # a database hiccup: the job is retried
@@ -192,9 +210,11 @@ def _persist(
     *,
     keep_conversation: bool,
     now: Any,
+    intro: Reply | None = None,
 ) -> None:
     """tx2: save the state, the replies, the actions and the event outcome, and queue the
-    sends, all in one transaction."""
+    sends, all in one transaction. `intro` (the first-contact notice) goes first and
+    marks the contact as informed in the same transaction."""
     with tenant_tx(tenant.id):
         event = InboundEvent.objects.select_for_update().get(id=event_id)
         if event.status != Status.PENDING:
@@ -208,7 +228,10 @@ def _persist(
             conversation.save(
                 update_fields=["state", "state_version", "last_inbound_at", "updated_at"]
             )
-        replies = plan_sends([*notices, *result.replies])
+        if intro is not None:
+            contact.notice_sent_at = now
+            contact.save(update_fields=["notice_sent_at"])
+        replies = plan_sends([*([intro] if intro else []), *notices, *result.replies])
         messages = create_replies(tenant.id, contact, event, replies)
         messages += apply_actions(
             tenant, event.channel, result.actions, contact=contact, event=event, now=now
@@ -391,7 +414,7 @@ def _notify_owner(
     tenant's owner receives it the same way as a real one. Delivery is
     `send_notification`, which reads `audience`."""
     owner = tenant.document.owner
-    if owner is None or action.kind not in owner.notify:
+    if owner is None or (action.kind != HUMAN_REQUESTED and action.kind not in owner.notify):
         log.info("NotifyOwner %s only logged: the owner does not receive it", action.kind)
         return
     row = Notification(

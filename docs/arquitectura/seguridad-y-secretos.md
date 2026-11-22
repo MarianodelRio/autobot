@@ -7,7 +7,7 @@ Resumen de las defensas de la plataforma: dónde viven los secretos y cómo se c
 | Secreto | Dónde | Cómo |
 |---|---|---|
 | Secretos de canal de cada negocio (`app_secret`, `access_token`, `verify_token`, `bot_token`, `webhook_secret`) | Tabla `tenant_secret` | Cifrados con Fernet, nunca en claro en la base |
-| Secretos de la plataforma (`DJANGO_SECRET_KEY`, `SECRETS_ENCRYPTION_KEY`, URLs de base de datos, tokens de los bots de demo y de avisos, `SENTRY_DSN`, `HEALTHCHECKS_*`) | `.env` del servidor | Fuera de git y de la imagen |
+| Secretos de la plataforma (`DJANGO_SECRET_KEY`, `SECRETS_ENCRYPTION_KEY`, URLs de base de datos, tokens de los bots de demo y de avisos, `SENTRY_DSN`, `HEALTHCHECKS_*`) | `.env` del servidor | Fuera de git y de la imagen. `SECRETS_ENCRYPTION_KEY` tampoco va en los backups (copia en el gestor de contraseñas de la persona) |
 | Contraseñas del panel y TOTP | `auth_user`, `otp_totp_totpdevice` | Hash de Django; tablas sensibles |
 
 Nunca hay credenciales en git ni en logs. En producción, `settings.py` rechaza arrancar si `DJANGO_SECRET_KEY` o `SECRETS_ENCRYPTION_KEY` conservan el valor de ejemplo, o si esta última no contiene claves Fernet válidas. Variables completas: [Variables de entorno](../referencia/variables-entorno.md).
@@ -20,6 +20,7 @@ Nunca hay credenciales en git ni en logs. En producción, `settings.py` rechaza 
 - Un secreto ilegible desactiva el canal principal de ese negocio sin degradarlo ni afectar a los demás ([Config y registro](config-y-registro.md)).
 - La API del panel no devuelve secretos, solo si están presentes.
 - **Re-cifrado:** `manage.py tenant_secrets_reencrypt` descifra y vuelve a cifrar todas las filas con la primera clave, en una transacción: si una fila es ilegible, se revierte todo. Cada fila deja una auditoría con `reencrypted: true`. Los backups antiguos no se re-cifran: restaurarlos exige las claves con que se hicieron.
+- **La clave no viaja con los datos (ADR-021).** El snapshot de restic lleva el `.env` sin `SECRETS_ENCRYPTION_KEY`; la custodia la persona fuera del servidor y `restore.sh` la exige explícitamente y comprueba que descifra los secretos restaurados ([Backups](../procedimientos/backups.md), [Rotar secretos](../procedimientos/rotar-secretos.md)).
 - Los logs protegen además los valores conocidos: `redact` sustituye por `[REDACTED]` los secretos configurados y los de los negocios del registro cargado.
 
 ## Firma de los webhooks
@@ -39,13 +40,24 @@ Tres roles con permisos distintos (declarados en `apps/backend/src/autobot/db/gr
 
 | Rol | Uso | Permisos |
 |---|---|---|
-| `fp_app` | `web` y workers (conexión `default`) | Sujeto a RLS. Lee las tablas de configuración pero no las escribe; sin acceso a `audit_event`, `dataset_library_version` ni a las tablas de auth/sesión/OTP; no puede escribir en `tenant`; en `ops_alert` no borra. |
-| `fp_owner` | Migraciones, comandos de operación, `tenancy.store` y servicios del panel | Dueño de las tablas, `BYPASSRLS`. Siempre con `.using("owner")` explícito. El worker no tiene alias `owner`. |
-| `fp_readonly` | Consola SQL del panel | `NOBYPASSRLS`, solo `SELECT`; revocado sobre `SENSITIVE_TABLES`. |
+| `fp_app` | `web` público y workers (conexión `default`) | Sujeto a RLS. Lee las tablas de configuración pero no las escribe; sin acceso a `audit_event`, `dataset_library_version` ni a las tablas de auth/sesión/OTP; no puede escribir en `tenant`; en `ops_alert` no borra. |
+| `fp_owner` | Migraciones, comandos de operación, `tenancy.store` y servicios del panel | Dueño de las tablas, `BYPASSRLS`. Siempre con `.using("owner")` explícito. Solo `web-panel` (y los comandos `manage.py` de operación, que corren en `web-panel`) reciben `DB_OWNER_URL`; ni el `web` público ni los workers tienen alias `owner` ([ADR-020](adr/ADR-020-api-del-panel-aparte.md)). |
+| `fp_readonly` | Consola SQL del panel (solo `web-panel`) | `NOBYPASSRLS`, solo `SELECT`, `temp_file_limit` de 256 MB por sesión; revocado sobre `SENSITIVE_TABLES` (incluidas `audit_event` y `tenant_document_version`). Es la barrera real de la consola; el ámbito por negocio es solo una comodidad. |
 
 `grants.statements()` es la **única fuente de verdad** de los permisos; `apply_grants` (`manage.py apply_grants`) los reaplica tras cada migración que crea tablas, en cada despliegue y tras cada restauración (`pg_restore --no-acl` los pierde). Las tablas sensibles (`SENSITIVE_TABLES`: secretos, sesiones, TOTP, invitaciones, eventos y sesiones de demo y de dueños, `owner_link`…) no son legibles por la consola SQL. Una función `SECURITY DEFINER` (`purge_platform_history`) permite la purga de `ops_alert` y `audit_event` sin dar `DELETE` a `fp_app`, y limita el corte a un año.
 
 Toda tabla nueva con RLS lleva las políticas `tenant_isolation` y `readonly_all`; toda tabla nueva sensible se añade a `SENSITIVE_TABLES`. Ver [Migraciones y RLS](../desarrollo/migraciones-y-rls.md).
+
+## Aislamiento de contenedores y de red
+
+Detalle y motivos en [ADR-020](adr/ADR-020-api-del-panel-aparte.md):
+
+- **Credenciales por servicio:** el `web` público y los workers solo tienen `fp_app`. La API del panel corre en `web-panel`, sin puerto publicado ni red de borde, y es el único proceso de larga vida con `fp_owner` y `fp_readonly`.
+- **Redes de Compose separadas** (`edge`, `panel`, `egress`, `data`, `logs`): Caddy solo alcanza `web`; la base de datos y VictoriaLogs están en redes `internal`, sin salida a internet.
+- **Contenedores:** `cap_drop: [ALL]`, `no-new-privileges`, sistema de ficheros de solo lectura y `/tmp` en `tmpfs` con `noexec,nosuid`. Excepciones justificadas: `panel` conserva `NET_BIND_SERVICE` (el binario de Caddy lo exige) y `victorialogs` corre como root sin capacidades (el volumen se crea de root).
+- **Host:** UFW solo abre 22/80/443 y `autobot-docker-firewall.service` descarta en `DOCKER-USER` cualquier conexión a un puerto publicado de Docker que no sea 80/443 (UFW no filtra lo que publica Docker). `unattended-upgrades` aplica también las actualizaciones de Docker y reinicia de madrugada si hace falta; SSH limita `MaxAuthTries` y `LoginGraceTime` ([servidor.md](../procedimientos/servidor.md)).
+- **Backups:** el servidor solo sube; borrar snapshots exige otra credencial que no está en él ([Backups](../procedimientos/backups.md), ADR-021).
+- Una prueba de CI (`tests/repo/test_compose_prod.py`) y `make check-prod-config` vigilan estas propiedades.
 
 ## Datos personales fuera de logs y trabajos
 
@@ -60,6 +72,23 @@ Toda tabla nueva con RLS lleva las políticas `tenant_isolation` y `readonly_all
 ## Términos prohibidos en CI
 
 El trabajo `forbidden-terms` de CI ejecuta `deploy/scripts/check-forbidden-terms.py`: falla si algún fichero versionado contiene el nombre de un cliente real. `deploy/ci/forbidden-terms.sha256` guarda solo huellas SHA-256, nunca los términos en claro, de modo que filtrar el fichero no revela nada. El script normaliza cada secuencia de 1 a 4 palabras de cada fichero, la hashea y compara; si hay coincidencia imprime el fichero, no el término. Los datos de clientes reales no se suben a git (`var/tenants/` y `var/datos/` están ignorados).
+
+## Cadena de suministro y análisis en CI
+
+CI no usa secretos propios: todos los jobs corren con `contents: read` y solo `image` añade `packages: write`. Qué se escanea y cómo tratar un fallo:
+
+| Control | Qué hace | Si falla |
+|---|---|---|
+| Acciones fijadas por SHA | Toda `uses:` lleva el SHA de 40 caracteres y un comentario con la versión; Dependabot (`github-actions`) propone las subidas | Para subir una acción, resuelve el SHA real del tag (`git ls-remote https://github.com/<propietario>/<repo> 'refs/tags/<tag>^{}'`) y conserva el comentario |
+| Imágenes base por digest | Los `FROM` de `apps/backend/Dockerfile` y `apps/panel/Dockerfile` llevan `tag@sha256:…`; Dependabot (`docker`) actualiza tag y digest a la vez | No edites el digest a mano: deja que lo suba Dependabot, o resuélvelo con `docker buildx imagetools inspect <imagen:tag>` |
+| `secrets-scan` (gitleaks) | Busca credenciales en todo el historial. `.gitleaks.toml` solo permite, por ruta concreta, la clave Fernet de ejemplo, tokens falsos de tests y el bundle de Mermaid | Un secreto real: revócalo y rótalo primero ([Rotar secretos](../procedimientos/rotar-secretos.md)); borrarlo del historial no basta. Un valor de ejemplo: añade una excepción por ruta, nunca global |
+| `pnpm audit` | Dependencias de producción del panel, falla desde severidad alta | Actualiza la dependencia; si no hay arreglo, decláralo en el PR con la justificación antes de ignorarlo |
+| `pip-audit` | Dependencias bloqueadas del backend | Igual que el anterior |
+| `dockerfile-lint` | `hadolint` (Dockerfile) y `actionlint` (workflows). Una excepción de hadolint va en línea (`# hadolint ignore=DLxxxx`) con motivo | Corrige la regla; ignórala solo si es un falso positivo |
+| Trivy sobre las dos imágenes | Antes de publicar: falla con HIGH o CRITICAL que tengan arreglo (`--ignore-unfixed`) | Reconstruye con la base actualizada (sube el digest) o la dependencia afectada; no se publica nada hasta que pase |
+| CodeQL (`codeql.yml`) | Python y JavaScript/TypeScript; único job con `security-events: write` | Revisa las alertas en la pestaña Security del repositorio |
+
+Los binarios de gitleaks, hadolint, actionlint y Trivy se descargan con versión y SHA-256 fijos en el propio workflow, y la descarga falla si el hash no coincide. Al subir una versión, cambia ambos valores.
 
 ## Auditoría y acceso al panel
 

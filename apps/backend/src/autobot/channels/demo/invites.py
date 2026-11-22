@@ -124,10 +124,12 @@ def _redeem(door: Door, item: InboundItem, code: str) -> bool:
 
 
 def has_grant(door: Door, item: InboundItem) -> bool:
-    """Whether `item`'s identity already redeemed a still-valid invite."""
+    """Whether `item`'s identity already redeemed an invite that is still valid: a
+    revoked invite takes its grants with it (even if the rows were not deleted)."""
     now = timezone.now()
     return (
         DemoAccessGrant.objects.filter(channel=door.channel, external_id__in=_identities(item))
         .filter(Q(expires_at__isnull=True) | Q(expires_at__gt=now))
+        .filter(invite_id__in=DemoInvite.objects.filter(revoked_at__isnull=True).values("id"))
         .exists()
     )

@@ -159,7 +159,20 @@ def reset_channel_limits(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         invites, "failed_redeems", WindowLimiter(limit=invites.MAX_FAILED_REDEEMS, window_s=3600)
     )
+    monkeypatch.setattr(
+        selector,
+        "stranger_limiter",
+        WindowLimiter(limit=selector.STRANGER_EVENTS_PER_MINUTE, window_s=60),
+    )
     monkeypatch.setattr(inbox, "NOT_LINKED_LIMIT", WindowLimiter(limit=3, window_s=3600))
+    monkeypatch.setattr(
+        inbox, "chat_limiter", WindowLimiter(limit=inbox.CHAT_EVENTS_PER_MINUTE, window_s=60)
+    )
+    monkeypatch.setattr(
+        inbox,
+        "stranger_limiter",
+        WindowLimiter(limit=inbox.STRANGER_EVENTS_PER_MINUTE, window_s=60),
+    )
 
 
 @pytest.fixture
@@ -204,3 +217,14 @@ def clean_jobs(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 
 from tests.packs.salon.salon_helpers import salon_setup  # noqa: F401, E402
+
+
+@pytest.fixture(autouse=True)
+def _whatsapp_fixtures_never_age(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The WhatsApp fixtures carry fixed timestamps; the real 48 h freshness limit would
+    drop them as time passes. The tests of the limit itself set `MAX_AGE` explicitly."""
+    from datetime import timedelta
+
+    from autobot.channels.whatsapp import adapter
+
+    monkeypatch.setattr(adapter, "MAX_AGE", timedelta(days=365 * 100))

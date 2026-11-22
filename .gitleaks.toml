@@ -1,0 +1,36 @@
+# gitleaks config: the default ruleset plus a few narrow allowlists for values that
+# are public by design. Each allowlist names concrete paths (never a global regex).
+title = "autobot gitleaks config"
+
+[extend]
+useDefault = true
+
+# The published example Fernet key (.env.example and settings.py reject it in production).
+# Both the path and the exact value must match. The src/ entry is the old repo layout,
+# still present in git history.
+[[allowlists]]
+description = "Example Fernet key shipped in .env.example and settings.py"
+condition = "AND"
+paths = [
+  '''^\.env\.example$''',
+  '''^(apps/backend/)?src/config/settings\.py$''',
+]
+regexes = ['''UHx17yr1uv1SdskJ5dGpF1MYUPfD2ierqd5mY_2AQ_w=''']
+
+# Dummy tokens in test fixtures. The first two paths are the old layout (history only).
+[[allowlists]]
+description = "Fake tokens in tests"
+paths = [
+  '''^tests/test_settings\.py$''',
+  '''^tests/tenancy/helpers\.py$''',
+  '''^apps/backend/tests/contract/test_whatsapp\.py$''',
+  '''^apps/backend/tests/platform/panel/test_setup\.py$''',
+  '''^apps/backend/tests/platform/tenancy/helpers\.py$''',
+  '''^apps/backend/tests/repo/test_settings\.py$''',
+  '''^apps/backend/tests/tools/test_ensure_env\.py$''',
+]
+
+# Vendored, minified Mermaid bundle (a variable named `atlasCount` trips generic-api-key).
+[[allowlists]]
+description = "Vendored mermaid bundle"
+paths = ['''^docs/assets/javascripts/mermaid\.min\.js$''']

@@ -54,14 +54,57 @@ trap 'rm -rf "$stage"' EXIT
 # the destination restores exactly the snapshot taken at the origin's cutover,
 # not whatever newer snapshot a still-running source (or another target) wrote
 # in the meantime.
-"$restic_bin" restore "${AUTOBOT_RESTORE_SNAPSHOT:-latest}" --tag autobot --target "$stage"
+# --no-lock (honoured by `restore`, unlike `backup`): the credential on a new server may
+# be read-only and could not delete a lock file afterwards (ADR-021).
+"$restic_bin" --no-lock restore "${AUTOBOT_RESTORE_SNAPSHOT:-latest}" --tag autobot --target "$stage"
 # Restic restores paths relative to the root of the snapshot. Refuse incomplete backups.
-for file in .env var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile var/backups/autobot.dump; do
+for file in var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile var/backups/autobot.dump; do
   if [[ ! -s $stage/$file ]]; then
     echo "Missing from snapshot: $file" >&2
     exit 1
   fi
 done
+# The snapshot's .env has no SECRETS_ENCRYPTION_KEY since ADR-021 (backup.sh strips it so
+# the key never travels with the data it decrypts): it is staged as var/backups/autobot.env
+# and the key must be given here, explicitly, from where the operator keeps it, either as
+# AUTOBOT_SECRETS_KEY_FILE=<file whose first line is the key> or as SECRETS_ENCRYPTION_KEY
+# in the environment. Snapshots older than that carry the whole .env (legacy): their own
+# key is used, with a warning. Checked before touching anything on this machine.
+env_snapshot=$stage/var/backups/autobot.env
+secrets_key=${SECRETS_ENCRYPTION_KEY:-}
+if [[ -z $secrets_key && -n ${AUTOBOT_SECRETS_KEY_FILE:-} ]]; then
+  if [[ ! -r $AUTOBOT_SECRETS_KEY_FILE ]]; then
+    echo "AUTOBOT_SECRETS_KEY_FILE ($AUTOBOT_SECRETS_KEY_FILE) is not a readable file" >&2
+    exit 1
+  fi
+  secrets_key=$(head -n 1 "$AUTOBOT_SECRETS_KEY_FILE" | tr -d '[:space:]')
+fi
+if [[ -s $env_snapshot ]]; then
+  if [[ -z $secrets_key ]]; then
+    echo 'The snapshot does not contain SECRETS_ENCRYPTION_KEY (by design). Give the key explicitly: AUTOBOT_SECRETS_KEY_FILE=<file with the key> or SECRETS_ENCRYPTION_KEY=<key>; without it the restored channel secrets cannot be decrypted' >&2
+    exit 1
+  fi
+elif [[ -s $stage/.env ]]; then
+  env_snapshot=$stage/.env
+  if [[ -z $secrets_key ]]; then
+    secrets_key=$(sed -n 's/^SECRETS_ENCRYPTION_KEY=//p' "$env_snapshot" | head -n 1)
+  fi
+  echo 'Legacy snapshot: its .env carries SECRETS_ENCRYPTION_KEY (taken before ADR-021)' >&2
+  if [[ -z $secrets_key ]]; then
+    echo 'The snapshot has no .env with SECRETS_ENCRYPTION_KEY and none was given' >&2
+    exit 1
+  fi
+else
+  echo 'Missing from snapshot: var/backups/autobot.env (or a legacy .env)' >&2
+  exit 1
+fi
+# SECRETS_ENCRYPTION_KEY may hold several comma-separated keys (rotar-secretos.md): each must be valid.
+if ! python3 -c 'import base64, sys
+for key in sys.argv[1].split(","):
+    assert len(base64.urlsafe_b64decode(key.strip())) == 32' "$secrets_key" 2>/dev/null; then
+  echo 'SECRETS_ENCRYPTION_KEY is not a valid Fernet key (44 characters of url-safe base64; several may be separated by commas)' >&2
+  exit 1
+fi
 export SHA
 SHA=$(cat "$stage/var/.deployed-sha")
 if [[ ! $SHA =~ ^[0-9a-f]{40}$ ]]; then
@@ -80,7 +123,7 @@ if [[ -f var/.restore-incomplete ]]; then
   fi
   # A failed start can leave services running. Never run pg_restore --clean
   # while web or worker might still be using the database.
-  for service in web worker-inbound worker-outbound panel caddy; do
+  for service in web web-panel worker-inbound worker-outbound panel caddy; do
     containers=$(docker ps -q --filter "label=com.docker.compose.project=$project" \
       --filter "label=com.docker.compose.service=$service") || {
         echo 'Could not enumerate running services; refusing restore' >&2
@@ -93,7 +136,11 @@ if [[ -f var/.restore-incomplete ]]; then
 fi
 printf '%s\n' "$SHA" >var/.restore-incomplete
 mkdir -p var/backups
-install -m 600 "$stage/.env" .env
+install -m 600 "$env_snapshot" .env
+# Whatever key line the snapshot had is replaced by the one the operator gave: ensure-env.sh
+# would otherwise generate a NEW key for a .env without one, and every secret would be lost.
+sed -i -E '/^[[:space:]]*(export[[:space:]]+)?SECRETS_ENCRYPTION_KEY=/d' .env
+printf 'SECRETS_ENCRYPTION_KEY=%s\n' "$secrets_key" >>.env
 install -m 600 "$stage/var/google_sa.json" var/google_sa.json
 install -m 600 "$stage/deploy/caddy/Caddyfile" deploy/caddy/Caddyfile
 # Caddy's own state and the deploy log, both optional (backup.sh only includes
@@ -121,10 +168,21 @@ deploy/scripts/ensure-env.sh
 # pg_restore --no-acl drops the GRANT/REVOKE state; reapply roles and permissions.
 "${compose[@]}" exec -T db \
   bash /docker-entrypoint-initdb.d/init-roles.sh
-"${compose[@]}" run --rm web \
+"${compose[@]}" run --rm web-panel \
   python manage.py apply_grants
+# The key must open the restored secrets (a wrong key restores "fine" and fails later,
+# when the first channel token is read): fail here, with a clear message, instead.
+if ! "${compose[@]}" run --rm -T web-panel python manage.py shell -c "
+from autobot.tenancy.crypto import decrypt
+from autobot.tenancy.models import TenantSecret
+for secret in TenantSecret.objects.using('owner'):
+    decrypt(bytes(secret.ciphertext))
+" >/dev/null; then
+  echo 'The given SECRETS_ENCRYPTION_KEY does not decrypt the restored tenant_secret rows: wrong key. Re-run with the right one (var/.restore-incomplete stays so the retry is allowed)' >&2
+  exit 1
+fi
 if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
-  # web, panel and victorialogs are safe and needed to verify the restore; the
+  # web, web-panel, panel and victorialogs are safe and needed to verify the restore; the
   # workers are not started by default, because they would start sending with the
   # real tokens before anyone has verified the data or switched the DNS. Pass
   # AUTOBOT_RESTORE_START_WORKERS=true only when that's not a concern (e.g.
@@ -132,7 +190,7 @@ if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
   # already written, is refused above ("Existing deployment"). To start the
   # workers later, once verified, use `deploy/scripts/compose.sh up -d
   # worker-inbound worker-outbound` instead of re-running this script.
-  "${compose[@]}" up -d web panel victorialogs caddy
+  "${compose[@]}" up -d web web-panel panel victorialogs caddy
   if [[ ${AUTOBOT_RESTORE_START_WORKERS:-false} == true ]]; then
     "${compose[@]}" up -d worker-inbound worker-outbound
   fi

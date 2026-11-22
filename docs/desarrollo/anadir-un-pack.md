@@ -134,6 +134,7 @@ Es tarea de quien añade el pack, y se hace en el mismo commit:
 - [ ] Alta en `packs/registry.py`.
 - [ ] `template/document.yaml` válido, y `template_blank`.
 - [ ] Escenario en `tests/packs/<nombre>/` con los dos canales.
+- [ ] Obligaciones legales: el aviso de primera capa, `PERSONA`, `BAJA`/`STOP` y la pregunta «¿orden o nombre?» las da la plataforma ([Packs](../arquitectura/packs.md#aviso-inicial-y-ordenes-de-atencion)); el pack solo declara `expects_free_text` si espera texto libre y añade su propio descargo si lo necesita (como `schedule_disclaimer` en `bus`).
 - [ ] `make check` en verde (incluye `lint-imports` y `tests/repo/`).
 - [ ] `docs/referencia/packs/<nombre>.md` y entrada en `mkdocs.yml`.
 

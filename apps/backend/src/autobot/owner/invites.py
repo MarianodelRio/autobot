@@ -8,7 +8,7 @@ import httpx
 from django.utils import timezone
 
 from autobot.channels.telegram.adapter import TelegramApiError, call
-from autobot.owner.links import OWNER_INVITE_DAYS, new_invite, owner_chat
+from autobot.owner.links import OWNER_INVITE_HOURS, new_invite, owner_chat
 from autobot.runtime.notifications import bot_secrets
 from autobot.tenancy.registry import LoadedTenant
 
@@ -39,7 +39,7 @@ def create_invite_link(tenant: LoadedTenant) -> InviteLink:
         raise InviteError("Telegram no devolvió el nombre del bot.")
     replaces_chat = owner_chat(tenant.id) is not None
     code = new_invite(tenant.id)
-    expires_at = timezone.now() + timedelta(days=OWNER_INVITE_DAYS)
+    expires_at = timezone.now() + timedelta(hours=OWNER_INVITE_HOURS)
     return InviteLink(
         url=f"https://t.me/{me['username']}?start={code}",
         expires_at=expires_at,

@@ -10,7 +10,7 @@ Formato único de los runbooks de esta carpeta. Léela antes de escribir o cambi
 - Cada comando indica **dónde** se ejecuta (portátil o VPS) y **con qué usuario**.
 - En la VPS se trabaja en `/srv/autobot` como `deploy`. Nunca `docker compose …` a pelo: falla porque falta `SHA` y `--env-file`. Se usa:
     - `deploy/scripts/compose.sh <args>` para cualquier orden de compose (`ps`, `logs`, `up -d`, `exec -T`).
-    - `deploy/scripts/manage.sh <comando>` para `manage.py`. Hace `compose run --rm`: arranca un contenedor `web` nuevo y lo borra, no entra en el que está corriendo.
+    - `deploy/scripts/manage.sh <comando>` para `manage.py`. Hace `compose run --rm`: arranca un contenedor `web-panel` nuevo (el servicio con la conexión `owner`) y lo borra, no entra en el que está corriendo.
 - Desde el portátil, los equivalentes son `make prod-compose HOST=<host> ARGS="…"` y `make prod-manage HOST=<host> CMD="…"` (añade `TTY=1` si el comando es interactivo).
 - No copies payloads, teléfonos, ids de usuario ni secretos a tickets o chats.
 

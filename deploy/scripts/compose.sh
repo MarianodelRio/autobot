@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run an arbitrary `docker compose` command against the deployed image, with the
 # root .env and the last deployed SHA already wired in: `docker compose exec
-# web ...` run by hand would otherwise fail on the unset ${SHA:?...} substitution.
+# web-panel ...` run by hand would otherwise fail on the unset ${SHA:?...} substitution.
 # Invoked by the operator on the VPS, or via `make prod-compose HOST=... ARGS="..."`.
 set -euo pipefail
 # shellcheck source=./lib.sh

@@ -28,6 +28,11 @@ class TenantInfo:
     slug: str
     name: str
     timezone: ZoneInfo
+    # Legal texts of the first-contact notice and the `persona` command (the tenant
+    # document's `privacy` and `support`); None → generic wording that invents nothing.
+    controller_name: str | None = None
+    policy_url: str | None = None
+    human_contact: str | None = None
 
 
 @dataclass(frozen=True)

@@ -97,6 +97,17 @@ def test_invalid_signatures_are_401_then_429_but_a_valid_one_always_passes(tenan
     assert len(events()) == 1
 
 
+def test_invalid_signatures_stop_being_logged_once_the_ip_is_blocked(
+    tenants: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    tenants(wa_tenant())
+    body = fixture("whatsapp/text.json")
+    for _ in range(25):
+        post_wa(body, secret="wrong")
+    warnings = [r for r in caplog.records if "Invalid webhook signature" in r.getMessage()]
+    assert len(warnings) == 20  # the limit: the rest are only answered 429
+
+
 def test_a_tenant_with_a_wrong_secret_does_not_block_another_on_the_same_ip(tenants: Any) -> None:
     tenants(wa_tenant())
     tenants(tg_tenant())

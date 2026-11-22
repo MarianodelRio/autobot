@@ -9,13 +9,14 @@ from typing import Any
 EXPECTED_SERVICES = (
     "caddy",
     "web",
+    "web-panel",
     "worker-inbound",
     "worker-outbound",
     "panel",
     "db",
     "victorialogs",
 )
-APP_IMAGE_SERVICES = frozenset({"web", "worker-inbound", "worker-outbound", "panel"})
+APP_IMAGE_SERVICES = frozenset({"web", "web-panel", "worker-inbound", "worker-outbound", "panel"})
 NON_CRITICAL = frozenset({"victorialogs"})  # same rule as deploy.sh: logs are never critical
 STALE_AFTER = timedelta(minutes=3)
 RESTART_WINDOW = timedelta(minutes=30)  # = ops_alert's cooldown: one alert per incident

@@ -36,6 +36,14 @@ services:
     command: gunicorn config.wsgi -b 0.0.0.0:8000 --workers 2 --threads 4 --no-control-socket --reload --timeout 60 --keep-alive 5 --access-logfile -
     ports:
       - "127.0.0.1:8000:8000"
+    # Locally ONE web serves the webhooks and the panel's API, with fp_owner and
+    # fp_readonly (the x-app environment above): there is no Caddy, no public edge and
+    # no client data, and a second process would only slow down `--reload` and the
+    # Vite proxy (127.0.0.1:8000). Production splits them (web / web-panel, ADR-020);
+    # the alias lets the panel image, whose Caddy points at `web-panel`, work here too.
+    networks:
+      default:
+        aliases: [web-panel]
 
   worker-inbound:
     <<: *app

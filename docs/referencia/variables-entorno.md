@@ -46,6 +46,7 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `NOTIFY_BOT_TOKEN` | Token del bot de avisos / asistente del dueño | no | vacío | la persona (@BotFather) |
 | `NOTIFY_BOT_WEBHOOK_SECRET` | Secreto del webhook del bot de avisos | no (local no lo necesita) | vacío | `ensure-env.sh` en el servidor |
 | `OWNER_SUPPORT_EMAIL` | Email de soporte que ofrece el menú del dueño (opción "Contacto") | no | vacío | la persona |
+| `PLATFORM_PRIVACY_URL` | Política de privacidad de la plataforma (`https://…`); la cita el aviso de primera capa del bot de demo, donde la plataforma es la responsable. Sin ella, el aviso omite el enlace | no | vacío | la persona |
 | `OPS_TELEGRAM_CHAT_ID` | Chat de Telegram donde el bot de avisos manda alertas de operación | no | vacío | la persona |
 | `SENTRY_DSN` | DSN del proyecto de Sentry; vacío desactiva la integración | no | vacío | la persona |
 | `HEALTHCHECKS_PING_URL` | URL de latido del check "worker" de healthchecks.io | no | vacío | la persona |

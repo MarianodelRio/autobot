@@ -1,6 +1,6 @@
 # ADR-005 — Una VPS con Docker Compose
 
-**Estado:** vigente
+**Estado:** vigente; ampliado por [ADR-020](ADR-020-api-del-panel-aparte.md) (contenedor `web-panel`, redes separadas y contenedores endurecidos)
 
 ## Contexto
 

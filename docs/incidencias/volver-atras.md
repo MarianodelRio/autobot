@@ -19,7 +19,7 @@ Un SHA nuevo rompe `/health` o el flujo tras desplegar, o llega `deploy_rollback
 2. Logs de los servicios. En la VPS, como `deploy`, en `/srv/autobot`:
 
     ```bash
-    deploy/scripts/compose.sh logs --tail=100 web worker-inbound worker-outbound
+    deploy/scripts/compose.sh logs --tail=100 web web-panel worker-inbound worker-outbound
     ```
 
 3. Resultado del workflow `deploy.yml` en GitHub, y si el aviso a ops llegó.

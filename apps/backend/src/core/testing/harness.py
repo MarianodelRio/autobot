@@ -18,10 +18,12 @@ from pydantic import BaseModel
 
 from core.actions import Action, NotifyOwner, RecordMetric, SendProactive, UpdateContact
 from core.conversation import (
+    command_result,
     effective_state,
+    first_contact_notice,
     global_command,
     menu_message,
-    opt_result,
+    pack_message,
     recovery_result,
 )
 from core.errors import TransientError
@@ -157,6 +159,7 @@ class Conversation:
         calendar: Any = None,
         now: str | datetime = DEFAULT_NOW,
         attempts: int = 1,
+        notice: bool = True,
     ) -> None:
         if attempts < 1:
             raise ValueError("attempts must be at least 1")
@@ -169,6 +172,7 @@ class Conversation:
         self.clock = FixedClock(_aware(now), self.tenant.timezone)
         self.attempts = attempts
         self.contact = sample_contact(channel)
+        self.informed = not notice  # `notice=False`: a contact that was already informed
         self.state: dict[str, Any] = {}
         self.state_version: int | None = None
         self.last_inbound_at: datetime | None = None
@@ -214,6 +218,7 @@ class Conversation:
         last = self._last
         self.state, self.state_version = last.state, last.state_version
         self.last_inbound_at, self.contact = last.last_inbound_at, last.contact
+        self.informed = last.informed
         del self.actions[last.actions :]
         del self.turns[last.turns :]
         self._pressable = set(last.pressable)
@@ -243,6 +248,7 @@ class Conversation:
     def _turn(self, message: IncomingMessage, event_id: UUID | None = None) -> Turn:
         event_id = event_id or next(self._event_ids)
         self._last = _Snapshot(
+            informed=self.informed,
             message=message,
             event_id=event_id,
             state=_json_copy(self.state),
@@ -270,11 +276,16 @@ class Conversation:
             state = {}
             result = self._handle(state, menu_message(now), idem)
         elif command is not None:
-            result = opt_result(command)
+            result = command_result(command, message, self.tenant, self.contact)
         else:
-            result = self._handle(state, message, idem)
+            result = self._handle(state, pack_message(message), idem)
+        # The first-contact notice goes before everything else, once per contact.
+        notices = [*effective.notices]
+        if not self.informed:
+            notices.insert(0, first_contact_notice(self.tenant))
+            self.informed = True
 
-        planned = plan_sends([*effective.notices, *result.replies], strict=True)
+        planned = plan_sends([*notices, *result.replies], strict=True)
         replies = [_through_json(r) for r in planned]
         for r in replies:
             _render(r)
@@ -376,6 +387,7 @@ class Conversation:
 class _Snapshot:
     """What `replay` needs to undo a turn."""
 
+    informed: bool
     message: IncomingMessage
     event_id: UUID
     state: dict[str, Any]

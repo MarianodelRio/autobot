@@ -171,7 +171,8 @@ def receive(
     if body_too_large(request):
         return HttpResponse(status=400)
     if not verify():
-        log.warning("Invalid webhook signature for %s", who)
+        if not limiter.blocked(limiter_key(request, route)):  # not once it is flooding
+            log.warning("Invalid webhook signature for %s", who)
         return reject_unauthenticated(request, route)
     body = json_object(request)
     if body is None:

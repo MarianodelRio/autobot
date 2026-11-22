@@ -430,8 +430,10 @@ class NotificationOut(Schema):
 MAX_NOTIFICATIONS = 50
 
 
-def tenant_notifications(slug: str) -> list[NotificationOut]:
+def tenant_notifications(slug: str, *, actor: str) -> list[NotificationOut]:
     tenant = get_tenant_or_404(slug)
+    # The texts are messages to the owner (names, bookings): reading them is audited.
+    record_tenant(actor, "tenant.notifications.view", tenant, "Consulta de avisos del negocio")
     rows = (
         Notification.objects.using("owner")
         .filter(tenant_id=tenant.id, audience=Notification.Audience.OWNER)

@@ -56,6 +56,29 @@ class AuditEvent(models.Model):
         return f"{self.action} {self.id}"
 
 
+class PrivacySuppression(models.Model):
+    """The suppression ledger (ADR-019): one row per erasure (`forget` of a contact,
+    `purge` of a tenant), written in the same transaction as the erasure, so that
+    `privacy_reapply` can erase again what a restored backup brings back. No PII: ids
+    of the platform and keyed hashes (`runtime.suppressions.identity_hash`) only. No RLS
+    (platform table, like audit_event), and not purged with a tenant: it is the proof
+    that a tenant was erased."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
+    at = models.DateTimeField(default=timezone.now, db_index=True)
+    kind = models.CharField(max_length=8)  # "forget" | "purge"
+    tenant_id = models.UUIDField(db_index=True)  # no FK: the tenant may be gone
+    contact_id = models.UUIDField(null=True, blank=True)
+    channel = models.CharField(max_length=8, blank=True, default="")
+    identity_hashes = models.JSONField(default=list)
+
+    class Meta:
+        db_table = "privacy_suppression"
+
+    def __str__(self) -> str:
+        return f"{self.kind} {self.id}"
+
+
 class SystemSample(models.Model):
     taken_at = models.DateTimeField(default=timezone.now, db_index=True)
     cpu_pct = models.FloatField(null=True, blank=True)

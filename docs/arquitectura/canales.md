@@ -42,13 +42,14 @@ Las aplica `apps/backend/src/autobot/channels/views.py` (`receive`), igual para 
 
 1. **Negocio o puerta** (404 si no existe o el canal está apagado).
 2. **Tamaño del cuerpo**: 256 KB como máximo (`MAX_BODY`); Caddy aplica el mismo límite. Si se supera, 400.
-3. **Firma, antes de leer el JSON.** Si es inválida, 401.
+3. **Firma, antes de leer el JSON.** Si es inválida, 401. El aviso en el log solo se escribe mientras el limitador de esa IP y ruta no esté ya bloqueando, para que un ataque no inunde los logs.
 4. **JSON**: si el cuerpo no es un objeto, 400.
 5. **Guardado**: negocio dado de baja (`offboarded`) se responde 200 sin guardar; en otro caso cada ítem se guarda y se encola (200).
 
 Además:
 
 - **Límite de firmas inválidas** (`channels/ratelimit.py`, `WindowLimiter`): 20 por minuto, contadas por (IP, ruta). La ruta es el negocio en la ruta de cada negocio y el bot en la puerta de demo y en el bot de avisos. Las IPs de Meta y Telegram son compartidas, así que un negocio con el secreto mal configurado nunca bloquea a otro. Alcanzado el límite, se responde 429, pero **solo a peticiones con firma inválida**: una firma válida nunca recibe 429. La IP es la última entrada de `X-Forwarded-For`, la que añade Caddy. El contador es en memoria y por proceso.
+- **Antigüedad en WhatsApp.** El adaptador (`MAX_AGE`, 48 horas) descarta al interpretar los mensajes y los estados cuyo `timestamp` sea más antiguo: la firma no cubre la frescura, y sin esto una repetición de un cuerpo capturado se aceptaría cuando ya haya caducado la retención de los eventos de deduplicación. El log no lleva identificadores. La verificación de la firma no cambia.
 - **Texto que la base no puede guardar.** `channels/payload.py` (`clean_payload`) elimina NUL y sustitutos UTF-16 sueltos de todos los textos al interpretar el cuerpo. Sin eso, un mensaje firmado con un NUL se reintentaría para siempre.
 - **Errores al guardar** (`storage_failure`): si la base rechaza un cuerpo firmado (`DataError`) se responde 200 y se descarta con un log sin datos; los fallos de conexión o de cola dan 503 para que el proveedor reintente.
 - **Qué se ignora sin responder:** reacciones, `request_welcome` y avisos de sistema de WhatsApp; mensajes de servicio de Telegram. Los medios no soportados sí se contestan (el pack dice que no puede leerlos).

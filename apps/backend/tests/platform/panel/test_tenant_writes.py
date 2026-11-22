@@ -10,7 +10,7 @@ from django.core.cache import cache
 from django.db import connections
 from pytest_django import Settings
 
-from autobot.ops.models import AuditEvent, OpsAlert
+from autobot.ops.models import AuditEvent, OpsAlert, PrivacySuppression
 from autobot.runtime.models import (
     Contact,
     Conversation,
@@ -25,12 +25,19 @@ from autobot.runtime.models import (
 from autobot.runtime.notifications import _cooldown_key
 from autobot.tenancy.models import Tenant, TenantDatasetVersion, TenantSecret
 from tests.helpers.integration import demo_tenant, tg_tenant, wa_tenant
-from tests.platform.panel.conftest import HOST, get, post
+from tests.platform.panel.conftest import HOST, get, post, step_up
 from tests.platform.tenancy.helpers import TG_SECRETS, WA_SECRETS
 
 NOW = datetime(2026, 11, 8, 12, tzinfo=UTC)
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+
+
+@pytest.fixture
+def authed_client(authed_client: Any, user: Any) -> Any:
+    """These tests exercise actions that need a recent step-up (see test_stepup.py)."""
+    assert step_up(authed_client, user).status_code == 200
+    return authed_client
 
 
 def put(client: Any, path: str, data: dict[str, Any]) -> Any:
@@ -440,6 +447,9 @@ def _seed_everything(tenant_id: Any, other_id: Any) -> None:
         AuditEvent.objects.using("owner").create(
             tenant_id=tid, actor="operator", action="test", summary="x", at=NOW
         )
+        PrivacySuppression.objects.using("owner").create(
+            kind="forget", tenant_id=tid, contact_id=contact.id, channel="main"
+        )
         cache.set(f"health:{tid}", {"checked_at": 1})
         cache.set(f"runtime:{tid}:main", {"ok": True})
         cache.set(_cooldown_key(f"kind-{tid}", tid), True)
@@ -486,7 +496,9 @@ def test_delete_erases_every_table_and_cache_key_leaving_the_neighbor_intact(
         assert tables  # sanity: the introspection itself still finds candidates
         for table in tables:
             cursor.execute(f'SELECT count(*) FROM "{table}" WHERE tenant_id = %s', [str(tenant_id)])
-            assert cursor.fetchone()[0] == 0, f"{table} still has rows for the purged tenant"
+            # The suppression ledger keeps one 'purge' row (ids only: the proof, ADR-019).
+            expected = 1 if table == "privacy_suppression" else 0
+            assert cursor.fetchone()[0] == expected, f"{table} still has rows for the purged tenant"
             cursor.execute(f'SELECT count(*) FROM "{table}" WHERE tenant_id = %s', [str(other_id)])
             assert cursor.fetchone()[0] >= 1, f"{table} lost the neighbor's row"
         cursor.execute(

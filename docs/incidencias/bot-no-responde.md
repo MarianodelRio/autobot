@@ -33,7 +33,7 @@ Anota hora y SHA sin copiar payloads ni ids de clientes.
 4. Últimos logs. En la VPS, como `deploy`:
 
     ```bash
-    deploy/scripts/compose.sh logs --tail=100 web worker-inbound worker-outbound db
+    deploy/scripts/compose.sh logs --tail=100 web web-panel worker-inbound worker-outbound db
     ```
 
 5. Espacio en disco y base de datos. En la VPS, como `deploy`:

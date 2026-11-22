@@ -8,6 +8,7 @@ from django.db import DatabaseError, connections, transaction
 from django.http import Http404
 from ninja import Schema
 
+from autobot.db.grants import SENSITIVE_TABLES
 from autobot.ops.audit import record
 from autobot.panel.errors import ApiError
 from autobot.tenancy.models import Tenant
@@ -238,6 +239,14 @@ CATALOG: dict[str, TableDoc] = {
     "audit_event": TableDoc(
         PANEL, "Auditoría de acciones del operador.", "Panel y comandos", "12 meses", False
     ),
+    "privacy_suppression": TableDoc(
+        PANEL,
+        "Libro de supresiones: olvidos y purgas (ids y HMAC, sin datos personales).",
+        "Comandos de olvido y purga",
+        "Indefinida (prueba de supresión, ADR-019)",
+        False,
+        {"identity_hashes": "HMAC de la identidad olvidada, oculto."},
+    ),
     "ops_alert": TableDoc(
         PANEL,
         "Alertas operativas persistidas.",
@@ -316,6 +325,16 @@ HIDDEN_COLUMNS = frozenset(
         ("owner_link", "invite_hash"),
         ("platform_cache", "value"),
         ("demo_invite", "code"),
+        # Payloads and free text: message bodies, phones and names of end customers.
+        ("inbound_event", "payload"),
+        ("inbound_event", "error"),
+        ("outbound_message", "payload"),
+        ("outbound_message", "last_error"),
+        ("conversation", "state"),
+        ("notification", "text"),
+        ("demo_event", "payload"),
+        ("owner_event", "payload"),
+        ("audit_event", "details"),
     }
 )
 UNKNOWN = TableDoc("Sin catalogar", "Tabla sin documentar.", "Desconocido", "Desconocida", False)
@@ -526,7 +545,9 @@ def table_detail(name: str, *, actor: str) -> TableDetailOut:
         summary="Vista de tabla consultada.",
         details={"table": name},
     )
-    rows = _run_sample(query)
+    # Sensitive tables are not previewed at all (same rule as fp_readonly in the SQL
+    # console); the owner connection here would otherwise bypass it.
+    rows = [] if name in SENSITIVE_TABLES else _run_sample(query)
     relations = _relations()
     return TableDetailOut.model_validate(
         dict(

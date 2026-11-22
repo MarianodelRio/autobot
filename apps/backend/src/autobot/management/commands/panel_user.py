@@ -10,12 +10,28 @@ import qrcode  # type: ignore[import-untyped]
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.sessions.models import Session
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django_otp.plugins.otp_totp.models import TOTPDevice  # type: ignore[import-untyped]
 
+from autobot.ops import audit
+
 User = get_user_model()
 DEVICE_NAME = "default"
+ACTOR = "command:panel_user"
+
+
+def revoke_sessions(user: AbstractUser) -> int:
+    """Deletes every active session of `user`: after a new password or a new TOTP device,
+    a session opened with the old credentials must not survive."""
+    doomed = [
+        session.session_key
+        for session in Session.objects.using("owner").all()
+        if session.get_decoded().get("_auth_user_id") == str(user.pk)
+    ]
+    Session.objects.using("owner").filter(session_key__in=doomed).delete()
+    return len(doomed)
 
 
 def read_new_password() -> str:
@@ -85,6 +101,13 @@ class Command(BaseCommand):
         device = TOTPDevice.objects.using("owner").create(
             user=user, name=DEVICE_NAME, confirmed=True
         )
+        audit.record(
+            actor=ACTOR,
+            action="panel_user.create",
+            summary=f"Usuario del panel creado: {username}",
+            target_type="user",
+            target_id=str(user.pk),
+        )
         self._show_device_once(device)
 
     def _reset_totp(self, username: str) -> None:
@@ -93,9 +116,27 @@ class Command(BaseCommand):
         device = TOTPDevice.objects.using("owner").create(
             user=user, name=DEVICE_NAME, confirmed=True
         )
+        revoked = revoke_sessions(user)
+        audit.record(
+            actor=ACTOR,
+            action="panel_user.reset_totp",
+            summary=f"TOTP del usuario del panel restablecido: {username}",
+            target_type="user",
+            target_id=str(user.pk),
+            details={"sessions_revoked": revoked},
+        )
         self._show_device_once(device)
 
     def _set_password(self, username: str) -> None:
         user = get_user(username)
         user.set_password(read_new_password())
         user.save(using="owner", update_fields=["password"])
+        revoked = revoke_sessions(user)
+        audit.record(
+            actor=ACTOR,
+            action="panel_user.set_password",
+            summary=f"Contraseña del usuario del panel cambiada: {username}",
+            target_type="user",
+            target_id=str(user.pk),
+            details={"sessions_revoked": revoked},
+        )

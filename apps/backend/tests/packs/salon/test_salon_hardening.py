@@ -129,13 +129,6 @@ def test_markup_and_line_breaks_are_removed_from_the_name(salon: Conversation) -
     assert "\n" not in salon.calendar.created[0].description.split("Nombre:")[1].split("\n")[0]
 
 
-def test_alta_and_baja_are_names_in_the_name_step(salon: Conversation) -> None:
-    choose(salon)
-    salon.send("Alta").expect(text_contains="confirmada")
-    assert salon.calendar.created[0].summary == "Corte de pelo - Alta"
-    assert not salon.contact.opt_out
-
-
 def test_alta_and_baja_still_are_commands_elsewhere(salon: Conversation) -> None:
     salon.send("hola")
     salon.press("menu_book")

@@ -9,6 +9,8 @@ from core.dates import Weekday
 from core.hours import TimeRange, validate_ranges
 from core.text import normalize
 
+DEFAULT_DISCLAIMER = "Horarios orientativos; confirma con la compañía."
+
 
 class OfficeHours(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -53,6 +55,13 @@ class BusConfig(BaseModel):
         ge=1,
         title="Días de búsqueda hacia delante",
         description="Cuántos días se buscan al pedir «el próximo bus».",
+    )
+
+    schedule_disclaimer: str = Field(
+        default=DEFAULT_DISCLAIMER,
+        max_length=200,
+        title="Aviso de horarios orientativos",
+        description="Línea que cierra cada respuesta de horarios; vacío para no mostrarla.",
     )
 
     @model_validator(mode="after")

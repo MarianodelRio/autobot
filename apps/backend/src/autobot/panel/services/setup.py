@@ -193,6 +193,18 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
     )
     steps.append(
         SetupStepOut(
+            key="privacy",
+            label="Privacidad y atención",
+            why="El primer mensaje del bot cita el enlace a la política de privacidad y "
+            "«PERSONA» da el contacto para hablar con alguien; sin ellos no se puede activar.",
+            state=_state(items["privacy"].ok),
+            blocking=items["privacy"].blocking,
+            detail="Rellena «Enlace a la política de privacidad» y «Contacto para hablar con "
+            "una persona» en la pestaña Configuración, grupo «Privacidad y atención».",
+        )
+    )
+    steps.append(
+        SetupStepOut(
             key="tester",
             label="Mensaje de un tester",
             why="Confirma que el canal principal responde de verdad antes de activar.",

@@ -41,7 +41,7 @@ flowchart TD
 ## 1. CI (`.github/workflows/ci.yml`)
 
 Se ejecuta en cada `push` a `main` y en cada pull request. En ramas distintas de `main`
-cancela la ejecución anterior; en `main` no. Seis jobs corren en paralelo y `image` espera
+cancela la ejecución anterior; en `main` no. Nueve jobs corren en paralelo y `image` espera
 a todos:
 
 | Job | Qué comprueba |
@@ -49,8 +49,10 @@ a todos:
 | `lint` | Que no haya datos de clientes ni ficheros de `var/` en git; `ruff check` y `ruff format --check`; `shellcheck` de `deploy/scripts/*.sh`, `deploy/postgres/*.sh` y `apps/backend/src/tools/*/*.sh`; `mypy`; `import-linter` (capas de `core`, `integrations` y `packs`) |
 | `test` | PostgreSQL 18 de servicio con los roles de `init-roles.sh`; `pytest`; `makemigrations --check` y `lintmigrations`; que `apps/panel/openapi.json` esté al día con el backend |
 | `audit` | `pip-audit` sobre las dependencias bloqueadas de `uv.lock` |
+| `secrets-scan` | `gitleaks` sobre todo el historial de git, con `.gitleaks.toml` |
+| `dockerfile-lint` | `hadolint` sobre los dos Dockerfile y `actionlint` sobre los workflows |
 | `forbidden-terms` | `deploy/scripts/check-forbidden-terms.py`: ningún fichero versionado contiene nombres de clientes reales (solo se guardan sus hashes) |
-| `panel` | En `apps/panel/`: tipos de la API (`schema.d.ts`) y `routeTree.gen.ts` versionados y al día, `biome`, `tsc`, `vitest` y el build |
+| `panel` | En `apps/panel/`: tipos de la API (`schema.d.ts`) y `routeTree.gen.ts` versionados y al día, `biome`, `tsc`, `vitest`, el build y `pnpm audit --prod --audit-level high` |
 | `deploy-smoke` | Que `compose.yaml` + `compose.prod.yaml` y los de local sean válidos; que los dos Caddyfile pasen `caddy validate` con las imágenes reales; que `make restore-test` (copia de seguridad y restauración completas) funcione sobre la imagen recién construida |
 
 !!! note
@@ -60,14 +62,16 @@ a todos:
 
 ### Job `image`
 
-Construye dos imágenes con la caché de GitHub Actions y las etiqueta con el SHA completo:
+Construye dos imágenes con la caché de GitHub Actions, las analiza con Trivy y, solo si el
+análisis pasa, las publica. Se etiquetan con el SHA completo:
 
 - `ghcr.io/<propietario>/autobot:<sha>` desde `apps/backend/Dockerfile`: web y workers.
 - `ghcr.io/<propietario>/autobot-panel:<sha>` desde `apps/panel/Dockerfile`: la SPA y su
   Caddy.
 
-Solo se **publican** (`push`) en los `push` a `main`; en un pull request se construyen sin
-subirse. Las etiquetas son inmutables: el SHA es el único identificador de una versión.
+Trivy falla con cualquier vulnerabilidad HIGH o CRITICAL que tenga arreglo disponible
+(`--ignore-unfixed`). Solo se **publican** (`docker push`) en los `push` a `main`; en un pull
+request se construyen y analizan sin subirse. Las etiquetas son inmutables: el SHA es el único identificador de una versión.
 
 ## 2. `make deploy`
 
@@ -130,9 +134,9 @@ no lo mata (ignora `SIGHUP`).
    `via: rollback`. Anota cuántos negocios estaban ya degradados (`/health/internal`),
    para que uno ya enfermo no bloquee el despliegue.
 5. **Mismo SHA:** si ya es el desplegado y está sano, registra `already` y sale; si no,
-   recrea `web`, `worker-inbound`, `worker-outbound` y `panel`.
+   recrea `web`, `web-panel`, `worker-inbound`, `worker-outbound` y `panel`.
 6. **Descarga:** `pull db caddy`, `up -d --wait db`, `init-roles.sh` dentro de `db`,
-   `pull web worker-inbound worker-outbound panel`. VictoriaLogs se actualiza aparte: si
+   `pull web web-panel worker-inbound worker-outbound panel`. VictoriaLogs se actualiza aparte: si
    falla, solo avisa por consola. Un fallo en cualquiera de los demás pasos va a
    **abort**.
 7. **Volcado previo a migrar:** si `migrate --check` dice que hay migraciones pendientes,
@@ -141,14 +145,16 @@ no lo mata (ignora `SIGHUP`).
    **expandir** el esquema (`CLAUDE.md`; ver [../desarrollo/migraciones-y-rls.md](../desarrollo/migraciones-y-rls.md)).
 8. **Esquema y datos:** `migrate`, `apply_grants` (permisos de `fp_app`, `fp_readonly`),
    `tenant_config validate --all` (todas las configuraciones válidas) y `seed_demos`.
-   Todo con `docker compose run --rm web`.
-9. **Cambio de imagen:** `up --no-deps --remove-orphans -d web worker-inbound
+   Todo con `docker compose run --rm web-panel`, el servicio con la conexión `owner`
+   ([ADR-020](../arquitectura/adr/ADR-020-api-del-panel-aparte.md)): el `web` público no la tiene.
+9. **Cambio de imagen:** `up --no-deps --remove-orphans -d web web-panel worker-inbound
    worker-outbound panel`.
 10. **Comprobación de salud:**
     - `web` (hasta 60 s): `/health/internal` con `status: ok`, negocios degradados no
       mayores que la línea base y ninguno ilegible.
     - Workers: cada uno debe seguir en marcha y sin reinicios durante ~10 s.
-    - `panel` (hasta 60 s): `/healthz`.
+    - `panel` y `web-panel` (hasta 60 s): `/healthz` del panel y el healthcheck de Docker de
+      `web-panel` (que no publica puerto) en `healthy`.
 11. **Caddy:** `up --no-deps -d caddy` y recarga (`caddy reload`) si cambió
     `deploy/caddy/Caddyfile` respecto a `var/.caddy-config-sha`: `up` no recrea un
     contenedor porque cambie el contenido de un fichero montado.
@@ -184,8 +190,8 @@ Verificación:
 1. El job de GitHub termina en verde y `deploys.jsonl` tiene una línea `deployed`
    (también en el panel, Sistema, historial de despliegues).
 2. `curl https://<PUBLIC_HOST>/health` devuelve 200 desde fuera.
-3. `make prod-compose ARGS="ps"` muestra los siete servicios (`caddy`, `web`,
-   `worker-inbound`, `worker-outbound`, `panel`, `db`, `victorialogs`) en marcha.
+3. `make prod-compose ARGS="ps"` muestra los ocho servicios (`caddy`, `web`,
+   `web-panel`, `worker-inbound`, `worker-outbound`, `panel`, `db`, `victorialogs`) en marcha.
 4. Una consulta al bot de demo responde.
 
 ### Cambiar `.env` sin desplegar
@@ -196,9 +202,9 @@ cambió:
 
 ```bash
 # en la VPS, como deploy, en /srv/autobot
-deploy/scripts/compose.sh up -d --no-deps web worker-inbound worker-outbound
+deploy/scripts/compose.sh up -d --no-deps web web-panel worker-inbound worker-outbound
 # o, desde el portátil
-make prod-compose ARGS="up -d --no-deps web worker-inbound worker-outbound"
+make prod-compose ARGS="up -d --no-deps web web-panel worker-inbound worker-outbound"
 ```
 
 ### Comandos de operación en el servidor
@@ -207,20 +213,20 @@ Nunca `docker compose ...` a pelo: sin `SHA` ni `--env-file` falla.
 
 | Para | En la VPS (como `deploy`, en `/srv/autobot`) | Desde el portátil |
 |---|---|---|
-| Un comando de `manage.py` en una imagen nueva (`run --rm web`) | `deploy/scripts/manage.sh <comando> [args]` | `make prod-manage CMD="<comando> [args]"` (`TTY=1` si pregunta algo) |
+| Un comando de `manage.py` en una imagen nueva (`run --rm web-panel`) | `deploy/scripts/manage.sh <comando> [args]` | `make prod-manage CMD="<comando> [args]"` (`TTY=1` si pregunta algo) |
 | Cualquier otro `docker compose` (`ps`, `logs`, `exec`, `up`) | `deploy/scripts/compose.sh <args>` | `make prod-compose ARGS="<args>"` (`TTY=1` si es interactivo) |
 
 Ambos usan el SHA de `var/.deployed-sha` y el `.env` de la raíz (`deploy/scripts/lib.sh`).
-`manage.sh` ejecuta `python manage.py <comando>` en `web`, que tiene la conexión `owner`.
+`manage.sh` ejecuta `python manage.py <comando>` en `web-panel`, que tiene la conexión `owner`.
 
 ## 6. Los dos Caddyfile
 
 | Fichero | Quién lo usa | Qué hace |
 |---|---|---|
 | `deploy/caddy/Caddyfile` | Contenedor `caddy` de producción (público, 80/443, TLS automático) | Sirve `{$PUBLIC_HOST}`. Solo reenvía a `web:8000` las rutas de una lista cerrada: `/webhooks/whatsapp/*`, `/webhooks/telegram/*`, `/webhooks/telegram-demo`, `/webhooks/whatsapp-demo`, `/webhooks/telegram-notify` y `/health`; todo lo demás, 404 (`/health/internal` incluido). Añade `X-Autobot-Edge: public`, limita el cuerpo a 256 KB, pone cabeceras de seguridad y escribe el log de acceso sin query string ni cabeceras. Lo monta como fichero y `deploy.sh` lo recarga si cambia |
-| `apps/panel/Caddyfile` | Contenedor `panel` (imagen `autobot-panel`) | Escucha en `:8080`, sin TLS ni API de administración. Sirve la SPA (`/srv`, con vuelta a `index.html`), `/healthz` y reenvía `/api/*` a `web:8000` **quitando** `X-Autobot-Edge`, de modo que el panel solo funciona por túnel (`make panel-tunnel`, ADR-008), nunca por el Caddy público |
+| `apps/panel/Caddyfile` | Contenedor `panel` (imagen `autobot-panel`) | Escucha en `:8080`, sin TLS ni API de administración. Sirve la SPA (`/srv`, con vuelta a `index.html`), `/healthz` y reenvía `/api/*` a `web-panel:8000` **quitando** `X-Autobot-Edge`, de modo que el panel solo funciona por túnel (`make panel-tunnel`, ADR-008), nunca por el Caddy público |
 
-`make check-prod-config` prueba la lista de rutas del primero contra un upstream local.
+`make check-prod-config` prueba la lista de rutas del primero contra un upstream local, y comprueba sobre el compose de producción renderizado el reparto de credenciales (`web` sin `owner`; `web-panel` sin puerto), el endurecimiento de los contenedores, las redes y que el Caddy del panel apunta a `web-panel`.
 
 ## 7. Timers de systemd
 
@@ -255,7 +261,7 @@ Estado: `systemctl list-timers 'autobot-*'`; `systemctl is-enabled autobot-prune
 | `deploy/scripts/ensure-env.sh` | Genera y valida `.env` antes de cada despliegue o restauración |
 | `deploy/scripts/lib.sh` | Compartido por los scripts de producción: no root, raíz del repo, proyecto compose, `SHA` por defecto y el array `compose`; con `AUTOBOT_LIB_FUNCTIONS_ONLY=1`, solo funciones (`compose_in`, `ensure_state_dirs`) para los simulacros |
 | `deploy/scripts/compose.sh` | `docker compose` contra producción con `SHA` y `.env` ya resueltos |
-| `deploy/scripts/manage.sh` | `manage.py` en un contenedor `web` efímero |
+| `deploy/scripts/manage.sh` | `manage.py` en un contenedor `web-panel` efímero |
 | `deploy/scripts/rollback_target.py` | Calcula el SHA de `make rollback` a partir de `deploys.jsonl`; se niega a encadenar dos rollbacks |
 | `deploy/scripts/backup.sh` | Copia cifrada a restic (timer horario) |
 | `deploy/scripts/restore.sh` | Restaura un snapshot en un destino vacío ([restaurar.md](restaurar.md)) |

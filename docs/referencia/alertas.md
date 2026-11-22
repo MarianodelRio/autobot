@@ -110,14 +110,14 @@ demo). Los códigos son los de la tabla anterior que aplican a Telegram (`auth`,
 | `container_down:<servicio>` | 🔴 (🟠 si es `victorialogs`) El contenedor no existe, está parado o se reinicia en bucle. | Sí | [Contenedor caído](../incidencias/contenedor-caido.md) |
 | `container_unhealthy:<servicio>` | 🔴 El contenedor está en marcha pero su healthcheck falla. | Sí | [Contenedor caído](../incidencias/contenedor-caido.md) |
 | `container_restarted:<servicio>` | 🟠 El contenedor se ha reiniciado en los últimos 30 minutos. | Sí, al pasar la ventana | [Contenedor caído](../incidencias/contenedor-caido.md) |
-| `container_image:<servicio>` | 🟠 La imagen de `web`, `worker-inbound`, `worker-outbound` o `panel` no es la del SHA desplegado. | Sí | [Contenedor caído](../incidencias/contenedor-caido.md) |
+| `container_image:<servicio>` | 🟠 La imagen de `web`, `web-panel`, `worker-inbound`, `worker-outbound` o `panel` no es la del SHA desplegado. | Sí | [Contenedor caído](../incidencias/contenedor-caido.md) |
 | `container_unexpected:<servicio>` | 🟠 Hay un contenedor que no debería existir (¿huérfano de un despliegue?). | Sí | [Contenedor caído](../incidencias/contenedor-caido.md) |
 | `deploy_aborted` | 🔴 El despliegue se abortó antes de cambiar la imagen. Lo emite `deploy/scripts/deploy.sh`. | **No**: se cierra a mano en el panel | [Volver atrás un despliegue](../incidencias/volver-atras.md) |
 | `deploy_rollback` | 🔴 El despliegue falló y se revirtió automáticamente. Lo emite `deploy/scripts/deploy.sh`. | **No**: se cierra a mano en el panel | [Volver atrás un despliegue](../incidencias/volver-atras.md) |
 | `deploy_ok`, `deploy_caddy_reload`, `deploy_https_check` | Avisos informativos de `deploy.sh` (desplegado, recarga de Caddy fallida, HTTPS sin respuesta). Se guardan ya resueltas y sin enfriamiento. | No aplica | [Volver atrás un despliegue](../incidencias/volver-atras.md) |
 
 Mientras hay un despliegue en curso (`maintenance = deploy`) no se generan alertas de
-contenedores. Los servicios esperados son `caddy`, `web`, `worker-inbound`,
+contenedores. Los servicios esperados son `caddy`, `web`, `web-panel`, `worker-inbound`,
 `worker-outbound`, `panel`, `db` y `victorialogs`. La evaluación está en
 `apps/backend/src/autobot/ops/containers.py`.
 

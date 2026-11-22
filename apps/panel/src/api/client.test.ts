@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { setReauthPrompt } from "@/lib/reauth";
 import { api, normalizeError, setUnauthorizedHandler } from "./client";
 
 function setCookie(value: string) {
@@ -157,5 +158,54 @@ describe("normalizeError", () => {
 
   test("falls back to unknown for anything else", () => {
     expect(normalizeError(undefined, 500).code).toBe("unknown");
+  });
+});
+
+describe("reauth_required", () => {
+  afterEach(() => {
+    setReauthPrompt(null);
+    vi.unstubAllGlobals();
+  });
+
+  function stubReauthServer() {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const request = input instanceof Request ? input : new Request(input);
+        calls.push(request.url);
+        if (calls.length === 1)
+          return new Response(
+            JSON.stringify({
+              code: "reauth_required",
+              message: "Confirma",
+              details: [],
+            }),
+            { status: 403, headers: { "Content-Type": "application/json" } },
+          );
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    return calls;
+  }
+
+  test("prompts for a code, then resends the action once", async () => {
+    const calls = stubReauthServer();
+    setReauthPrompt((settle) => settle(true));
+    const { data } = await api.POST("/auth/logout");
+    expect(data).toEqual({ ok: true });
+    expect(calls).toHaveLength(2);
+  });
+
+  test("returns the 403 when the person cancels", async () => {
+    const calls = stubReauthServer();
+    setReauthPrompt((settle) => settle(false));
+    const { error, response } = await api.POST("/auth/logout");
+    expect(response.status).toBe(403);
+    expect(error).toMatchObject({ code: "reauth_required" });
+    expect(calls).toHaveLength(1);
   });
 });

@@ -2784,6 +2784,19 @@
         "title": "StatusIn",
         "type": "object"
       },
+      "StepUpIn": {
+        "properties": {
+          "otp": {
+            "title": "Otp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "otp"
+        ],
+        "title": "StepUpIn",
+        "type": "object"
+      },
       "SummaryLineOut": {
         "properties": {
           "icon": {
@@ -4173,6 +4186,37 @@
           }
         ],
         "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/step-up": {
+      "post": {
+        "description": "Fresh TOTP check for the session's own user; a code already used (also by the\nlogin) is rejected by the device's `last_t`. Shares the login's attempt limit.",
+        "operationId": "autobot_panel_auth_step_up",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepUpIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Step Up",
         "tags": [
           "auth"
         ]

@@ -95,7 +95,7 @@ quieres el flujo de despliegue completo, `make localprod-up`.
 
 1. `make backup-now` desde el portátil y confirma en restic que hay un snapshot nuevo.
 2. Para el tráfico: `deploy/scripts/compose.sh stop caddy worker-inbound worker-outbound
-   web panel`. Los webhooks que lleguen ahora fallarán y los canales los reintentarán.
+   web web-panel panel`. Los webhooks que lleguen ahora fallarán y los canales los reintentarán.
 3. Volcado lógico, con la `db` aún en marcha y comprobado:
 
     ```bash
@@ -113,7 +113,7 @@ quieres el flujo de despliegue completo, `make localprod-up`.
 5. Despliega el SHA que lleva el dígest nuevo (`make deploy` desde el portátil). `deploy.sh`
    crea la `db` nueva y vacía (la imagen ejecuta `init-roles.sh`), migra el esquema y
    arranca la aplicación sobre una base sin datos de clientes.
-6. Inmediatamente, vuelve a parar `caddy`, los workers, `web` y `panel` (paso 2) y restaura
+6. Inmediatamente, vuelve a parar `caddy`, los workers, `web`, `web-panel` y `panel` (paso 2) y restaura
    el volcado, igual que hace `restore.sh`:
 
     ```bash
@@ -124,7 +124,7 @@ quieres el flujo de despliegue completo, `make localprod-up`.
     deploy/scripts/manage.sh apply_grants
     ```
 
-7. Levanta `deploy/scripts/compose.sh up -d web panel caddy`, comprueba `/health` y los
+7. Levanta `deploy/scripts/compose.sh up -d web web-panel panel caddy`, comprueba `/health` y los
    conteos por negocio contra los de antes de empezar (`contact` por tenant, como en
    [restaurar.md](restaurar.md)) y solo entonces
    `deploy/scripts/compose.sh up -d worker-inbound worker-outbound`.

@@ -26,6 +26,7 @@ falla al importar, no se ignora.
 | `links` | mapa de claves `web`, `compra_online`, `bonos`, `pdf_horarios` a URL | `{}` | Enlaces que ofrece el bot. Cada valor debe ser una URL `http` o `https` válida; otras claves se rechazan. |
 | `start_menu_towns` | lista de 1 a 8 nombres | obligatorio | Pueblos frecuentes del menú de origen. Sin duplicados (se comparan sin tildes ni mayúsculas) y sin nombres vacíos. |
 | `next_day_search_days` | entero >= 1 | `45` | Cuántos días se busca hacia delante para «el próximo día con salidas». |
+| `schedule_disclaimer` | texto, hasta 200 caracteres | `Horarios orientativos; confirma con la compañía.` | Última línea de cada respuesta de horarios (no en «no se vende este trayecto» ni «sin trayecto»). Vacío la oculta. El cuerpo se recorta antes para que siempre quepa en 4.096 caracteres. |
 
 `start_menu_towns` se resuelve contra el dataset al cargar el tenant (`packs/bus/datos.py`,
 `cargar`): cada nombre debe coincidir exactamente (sin tildes ni mayúsculas) con una
@@ -126,8 +127,11 @@ emite la métrica `schedule_query` (ver [Resumen mensual](#resumen-mensual-al-du
   de días con «Esa fecha ya ha pasado».
 - **Logs**: al no reconocer un texto solo se registra el paso y su longitud
   (`[NO_RECONOCIDO] paso=origen longitud=12`); nunca el texto.
-- `alta`/`baja` siguen siendo comandos globales en todos los pasos (un pueblo no se llama así;
-  el opt-out debe poder pedirse siempre).
+- `alta`, `baja`, `stop`, `parar` y `persona` siguen siendo comandos globales en todos los
+  pasos (un pueblo no se llama así; el opt-out y la atención humana deben poder pedirse
+  siempre). Ver [Aviso inicial y órdenes de atención](../../arquitectura/packs.md#aviso-inicial-y-ordenes-de-atencion).
+- **Horarios orientativos.** Toda respuesta con horarios termina con `schedule_disclaimer`.
+  El dataset no guarda una fecha de actualización, así que el aviso no la incluye.
 
 ### Limitaciones conocidas
 

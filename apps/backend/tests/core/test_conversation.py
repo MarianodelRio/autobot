@@ -1,22 +1,31 @@
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from core.actions import UpdateContact
+from core.actions import NotifyOwner, UpdateContact
 from core.conversation import (
+    HUMAN_REQUESTED,
     OPT_IN_TEXT,
     OPT_OUT_TEXT,
     RECOVERY_TEXT,
     RESTART_TEXT,
     EffectiveState,
+    ask_result,
+    command_result,
     effective_state,
+    first_contact_notice,
     global_command,
+    human_result,
     menu_message,
     opt_result,
+    pack_message,
     recovery_result,
 )
 from core.messages import IncomingMessage
-from core.replies import Text
+from core.pack import ContactInfo, TenantInfo
+from core.replies import Buttons, Text
 
 NOW = datetime(2026, 10, 5, 10, 0, tzinfo=UTC)
 STATE = {"step": "choose_day", "service": "corte"}
@@ -91,7 +100,7 @@ class TestGlobalCommand:
     def test_start_equals_menu(self) -> None:
         assert global_command(text("/start")) == global_command(text("menu"))
 
-    @pytest.mark.parametrize("value", ["baja", "BAJA", "Baja."])
+    @pytest.mark.parametrize("value", ["baja", "BAJA", "Baja.", "stop", "STOP", "Parar"])
     def test_opt_out(self, value: str) -> None:
         assert global_command(text(value)) == "opt_out"
 
@@ -100,7 +109,24 @@ class TestGlobalCommand:
         assert global_command(text(value)) == "opt_in"
 
     @pytest.mark.parametrize(
-        "value", ["hola", "menu del dia", "quiero darme de baja", "start", "", "📅", "/startx"]
+        "value", ["PERSONA", "Persona", "humano", "Hablar con una persona", "hablar con alguien"]
+    )
+    def test_human(self, value: str) -> None:
+        assert global_command(text(value)) == "human"
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "hola",
+            "menu del dia",
+            "quiero darme de baja",
+            "start",
+            "",
+            "📅",
+            "/startx",
+            "stop it now",
+            "una persona mayor",
+        ],
     )
     def test_other_texts_are_not_commands(self, value: str) -> None:
         assert global_command(text(value)) is None
@@ -133,8 +159,111 @@ def test_recovery_result_apologises_and_resets() -> None:
     assert result.actions == []
 
 
-def test_alta_and_baja_are_text_where_the_pack_waits_for_free_text() -> None:
-    assert global_command(text("baja"), free_text=True) is None
-    assert global_command(text("alta"), free_text=True) is None
+def test_command_words_ask_where_the_pack_waits_for_free_text() -> None:
+    for word in ("baja", "alta", "stop", "persona", "Hablar con una persona"):
+        assert global_command(text(word), free_text=True) == "ask"
+    assert global_command(text("Lucía"), free_text=True) is None
     assert global_command(text("menú"), free_text=True) == "menu"
     assert global_command(text("/start"), free_text=True) == "menu"
+
+
+def test_the_question_offers_the_command_or_the_name() -> None:
+    (reply,) = ask_result(text("Baja")).replies
+    assert isinstance(reply, Buttons)
+    assert reply.body == "¿Quieres darte de baja de los avisos o es tu nombre?"
+    assert [(b.id, b.title) for b in reply.buttons] == [
+        ("fp_cmd:opt_out", "Darme de baja"),
+        ("fp_name:baja", "Es mi nombre"),
+    ]
+    assert ask_result(text("PERSONA")).replies[0] == ask_result(text("persona")).replies[0]
+    (human,) = ask_result(text("PERSONA")).replies
+    (opt_in,) = ask_result(text("alta")).replies
+    assert human.body == "¿Quieres hablar con una persona o es tu nombre?"
+    assert opt_in.body == "¿Quieres volver a recibir los avisos o es tu nombre?"
+    assert ask_result(text("baja")).state is None and ask_result(text("baja")).actions == []
+
+
+def test_the_answer_buttons() -> None:
+
+    def press(payload: str) -> IncomingMessage:
+        return IncomingMessage("button", None, payload, NOW)
+
+    assert global_command(press("fp_cmd:opt_out"), free_text=True) == "opt_out"
+    assert global_command(press("fp_cmd:human")) == "human"
+    assert global_command(press("fp_cmd:rm_rf")) is None
+    assert global_command(press("fp_name:baja"), free_text=True) is None
+    assert pack_message(press("fp_name:baja")) == IncomingMessage("text", "Baja", None, NOW)
+    other = press("service_corte")
+    assert pack_message(other) is other
+
+
+TENANT = TenantInfo(
+    id=UUID("01920000-0000-7000-8000-00000000000a"),
+    slug="peluqueria",
+    name="Peluquería Lola",
+    timezone=ZoneInfo("Europe/Madrid"),
+)
+CONTACT = ContactInfo(
+    id=UUID("01920000-0000-7000-8000-00000000000c"),
+    external_id="1",
+    phone=None,
+    display_name="Ana",
+    opt_out=False,
+)
+
+
+def test_first_contact_notice_with_everything_configured() -> None:
+    tenant = TenantInfo(
+        **{
+            **TENANT.__dict__,
+            "controller_name": "Lola S.L.",
+            "policy_url": "https://lola.example/p",
+        }
+    )
+    body = first_contact_notice(tenant).body
+    assert "asistente automático de Peluquería Lola" in body
+    assert "Responsable: Lola S.L." in body
+    assert "Más información y tus derechos: https://lola.example/p." in body
+    assert "*PERSONA*" in body and "*BAJA*" in body
+
+
+def test_first_contact_notice_without_config_invents_nothing() -> None:
+    body = first_contact_notice(TENANT).body
+    assert "Responsable: Peluquería Lola." in body
+    assert "http" not in body
+    assert "contacta con el negocio" in body
+
+
+def test_human_result_gives_the_business_contact_and_notifies_the_owner() -> None:
+    tenant = TenantInfo(**{**TENANT.__dict__, "human_contact": "Tel. 600 000 000, L-V 9-14"})
+    result = human_result(tenant, CONTACT, NOW)
+    assert result.replies == [
+        Text("Claro. Para hablar con una persona de Peluquería Lola: Tel. 600 000 000, L-V 9-14")
+    ]
+    assert result.state is None
+    (action,) = result.actions
+    assert isinstance(action, NotifyOwner) and action.kind == HUMAN_REQUESTED
+    assert "Ana" in action.text and "600" not in action.text
+    # One notice per contact and hour.
+    assert human_result(tenant, CONTACT, NOW + timedelta(minutes=20)).actions == result.actions
+    assert human_result(tenant, CONTACT, NOW + timedelta(hours=1)).actions != result.actions
+
+
+def test_human_result_without_contact_details() -> None:
+    (reply,) = human_result(TENANT, CONTACT, NOW).replies
+    assert reply == Text(
+        "Claro. Para hablar con una persona, contacta directamente con Peluquería Lola."
+    )
+
+
+def test_command_result_dispatch() -> None:
+    assert command_result("opt_out", text("stop"), TENANT, CONTACT).actions == [
+        UpdateContact(opt_out=True)
+    ]
+    (action,) = command_result("human", text("persona"), TENANT, CONTACT).actions
+    assert isinstance(action, NotifyOwner) and action.kind == HUMAN_REQUESTED
+    assert isinstance(command_result("ask", text("baja"), TENANT, CONTACT).replies[0], Buttons)
+
+
+def test_opt_out_text_says_what_it_does() -> None:
+    assert "avisos" in OPT_OUT_TEXT and "borren tus datos" in OPT_OUT_TEXT

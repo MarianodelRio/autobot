@@ -55,10 +55,13 @@ Ejecuta los pasos en orden; cada uno puede repetirse sola con `ONLY=<paso>`.
     1. Crea `var/.frozen` en `FROM` (`deploy.sh` y `restore.sh` lo respetan).
     2. Desactiva el workflow `deploy.yml` (`gh workflow disable`).
     3. Para el timer de backup (como `admin`) y los servicios `worker-inbound`,
-       `worker-outbound`, `web`, `panel` y `caddy`.
+       `worker-outbound`, `web`, `web-panel`, `panel` y `caddy`.
     4. Hace un backup final y guarda el id del snapshot en `var/.server-migrate-snapshot`
        del portátil.
-3. **`cutover`**: en `TO`, restaura **ese snapshot concreto** (`AUTOBOT_RESTORE_SNAPSHOT`,
+3. **`cutover`**: antes del ensayo y de este paso, deja en `TO` la clave de cifrado
+   (`SECRETS_ENCRYPTION_KEY`) en `/srv/autobot/var/secrets-key`, modo 0600 (o la ruta de
+   `AUTOBOT_MIGRATE_SECRETS_KEY_FILE`): no viaja en el snapshot (ADR-021) y el script se
+   niega a continuar sin ella. En `TO`, restaura **ese snapshot concreto** (`AUTOBOT_RESTORE_SNAPSHOT`,
    nunca `latest`), con `DEPLOY_UID`, roles, permisos y certificados nuevos para esa
    máquina; levanta todo menos los workers y comprueba
    `https://<PUBLIC_HOST>/health` con `curl --resolve` contra la propia `TO`. Verifica a

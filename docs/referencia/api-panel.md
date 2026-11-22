@@ -55,6 +55,7 @@ Parámetros y cuerpos:
 | POST | `/api/panel/auth/login` | Login | sin cuerpo |
 | POST | `/api/panel/auth/logout` | Logout | sin cuerpo |
 | GET | `/api/panel/auth/me` | Me | sin cuerpo |
+| POST | `/api/panel/auth/step-up` | Step Up | sin cuerpo |
 
 Parámetros y cuerpos:
 
@@ -63,6 +64,9 @@ Parámetros y cuerpos:
         - `otp`: string
         - `password`: string
         - `username`: string
+- `POST /api/panel/auth/step-up`
+    - Cuerpo: StepUpIn
+        - `otp`: string
 
 ## calendar
 

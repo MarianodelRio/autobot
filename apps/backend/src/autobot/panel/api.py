@@ -27,8 +27,15 @@ from autobot.panel.routers.system import router as system_router
 from autobot.panel.routers.tenants import router as tenants_router
 from autobot.tenancy.store import StoreError
 
+# No `openapi_url`: the schema is not served (it would map every route to anyone with a
+# session); `export_openapi` builds it with `api.get_openapi_schema`, not through the URL.
 api = NinjaAPI(
-    title="Autobot panel", version="1", urls_namespace="panel", auth=PanelAuth(), docs_url=None
+    title="Autobot panel",
+    version="1",
+    urls_namespace="panel",
+    auth=PanelAuth(),
+    docs_url=None,
+    openapi_url=None,
 )
 api.add_router("/auth", auth_router)
 api.add_router("", data_router)

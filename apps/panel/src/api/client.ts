@@ -1,4 +1,5 @@
 import createClient, { type Middleware } from "openapi-fetch";
+import { requestReauth } from "@/lib/reauth";
 import type { paths } from "./schema";
 
 export interface ApiError {
@@ -51,6 +52,31 @@ const csrfMiddleware: Middleware = {
   },
 };
 
+// A sensitive action answers 403 `reauth_required` when the session has no recent
+// step-up: ask for a TOTP code (the dialog in the app shell) and resend the request
+// once. If the person cancels, the original 403 reaches the caller.
+const reauthCopies = new WeakMap<Request, Request>();
+
+const reauthMiddleware: Middleware = {
+  onRequest({ request }) {
+    reauthCopies.set(request, request.clone());
+    return undefined;
+  },
+  async onResponse({ request, response }) {
+    const copy = reauthCopies.get(request);
+    reauthCopies.delete(request);
+    if (copy === undefined || response.status !== 403) return undefined;
+    const body: unknown = await response
+      .clone()
+      .json()
+      .catch(() => null);
+    if (!isApiErrorBody(body) || body.code !== "reauth_required")
+      return undefined;
+    if (!(await requestReauth())) return undefined;
+    return globalThis.fetch(copy);
+  },
+};
+
 // Wired from outside (main.tsx) once the router and the query client exist, so this
 // module never has to import them and risk a cycle with the routes that use `api`.
 let onUnauthorized: () => void = () => {};
@@ -78,7 +104,7 @@ export const api = createClient<paths>({
   // module loads need the lookup to happen per request instead.
   fetch: (...args) => globalThis.fetch(...args),
 });
-api.use(csrfMiddleware, unauthorizedMiddleware);
+api.use(csrfMiddleware, reauthMiddleware, unauthorizedMiddleware);
 
 function isApiErrorBody(
   value: unknown,

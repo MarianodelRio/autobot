@@ -1,0 +1,14 @@
+[Unit]
+Description=Autobot: only ports 80 and 443 reach published Docker ports (DOCKER-USER)
+Requires=docker.service
+After=docker.service
+# A Docker restart must reapply it: PartOf restarts this unit together with docker.service.
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/autobot-docker-firewall
+
+[Install]
+WantedBy=multi-user.target

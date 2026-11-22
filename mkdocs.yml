@@ -108,7 +108,20 @@ nav:
       - procedimientos/rotar-secretos.md
       - procedimientos/retencion-rgpd.md
       - procedimientos/mantenimiento.md
+      - procedimientos/backups.md
       - procedimientos/restaurar.md
+  - Cumplimiento:
+      - cumplimiento/README.md
+      - cumplimiento/roles-y-tratamientos.md
+      - cumplimiento/registro-de-actividades.md
+      - cumplimiento/contrato-de-encargado.md
+      - cumplimiento/subencargados.md
+      - cumplimiento/informacion-al-interesado.md
+      - cumplimiento/derechos-de-los-interesados.md
+      - cumplimiento/brechas-de-seguridad.md
+      - cumplimiento/evaluacion-de-riesgos.md
+      - cumplimiento/otras-normas.md
+      - cumplimiento/checklist-lanzamiento.md
   - Incidencias:
       - incidencias/README.md
       - incidencias/bot-no-responde.md
@@ -151,4 +164,7 @@ nav:
       - arquitectura/adr/ADR-016-acciones-de-alta-whatsapp.md
       - arquitectura/adr/ADR-017-instalador-de-la-vm-y-entorno-local.md
       - arquitectura/adr/ADR-018-documentacion-en-el-panel.md
+      - arquitectura/adr/ADR-019-libro-de-supresiones.md
+      - arquitectura/adr/ADR-020-api-del-panel-aparte.md
+      - arquitectura/adr/ADR-021-backups-resistentes.md
       - arquitectura/adr/plantilla.md

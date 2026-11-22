@@ -14,7 +14,7 @@ for dir in "$source_dir" "$target_dir"; do
     "$dir/var"
   # Like install-vm.sh on the real VPS: pre-create the bind-mount sources so Docker
   # never auto-creates them as root when a container starts before backup.sh does
-  # (`var/state/ops` is mounted read-only into web/worker).
+  # (`var/state/ops` is mounted read-only into web-panel/worker).
   ensure_state_dirs "$dir"
 done
 sha=$(python3 -c 'import secrets; print(secrets.token_hex(20))')
@@ -39,6 +39,11 @@ for dir in "$source_dir" "$target_dir"; do
   cp deploy/scripts/backup.sh deploy/scripts/restore.sh deploy/scripts/lib.sh \
     deploy/scripts/ensure-env.sh "$dir/deploy/scripts/"
 done
+# The key is kept OUTSIDE the snapshot (ADR-021): backup.sh strips it from the staged .env
+# and restore.sh gets it explicitly, here through a file like an operator would.
+secrets_key=$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+printf '%s\n' "$secrets_key" >"$test_root/secrets-key"
+chmod 600 "$test_root/secrets-key"
 cat >"$source_dir/.env" <<EOF
 ENVIRONMENT=prod
 PUBLIC_HOST=localhost
@@ -47,7 +52,7 @@ AUTOBOT_IMAGE=ghcr.io/example-owner/autobot
 AUTOBOT_PANEL_IMAGE=ghcr.io/example-owner/autobot-panel
 DEPLOY_UID=$(id -u)
 DJANGO_SECRET_KEY=local-restore-test-only
-SECRETS_ENCRYPTION_KEY=$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+SECRETS_ENCRYPTION_KEY=$secrets_key
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 DB_APP_URL=postgres://fp_app:local@db:5432/autobot
 DB_OWNER_URL=postgres://fp_owner:local@db:5432/autobot
@@ -112,20 +117,20 @@ docker tag autobot:restore-test "ghcr.io/example-owner/autobot:$sha"
 source_compose() { compose_in "$source_dir" "$source_project" "$@"; }
 (
   source_compose up -d db >/dev/null
-  source_compose run --rm web \
+  source_compose run --rm web-panel \
     python manage.py migrate --noinput >/dev/null
-  source_compose run --rm web \
+  source_compose run --rm web-panel \
     python manage.py apply_grants >/dev/null
-  source_compose run --rm web \
+  source_compose run --rm web-panel \
     python manage.py tenant_config validate --all >/dev/null
-  source_compose run --rm web \
+  source_compose run --rm web-panel \
     python manage.py seed_demos >/dev/null
   source_compose exec -T db \
     psql -U postgres -d autobot -v ON_ERROR_STOP=1 -q -c \
     "INSERT INTO contact (id, tenant_id, channel, external_id, created_at) VALUES ('00000000-0000-7000-8000-000000000001', (SELECT id FROM tenant WHERE slug='demo-autobuses'), 'test', 'local-fixture', now())" >/dev/null
   # A channel secret encrypted with the source's SECRETS_ENCRYPTION_KEY: after the
   # restore, the key that travelled in the backed-up .env must still decrypt it.
-  source_compose run --rm web \
+  source_compose run --rm web-panel \
     python manage.py shell -c "
 from autobot.tenancy.crypto import encrypt
 from autobot.tenancy.models import Tenant, TenantSecret
@@ -143,8 +148,35 @@ counts() {
 }
 before=$(counts "$source_project" "$source_dir")
 (cd "$source_dir" && AUTOBOT_PROJECT="$source_project" deploy/scripts/backup.sh)
+# Without the key restore.sh must refuse, clearly, before touching the target...
+if (cd "$target_dir" && AUTOBOT_PROJECT="$target_project" AUTOBOT_RESTORE_DB_ONLY=true \
+  deploy/scripts/restore.sh --confirm-empty-target >/dev/null 2>"$test_root/no-key.err"); then
+  echo 'restore.sh succeeded without the encryption key' >&2
+  exit 1
+fi
+grep -q 'AUTOBOT_SECRETS_KEY_FILE' "$test_root/no-key.err" || {
+  echo 'restore.sh did not explain how to give the encryption key' >&2
+  exit 1
+}
+# ...and a WRONG key must be caught by the decryption check, not restored "fine".
+wrong_key=$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+if (cd "$target_dir" && AUTOBOT_PROJECT="$target_project" AUTOBOT_RESTORE_DB_ONLY=true \
+  SECRETS_ENCRYPTION_KEY="$wrong_key" deploy/scripts/restore.sh --confirm-empty-target >/dev/null 2>&1); then
+  echo 'restore.sh accepted a wrong encryption key' >&2
+  exit 1
+fi
 (cd "$target_dir" && AUTOBOT_PROJECT="$target_project" AUTOBOT_RESTORE_DB_ONLY=true \
+  AUTOBOT_SECRETS_KEY_FILE="$test_root/secrets-key" \
   deploy/scripts/restore.sh --confirm-empty-target)
+# The snapshot itself must not carry the key; the restored .env must have it back.
+if grep -q "$secrets_key" "$target_dir/var/backups/autobot.env" 2>/dev/null; then
+  echo 'The staged backup .env contains the encryption key' >&2
+  exit 1
+fi
+grep -q "^SECRETS_ENCRYPTION_KEY=$secrets_key\$" "$target_dir/.env" || {
+  echo 'The restored .env does not have the given encryption key' >&2
+  exit 1
+}
 after=$(counts "$target_project" "$target_dir")
 if [[ $before != "$after" || $before != *'demo-autobuses|1'* ]]; then
   echo 'Per-tenant counts differ after restore' >&2
@@ -185,7 +217,7 @@ if [[ $healthy != true ]]; then
   target_compose logs --tail=50 web >&2 || true
   exit 1
 fi
-decrypted=$(target_compose run --rm -T web python manage.py shell -c "
+decrypted=$(target_compose run --rm -T web-panel python manage.py shell -c "
 from autobot.tenancy.crypto import decrypt
 from autobot.tenancy.models import TenantSecret
 count = 0
