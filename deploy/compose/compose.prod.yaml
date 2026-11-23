@@ -82,7 +82,7 @@ networks:
 
 services:
   caddy:
-    image: caddy:2@sha256:ce773ec7a742ce15ee6bf2bb5f65882b9e2a4487b10733e6f1484f86e6b5d8bc
+    image: caddy:2@sha256:4851e54a46b206517c574821bb5cc67f170d2156041e9fbc4c9193b45e84a75b
     user: ${DEPLOY_UID:?Set the numeric uid of the deploy user}
     cap_drop: [ALL]
     cap_add: [NET_BIND_SERVICE]  # binds 80/443; everything else it needs stays dropped
