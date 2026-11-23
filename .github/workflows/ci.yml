@@ -273,7 +273,7 @@ jobs:
       - name: Production compose file is valid
         run: |
           env \
-            PUBLIC_HOST=ci.example.invalid SHA=$(git rev-parse HEAD) \
+            PUBLIC_HOST=ci.example.invalid SHA="$(git rev-parse HEAD)" \
             AUTOBOT_IMAGE=ghcr.io/example-owner/autobot \
             AUTOBOT_PANEL_IMAGE=ghcr.io/example-owner/autobot-panel \
             DEPLOY_UID=1000 DJANGO_SECRET_KEY=x DJANGO_ALLOWED_HOSTS=x \

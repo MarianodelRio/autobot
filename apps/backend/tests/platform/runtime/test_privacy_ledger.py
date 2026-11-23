@@ -155,12 +155,14 @@ def test_forget_erases_demo_grants_and_sessions_of_the_identity(tenant: Tenant) 
 
 
 def test_forget_writes_a_ledger_row_without_pii(tenant: Tenant) -> None:
-    contact = make_contact(tenant)
+    # A long id: a short one like "111" can appear by chance inside the random hex ids.
+    phone = "34600987654"
+    contact = make_contact(tenant, "main", phone)
     privacy.forget(contact)
     row = PrivacySuppression.objects.using("owner").get()
     assert (row.kind, row.tenant_id, row.contact_id) == ("forget", tenant.id, contact.id)
-    assert row.identity_hashes == [suppressions.identity_hash("main", "111")]
-    assert "111" not in json.dumps(suppressions.as_dict(row))
+    assert row.identity_hashes == [suppressions.identity_hash("main", phone)]
+    assert phone not in json.dumps(suppressions.as_dict(row))
 
 
 def test_forget_rolls_back_the_ledger_with_the_erasure(

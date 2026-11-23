@@ -28,6 +28,7 @@ paths = [
   '''^apps/backend/tests/platform/tenancy/helpers\.py$''',
   '''^apps/backend/tests/repo/test_settings\.py$''',
   '''^apps/backend/tests/tools/test_ensure_env\.py$''',
+  '''^apps/backend/tests/tools/test_restore\.py$''',
 ]
 
 # Vendored, minified Mermaid bundle (a variable named `atlasCount` trips generic-api-key).
