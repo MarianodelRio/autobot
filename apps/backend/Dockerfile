@@ -14,7 +14,15 @@ ARG INSTALL_DEV=false
 RUN if [ "$INSTALL_DEV" = true ]; then uv sync --locked; else uv sync --locked --no-dev; fi
 
 FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS runtime
-RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
+# The base is pinned by digest, so Debian's security fixes published since then come in
+# here (Trivy fails the build on a fixable HIGH/CRITICAL). pip is not used at runtime (the
+# venv comes from uv) and its vendored urllib3/msgpack would only add vulnerabilities.
+# hadolint ignore=DL3005
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip uninstall -y pip \
+    && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY --from=build /opt/venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONPATH=/app/src \

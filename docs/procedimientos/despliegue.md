@@ -70,7 +70,9 @@ análisis pasa, las publica. Se etiquetan con el SHA completo:
   Caddy.
 
 Trivy falla con cualquier vulnerabilidad HIGH o CRITICAL que tenga arreglo disponible
-(`--ignore-unfixed`). Solo se **publican** (`docker push`) en los `push` a `main`; en un pull
+(`--ignore-unfixed`). La imagen del backend aplica al construirse las actualizaciones de
+seguridad de Debian y no lleva `pip`. Una excepción solo se admite en `.trivyignore`, con su
+motivo y una fecha `exp:` en la que vuelve a fallar. Solo se **publican** (`docker push`) en los `push` a `main`; en un pull
 request se construyen y analizan sin subirse. Las etiquetas son inmutables: el SHA es el único identificador de una versión.
 
 ## 2. `make deploy`

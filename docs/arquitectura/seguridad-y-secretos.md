@@ -85,7 +85,7 @@ CI no usa secretos propios: todos los jobs corren con `contents: read` y solo `i
 | `pnpm audit` | Dependencias de producción del panel, falla desde severidad alta | Actualiza la dependencia; si no hay arreglo, decláralo en el PR con la justificación antes de ignorarlo |
 | `pip-audit` | Dependencias bloqueadas del backend | Igual que el anterior |
 | `dockerfile-lint` | `hadolint` (Dockerfile) y `actionlint` (workflows). Una excepción de hadolint va en línea (`# hadolint ignore=DLxxxx`) con motivo | Corrige la regla; ignórala solo si es un falso positivo |
-| Trivy sobre las dos imágenes | Antes de publicar: falla con HIGH o CRITICAL que tengan arreglo (`--ignore-unfixed`) | Reconstruye con la base actualizada (sube el digest) o la dependencia afectada; no se publica nada hasta que pase |
+| Trivy sobre las dos imágenes | Antes de publicar: falla con HIGH o CRITICAL que tengan arreglo (`--ignore-unfixed`) | Reconstruye con la base actualizada (sube el digest) o la dependencia afectada; no se publica nada hasta que pase. Excepción solo en `.trivyignore`, con motivo y caducidad |
 | CodeQL (`codeql.yml`) | Python y JavaScript/TypeScript; único job con `security-events: write` | Revisa las alertas en la pestaña Security del repositorio |
 
 Los binarios de gitleaks, hadolint, actionlint y Trivy se descargan con versión y SHA-256 fijos en el propio workflow, y la descarga falla si el hash no coincide. Al subir una versión, cambia ambos valores.

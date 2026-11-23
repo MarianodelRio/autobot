@@ -1,0 +1,9 @@
+# Trivy ignore list for the image scan in .github/workflows/ci.yml (read from the repo root).
+# Every entry says why and expires: when it expires the build fails again and the entry is
+# reviewed, never extended blindly.
+
+# golang.org/x/net/html DoS in the Caddy binary of the panel image (caddy 2.11.9, the
+# latest release on 2026-11-23, still ships x/net 0.60.0). The panel's Caddy serves static
+# files and proxies /api behind the SSH tunnel (ADR-008); it never parses HTML from
+# outside. Drop this line once a Caddy release ships x/net >= 0.62.0.
+CVE-2026-78661 exp:2026-12-31
