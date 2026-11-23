@@ -1,6 +1,6 @@
 """Shared health classification for tenant lists, details and activation."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal, Protocol
@@ -8,7 +8,7 @@ from uuid import UUID
 
 from django.utils import timezone
 
-from autobot.ops.health import read_snapshot
+from autobot.ops.health import HealthSnapshot, read_snapshot
 from autobot.tenancy.registry import LoadedTenant
 
 
@@ -30,8 +30,13 @@ class TenantStatus:
 
 
 def tenant_status(
-    tenant: LoadedTenant, *, open_alerts: Sequence[OpsAlertLike] = ()
+    tenant: LoadedTenant,
+    *,
+    open_alerts: Sequence[OpsAlertLike] = (),
+    snapshots: Mapping[UUID | str, HealthSnapshot | None] | None = None,
 ) -> TenantStatus:
+    """`snapshots`: health snapshots already read in bulk (lists), to avoid one cache
+    query per tenant."""
     critical: list[str] = []
     warning: list[str] = []
     notice: list[str] = []
@@ -39,7 +44,7 @@ def tenant_status(
         critical.append("Configuración degradada")
     if tenant.document.status == "active" and not tenant.is_demo and not tenant.main_enabled:
         critical.append("Canal principal desactivado")
-    snapshot = read_snapshot(tenant.id)
+    snapshot = snapshots[tenant.id] if snapshots is not None else read_snapshot(tenant.id)
     if snapshot is not None:
         for issue in snapshot.issues:
             target = {"🔴": critical, "🟠": warning, "🟡": notice}.get(issue.severity)

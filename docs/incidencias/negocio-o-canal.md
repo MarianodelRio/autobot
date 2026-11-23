@@ -2,7 +2,7 @@
 
 ## Síntoma
 
-Otros negocios funcionan, pero uno no responde en su canal `main`. Alertas posibles: `tenant_unavailable`, `registry`, `errors:<canal>`, `auth`, `health:<codigo>` y `bot:<bot>:<codigo>`.
+Otros negocios funcionan, pero uno no responde en su canal `main`. Alertas posibles: `tenant_unavailable`, `registry`, `errors:<canal>`, `auth`, `tenant_silent`, `webhook_unsubscribed`, `webhook_errors`, `number_quality`, `health:<codigo>` y `bot:<bot>:<codigo>`.
 
 ## Diagnóstico
 
@@ -30,6 +30,18 @@ Otros negocios funcionan, pero uno no responde en su canal `main`. Alertas posib
 
     Los secretos se cargan con `tenant_config import --secrets <yaml>`. No hace falta desplegar.
 3. Un tenant degradado no debe arrastrar a otros.
+
+### Negocio en silencio
+
+`tenant_silent`: un negocio activo no recibe mensajes desde hace más de lo habitual. Puede ser normal (vacaciones, cierre) o un canal roto. Comprueba primero `webhook_unsubscribed`, `webhook_errors` y `auth` del mismo negocio, y envía tú un mensaje de prueba al número o bot: si no aparece en la bandeja del panel, el problema está entre Meta/Telegram y nosotros. Si el negocio está cerrado, avisa a la persona responsable; la alerta se resuelve sola al llegar el siguiente mensaje.
+
+### Webhook sin suscripción
+
+`webhook_unsubscribed`: en WhatsApp, la app ya no está suscrita a la cuenta (Meta la desactiva si el webhook falla muchas veces o alguien la quitó). Repite la suscripción desde la pestaña «Alta» del panel («Comprobar» y después suscribir); es una acción sobre el canal real, necesita aprobación. En Telegram, vuelve a registrar el webhook desde el panel. `webhook_errors`: Telegram no consigue entregar; revisa que `PUBLIC_URL` y el proxy responden y mira [el bot no responde](bot-no-responde.md).
+
+### Calidad del número
+
+`number_quality`: Meta ha bajado la calidad (`YELLOW`) o restringido el número (`RED`, `RESTRICTED`...). Revisa en WhatsApp Manager el motivo (bloqueos o denuncias de clientes), reduce los mensajes proactivos y espera a que Meta la recupere; con 🔴 el envío puede estar limitado. No hay arreglo por nuestro lado.
 
 !!! warning "Aprobación humana"
     Cambiar el webhook, rotar secretos o activar `main` necesita aprobación humana.

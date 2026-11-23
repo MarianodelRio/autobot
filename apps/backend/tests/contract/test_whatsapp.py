@@ -434,8 +434,8 @@ def test_send_to_a_bsuid_uses_recipient() -> None:
         (meta_error(429, 131056), RetryLater(None)),
         (meta_error(429, 130429, **{"Retry-After": "inf"}), RetryLater(None)),
         (meta_error(429, 130429, **{"Retry-After": "86400"}), RetryLater(3600.0)),
-        (meta_error(500, 131000), RetryLater(None)),
-        (meta_error(503, 131016), RetryLater(None)),
+        (meta_error(500, 131000), RetryLater(None, "server")),
+        (meta_error(503, 131016), RetryLater(None, "server")),
         (httpx.Response(502), Ambiguous("HTTP 502")),
         (httpx.Response(504, text="<html>Gateway Timeout</html>"), Ambiguous("HTTP 504")),
     ],
@@ -451,9 +451,9 @@ def test_send_outcome_table(answer: httpx.Response, outcome: object) -> None:
         (httpx.ReadTimeout("slow"), Ambiguous("ReadTimeout")),
         (httpx.RemoteProtocolError("cut"), Ambiguous("RemoteProtocolError")),
         (httpx.WriteError("broken"), Ambiguous("WriteError")),
-        (httpx.ConnectError("refused"), RetryLater()),
-        (httpx.ConnectTimeout("no route"), RetryLater()),
-        (httpx.PoolTimeout("pool full"), RetryLater()),
+        (httpx.ConnectError("refused"), RetryLater(kind="network")),
+        (httpx.ConnectTimeout("no route"), RetryLater(kind="network")),
+        (httpx.PoolTimeout("pool full"), RetryLater(kind="network")),
     ],
 )
 def test_network_errors(error: Exception, outcome: object) -> None:
@@ -476,3 +476,39 @@ def test_4xx_bodies_and_tokens_are_never_logged(caplog: pytest.LogCaptureFixture
     for secret in ("Message undeliverable", "34600000001", "token-123", "Abc"):
         assert secret not in logged
     assert "131026" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("answer", "transport"),
+    [
+        (httpx.ReadTimeout("slow"), True),
+        (httpx.Response(502), True),
+        (httpx.Response(200, text="ok"), False),  # unreadable answer: not the provider's fault
+    ],
+)
+def test_ambiguous_says_whether_it_was_a_transport_failure(
+    answer: httpx.Response | Exception, transport: bool
+) -> None:
+    outcome = adapter_answering(answer).send({}, "34600000001", CHANNEL, SECRETS, OUTBOUND_ID)
+    assert isinstance(outcome, Ambiguous) and outcome.transport is transport
+
+
+@pytest.mark.parametrize(
+    ("answer", "up"),
+    [
+        (httpx.Response(200, json={"id": "1"}), True),
+        (httpx.Response(401), True),  # it answers: the breaker is about reachability
+        (httpx.Response(503), False),
+        (httpx.ConnectError("refused"), False),
+        (httpx.ReadTimeout("slow"), False),
+    ],
+)
+def test_probe_reads_the_phone_number_node_and_sends_nothing(
+    answer: httpx.Response | Exception, up: bool
+) -> None:
+    seen: list[httpx.Request] = []
+    adapter = adapter_answering(answer, seen)
+    assert adapter.probe(CHANNEL, SECRETS) is up
+    assert [r.method for r in seen] == ["GET"]
+    assert seen[0].url.path.endswith(f"/{CHANNEL.phone_number_id}")
+    assert not seen[0].content

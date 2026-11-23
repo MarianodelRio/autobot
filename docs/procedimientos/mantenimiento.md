@@ -18,7 +18,8 @@ aquí: ver [despliegue.md](despliegue.md).
 
 | Cuándo | Qué |
 |---|---|
-| Mensual | Mirar en el panel (Sistema) la fecha del último backup, disco, TLS y despliegues. Aceptar o rechazar las PR de Dependabot (imagen base, Actions, dependencias). Si hubo parches de kernel, planificar un reinicio de la VPS como `admin` |
+| Semanal | Purgar las copias de seguridad desde tu máquina: `make backup-prune` ([backups.md](backups.md#caducar-snapshots)); si pasan 10 días salta `backup_prune_overdue` 🟡 |
+| Mensual | Mirar en el panel (Sistema) la fecha del último backup, disco, TLS y despliegues. Comprobar `timedatectl` (reloj sincronizado) y que la limpieza de retención de las 03:00 UTC deja rastro (`retention_cleanup`). Aceptar o rechazar las PR de Dependabot (imagen base, Actions, dependencias). Si hubo parches de kernel, planificar un reinicio de la VPS como `admin` |
 | Cada seis meses | Verificar la versión soportada de Graph API antes de cambiar `WHATSAPP_GRAPH_VERSION` |
 | Trimestral | Calidad del número y plantillas de WhatsApp en Meta; simulacro de restauración ([restaurar.md](restaurar.md)) anotando el RTO; revisar la retención de paquetes de GHCR |
 
@@ -33,9 +34,9 @@ haz un `restic check` completo antes de fiarte del repositorio.
 ## Disco lleno
 
 **Qué lo dispara.** `ops_check` (cada cinco minutos, `apps/backend/src/autobot/ops/check.py`)
-mide el uso de `/` y abre:
+mide el uso del sistema de ficheros donde viven Docker, el volumen de PostgreSQL y los temporales del backup (`/` del contenedor, que es el disco del host, y `/run/ops`, el directorio `var/state/ops` del host por si `/srv` es otro volumen; cuenta el más lleno) y abre:
 
-- `disk` (aviso, 🟠) por encima del **85 %**.
+- `disk` (aviso, 🟠) por encima del **80 %**.
 - `disk_critical` (🔴) por encima del **95 %**.
 
 También se ve en el panel, Sistema. Con un disco lleno, PostgreSQL deja de escribir, el
@@ -64,7 +65,7 @@ clientes):
 7. Si no basta, amplía el disco en el proveedor (acción de infraestructura: aprobación
    humana explícita).
 
-**Verificación:** `df -h /` por debajo del 85 %, la alerta `disk` se resuelve sola en el
+**Verificación:** `df -h / /srv/autobot` por debajo del 80 %, la alerta `disk` se resuelve sola en el
 siguiente `ops_check` y el siguiente backup termina bien (`make backup-now`).
 
 ## Subir de versión mayor de PostgreSQL
@@ -94,7 +95,7 @@ quieres el flujo de despliegue completo, `make localprod-up`.
 **Pasos** (en la VPS, como `deploy`, en `/srv/autobot`):
 
 1. `make backup-now` desde el portátil y confirma en restic que hay un snapshot nuevo.
-2. Para el tráfico: `deploy/scripts/compose.sh stop caddy worker-inbound worker-outbound
+2. Para el tráfico: `deploy/scripts/compose.sh stop caddy worker-inbound worker-calendar worker-periodic worker-outbound
    web web-panel panel`. Los webhooks que lleguen ahora fallarán y los canales los reintentarán.
 3. Volcado lógico, con la `db` aún en marcha y comprobado:
 
@@ -127,7 +128,7 @@ quieres el flujo de despliegue completo, `make localprod-up`.
 7. Levanta `deploy/scripts/compose.sh up -d web web-panel panel caddy`, comprueba `/health` y los
    conteos por negocio contra los de antes de empezar (`contact` por tenant, como en
    [restaurar.md](restaurar.md)) y solo entonces
-   `deploy/scripts/compose.sh up -d worker-inbound worker-outbound`.
+   `deploy/scripts/compose.sh up -d worker-inbound worker-calendar worker-periodic worker-outbound`.
 8. Cuando todo esté verificado: borra `var/backups/major-upgrade.dump` (datos en claro;
    `prune.sh` no lo limpia) y, pasados unos días, `docker volume rm autobot_pgdata_old`.
    Actualiza el número de versión en este procedimiento y en

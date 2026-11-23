@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  formatAge,
   formatBytes,
   formatDate,
   formatDateTime,
@@ -91,5 +92,14 @@ describe("datetime-local conversion", () => {
     expect(toLocalInput("not a date")).toBe("");
     expect(fromLocalInput("")).toBe("");
     expect(fromLocalInput("not a date")).toBe("");
+  });
+});
+
+describe("formatAge", () => {
+  test("seconds, minutes and hours", () => {
+    expect(formatAge(45)).toBe("45 s");
+    expect(formatAge(420)).toBe("7 min");
+    expect(formatAge(7500)).toBe("2 h 05 min");
+    expect(formatAge(-3)).toBe("0 s");
   });
 });

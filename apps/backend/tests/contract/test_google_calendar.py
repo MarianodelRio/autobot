@@ -14,6 +14,7 @@ from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
 
 from integrations.google_calendar.client import _EVENT_FIELDS as FIELDS
 from integrations.google_calendar.client import (
+    MAX_ATTEMPTS,
     TIMEOUT_S,
     CalendarClient,
     CalendarPermanentError,
@@ -105,17 +106,36 @@ def test_permanent_errors(status: int) -> None:
 @pytest.mark.parametrize(
     "failure",
     [
-        error(429),
         error(503),
         TimeoutError(),
         httplib2.ServerNotFoundError("no DNS"),  # any httplib2 error is transient
     ],
 )
-def test_transient_failures_retry_twice(failure: Exception) -> None:
+def test_transient_failures_are_tried_twice(failure: Exception) -> None:
     cal, api = client(failure, failure, failure)
     with pytest.raises(CalendarTransientError):
         cal.list_events(START, END)
-    assert api.events().list.call_count == 3
+    assert api.events().list.call_count == MAX_ATTEMPTS == 2
+
+
+def test_a_transient_failure_followed_by_success_is_retried_after_a_jittered_pause() -> None:
+    sleeps: list[float] = []
+    api = MagicMock()
+    api.events.return_value.list.return_value.execute.side_effect = [error(503), {"items": []}]
+    cal = CalendarClient("c", api=api, sleep=sleeps.append)
+    assert cal.list_events(START, END) == []
+    assert len(sleeps) == 1 and 0.1 <= sleeps[0] <= 0.3  # 0.2 s with +-50% jitter
+
+
+def test_a_429_is_never_retried_in_the_client() -> None:
+    sleeps: list[float] = []
+    seen: list[str] = []
+    api = MagicMock()
+    api.events.return_value.list.return_value.execute.side_effect = [error(429), {"items": []}]
+    cal = CalendarClient("c", api=api, sleep=sleeps.append, observe=seen.append)
+    with pytest.raises(CalendarTransientError):
+        cal.list_events(START, END)
+    assert api.events().list.call_count == 1 and sleeps == [] and seen == ["error"]
 
 
 def test_pagination_limit_does_not_return_partial_results() -> None:
@@ -222,7 +242,7 @@ def test_service_uses_a_short_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(client_module, "build", fake_build)
     service("creds.json")
     assert seen["http"].timeout == TIMEOUT_S
-    assert TIMEOUT_S <= 5
+    assert TIMEOUT_S <= 2.5
 
 
 def test_the_real_client_satisfies_the_pack_protocol() -> None:
@@ -240,25 +260,19 @@ def rate_limit_error(reason: str, status: int = 403) -> HttpError:
 
 
 @pytest.mark.parametrize("reason", ["rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"])
-def test_a_403_for_rate_limits_is_retried_with_backoff_and_is_transient(reason: str) -> None:
+def test_a_403_for_rate_limits_is_transient_and_never_retried(reason: str) -> None:
     seen: list[str] = []
     sleeps: list[float] = []
     api = MagicMock()
     api.events.return_value.list.return_value.execute.side_effect = [
         rate_limit_error(reason),
-        rate_limit_error(reason),
         {"items": []},
     ]
     cal = CalendarClient("c", api=api, sleep=sleeps.append, observe=seen.append)
-    assert cal.list_events(START, END) == []
-    assert sleeps == [1.0, 2.0]
-    assert seen == ["ok"]  # never `denied`
-
-    api.events.return_value.list.return_value.execute.side_effect = [rate_limit_error(reason)] * 3
-    seen.clear()
     with pytest.raises(CalendarTransientError):
         cal.list_events(START, END)
-    assert seen == ["error"]
+    assert api.events().list.call_count == 1 and sleeps == []
+    assert seen == ["error"]  # never `denied`
 
 
 def test_a_403_for_another_reason_is_still_a_denial() -> None:
@@ -312,10 +326,10 @@ def test_refresh_failure_is_classified(retryable: bool) -> None:
     from google.auth.exceptions import RefreshError
 
     failure = RefreshError("token endpoint unavailable", retryable=retryable)  # type: ignore[no-untyped-call]
-    cal, api = client(*[failure] * 3)
+    cal, api = client(*[failure] * MAX_ATTEMPTS)
     with pytest.raises(CalendarTransientError if retryable else CalendarPermanentError):
         cal.list_events(START, END)
-    assert api.events().list.call_count == (3 if retryable else 1)
+    assert api.events().list.call_count == (MAX_ATTEMPTS if retryable else 1)
 
 
 @pytest.mark.parametrize("missing_status", [404, 410])
@@ -394,3 +408,120 @@ def test_check_write_access_clears_a_leftover_probe_first() -> None:
 
     deleted_ids = [call.kwargs["eventId"] for call in api.events().delete.call_args_list]
     assert "old-probe" in deleted_ids
+
+
+def test_the_service_is_built_once_per_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    import integrations.google_calendar.client as client_module
+
+    built: list[str] = []
+    monkeypatch.setattr(
+        service_account.Credentials, "from_service_account_file", lambda *a, **k: MagicMock()
+    )
+    monkeypatch.setattr(
+        client_module, "build", lambda *a, **k: built.append(threading.current_thread().name)
+    )
+    client_module.thread_service("t.json")
+    client_module.thread_service("t.json")
+    other = threading.Thread(target=client_module.thread_service, args=("t.json",), name="other")
+    other.start()
+    other.join()
+    assert built == [threading.current_thread().name, "other"]
+
+
+# ── time budget ──────────────────────────────────────────────────────────
+
+
+def test_a_spent_budget_fails_without_calling_google() -> None:
+    from integrations.google_calendar import time_budget
+
+    seen: list[str] = []
+    api = MagicMock()
+    cal = CalendarClient("c", api=api, observe=seen.append)
+    with time_budget(0), pytest.raises(CalendarTransientError, match="budget"):
+        cal.check_access()
+    api.events.assert_not_called()
+    assert seen == ["error"]
+
+
+def test_no_budget_means_no_limit_and_the_budget_ends_with_its_block() -> None:
+    from integrations.google_calendar import time_budget
+
+    cal, api = client({"items": []}, {"items": []})
+    with time_budget(60):
+        cal.check_access()
+    cal.check_access()  # outside the block: not limited
+    assert api.events().list.call_count == 2
+
+
+def test_no_retry_pause_beyond_the_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The second attempt does not start if the pause would overrun the budget."""
+    import integrations.google_calendar.client as client_module
+    from integrations.google_calendar import time_budget
+
+    clock = [100.0]
+    monkeypatch.setattr(client_module, "_monotonic", lambda: clock[0])
+    monkeypatch.setattr(client_module, "_jitter", lambda low, high: high)  # pause 0.3 s
+    sleeps: list[float] = []
+    cal, api = client(error(503), {"items": []})
+    cal._sleep = sleeps.append
+    with time_budget(0.25), pytest.raises(CalendarTransientError):
+        cal.check_access()
+    assert api.events().list.call_count == 1 and sleeps == []
+
+
+def test_the_attempt_timeout_is_the_smaller_of_the_default_and_what_is_left(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import integrations.google_calendar.client as client_module
+    from integrations.google_calendar import time_budget
+
+    clock = [100.0]
+    monkeypatch.setattr(client_module, "_monotonic", lambda: clock[0])
+    http = MagicMock()
+    http.timeout = TIMEOUT_S
+    cal, _ = client({"items": []})
+    cal._http = http
+    with time_budget(1.0):
+        cal.check_access()
+    assert http.timeout == 1.0
+    http.close.assert_called_once()
+
+
+# ── circuit breaker in the client ─────────────────────────────────────────
+
+
+def test_an_open_breaker_fails_at_once_and_a_probe_closes_it() -> None:
+    from integrations.google_calendar import CircuitBreaker
+
+    now = [0.0]
+    breaker = CircuitBreaker(consecutive=2, open_s=10, clock=lambda: now[0])
+    seen: list[str] = []
+    api = MagicMock()
+    execute = api.events.return_value.list.return_value.execute
+    execute.side_effect = [error(503)] * 2 + [{"items": []}]
+    cal = CalendarClient("c", api=api, sleep=lambda _: None, observe=seen.append, breaker=breaker)
+    with pytest.raises(CalendarTransientError):
+        cal.check_access()  # two failed attempts: the breaker opens
+    assert breaker.state == "open"
+    calls = execute.call_count
+    with pytest.raises(CalendarTransientError, match="circuit"):
+        cal.check_access()
+    assert execute.call_count == calls  # Google was not called
+    assert seen[-1] == "error"
+    now[0] = 11.0
+    cal.check_access()  # the probe
+    assert breaker.state == "closed"
+
+
+def test_permanent_refusals_do_not_trip_the_breaker() -> None:
+    from integrations.google_calendar import CircuitBreaker
+
+    breaker = CircuitBreaker(consecutive=2)
+    cal, _ = client(*[error(403)] * 5)
+    cal._breaker = breaker
+    for _ in range(5):
+        with pytest.raises(CalendarPermanentError):
+            cal.check_access()
+    assert breaker.state == "closed"

@@ -3,6 +3,7 @@
 known to belong to any tenant until this module says so."""
 
 import hashlib
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
@@ -15,6 +16,8 @@ from autobot.runtime.models import OwnerLink
 from autobot.tenancy.registry import LoadedTenant, get_registry
 
 # Short on purpose: the code is a bearer secret that sits in a chat; a new one is one tap away.
+log = logging.getLogger(__name__)
+
 OWNER_INVITE_HOURS = 48
 
 
@@ -92,7 +95,22 @@ def start_link(code: str, chat_id: int) -> LinkResult:
     )
     if not updated:  # consumed by a concurrent request between the read and here
         return LinkResult("invalid")
+    _release_held_notices(tenant)
     return LinkResult("linked", tenant, previous)
+
+
+def _release_held_notices(tenant: LoadedTenant) -> None:
+    """Notices held while the owner had no chat go out now (ADR-026). Never breaks the
+    link: a failure is only logged, and the stale ones are expired by `reconcile_unknown`."""
+    from autobot.runtime.notifications import release_held
+
+    try:
+        queued = release_held(tenant.id)
+    except Exception:
+        log.exception("could not release the held notices of tenant %s", tenant.slug)
+        return
+    if queued:
+        log.info("tenant %s: %s held owner notices queued", tenant.slug, queued)
 
 
 def _chat_taken_by_another_real_tenant(chat_id: int, tenant_id: UUID) -> bool:

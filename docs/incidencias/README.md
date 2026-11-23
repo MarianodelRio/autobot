@@ -26,14 +26,16 @@ Las alertas se guardan en `ops_alert` (`apps/backend/src/autobot/ops/check.py`, 
 | Alerta (`kind`) | Runbook |
 | --- | --- |
 | `inbound_delay`, `failed_jobs`, `inbound_stuck` | [cola-y-latido](cola-y-latido.md) |
-| `outbound_stuck`, `outbound_failed`, `notification_failed` | [envios-unknown](envios-unknown.md) |
+| `outbound_stuck`, `outbound_failed`, `notification_failed`, `owner_unlinked` | [envios-unknown](envios-unknown.md) |
 | `registry`, `tenant_unavailable`, `errors:<canal>`, `health:<codigo>` | [negocio-o-canal](negocio-o-canal.md) |
+| `tenant_silent`, `webhook_unsubscribed`, `webhook_errors`, `number_quality` | [negocio-o-canal](negocio-o-canal.md) |
 | `auth`, `auth:<canal>`, `bot:notify:auth` | [negocio-o-canal](negocio-o-canal.md) y [rotar secretos](../procedimientos/rotar-secretos.md) |
 | `bot:<bot>:<codigo>` (`demo_tg`, `notify`, `demo_wa`) | [negocio-o-canal](negocio-o-canal.md) |
-| `calendar:<canal>`, `sweep:<canal>` | [calendar](calendar.md) |
+| `calendar:<canal>`, `sweep:<canal>`, `calendar_outage` | [calendar](calendar.md) |
 | `container_down:<servicio>`, `container_unhealthy:<servicio>`, `container_restarted:<servicio>`, `container_image:<servicio>`, `container_unexpected:<servicio>`, `containers_stale` | [contenedor-caido](contenedor-caido.md) |
 | `containers_restore` | [restauración](../procedimientos/restaurar.md) |
 | `deploy_aborted`, `deploy_rollback` | [volver-atras](volver-atras.md) |
+| `backup_prune_overdue` | [Caducar snapshots](../procedimientos/backups.md#caducar-snapshots) |
 | `disk`, `disk_critical` | [Disco lleno](../procedimientos/mantenimiento.md#disco-lleno) |
 | `billing`, `billing:demo_wa` | Sin runbook: umbral de mensajes facturables; ver [alta y baja de un negocio](../procedimientos/alta-baja-negocio.md) |
 | Aviso de healthchecks.io (latido) | [cola-y-latido](cola-y-latido.md) |

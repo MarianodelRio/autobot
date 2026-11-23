@@ -12,7 +12,7 @@ sequenceDiagram
     participant P as Proveedor (Meta / Telegram)
     participant W as web (channels/views.py)
     participant DB as PostgreSQL
-    participant WI as worker-inbound
+    participant WI as worker-inbound / worker-calendar
     participant K as Pack
     participant WO as worker-outbound
 
@@ -55,13 +55,13 @@ Las peticiones del bot de demo y del bot de dueños entran por sus propias vista
 
 - **Idempotente.** `INSERT … ON CONFLICT (tenant_id, channel, provider_event_id) DO NOTHING`. Si el proveedor reintenta, la fila ya existe y no se vuelve a encolar nada.
 - **Estado inicial.** `pending`, salvo `ignored` (se guarda, no se procesa) cuando el canal principal no debe contestar: el negocio está pausado, o en alta y el remitente no está en `testers.main`. Los estados de entrega de nuestros propios mensajes nunca se ignoran: describen envíos ya hechos.
-- **Mismo commit.** El trabajo se encola en la misma transacción (`runtime/queue.py`, `enqueue`): existe solo si la fila se confirmó. Un mensaje va a `process_event` con el candado `conv:<h>`; un estado de entrega va a `apply_status` sin candado. Ambos en la cola `inbound`.
+- **Mismo commit.** El trabajo se encola en la misma transacción (`runtime/queue.py`, `enqueue`): existe solo si la fila se confirmó. Un mensaje va a `process_event` con el candado `conv:<h>`; un estado de entrega va a `apply_status` sin candado. `apply_status` va siempre a la cola `inbound`; `process_event` va a `inbound_ext` si el pack del negocio llama a Google Calendar (`needs_calendar`, como `salon`) y a `inbound` si no (como `bus`). Un único helper decide la cola (`process_event_queue`), así que los mensajes de un contacto caen siempre en la misma y el candado los mantiene en orden ([ADR-023](adr/ADR-023-colas-aisladas-y-degradacion.md)).
 
 Esta entrada la comparten los webhooks, el sondeo de Telegram (`telegram_poll`) y el selector del bot de demo, así que todos siguen el mismo camino. La [ADR-004](adr/ADR-004-entrada-idempotente.md) recoge la decisión.
 
 ## 3. `process_event`: tres fases
 
-`apps/backend/src/autobot/runtime/process.py` (`process_event`) lo ejecuta un worker (`worker-inbound`). Está partido en tres para que no haya transacción abierta mientras el pack llama a Google Calendar ni mientras el adaptador habla con el proveedor.
+`apps/backend/src/autobot/runtime/process.py` (`process_event`) lo ejecuta un worker (`worker-calendar` para los packs que usan Calendar, `worker-inbound` para el resto). Está partido en tres para que no haya transacción abierta mientras el pack llama a Google Calendar ni mientras el adaptador habla con el proveedor.
 
 **tx1: cargar.** Con `tenant_tx` (ver [tenants y RLS](tenants-y-rls.md)): lee el evento (si ya no está `pending`, termina: es un reintento tras un tx2 confirmado), reconstruye el mensaje desde el `payload` guardado, crea o actualiza el contacto y carga su conversación con el estado efectivo (caducidad y versión del estado).
 
@@ -72,14 +72,14 @@ Esta entrada la comparten los webhooks, el sondeo de Telegram (`telegram_poll`) 
 - Órdenes globales (`global_command`): baja y alta de mensajes (`opt_out`/`opt_in`) y `persona` (`human`) se atienden siempre, incluso con el negocio degradado; `menu` reinicia el estado. En un paso de texto libre esas palabras provocan una pregunta («¿orden o nombre?») en lugar de actuar.
 - Aviso de primera capa de privacidad: si el contacto aún no lo ha recibido (y el negocio puede contestar) se antepone a las respuestas ([Aviso inicial](packs.md#aviso-inicial-y-ordenes-de-atencion)).
 - Si el negocio no tiene pack o está degradado, el contacto recibe un texto genérico (`UNAVAILABLE_TEXT`) y su conversación no se toca.
-- En el caso normal, `_run_pack` construye el `PackContext` y llama a `Pack.handle_message`.
+- En el caso normal, `_run_pack` construye el `PackContext` y llama a `Pack.handle_message` dentro de un **presupuesto de tiempo de 8 s** para todo lo que haga con Google Calendar: el cliente no empieza un intento cuando se ha agotado, y un cortacircuitos por proceso hace fallar al instante las llamadas mientras Google no contesta.
 
 **tx2: persistir** (`_persist`). En una sola transacción: guarda el estado de la conversación, planifica las respuestas con `plan_sends` (límites comunes de los dos canales), crea las filas `outbound_message` (`create_replies`), aplica las acciones del pack (`apply_actions`), marca el evento `done` (o `failed`) y encola un `send_message` por mensaje (`defer_sends`). Los trabajos solo existen si todo se confirma. Si otra ejecución ya terminó el evento, tx2 no hace nada: nunca se contesta dos veces.
 
 ### Errores y reintentos
 
-- `TransientError` del pack (un proveedor que puede contestar luego): el trabajo se reintenta; en el último intento el contacto recibe el texto de recuperación y el evento queda `failed`.
-- Cualquier otra excepción del pack: texto de recuperación y estado reiniciado, evento `failed`. Se registra con `log.exception`.
+- `TransientError` del pack (un proveedor que puede contestar luego): el trabajo se reintenta (una sola vez en `inbound_ext`, tres en `inbound`); en el último intento el contacto recibe un texto genérico de servicio degradado («Ahora mismo no puedo completar tu consulta. Prueba de nuevo en unos minutos.») y **su conversación conserva el estado**, de modo que al repetir la última acción sigue donde iba. El evento queda `failed`.
+- Cualquier otra excepción del pack: texto de recuperación (que se disculpa) y estado reiniciado, evento `failed`. Se registra con `log.exception`.
 - Fallo determinista al persistir (por ejemplo `LimitError`): se persiste el texto de recuperación en su lugar.
 - Errores de base de datos de conexión o concurrencia: se propaga y el trabajo se reintenta (ver [cola y workers](cola-y-workers.md#reintentos)).
 
@@ -105,11 +105,11 @@ El pack devuelve un `PackResult`: respuestas (`Reply`), estado nuevo y acciones 
 
 `apps/backend/src/autobot/runtime/outbound.py` (`send_message`), en `worker-outbound`:
 
-1. **tx:** bloquea la fila (`select_for_update`), traduce la respuesta al formato del proveedor con el adaptador (`render`) y la pasa de `pending` a `sending` **confirmándolo antes de llamar**.
+1. **tx:** bloquea la fila (`select_for_update`). Si ya pasó su `expires_at` (30 minutos una respuesta; hasta 24 h un recordatorio), la deja `expired` sin enviarla (una respuesta caducada se sustituye por una disculpa). Si no, traduce la respuesta al formato del proveedor con el adaptador (`render`) y la pasa de `pending` a `sending` **confirmándolo antes de llamar**. Con el cortacircuitos del proveedor abierto, no llega a llamar: se aplaza.
 2. **Sin transacción:** `adapter.send(...)`.
-3. **tx:** guarda el resultado: `sent`, `failed`, `unknown` o vuelve a `pending` si el proveedor pidió reintentar.
+3. **tx:** guarda el resultado: `sent`, `failed`, `unknown` o vuelve a `pending` si el proveedor pidió reintentar (se reintenta hasta que caduque, sin tope de intentos).
 
-Un contacto envía de uno en uno y en orden gracias al candado `out:<h>`. El detalle de estados y por qué `unknown` no se reenvía está en [efectos e idempotencia](efectos-e-idempotencia.md#estados-de-un-envio).
+Las respuestas a un contacto salen de una en una y en orden gracias al candado `out:<h>`; los recordatorios y demás envíos proactivos usan `outp:<h>`, así que no se ordenan respecto a las respuestas ni las bloquean. El detalle de estados y por qué `unknown` no se reenvía está en [efectos e idempotencia](efectos-e-idempotencia.md#estados-de-un-envio).
 
 Si el canal es WhatsApp, Meta devuelve después estados de entrega (`sent`, `delivered`, `read`, `failed`) por el mismo webhook. Entran como eventos de tipo estado y los procesa `apply_status`: localiza el mensaje por `outbound_ref` (nuestro id, que viajó en `biz_opaque_callback_data`) o por el id del proveedor, y actualiza su estado, precio y facturación. Un estado de entrega demuestra que un `unknown` sí salió.
 

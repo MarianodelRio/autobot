@@ -24,6 +24,11 @@ La fecha es la del alta del ADR en git. Si una decisión cambia, el ADR afectado
 | [016](ADR-016-acciones-de-alta-whatsapp.md) | Acciones de alta de WhatsApp desde la pestaña «Alta» | vigente | 2026-11-20 | |
 | [017](ADR-017-instalador-de-la-vm-y-entorno-local.md) | Instalador de la VM desde dentro y un solo comando para local | vigente | 2026-11-20 | Sustituye parte del ADR-012 |
 | [018](ADR-018-documentacion-en-el-panel.md) | Documentación como sitio servido por el panel | vigente | 2026-11-21 | |
-| [019](ADR-019-libro-de-supresiones.md) | Libro de supresiones para no resucitar datos olvidados | vigente | 2026-11-22 | Complementa el ADR-011 |
+| [019](ADR-019-libro-de-supresiones.md) | Libro de supresiones para no resucitar datos olvidados | vigente | 2026-11-22 | Complementa el ADR-011; ADR-025 (exportación automática) |
 | [020](ADR-020-api-del-panel-aparte.md) | La API del panel en un servicio propio, redes separadas y contenedores endurecidos | vigente | 2026-11-22 | Actualiza ADR-005 y ADR-008 |
-| [021](ADR-021-backups-resistentes.md) | Backups resistentes a un servidor comprometido y clave de cifrado aparte | vigente | 2026-11-22 | Complementa ADR-011 y ADR-019 |
+| [021](ADR-021-backups-resistentes.md) | Backups resistentes a un servidor comprometido y clave de cifrado aparte | vigente | 2026-11-22 | Complementa ADR-011 y ADR-019; ADR-025 (vigilancia de la purga) |
+| [022](ADR-022-la-clave-de-cifrado-nunca-se-genera-sola.md) | La clave de cifrado nunca se genera sola | vigente | 2026-11-23 | Complementa ADR-021 |
+| [023](ADR-023-colas-aisladas-y-degradacion.md) | Colas aisladas y degradación ante servicios externos | vigente | 2026-11-23 | Modifica ADR-005 (workers) |
+| [024](ADR-024-envio-saliente-por-caducidad.md) | Envío saliente por caducidad | vigente | 2026-11-23 | Complementa ADR-004 |
+| [025](ADR-025-libro-de-supresiones-y-purga-vigilados.md) | Libro de supresiones y purga vigilados automáticamente | vigente | 2026-11-23 | Complementa ADR-019 y ADR-021 |
+| [026](ADR-026-conciliacion-de-envios-ambiguos.md) | Conciliación de envíos ambiguos y recuperación en bloque | vigente | 2026-11-23 | Cambia la regla de `unknown` (ADR-004, ADR-024) |

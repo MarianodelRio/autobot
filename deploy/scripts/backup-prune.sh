@@ -71,4 +71,17 @@ fi
 # constant and every snapshot follows the same policy.
 "$restic_bin" forget --tag autobot --group-by tags \
   --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune "${dry_run[@]}"
+# The suppression-ledger snapshots (hourly, tag autobot-ledger, ADR-025) are tiny and
+# restore.sh only needs the latest, but a few weeks of history cost nothing.
+"$restic_bin" forget --tag autobot-ledger --group-by tags \
+  --keep-daily 7 --keep-weekly 4 --prune "${dry_run[@]}"
+# Proof of this run for the server (ADR-025): a tiny snapshot tagged autobot-prune. The
+# server's backup.sh reads its time (never writes it with a delete permission) and
+# ops_check raises backup_prune_overdue if it is older than 10 days. Only after the
+# forgets above succeeded (set -e), never on a dry run; the previous markers are
+# expired right after, keeping the last three.
+if [[ ${#dry_run[@]} -eq 0 ]]; then
+  printf 'pruned\n' | "$restic_bin" backup --stdin --stdin-filename prune-marker --tag autobot-prune
+  "$restic_bin" forget --tag autobot-prune --group-by tags --keep-last 3 --prune
+fi
 echo 'Prune completed'

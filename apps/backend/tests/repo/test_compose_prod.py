@@ -9,7 +9,8 @@ import yaml
 
 COMPOSE = Path(__file__).resolve().parents[4] / "deploy" / "compose" / "compose.prod.yaml"
 PUBLIC_EDGE = "caddy"  # the only service allowed to publish on every interface (80/443)
-HARDENED = ("web", "web-panel", "worker-inbound", "worker-outbound", "panel", "victorialogs")
+WORKERS = ("worker-inbound", "worker-calendar", "worker-periodic", "worker-outbound")
+HARDENED = ("web", "web-panel", *WORKERS, "panel", "victorialogs")
 
 
 @pytest.fixture(scope="module")
@@ -34,12 +35,12 @@ def test_caddy_publishes_only_http_and_https(services: dict[str, Any]) -> None:
 
 
 def test_database_and_logs_publish_nothing(services: dict[str, Any]) -> None:
-    for name in ("db", "victorialogs", "web-panel", "worker-inbound", "worker-outbound"):
+    for name in ("db", "victorialogs", "web-panel", *WORKERS):
         assert not services[name].get("ports"), name
 
 
 def test_only_web_panel_holds_owner_and_readonly_urls(services: dict[str, Any]) -> None:
-    for name in ("web", "worker-inbound", "worker-outbound"):
+    for name in ("web", *WORKERS):
         env = services[name]["environment"]
         assert env["DB_OWNER_URL"] == "", name
         assert env["DB_READONLY_URL"] == "", name

@@ -33,7 +33,7 @@ las lean `web` y los workers, recréalos
 
 ```bash
 # en la VPS, como deploy, en /srv/autobot
-deploy/scripts/compose.sh up -d --no-deps web worker-inbound worker-outbound
+deploy/scripts/compose.sh up -d --no-deps web worker-inbound worker-calendar worker-periodic worker-outbound
 ```
 
 | Qué | Cómo |

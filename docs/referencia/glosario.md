@@ -28,8 +28,8 @@ al chat de operación, y atiende su menú. También se llama bot de dueños.
 viven solo en los adaptadores. `main` es el canal real de un negocio; `demo_tg` y `demo_wa`
 son los de las puertas de demo. [Canales](../arquitectura/canales.md).
 
-**Cola.** Cola de trabajos Procrastinate sobre PostgreSQL, con colas `inbound`, `outbound` y
-`periodic`. Los trabajos solo llevan ids. [Cola y workers](../arquitectura/cola-y-workers.md).
+**Cola.** Cola de trabajos Procrastinate sobre PostgreSQL, con colas `inbound`, `inbound_ext`, `outbound`,
+`periodic` y `ops`. Los trabajos solo llevan ids. [Cola y workers](../arquitectura/cola-y-workers.md).
 
 **Contacto.** Persona que escribe a un negocio por un canal. Un dato de cliente con
 `tenant_id` y RLS. [Tenants y RLS](../arquitectura/tenants-y-rls.md).
@@ -88,8 +88,14 @@ configuración y sus datos. [Tenants y RLS](../arquitectura/tenants-y-rls.md).
 Nunca se mantiene abierta durante llamadas externas.
 [Tenants y RLS](../arquitectura/tenants-y-rls.md).
 
-**`unknown`.** Resultado ambiguo de un envío: no se sabe si el proveedor lo entregó. Nunca se
-reintenta a ciegas; lo resuelve una persona. [Envíos unknown](../incidencias/envios-unknown.md).
+**`unknown`.** Resultado ambiguo de un envío: no se sabe si el proveedor lo entregó. Se
+concilia con el estado de entrega y, sin evidencia tras 10 minutos, se reenvía una sola vez si su clase
+admite duplicados (ADR-026); si no, lo resuelve una persona. [Envíos unknown](../incidencias/envios-unknown.md).
+
+**`expired`.** Estado de un envío que pasó su `expires_at` (30 minutos una respuesta, hasta 24 h un
+recordatorio) sin que el proveedor lo aceptara: no se envió ni se enviará. Una respuesta caducada se
+sustituye por una disculpa; un recordatorio caducado puede revivirse; un aviso al dueño caduca a las 2 h, sin disculpa. No es un fallo.
+[ADR-024](../arquitectura/adr/ADR-024-envio-saliente-por-caducidad.md).
 
 **Vida de un mensaje.** El recorrido de un mensaje entrante desde el webhook hasta la
 respuesta. [Vida de un mensaje](../arquitectura/vida-de-un-mensaje.md).

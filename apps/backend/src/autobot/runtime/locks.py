@@ -48,3 +48,11 @@ def owner_chat_lock(chat_id: int) -> str:
 def conversation_lock(tenant_id: UUID, channel: str, external_id: str) -> str:
     """`conv:<h>`: one contact's messages are processed one at a time, in order."""
     return f"conv:{contact_hash(tenant_id, channel, external_id)}"
+
+
+def send_lock(tenant_id: UUID, channel: str, external_id: str, *, proactive: bool) -> str:
+    """`out:<h>` for a contact's replies, `outp:<h>` for what the platform sends on its own
+    (reminders, confirmations): replies stay in order among themselves, and a reminder
+    stuck on a provider's error never holds back a reply (ADR-024)."""
+    prefix = "outp" if proactive else "out"
+    return f"{prefix}:{contact_hash(tenant_id, channel, external_id)}"

@@ -35,6 +35,7 @@ export const STATUS_LABEL: Record<string, string> = {
   failed: "Fallido",
   ignored: "Ignorado",
   unknown: "Sin confirmar",
+  expired: "Caducado",
 };
 
 function ActivityDetailBody({ kind, id }: { kind: string; id: string }) {

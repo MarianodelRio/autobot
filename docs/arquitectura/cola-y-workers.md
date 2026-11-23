@@ -8,18 +8,19 @@ El webhook debe contestar rápido y no puede llamar a Meta, Google ni Telegram. 
 
 ## Colas y trabajos
 
-Los trabajos se declaran todos en `apps/backend/src/autobot/runtime/jobs.py` (Procrastinate descubre ese módulo con `PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "runtime.jobs"`). Hay cuatro colas, para ver de un vistazo qué se atasca:
+Los trabajos se declaran todos en `apps/backend/src/autobot/runtime/jobs.py` (Procrastinate descubre ese módulo con `PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "runtime.jobs"`). Hay cinco colas, para ver de un vistazo qué se atasca:
 
 | Cola | Trabajos | Candado |
 |---|---|---|
-| `inbound` | `process_event`, `apply_status`, `route_demo_event`, `handle_owner_event` | `conv:<h>`, ninguno, `demo:<h>`, `ownerchat:<h>` |
-| `outbound` | `send_message`, `send_notification` | `out:<h>`, `owner:<id del negocio>` |
-| `periodic` | `dispatch_periodic`, `run_periodic`, `retry_stalled_jobs`, `retention_cleanup`, `jobs_cleanup`, `dispatch_owner_summaries`, `send_owner_summary` | `queueing_lock` en la mayoría (ver abajo) |
+| `inbound` | `process_event` (packs sin llamadas externas), `apply_status`, `route_demo_event`, `handle_owner_event` | `conv:<h>`, ninguno, `demo:<h>`, `ownerchat:<h>` |
+| `inbound_ext` | `process_event` de los packs que llaman a Google Calendar (`needs_calendar`, como `salon`) | `conv:<h>` |
+| `outbound` | `send_message`, `send_notification` | `out:<h>` (respuestas), `outp:<h>` (proactivos), `owner:<id del negocio>` |
+| `periodic` | `dispatch_periodic`, `run_periodic`, `retry_stalled_jobs`, `retention_cleanup`, `jobs_cleanup`, `reconcile_unknown`, `dispatch_owner_summaries`, `send_owner_summary` | `queueing_lock` en la mayoría (ver abajo) |
 | `ops` | `ops_check` | `ops_check` |
 
 Quién los encola y con qué argumentos:
 
-- `process_event` / `apply_status`: `runtime/inbound.py`, al guardar un evento entrante.
+- `process_event` / `apply_status`: `runtime/inbound.py`, al guardar un evento entrante, y `runtime/sweeps.py` al reencolar. La cola de `process_event` la decide un único helper, `process_event_queue` (`jobs.py`): `inbound_ext` si el pack del negocio necesita Calendar, `inbound` si no. Un contacto es de un solo negocio, así que sus mensajes caen siempre en la misma cola y el candado `conv:<h>` conserva el orden.
 - `send_message`: `runtime/outbound.py` (`defer_sends`), `runtime/sweeps.py` y `ops/actions.py` (`resend`).
 - `send_notification`: `runtime/process.py` (acción `NotifyOwner`) y `runtime/summary.py`.
 - `dispatch_periodic` / `run_periodic`: ver [Tareas periódicas](#tareas-periodicas).
@@ -38,16 +39,20 @@ Por eso todo el código síncrono encola con `enqueue` (`apps/backend/src/autobo
 
 ## Qué worker escucha qué
 
-Se despliegan dos workers (`deploy/compose/compose.yaml`), cada uno con `--concurrency 2`:
+Se despliegan cuatro workers (`deploy/compose/compose.yaml`), cada uno con su concurrencia ([ADR-023](adr/ADR-023-colas-aisladas-y-degradacion.md)):
 
-| Servicio | Colas | Para qué |
-|---|---|---|
-| `worker-inbound` | `inbound,periodic,ops` | Procesa webhooks (aquí corren los packs, que llaman a Google Calendar) y las tareas periódicas. |
-| `worker-outbound` | `outbound,ops` | Solo envía. |
+| Servicio | Colas | Concurrencia | Para qué |
+|---|---|---|---|
+| `worker-inbound` | `inbound` | 4 | Conversaciones de los packs sin llamadas externas (`bus`), selector del bot de demo, chat de dueños y estados de entrega. |
+| `worker-calendar` | `inbound_ext` | 8 | Conversaciones de los packs que llaman a Google Calendar (`salon`). |
+| `worker-periodic` | `periodic`, `ops` | 2 | Tareas periódicas de plataforma y de los packs (también las que llaman a Calendar, como la barrida del calendario), `retry_stalled_jobs`, resúmenes. |
+| `worker-outbound` | `outbound` | 8 | Solo envía. |
 
-La separación hace que una caída de Google Calendar no pueda dejar sin enviar las respuestas: Google solo se llama desde `inbound` y `periodic`. `ops` la escuchan **los dos**: así, si uno se cae, el otro sigue ejecutando `ops_check` y avisa de esa caída.
+Cada grupo de huecos es un proceso aparte, así que **un servicio externo lento solo retiene sus propios huecos**: una caída de Google Calendar no frena los envíos, ni las conversaciones de `bus`, ni las tareas periódicas que no dependen de ella. `ops` solo la escucha `worker-periodic`: las comprobaciones de salud de `ops_check` llaman a Meta, Telegram y Google una tras otra y no deben ocupar nunca un hueco que envía o responde (con 700 negocios, la primera ejecución en frío tardó 581 s sobre un hueco de `worker-outbound`). Si `worker-periodic` se cae, `ops_check` no avisa de ello: lo detecta el latido externo (Healthchecks) al dejar de recibirlo. Con Google lento, el límite de un mensaje es de unos 8 s de hueco (ver [Calendar lento o caído](#calendar-lento-o-caido)), no del minuto que llegaba a retener antes.
 
 Parada ordenada: ante `SIGTERM` el worker deja de tomar trabajos y deja terminar los que corren hasta 50 s (`--shutdown-graceful-timeout 50`), dentro de los 60 s de `stop_grace_period` antes de que Docker lo mate. Un trabajo cortado se reintenta porque todos son idempotentes. En local, `deploy/compose/compose.local.yaml` envuelve el mismo comando con un recargador (`deploy/compose/dev-worker.py`).
+
+Los trabajos síncronos corren en el pool de hilos por defecto de asyncio, que con `min(32, CPU + 4)` hilos limitaría a 6 los huecos de un worker de concurrencia 8 en una VPS de 2 vCPU. Por eso `compose.prod.yaml` fija `PYTHON_CPU_COUNT` en cada worker.
 
 !!! note "Cada trabajo cierra sus conexiones"
     Los trabajos síncronos corren en hilos del worker. Cada uno llama a `close_old_connections()` al empezar y al acabar, para mantenerse dentro del presupuesto de conexiones.
@@ -57,7 +62,8 @@ Parada ordenada: ante `SIGTERM` el worker deja de tomar trabajos y deja terminar
 Un candado de Procrastinate (`lock=`) garantiza que **no corren dos trabajos con el mismo candado a la vez, y que se ejecutan por orden de creación**. La plataforma lo usa para que los mensajes de una persona se procesen y se envíen uno a uno y en orden:
 
 - `conv:<h>`: los mensajes entrantes de un contacto.
-- `out:<h>`: los envíos a un contacto (el mismo `<h>`). Un `send_message` que se reintenta conserva su sitio: es el trabajo más antiguo con ese candado.
+- `out:<h>`: las respuestas a un contacto (el mismo `<h>`). Un `send_message` que se reintenta conserva su sitio: es el trabajo más antiguo con ese candado.
+- `outp:<h>`: los envíos proactivos a ese contacto (recordatorios y confirmaciones). Separado de `out:<h>` para que un recordatorio atascado no bloquee una respuesta; a cambio, entre una respuesta y un recordatorio no hay orden garantizado ([ADR-024](adr/ADR-024-envio-saliente-por-caducidad.md)).
 - `owner:<tenant_id>`: los avisos al dueño de un negocio.
 - `demo:<h>` y `ownerchat:<h>`: las personas del bot de demo y los chats del bot de dueños (ver [bot de demo](bot-de-demo.md), [bot de dueños](bot-de-duenos.md)).
 - `ops_check`: una sola ejecución a la vez.
@@ -81,8 +87,9 @@ Procrastinate dispara sus tareas periódicas por cron (UTC) y cada instante prog
 | Tarea | Cron | Qué hace |
 |---|---|---|
 | `ops_check` | cada 5 min | Barridas, alertas, muestra del sistema y latido (ver abajo). Cola `ops`. |
-| `retry_stalled_jobs` | cada 5 min | Rescata trabajos cuyo worker murió. |
+| `retry_stalled_jobs` | cada minuto | Rescata trabajos cuyo worker murió. |
 | `retention_cleanup` | 03:00 | Retención de datos de clientes (gobernada por `RETENTION_CLEANUP_ENABLED`). |
+| `reconcile_unknown` | cada 5 min | Reenvía una vez los `unknown` de más de 10 minutos sin evidencia cuya clase admite duplicados, caduca los que pasaron `expires_at` y los avisos `held` viejos ([ADR-026](adr/ADR-026-conciliacion-de-envios-ambiguos.md)). |
 | `jobs_cleanup` | 03:30 | Purga los trabajos terminados de más de 30 días de `procrastinate_jobs`/`procrastinate_events`; no depende de `RETENTION_CLEANUP_ENABLED` porque solo guardan ids. |
 | `dispatch_owner_summaries` | cada hora | Resumen mensual a los dueños; solo actúa en el día 1 de cada negocio pasado el mediodía local (`>=`, para recuperar un envío si el worker estaba caído). |
 
@@ -99,12 +106,23 @@ Los trabajos reintentan solo lo que probablemente se arregla solo (`RETRYABLE` e
 
 | Trabajo | Estrategia |
 |---|---|
-| `process_event`, `apply_status`, `route_demo_event`, `handle_owner_event` | 3 reintentos, espera exponencial (2, 4 y 8 s). `is_last_attempt` avisa a `process_event` del último intento, que contesta con el texto de recuperación en lugar de reintentar. |
-| `send_message`, `send_notification` | `SendRetryStrategy`: solo `SendRetry` y errores de base de datos; esperas 5 s, 30 s, 2 min, 10 min, 30 min o el `retry_after` del proveedor; 5 intentos. Ver [efectos e idempotencia](efectos-e-idempotencia.md#reintentos-que-si-son-seguros). |
+| `process_event` en `inbound`, `apply_status`, `route_demo_event`, `handle_owner_event` | 3 reintentos, espera exponencial (2, 4 y 8 s). `is_last_attempt` avisa a `process_event` del último intento, que contesta en lugar de reintentar. |
+| `process_event` en `inbound_ext` | 1 reintento (2 s): el cliente de Calendar ya intenta dos veces y un hueco retenido durante más rondas es lo que dejaba sin servicio a los demás. Su último intento contesta con el texto de servicio degradado (ver abajo). |
+| `send_message` | `SendRetryStrategy`: un `SendRetry` (el proveedor dijo «luego», o no hubo conexión) se reintenta siempre, sin tope de intentos, con el `retry_after` del proveedor o un retroceso exponencial con jitter de hasta 300 s; el mensaje caduca por su `expires_at` (30 min una respuesta, hasta 24 h un recordatorio). Los errores de base de datos, 5 reintentos. Ver [efectos e idempotencia](efectos-e-idempotencia.md#reintentos-que-si-son-seguros). |
+| `send_notification` | `NotificationRetryStrategy`: `SendRetry` sin tope de intentos (el aviso caduca a las 2 h, `NOTICE_TTL`; espera del limitador, `retry_after` del proveedor o retroceso con jitter hasta 300 s) y errores de base de datos con 5 intentos. Antes del envío, un limitador en memoria (25 mensajes/s del bot y 1/s por chat del dueño, `runtime/ratelimit.py`) aplaza el aviso sin llamar a Telegram. |
 | `run_periodic` | 2 intentos, con un minuto de espera, para sobrevivir a una caída breve de Calendar. |
 | `send_owner_summary` | 3 intentos, 5 minutos de espera. |
 
 Si persistir la respuesta falla de forma determinista (por ejemplo `LimitError`), no se reintenta: el contacto recibe el texto de recuperación y el evento queda `failed`.
+
+### Calendar lento o caído
+
+Las medidas del [ADR-023](adr/ADR-023-colas-aisladas-y-degradacion.md) acotan lo que un Google degradado cuesta (`apps/backend/src/integrations/google_calendar/`, sin importar Django):
+
+- **Cliente**: timeout de 2,5 s y 2 intentos con pausa corta y jitter. Los errores de cuota (`quotaExceeded`, `rateLimitExceeded`, 429) no se reintentan dentro del cliente.
+- **Presupuesto por mensaje**: `runtime/process.py` abre `time_budget(8 s)` alrededor del pack; el cliente no empieza un intento sin tiempo y recorta su timeout a lo que queda.
+- **Cortacircuitos por proceso** (`breaker.py`): se abre tras 5 fallos seguidos, o con al menos la mitad de las llamadas de 30 s fallidas o más lentas de 1,5 s (mínimo 10 llamadas). Abierto, falla al instante con el mismo `TransientError`; cada 8 s deja pasar una llamada de prueba.
+- **Respuesta degradada**: en el último intento, un `TransientError` del pack responde con `DEGRADED_TEXT` (`core/conversation.py`) y **conserva el estado de la conversación**, en lugar de reiniciarla con el texto de recuperación. El evento queda `failed` y las señales de error de Calendar (`ops/state.py`) cuentan igual.
 
 ### Trabajos fallidos
 
@@ -112,11 +130,15 @@ Un trabajo que agota sus reintentos queda `failed` en `procrastinate_jobs`. En e
 
 ### Trabajos de un worker que murió
 
-Un trabajo `doing` cuyo worker murió conserva su candado y bloquearía al contacto para siempre; Procrastinate no lo reintenta solo. `retry_stalled_jobs` (cada 5 min) recoge los que llevan 30 s sin latido y los devuelve a `todo`. Es seguro: todo trabajo es idempotente, y un `send_message` cortado en `sending` termina `unknown` (nunca se reenvía). Si el trabajo rescatado choca con otro ya encolado bajo el mismo `queueing_lock` (por ejemplo el siguiente `ops_check`), no se puede reencolar: se marca `failed` para liberar el candado.
+Un trabajo `doing` cuyo worker murió conserva su candado y bloquearía al contacto para siempre; Procrastinate no lo reintenta solo. `retry_stalled_jobs` (cada minuto, en `worker-periodic`) recoge los que llevan 30 s sin latido y los devuelve a `todo`. Es seguro: todo trabajo es idempotente, y un `send_message` cortado en `sending` termina `unknown` (nunca se reenvía). Si el trabajo rescatado choca con otro ya encolado bajo el mismo `queueing_lock` (por ejemplo el siguiente `ops_check`), no se puede reencolar: se marca `failed` para liberar el candado.
 
 ## Conexiones del worker
 
-El `procrastinate worker` crea un pool psycopg propio, fuera del control de `CONN_MAX_AGE` de Django. `apps/backend/src/autobot/runtime/worker_pool.py` (`configure`, enganchado con `PROCRASTINATE_ON_APP_READY`) lo acota con `WORKER_DB_POOL_MIN` y `WORKER_DB_POOL_MAX` (1 y 6 por defecto: la conexión de `LISTEN`, la de recoger trabajos, el latido y el cierre de los trabajos de `--concurrency 2`), de modo que se sabe cuántas conexiones consume cada worker. Ver [variables de entorno](../referencia/variables-entorno.md).
+El `procrastinate worker` crea un pool psycopg propio, fuera del control de `CONN_MAX_AGE` de Django. `apps/backend/src/autobot/runtime/worker_pool.py` (`configure`, enganchado con `PROCRASTINATE_ON_APP_READY`) lo acota con `WORKER_DB_POOL_MIN` y `WORKER_DB_POOL_MAX` (1 y 6 por defecto: la conexión de `LISTEN`, la de recoger trabajos, el latido y el cierre de los trabajos), de modo que se sabe cuántas conexiones consume cada worker. `compose.prod.yaml` lo fija por servicio (8, 10, 6 y 10 para `worker-inbound`, `worker-calendar`, `worker-periodic` y `worker-outbound`), y cada hilo de trabajo abre además una conexión de Django: con eso el peor caso ronda las 90 conexiones y `max_connections` de PostgreSQL es 200 (el desglose está comentado en `compose.prod.yaml`). Ver [variables de entorno](../referencia/variables-entorno.md).
+
+## Cortacircuitos del proveedor
+
+`worker-outbound` lleva en memoria un cortacircuitos por proveedor, WhatsApp y Telegram (`apps/backend/src/autobot/runtime/breaker.py`, instancia `BREAKER` en `runtime/outbound.py`). Se abre tras 5 fallos de transporte seguidos (5xx, red, tiempo agotado; no 4xx ni autenticación) de **al menos 2 negocios distintos**. Abierto, `send_message` no llama al proveedor: aplaza el mensaje, y como mucho una vez cada 60 s uno de ellos ejecuta una sonda de solo lectura (`adapter.probe()`: `GET` del nodo del número en WhatsApp, `getMe` en Telegram); si responde, se cierra. Al abrirse y cerrarse escribe una señal en la caché de base de datos (`ops/state.py`), de la que `ops_check` deriva **una** alerta `provider_outage` ([alertas](../referencia/alertas.md)). Un reinicio del worker lo deja cerrado. Al recuperarse el proveedor los mensajes en espera no salen todos juntos: cada uno espera hasta la siguiente sonda más un azar (respuestas 0-30 s, recordatorios y demás 15-90 s) y los `send_message` se encolan con prioridad de Procrastinate (respuestas 10, recordatorios 0), de modo que una respuesta nunca espera detrás de un recordatorio y un atasco de WhatsApp retrasa lo mínimo a Telegram. Decisión en [ADR-024](adr/ADR-024-envio-saliente-por-caducidad.md).
 
 ## Barridas de `ops_check`
 
@@ -125,11 +147,11 @@ Aunque encolar en la transacción hace que no deba existir una fila sin trabajo,
 | Qué | Umbral | Acción |
 |---|---|---|
 | Envío `sending` | más de 10 min | Pasa a `unknown`; nunca se reenvía solo. |
-| Envío `pending` | más de 10 min, menos de 24 h | Se reencola `send_message`. |
+| Envío `pending` | más de 10 min, menos de 24 h | Se reencola `send_message` (con su candado `out:` u `outp:`). Si ya caducó, ese run lo deja `expired`. |
 | Envío `pending` | más de 24 h | Se cuenta como atascado; decide una persona. |
 | Evento entrante `pending` | más de 5 min | Alerta `inbound_stuck` (🔴); se reencola si tiene menos de 1 hora (el límite evita un bucle con un evento que fallara siempre). |
 
-Si `send_message` o `send_notification` no encuentran su fila, lo registran con `log.error` (solo ids). Además, `ops_check` cuenta los avisos al dueño en `failed` de las últimas 24 h (`notification_failed`: un aviso ambiguo no se reenvía), avisa del disco al 85 % (🟠) y al 95 % (🔴, `disk_critical`) y, si está configurado, envía el latido a `HEALTHCHECKS_PING_URL`. Si una comprobación global falla, **no** se envía latido: una ausencia de latido es la señal de que algo va mal.
+Si `send_message` o `send_notification` no encuentran su fila, lo registran con `log.error` (solo ids). Además, `ops_check` cuenta los avisos al dueño en `failed` o `expired` de las últimas 24 h (`notification_failed`: un aviso ambiguo no se reenvía), avisa del disco al 80 % (🟠) y al 95 % (🔴, `disk_critical`) y, si está configurado, envía el latido a `HEALTHCHECKS_PING_URL`. Si una comprobación global falla, **no** se envía latido: una ausencia de latido es la señal de que algo va mal.
 
 ### Alertas persistidas
 
@@ -148,7 +170,8 @@ El historial resuelto se purga junto con `audit_event` a los 12 meses mediante `
 - `apps/backend/src/autobot/runtime/periodic.py`: tareas periódicas de los packs.
 - `apps/backend/src/autobot/runtime/sweeps.py`, `apps/backend/src/autobot/ops/check.py`, `notifications.py`.
 - `apps/backend/src/autobot/ops/actions.py` (`retry_job`), `apps/backend/src/autobot/management/commands/job_retry.py`.
-- `deploy/compose/compose.yaml` (servicios `worker-inbound` y `worker-outbound`).
+- `apps/backend/src/integrations/google_calendar/` (cliente y `breaker.py`).
+- `deploy/compose/compose.yaml` (los cuatro workers) y `compose.prod.yaml` (reparto de conexiones).
 
 ## Relacionado
 

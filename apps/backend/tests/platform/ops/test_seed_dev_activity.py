@@ -98,6 +98,8 @@ def test_creates_rows_across_every_timeline_source(
         "web",
         "web-panel",
         "worker-inbound",
+        "worker-calendar",
+        "worker-periodic",
         "worker-outbound",
         "panel",
         "db",

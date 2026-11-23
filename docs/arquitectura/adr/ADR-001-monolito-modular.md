@@ -10,7 +10,7 @@ Una sola persona construye y opera la plataforma para 5–15 negocios. Hay que a
 
 - **Un solo proyecto Python 3.14 + Django 5.2 LTS**, dividido en `core/` e `integrations/` (sin Django), `packs/` (solo dependen de `core`) y `autobot/` (Django), con la regla de dependencias comprobada por `import-linter`.
 - **Una imagen, tres procesos**: `web` (webhooks de WhatsApp y Telegram: verifica, guarda y encola) y `worker-inbound`/`worker-outbound` (Procrastinate).
-- **Cola en el propio PostgreSQL con Procrastinate 3.x**: 4 colas (`inbound`, `outbound`, `periodic`, `ops`); `worker-inbound` atiende `inbound`, `periodic` y `ops`, `worker-outbound` atiende `outbound` y `ops` (dos workers desde 2026-11-11, para que una caída de Google Calendar no frene también los envíos; `ops` la escuchan los dos desde 2026-11-16, para que la caída de uno no silencie también su propia alerta); candados por contacto; tareas periódicas integradas.
+- **Cola en el propio PostgreSQL con Procrastinate 3.x** (desde el [ADR-023](ADR-023-colas-aisladas-y-degradacion.md) hay una quinta cola, `inbound_ext`, y cuatro workers; lo que sigue es el reparto original): 4 colas (`inbound`, `outbound`, `periodic`, `ops`); `worker-inbound` atiende `inbound`, `periodic` y `ops`, `worker-outbound` atiende `outbound` y `ops` (dos workers desde 2026-11-11, para que una caída de Google Calendar no frene también los envíos; `ops` la escuchan los dos desde 2026-11-16, para que la caída de uno no silencie también su propia alerta); candados por contacto; tareas periódicas integradas.
 
 ## Alternativas consideradas
 

@@ -24,7 +24,7 @@ _HARDENING = {"cap_drop": ["ALL"], "security_opt": ["no-new-privileges:true"]}
 def _good_services() -> dict[str, Any]:
     worker = {
         "read_only": True,
-        "environment": {"DB_APP_URL": "x"},
+        "environment": {"DB_APP_URL": "x", "RETENTION_CLEANUP_ENABLED": "true"},
         "networks": {"egress": None, "data": None, "logs": None},
         **_HARDENING,
     }
@@ -63,6 +63,8 @@ def _good_services() -> dict[str, Any]:
             **_HARDENING,
         },
         "worker-inbound": deepcopy(worker),
+        "worker-calendar": deepcopy(worker),
+        "worker-periodic": deepcopy(worker),
         "worker-outbound": deepcopy(worker),
     }
 
@@ -86,6 +88,8 @@ def test_good_compose_services_pass() -> None:
         lambda s: s["worker-inbound"]["environment"].update(DB_OWNER_URL="postgres://owner"),
         lambda s: s["worker-outbound"]["environment"].update(FP_OWNER_PASSWORD="x"),
         lambda s: s["worker-outbound"].update(read_only=False),
+        lambda s: s["worker-calendar"]["environment"].update(DB_OWNER_URL="postgres://owner"),
+        lambda s: s["worker-periodic"].update(read_only=False),
         lambda s: s["db"]["environment"].update(DJANGO_SECRET_KEY="x"),
         lambda s: s["caddy"]["environment"].update(DB_APP_URL="postgres://app"),
         lambda s: s["web"]["environment"].update(DB_OWNER_URL="postgres://owner"),
@@ -98,6 +102,7 @@ def test_good_compose_services_pass() -> None:
         lambda s: s["victorialogs"].update(security_opt=[]),
         lambda s: s["caddy"]["networks"].update(data=None),
         lambda s: s["db"]["networks"].update(edge=None),
+        lambda s: s["worker-periodic"]["environment"].update(RETENTION_CLEANUP_ENABLED="false"),
     ],
 )
 def test_weakened_compose_services_fail(mutate: Any) -> None:

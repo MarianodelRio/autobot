@@ -57,6 +57,18 @@ trap 'rm -rf "$stage"' EXIT
 # --no-lock (honoured by `restore`, unlike `backup`): the credential on a new server may
 # be read-only and could not delete a lock file afterwards (ADR-021).
 "$restic_bin" --no-lock restore "${AUTOBOT_RESTORE_SNAPSHOT:-latest}" --tag autobot --target "$stage"
+# The suppression ledger (ADR-019, ADR-025): the LATEST snapshot tagged autobot-ledger,
+# not the one of the snapshot being restored, so an erasure made after it is still
+# reapplied below. Optional: a repository from before ADR-025 has none, and then only the
+# table inside the restored database is applied (warned loudly, see restaurar.md).
+ledger_stage=$stage/ledger
+ledger_file=$ledger_stage/var/backups/privacy-ledger.jsonl
+mkdir -p "$ledger_stage"
+if ! "$restic_bin" --no-lock restore latest --tag autobot-ledger --target "$ledger_stage" >/dev/null 2>&1 ||
+  [[ ! -f $ledger_file ]]; then
+  rm -f "$ledger_file"
+  echo 'WARNING: no suppression-ledger snapshot (tag autobot-ledger) could be fetched: only the erasures already inside the restored database will be reapplied. Anything forgotten after the snapshot may reappear; follow "Reaplicar olvidos y purgas" in restaurar.md with an offline export if you have one' >&2
+fi
 # Restic restores paths relative to the root of the snapshot. Refuse incomplete backups.
 for file in var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile var/backups/autobot.dump; do
   if [[ ! -s $stage/$file ]]; then
@@ -123,7 +135,7 @@ if [[ -f var/.restore-incomplete ]]; then
   fi
   # A failed start can leave services running. Never run pg_restore --clean
   # while web or worker might still be using the database.
-  for service in web web-panel worker-inbound worker-outbound panel caddy; do
+  for service in web web-panel worker-inbound worker-calendar worker-periodic worker-outbound panel caddy; do
     containers=$(docker ps -q --filter "label=com.docker.compose.project=$project" \
       --filter "label=com.docker.compose.service=$service") || {
         echo 'Could not enumerate running services; refusing restore' >&2
@@ -181,6 +193,15 @@ for secret in TenantSecret.objects.using('owner'):
   echo 'The given SECRETS_ENCRYPTION_KEY does not decrypt the restored tenant_secret rows: wrong key. Re-run with the right one (var/.restore-incomplete stays so the retry is allowed)' >&2
   exit 1
 fi
+# Re-apply the erasures (contact_forget, tenant_purge) the backup brought back, BEFORE any
+# worker or customer-facing service runs. The latest ledger snapshot is read from stdin:
+# the one-off container is read-only and does not see this host's files. Idempotent; it
+# exits non-zero if a purge is blocked by running jobs (none run here), failing the restore.
+if [[ -s $ledger_file ]]; then
+  "${compose[@]}" run --rm -T web-panel python manage.py privacy_reapply --ledger - <"$ledger_file"
+else
+  "${compose[@]}" run --rm -T web-panel python manage.py privacy_reapply </dev/null
+fi
 if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
   # web, web-panel, panel and victorialogs are safe and needed to verify the restore; the
   # workers are not started by default, because they would start sending with the
@@ -189,10 +210,13 @@ if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then
   # restore-test.sh): a *second* run of this script, after var/.deployed-sha is
   # already written, is refused above ("Existing deployment"). To start the
   # workers later, once verified, use `deploy/scripts/compose.sh up -d
-  # worker-inbound worker-outbound` instead of re-running this script.
+  # worker-inbound worker-calendar worker-periodic worker-outbound` instead of
+  # re-running this script.
   "${compose[@]}" up -d web web-panel panel victorialogs caddy
   if [[ ${AUTOBOT_RESTORE_START_WORKERS:-false} == true ]]; then
-    "${compose[@]}" up -d worker-inbound worker-outbound
+    # The workers the restored SHA's compose file defines (four since ADR-023).
+    mapfile -t workers < <("${compose[@]}" config --services | grep '^worker-')
+    "${compose[@]}" up -d "${workers[@]}"
   fi
 fi
 if [[ ${AUTOBOT_RESTORE_DB_ONLY:-false} != true ]]; then

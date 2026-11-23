@@ -86,7 +86,7 @@ guard_distinct_hosts() {
 # label), so a single command with all of them would match nothing and the guards below
 # would never fire.
 # shellcheck disable=SC2016  # intentional: $s expands on the remote host, not here.
-app_containers_cmd='for s in web web-panel worker-inbound worker-outbound; do docker ps -q --filter label=com.docker.compose.project=autobot --filter label=com.docker.compose.service=$s; done'
+app_containers_cmd='for s in web web-panel worker-inbound worker-calendar worker-periodic worker-outbound; do docker ps -q --filter label=com.docker.compose.project=autobot --filter label=com.docker.compose.service=$s; done'
 
 guard_empty_target() {
   if ssh_deploy "$to" 'test -f /srv/autobot/var/.deployed-sha'; then
@@ -138,7 +138,7 @@ step_freeze() {
     gh workflow disable deploy.yml || echo 'Could not disable deploy.yml; disable it by hand' >&2
   fi
   ssh_admin "$from" 'sudo systemctl stop autobot-backup.timer'
-  ssh_deploy "$from" '/srv/autobot/deploy/scripts/compose.sh stop worker-inbound worker-outbound web web-panel panel caddy'
+  ssh_deploy "$from" '/srv/autobot/deploy/scripts/compose.sh stop worker-inbound worker-calendar worker-periodic worker-outbound web web-panel panel caddy'
   ssh_deploy "$from" '/srv/autobot/deploy/scripts/backup.sh'
   # shellcheck disable=SC2016  # intentional: expands remotely inside the ssh'd shell, not here.
   snapshot=$(ssh_deploy "$from" \
@@ -171,7 +171,7 @@ step_start_destination() {
     return 1
   fi
   confirm "FROM has no application containers running. Start TO's workers now?" || return 1
-  ssh_deploy "$to" '/srv/autobot/deploy/scripts/compose.sh up -d worker-inbound worker-outbound'
+  ssh_deploy "$to" '/srv/autobot/deploy/scripts/compose.sh up -d worker-inbound worker-calendar worker-periodic worker-outbound'
   echo 'TO is now live. Change the DNS for '"$PUBLIC_HOST"' to TO, then --only=finish.'
 }
 

@@ -58,7 +58,9 @@ class Contact(TenantScoped):
         indexes = [
             models.Index(
                 fields=["tenant", "last_activity_at", "created_at"], name="contact_retention_idx"
-            )
+            ),
+            # The panel's contact list: (created_at desc, id desc) within a tenant.
+            models.Index(fields=["tenant", "created_at", "id"], name="contact_panel_list_idx"),
         ]
         constraints = [
             _tenant_and_id("contact"),
@@ -107,7 +109,11 @@ class InboundEvent(TenantScoped):
 
     class Meta:
         db_table = "inbound_event"
-        indexes = [models.Index(fields=["tenant", "received_at"], name="inbound_retention_idx")]
+        indexes = [
+            models.Index(fields=["tenant", "received_at"], name="inbound_retention_idx"),
+            # The cross-tenant activity feed and the "last message" probes (no tenant filter).
+            models.Index(fields=["received_at", "id"], name="inbound_feed_idx"),
+        ]
         constraints = [
             _tenant_and_id("inbound_event"),
             models.UniqueConstraint(
@@ -128,6 +134,7 @@ class OutboundMessage(TenantScoped):
         SENT = "sent"
         FAILED = "failed"
         UNKNOWN = "unknown"
+        EXPIRED = "expired"  # not delivered in time (ADR-024); never sent
 
     contact = models.ForeignKey(
         Contact, on_delete=models.CASCADE, db_constraint=False, related_name="+"
@@ -141,7 +148,13 @@ class OutboundMessage(TenantScoped):
         max_length=8, choices=Status, default=Status.PENDING, db_default=Status.PENDING
     )
     unknown_at = models.DateTimeField(null=True, blank=True)
+    # Until when it may still be sent (ADR-024); NULL on rows from before it existed, which
+    # never expire. Past it, the message is left `expired` instead of delivered.
+    expires_at = models.DateTimeField(null=True, blank=True)
     attempts = models.IntegerField(default=0, db_default=0)
+    # Times `reconcile_unknown` resent it after an ambiguous send (ADR-026): at most 1. A
+    # person's resend also sets it, so a decision of theirs is never doubled by the platform.
+    ambiguous_resends = models.SmallIntegerField(default=0, db_default=0)
     # NULL until the provider answers
     provider_message_id = models.CharField(max_length=200, null=True, blank=True)  # noqa: DJ001
     pricing_category = models.CharField(max_length=32, null=True, blank=True)  # noqa: DJ001
@@ -166,6 +179,13 @@ class OutboundMessage(TenantScoped):
         indexes = [
             models.Index(fields=["tenant", "created_at"], name="outbound_retention_idx"),
             models.Index(fields=["tenant", "sent_at"], name="outbound_sent_idx"),
+            # Cross-tenant activity feed and "last sent" probe (no tenant filter).
+            models.Index(fields=["created_at", "id"], name="outbound_feed_idx"),
+            models.Index(
+                fields=["sent_at"],
+                condition=models.Q(sent_at__isnull=False),
+                name="outbound_sent_feed_idx",
+            ),
             models.Index(
                 fields=["tenant", "unknown_at"],
                 condition=models.Q(status="unknown"),
@@ -186,6 +206,10 @@ class Notification(TenantScoped):
         PENDING = "pending"
         SENT = "sent"
         FAILED = "failed"
+        # The tenant's owner has no chat linked: kept (not failed) until they link one, then
+        # queued if still younger than NOTICE_TTL, else expired (ADR-026).
+        HELD = "held"
+        EXPIRED = "expired"  # older than NOTICE_TTL when it could be sent: stale, not sent
 
     class Audience(models.TextChoices):
         OWNER = "owner"  # the business owner's chat (OwnerLink.chat_id)
@@ -214,7 +238,10 @@ class Notification(TenantScoped):
 
     class Meta:
         db_table = "notification"
-        indexes = [models.Index(fields=["tenant", "created_at"], name="notification_retention_idx")]
+        indexes = [
+            models.Index(fields=["tenant", "created_at"], name="notification_retention_idx"),
+            models.Index(fields=["created_at", "id"], name="notification_feed_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "idem_key"], name="notification_idem_key_uniq"

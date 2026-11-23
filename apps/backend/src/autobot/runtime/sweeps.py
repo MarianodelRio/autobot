@@ -31,9 +31,11 @@ from autobot.runtime.jobs import (
     OUTBOUND,
     PROCESS_EVENT,
     SEND_MESSAGE,
+    process_event_queue,
 )
-from autobot.runtime.locks import contact_hash, conversation_lock
+from autobot.runtime.locks import conversation_lock
 from autobot.runtime.models import InboundEvent, OutboundMessage
+from autobot.runtime.outbound import message_lock, send_priority
 from autobot.runtime.queue import enqueue
 from autobot.tenancy.registry import LoadedTenant
 from autobot.tenancy.tx import tenant_tx
@@ -101,13 +103,12 @@ def _sweep_outbound(tenant: LoadedTenant, now: datetime) -> tuple[int, int, int]
                 log.warning("outbound %s was stuck sending: left unknown", message.id)
                 unknown += 1
             elif message.created_at >= now - OUTBOUND_REQUEUE_WINDOW:
-                contact = message.contact
-                lock = contact_hash(tenant.id, contact.channel, contact.external_id)
                 enqueue(
                     SEND_MESSAGE,
                     {"tenant_id": str(tenant.id), "outbound_id": str(message.id)},
                     queue=OUTBOUND,
-                    lock=f"out:{lock}",
+                    lock=message_lock(tenant.id, message),
+                    priority=send_priority(message.kind),
                 )
                 log.warning("outbound %s was pending with no job: queued again", message.id)
                 requeued += 1
@@ -144,7 +145,7 @@ def _sweep_inbound(tenant: LoadedTenant, now: datetime) -> tuple[int, int]:
             ids = {"tenant_id": str(tenant.id), "event_id": str(event.id)}
             if isinstance(item, InboundItem):
                 lock = conversation_lock(tenant.id, event.channel, item.external_id)
-                enqueue(PROCESS_EVENT, ids, queue=INBOUND, lock=lock)
+                enqueue(PROCESS_EVENT, ids, queue=process_event_queue(tenant.pack), lock=lock)
             else:
                 enqueue(APPLY_STATUS, ids, queue=INBOUND)
             log.warning("inbound event %s was pending with no job: queued again", event.id)

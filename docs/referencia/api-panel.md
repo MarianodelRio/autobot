@@ -126,8 +126,8 @@ Parámetros y cuerpos:
 Parámetros y cuerpos:
 
 - `GET /api/panel/demo/invites`
+    - Parámetro `cursor` (query): string
     - Parámetro `limit` (query): integer
-    - Parámetro `offset` (query): integer
 - `POST /api/panel/demo/invites`
     - Cuerpo: DemoInviteCreate
         - `expires_in_days`: integer | null
@@ -147,6 +147,8 @@ Parámetros y cuerpos:
 | GET | `/api/panel/incidents` | Incidents | IncidentsOut |
 | GET | `/api/panel/jobs` | Jobs | JobsPage |
 | POST | `/api/panel/jobs/{id}/retry` | Retry | MessageOut |
+| POST | `/api/panel/outbound/resend-bulk` | Resend Bulk | BulkResendOut |
+| POST | `/api/panel/outbound/resend-bulk/preview` | Resend Bulk Preview | BulkPreviewOut |
 | POST | `/api/panel/outbound/{id}/mark-sent` | Mark Sent | MessageOut |
 | POST | `/api/panel/outbound/{id}/resend` | Resend | MessageOut |
 
@@ -167,6 +169,20 @@ Parámetros y cuerpos:
     - Parámetro `status` (query): string
 - `POST /api/panel/jobs/{id}/retry`
     - Parámetro `id` (path, obligatorio): integer
+- `POST /api/panel/outbound/resend-bulk`
+    - Cuerpo: BulkResendIn
+        - `confirm_duplicate_risk` (opcional): any
+        - `ids` (opcional): string (uuid)[] | null
+        - `since` (opcional): string (date-time) | null
+        - `statuses` (opcional): string[]
+        - `tenant_id` (opcional): string (uuid) | null
+        - `until` (opcional): string (date-time) | null
+- `POST /api/panel/outbound/resend-bulk/preview`
+    - Cuerpo: BulkFilter
+        - `since` (opcional): string (date-time) | null
+        - `statuses` (opcional): string[]
+        - `tenant_id` (opcional): string (uuid) | null
+        - `until` (opcional): string (date-time) | null
 - `POST /api/panel/outbound/{id}/mark-sent`
     - Parámetro `id` (path, obligatorio): string (uuid)
 - `POST /api/panel/outbound/{id}/resend`
@@ -236,7 +252,7 @@ Parámetros y cuerpos:
 | PUT | `/api/panel/tenants/{slug}/document` | Publish Document | VersionOut |
 | POST | `/api/panel/tenants/{slug}/export` | Tenant Export | ExportOut |
 | POST | `/api/panel/tenants/{slug}/health-check` | Tenant Health Check | HealthIssueOut[] |
-| GET | `/api/panel/tenants/{slug}/notifications` | Tenant Notifications | NotificationOut[] |
+| GET | `/api/panel/tenants/{slug}/notifications` | Tenant Notifications | NotificationPage |
 | POST | `/api/panel/tenants/{slug}/owner-invite` | Tenant Owner Invite | OwnerInviteOut |
 | POST | `/api/panel/tenants/{slug}/owner-unlink` | Tenant Owner Unlink | OwnerUnlinkOut |
 | POST | `/api/panel/tenants/{slug}/rollback` | Rollback Document | VersionOut |
@@ -298,6 +314,8 @@ Parámetros y cuerpos:
     - Parámetro `slug` (path, obligatorio): string
 - `GET /api/panel/tenants/{slug}/notifications`
     - Parámetro `slug` (path, obligatorio): string
+    - Parámetro `cursor` (query): string
+    - Parámetro `limit` (query): integer
 - `POST /api/panel/tenants/{slug}/owner-invite`
     - Parámetro `slug` (path, obligatorio): string
 - `POST /api/panel/tenants/{slug}/owner-unlink`

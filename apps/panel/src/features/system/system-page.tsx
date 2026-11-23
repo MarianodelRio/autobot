@@ -26,7 +26,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { errorMessage } from "@/lib/errors";
-import { formatBytes, formatDateTime, formatNumber } from "@/lib/format";
+import {
+  formatAge,
+  formatBytes,
+  formatDateTime,
+  formatNumber,
+} from "@/lib/format";
 import { qk } from "@/lib/queries";
 import { tlsLevel } from "@/lib/status-levels";
 import { ContainersCard } from "./containers-card";
@@ -198,14 +203,22 @@ function SystemContent({ data }: { data: components["schemas"]["SystemOut"] }) {
                     queue_name: string;
                     pending: number;
                     oldest: string | null;
+                    age_s: number | null;
+                    running: number;
+                    running_age_s: number | null;
                   }[]
                 ).map((queue) => (
                   <li key={queue.queue_name}>
                     {queue.queue_name}: {formatNumber(queue.pending)} pendientes
-                    {queue.oldest && (
+                    {queue.age_s != null && (
+                      <> · el más antiguo espera {formatAge(queue.age_s)}</>
+                    )}
+                    {queue.running > 0 && (
                       <>
                         {" "}
-                        (desde <TimeAgo date={queue.oldest} />)
+                        · {formatNumber(queue.running)} en curso
+                        {queue.running_age_s != null &&
+                          ` (el más antiguo, ${formatAge(queue.running_age_s)})`}
                       </>
                     )}
                   </li>

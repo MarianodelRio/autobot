@@ -39,6 +39,7 @@ Después, según lo que vayas a hacer: [Añadir un pack](desarrollo/anadir-un-pa
 | Dar de alta el canal WhatsApp de un negocio | [Alta de WhatsApp en Meta](procedimientos/alta-whatsapp-meta.md) |
 | Desplegar un cambio | [Despliegue](procedimientos/despliegue.md) |
 | Preparar el servidor | [Servidor](procedimientos/servidor.md), [Traslado](procedimientos/traslado.md) |
+| Dimensionar el servidor o planear el crecimiento | [Capacidad y crecimiento](arquitectura/capacidad-y-crecimiento.md) |
 | Restaurar un backup | [Restaurar](procedimientos/restaurar.md) |
 | Rotar un secreto de canal | [Rotar secretos](procedimientos/rotar-secretos.md) |
 | Actualizar horarios de `bus` | [Horarios de bus](procedimientos/horarios-bus.md) |

@@ -5,8 +5,10 @@ import inspect
 import json
 import logging
 import re
+import threading
 import traceback
-from collections.abc import Awaitable, Callable, Iterator
+import weakref
+from collections.abc import Awaitable, Callable, Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -73,10 +75,80 @@ def async_contextual[**P, R](function: Callable[P, Awaitable[R]]) -> Callable[P,
     return wrapped
 
 
-def redact(value: str) -> str:
-    # Known configured values protect opaque tokens even if no recognizable prefix
-    # is present. Access only an already-loaded registry, avoiding recursive logging.
-    secrets = [
+_REDACTED = "[REDACTED]"
+_PREFIX = 4
+_LONG_PREFIX = 12
+
+
+class _SecretIndex:
+    """All known secret values, searched in one pass over the text.
+
+    Every secret is indexed by its first `_PREFIX` characters (fewer if one is shorter),
+    so a log line costs one dict lookup per position, whatever the number of tenants.
+    Every occurrence of every secret is found; overlapping or adjacent ones are merged
+    and redacted as one, so no fragment of a secret survives."""
+
+    def __init__(self, secrets: Iterable[str]) -> None:
+        values = sorted(set(secrets) - {""}, key=len, reverse=True)
+        self.size = min((len(value) for value in values), default=0)
+        # Long secrets are bucketed by a long prefix: tokens of one provider share their
+        # first characters (every Meta token starts with "EAA"), and a short bucket key
+        # would put all tenants' tokens in one bucket, back to O(tenants) per match.
+        # The few short secrets get their own small index.
+        long = [value for value in values if len(value) >= _LONG_PREFIX]
+        short = [value for value in values if len(value) < _LONG_PREFIX]
+        self.indexes: list[tuple[int, dict[str, list[str]]]] = []
+        for group, width in (
+            (long, _LONG_PREFIX),
+            (short, min(min((len(value) for value in short), default=0), _PREFIX)),
+        ):
+            if not group or width == 0:
+                continue
+            by_prefix: dict[str, list[str]] = {}
+            for value in group:
+                by_prefix.setdefault(value[:width], []).append(value)
+            self.indexes.append((width, by_prefix))
+        self.by_prefix = {key: hits for _, index in self.indexes for key, hits in index.items()}
+
+    def redact(self, text: str) -> str:
+        if not self.indexes or len(text) < self.size:
+            return text
+        found: list[tuple[int, int]] = []
+        for width, by_prefix in self.indexes:
+            for start in range(len(text) - width + 1):
+                candidates = by_prefix.get(text[start : start + width])
+                if candidates is None:
+                    continue
+                for value in candidates:
+                    if text.startswith(value, start):
+                        found.append((start, start + len(value)))
+        spans: list[list[int]] = []
+        for start, end in sorted(found):
+            if spans and start <= spans[-1][1]:
+                spans[-1][1] = max(spans[-1][1], end)
+            else:
+                spans.append([start, end])
+        if not spans:
+            return text
+        parts: list[str] = []
+        last = 0
+        for start, end in spans:
+            parts += [text[last:start], _REDACTED]
+            last = end
+        parts.append(text[last:])
+        return "".join(parts)
+
+
+_index_lock = threading.Lock()
+# A few entries, not one: a job pinned to an older registry and a thread on the newest
+# one would otherwise rebuild the index on every alternation. Weak references so an old
+# registry is freed as soon as nothing else holds it.
+_index_cache: list[tuple[weakref.ref[Any] | None, tuple[str, ...], _SecretIndex]] = []
+_INDEX_ENTRIES = 3
+
+
+def _settings_secrets() -> tuple[str, ...]:
+    return (
         settings.SECRET_KEY,
         *settings.SECRETS_ENCRYPTION_KEYS,
         settings.DEMO_TELEGRAM_TOKEN,
@@ -87,18 +159,39 @@ def redact(value: str) -> str:
         settings.NOTIFY_BOT_TOKEN,
         settings.SENTRY_DSN,
         settings.HEALTHCHECKS_PING_URL,
-    ]
+    )
+
+
+def _secret_index() -> _SecretIndex:
+    """The index for the loaded registry, rebuilt only when the registry (its identity:
+    a reload publishes a new object) or the configured secrets change."""
     from autobot.tenancy.registry import loaded_registry
 
+    # Known configured values protect opaque tokens even if no recognizable prefix
+    # is present. Access only an already-loaded registry, avoiding recursive logging.
     registry = loaded_registry()
+    configured = _settings_secrets()
+    for reference, known, index in _index_cache:
+        owner = None if reference is None else reference()
+        if owner is registry and (reference is None) == (registry is None) and known == configured:
+            return index
+    secrets = list(configured)
     if registry is not None:
         for tenant in registry.tenants:
             if tenant.secrets is not None:
                 for secret in tenant.secrets.__dict__.values():
                     if hasattr(secret, "get_secret_value"):
                         secrets.append(secret.get_secret_value())
-    for secret in sorted(set(secrets) - {""}, key=len, reverse=True):
-        value = value.replace(secret, "[REDACTED]")
+    index = _SecretIndex(secrets)
+    entry = (None if registry is None else weakref.ref(registry), configured, index)
+    with _index_lock:
+        live = [item for item in _index_cache if item[0] is None or item[0]() is not None]
+        _index_cache[:] = [entry, *live][:_INDEX_ENTRIES]
+    return index
+
+
+def redact(value: str) -> str:
+    value = _secret_index().redact(value)
     value = re.sub(
         r"(?i)(authorization[\"']?\s*[:=]\s*[\"']?)(?:(?:bearer|basic)\s+)?[^\s,;\"']+",
         r"\1[REDACTED]",
@@ -122,6 +215,8 @@ def redact(value: str) -> str:
 
 class PrivacyFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
+        if getattr(record, "_privacy_scrubbed", False):
+            return True  # already scrubbed by a handler's filter: do not redo the work
         record.msg = redact(record.getMessage())
         record.args = ()
         if record.exc_info:
@@ -132,6 +227,7 @@ class PrivacyFilter(logging.Filter):
                 field,
                 redact(str(getattr(record, field, (_context.get() or {}).get(field, "")))),
             )
+        record._privacy_scrubbed = True
         return True
 
 

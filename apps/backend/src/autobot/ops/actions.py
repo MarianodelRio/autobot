@@ -2,10 +2,11 @@
 panel and by the `outbound_resolve`/`job_retry` commands; previously inline in admin.py."""
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime
 from uuid import UUID
 
 from django.db import transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 from procrastinate import App
 from procrastinate.contrib.django.models import ProcrastinateJob
@@ -13,8 +14,15 @@ from procrastinate.contrib.django.models import ProcrastinateJob
 from autobot.channels.demo.doors import door
 from autobot.ops import audit
 from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE, app
-from autobot.runtime.locks import contact_hash
 from autobot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
+from autobot.runtime.outbound import (
+    MAX_AMBIGUOUS_RESENDS,
+    PROACTIVE_TTL,
+    RECONCILE_WAIT,
+    REPLY_TTL,
+    message_lock,
+    send_priority,
+)
 from autobot.runtime.queue import enqueue
 from autobot.runtime.queue import queue_app as _queue_app
 from autobot.tenancy.models import Tenant
@@ -39,7 +47,7 @@ def queue_app() -> App:
 def can_mark_sent(message: OutboundMessage) -> tuple[bool, str]:
     if message.status != "unknown":
         return False, "No es un envío ambiguo."
-    if message.unknown_at is None or message.unknown_at >= timezone.now() - timedelta(minutes=10):
+    if message.unknown_at is None or message.unknown_at >= timezone.now() - RECONCILE_WAIT:
         return False, "Un envío ambiguo reciente puede resolverse solo; espere 10 minutos."
     return True, ""
 
@@ -48,6 +56,29 @@ def can_resend(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, st
     ok, reason = can_mark_sent(message)
     if not ok:
         return ok, reason
+    return _deliverable(message, db_tenant=db_tenant)
+
+
+# What a bulk resend (after an incident) may pick up.
+BULK_STATUSES = ("failed", "unknown", "expired")
+BULK_CAP = 500  # messages per action
+
+
+def can_bulk_resend(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, str]:
+    """Like `can_resend`, for `failed` and `expired` too; a recent `unknown` is left to
+    resolve itself, and a contact known to be unreachable is not retried."""
+    if message.status not in BULK_STATUSES:
+        return False, "El mensaje no está en un estado reenviable."
+    if message.status == "unknown":
+        ok, reason = can_mark_sent(message)
+        if not ok:
+            return ok, reason
+    if message.contact.unreachable:
+        return False, "El contacto está marcado como inalcanzable."
+    return _deliverable(message, db_tenant=db_tenant)
+
+
+def _deliverable(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, str]:
     if message.payload is None:
         return False, "El contenido del mensaje ya no está disponible."
     tenant = get_registry().by_id.get(message.tenant_id)
@@ -97,6 +128,89 @@ def mark_sent(outbound_id: UUID, *, actor: str) -> Result:
     return Result(True, "Marcado como enviado.")
 
 
+def _requeue(message: OutboundMessage) -> None:
+    """A person decided to resend it: it gets a fresh time limit (or it would expire at
+    once) and the platform never adds its own resend on top (`ambiguous_resends`)."""
+    message.status = "pending"
+    message.unknown_at = None
+    message.expires_at = timezone.now() + (
+        PROACTIVE_TTL if message.kind == "proactive" else REPLY_TTL
+    )
+    message.ambiguous_resends = max(message.ambiguous_resends, MAX_AMBIGUOUS_RESENDS)
+    message.save(
+        using=OWNER, update_fields=["status", "unknown_at", "expires_at", "ambiguous_resends"]
+    )
+    # Inside the transaction, through the same `owner` connection that saved the message:
+    # the job exists only if the status change commits (and is not visible to the worker
+    # before it does).
+    enqueue(
+        SEND_MESSAGE,
+        {"tenant_id": str(message.tenant_id), "outbound_id": str(message.pk)},
+        queue=OUTBOUND,
+        lock=message_lock(message.tenant_id, message),
+        priority=send_priority(message.kind),
+        alias=OWNER,
+    )
+
+
+def bulk_queryset(
+    *,
+    tenant_id: UUID | None,
+    statuses: list[str],
+    since: datetime | None,
+    until: datetime | None,
+) -> QuerySet[OutboundMessage]:
+    qs = OutboundMessage.objects.using(OWNER).filter(status__in=statuses)
+    if tenant_id is not None:
+        qs = qs.filter(tenant_id=tenant_id)
+    if since is not None:
+        qs = qs.filter(created_at__gte=since)
+    if until is not None:
+        qs = qs.filter(created_at__lt=until)
+    return qs
+
+
+@dataclass(frozen=True)
+class BulkResult:
+    selected: int
+    resent: int
+    skipped: int
+    over_cap: int  # matched but beyond the cap: not touched, run the action again
+
+
+def resend_many(ids: list[UUID], *, over_cap: int = 0, actor: str) -> BulkResult:
+    """Resend each message in its own short transaction (a failure of one never undoes the
+    others), then one audit entry with counts only."""
+    resent = 0
+    for outbound_id in ids:
+        with transaction.atomic(using=OWNER):
+            message = (
+                OutboundMessage.objects.using(OWNER)
+                .select_related("contact")
+                .select_for_update(of=("self",))
+                .filter(pk=outbound_id)
+                .first()
+            )
+            if message is None:
+                continue
+            db_tenant = Tenant.objects.using(OWNER).select_for_update().get(pk=message.tenant_id)
+            if not can_bulk_resend(message, db_tenant=db_tenant)[0]:
+                continue
+            _requeue(message)
+            resent += 1
+    result = BulkResult(len(ids), resent, len(ids) - resent, over_cap)
+    audit.record(
+        actor=actor,
+        action="outbound.resend_bulk",
+        summary=(
+            f"Operador reenvía en bloque: {result.resent} reenviados,"
+            f" {result.skipped} omitidos, {result.over_cap} fuera del límite."
+        ),
+        target_type="outbound_message",
+    )
+    return result
+
+
 def resend(outbound_id: UUID, *, actor: str) -> Result:
     with transaction.atomic(using=OWNER):
         message = OutboundMessage.objects.using(OWNER).select_for_update().get(pk=outbound_id)
@@ -104,21 +218,7 @@ def resend(outbound_id: UUID, *, actor: str) -> Result:
         ok, reason = can_resend(message, db_tenant=db_tenant)
         if not ok:
             return Result(False, reason)
-        message.status = "pending"
-        message.unknown_at = None
-        message.save(using=OWNER, update_fields=["status", "unknown_at"])
-        contact = message.contact
-        lock = contact_hash(message.tenant_id, contact.channel, contact.external_id)
-        # Inside the transaction, through the same `owner` connection that saved the
-        # message: the job exists only if the status change commits (and is not visible
-        # to the worker before it does).
-        enqueue(
-            SEND_MESSAGE,
-            {"tenant_id": str(message.tenant_id), "outbound_id": str(message.pk)},
-            queue=OUTBOUND,
-            lock=f"out:{lock}",
-            alias=OWNER,
-        )
+        _requeue(message)
         audit.record(
             actor=actor,
             action="outbound.resend",

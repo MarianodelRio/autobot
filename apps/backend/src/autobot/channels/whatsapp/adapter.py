@@ -205,14 +205,27 @@ class WhatsAppAdapter:
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as e:
             # No connection was made (or none was free in the pool): nothing was sent.
             log.warning("WhatsApp send not connected: %s", type(e).__name__)
-            return RetryLater()
+            return RetryLater(kind="network")
         except httpx.HTTPError as e:  # timeout or network error after connecting
             log.warning("WhatsApp send ambiguous: %s", type(e).__name__)
-            return Ambiguous(type(e).__name__)
+            return Ambiguous(type(e).__name__, transport=True)
         outcome = classify(response)
         if not isinstance(outcome, Sent):
             log.warning("WhatsApp send %s: %s", type(outcome).__name__, _describe(response))
         return outcome
+
+    def probe(self, channel: WhatsAppChannel, secrets: WhatsAppSecrets) -> bool:
+        """GET of the phone-number node: sends nothing."""
+        if channel.phone_number_id is None:
+            return False
+        url = f"{GRAPH_URL}/{settings.WHATSAPP_GRAPH_VERSION}/{channel.phone_number_id}"
+        headers = {"Authorization": f"Bearer {secrets.access_token.get_secret_value()}"}
+        try:
+            response = self.client.get(url, params={"fields": "id"}, headers=headers)
+        except httpx.HTTPError as e:
+            log.warning("WhatsApp probe failed: %s", type(e).__name__)
+            return False
+        return response.status_code < 500
 
 
 def classify(response: httpx.Response) -> SendOutcome:
@@ -229,14 +242,16 @@ def classify(response: httpx.Response) -> SendOutcome:
     if status == 401 or code == AUTH_ERROR:
         return Rejected(reason, "auth")
     if status == 429 or (400 <= status < 500 and code in RATE_LIMIT_ERRORS):
-        return RetryLater(_retry_after(response))
+        return RetryLater(_retry_after(response), "rate")
     if status == 400 and code in RECIPIENT_ERRORS:
         return Rejected(reason, "recipient")
     if 400 <= status < 500:
         return Rejected(reason, "other")
     if status >= 500 and error is not None:  # Meta answered with an error: not sent
-        return RetryLater(_retry_after(response))
-    return Ambiguous(reason)  # e.g. 502/504 from a proxy, without Meta's error body
+        return RetryLater(_retry_after(response), "server")
+    return Ambiguous(
+        reason, transport=status >= 500
+    )  # e.g. 502/504 from a proxy, without Meta's error body
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────

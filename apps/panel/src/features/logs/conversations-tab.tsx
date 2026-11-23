@@ -17,7 +17,15 @@ const KIND_CHIPS: { value: string; label: string }[] = [
   { value: "notification", label: "Avisos" },
 ];
 
-const STATUSES = ["pending", "done", "failed", "ignored", "sent", "unknown"];
+const STATUSES = [
+  "pending",
+  "done",
+  "failed",
+  "ignored",
+  "sent",
+  "unknown",
+  "expired",
+];
 
 export function ConversationsTab({
   filters,

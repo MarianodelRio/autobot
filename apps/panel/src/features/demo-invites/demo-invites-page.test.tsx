@@ -39,7 +39,7 @@ function stubFetch(invites: unknown[] = [activeInvite]) {
       });
     if (req.method === "GET" && url.pathname.endsWith("/demo/invites"))
       return new Response(
-        JSON.stringify({ items: invites, total: invites.length }),
+        JSON.stringify({ items: invites, next_cursor: null }),
         { headers: { "Content-Type": "application/json" } },
       );
     if (req.method === "POST" && url.pathname.endsWith("/demo/invites")) {

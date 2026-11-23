@@ -79,6 +79,29 @@ def test_a_pending_inbound_event_with_no_job_is_reported_and_requeued(tenants: A
     assert len([j for j in jobs() if j[0] == "process_event"]) == 1
 
 
+def test_a_requeued_event_goes_to_the_queue_of_its_pack(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tenant whose pack needs Calendar is requeued in `inbound_ext`, as at the webhook."""
+    import dataclasses
+
+    from tests.fixtures.toy_pack import pack as toy
+
+    monkeypatch.setattr(
+        "packs.registry.PACKS", {"toy": dataclasses.replace(toy.pack, needs_calendar=True)}
+    )
+    tenants(wa_tenant())
+    assert post_wa(wa_text("hola")) == 200
+    stored = InboundEvent.objects.using("owner").get()
+    InboundEvent.objects.using("owner").filter(id=stored.id).update(
+        received_at=timezone.now() - timedelta(minutes=6)
+    )
+    with connections["owner"].cursor() as cursor:
+        cursor.execute("DELETE FROM procrastinate_jobs")
+    sweeps.sweep_tenant(get_registry().by_slug["wa"])
+    assert [j[3] for j in jobs() if j[0] == "process_event"] == ["inbound_ext"]
+
+
 def test_a_paused_tenant_still_applies_delivery_statuses(tenants: Any) -> None:
     tenants(wa_tenant(status="paused"))
     tenant = get_registry().by_slug["wa"]

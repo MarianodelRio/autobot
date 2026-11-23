@@ -7,7 +7,7 @@ Un efecto es todo lo que sale de la base de datos y no se puede deshacer: un men
 Vienen de `CLAUDE.md` y todo el código las sigue:
 
 - **Todo efecto externo es idempotente.** Repetir la operación con la misma clave no repite el efecto.
-- **No se reintenta a ciegas un envío ambiguo.** Si no sabemos si salió, el estado es `unknown` y decide una persona.
+- **Un envío ambiguo no se reintenta a ciegas.** Si no sabemos si salió, el estado es `unknown`: primero se concilia con el estado del proveedor y, si pasado el plazo no hay evidencia, se reenvía **una sola vez** y solo si su clase declara que un duplicado es inocuo; si no, decide una persona ([ADR-026](adr/ADR-026-conciliacion-de-envios-ambiguos.md)).
 - **Ninguna transacción abierta durante una llamada a Meta, Google o Telegram.** Una transacción abierta retiene una conexión y bloqueos mientras un tercero tarda segundos.
 
 De las dos primeras sale un patrón único: **apuntar la intención en la base de datos y confirmarla antes de actuar, y apuntar el resultado después**. Si el proceso muere entre medias, el rastro dice qué pudo pasar.
@@ -21,26 +21,31 @@ stateDiagram-v2
     [*] --> pending: create_replies / create_proactive
     pending --> sending: send_message confirma antes de llamar
     sending --> sent: Sent
-    sending --> failed: Rejected, o RetryLater agotado
+    sending --> failed: Rejected
     sending --> unknown: Ambiguous
-    sending --> pending: RetryLater, intentos < 5
+    sending --> pending: RetryLater (sin tope de intentos)
     sending --> unknown: corte (reintento o barrida)
+    pending --> expired: pasado expires_at, sin enviar
+    expired --> pending: recordatorio revivido por el barrido
     pending --> failed: payload caducado
     unknown --> sent: estado de entrega, o mark_sent
     unknown --> failed: estado de entrega failed
-    unknown --> pending: resend (autoriza una persona)
+    unknown --> pending: resend (una persona) o reconcile_unknown (una vez)
+    unknown --> expired: reconcile_unknown, pasado expires_at
     sent --> failed: estado de entrega failed
     sent --> [*]
     failed --> [*]
+    expired --> [*]
 ```
 
 | Estado | Significado |
 |---|---|
-| `pending` | Creado, con su trabajo `send_message` encolado. También tras un `RetryLater`. |
+| `pending` | Creado, con su trabajo `send_message` encolado. También tras un `RetryLater`, hasta `expires_at`. |
 | `sending` | Se ha **confirmado** el intento y se está llamando (o se llamó) al proveedor. |
 | `sent` | El proveedor aceptó el mensaje (o un estado de entrega lo demuestra). |
-| `failed` | Rechazado de forma definitiva, o agotados los 5 intentos. No se reintenta. |
-| `unknown` | Pudo salir o no. No se reenvía solo. |
+| `failed` | Rechazado de forma definitiva. No se reintenta. |
+| `expired` | Pasó su `expires_at` sin que el proveedor lo aceptara: **no se envió** (y no saldrá más tarde). Una respuesta caducada se sustituye por una disculpa; un recordatorio puede revivirse. Ver [ADR-024](adr/ADR-024-envio-saliente-por-caducidad.md). |
+| `unknown` | Pudo salir o no. Se concilia (estado de entrega) y, sin evidencia tras 10 minutos, se reenvía una sola vez si la clase admite duplicados; si no, decide una persona. |
 
 ### Por qué existe `sending`
 
@@ -62,27 +67,39 @@ Todo lo que puede fallar antes de la llamada (traducir el mensaje, resolver el c
 |---|---|---|
 | `Sent` | El proveedor aceptó y dio un id. | `sent` |
 | `Rejected` | El proveedor lo rechaza; reenviar fallaría igual. `kind`: `auth` (token rechazado, avisa ops), `recipient` (marca al contacto `unreachable`), `other`. | `failed` |
-| `RetryLater` | Seguro que no salió: no hubo conexión, o límite de tasa. Puede traer `after_s`. | `pending` y se reintenta; `failed` tras 5 intentos |
-| `Ambiguous` | Pudo salir: tiempo agotado tras conectar, 2xx sin id, 5xx de Telegram... | `unknown` |
+| `RetryLater` | Seguro que no salió: no hubo conexión, límite de tasa, o un 5xx de Meta con su cuerpo de error. Puede traer `after_s`; su `kind` es `rate`, `server` o `network`. | `pending` y se reintenta hasta `expires_at`, sin tope de intentos |
+| `Ambiguous` | Pudo salir: tiempo agotado tras conectar, 2xx sin id, 5xx de Telegram... Lleva `transport` si fue un fallo del proveedor o de la red (alimenta el cortacircuitos, no cambia el estado). | `unknown` |
 
 La clasificación vive en cada adaptador (`autobot/channels/whatsapp/adapter.py` y `autobot/channels/telegram/adapter.py`, función `classify`), porque difiere: un 5xx es `RetryLater` para Meta y `Ambiguous` para Telegram. Solo un fallo de conexión (`ConnectError`, `ConnectTimeout`, `PoolTimeout`) es `RetryLater` seguro; cualquier otro error de red después de conectar es `Ambiguous`.
 
 ### Cómo sale un mensaje de `unknown`
 
 1. **Prueba del proveedor.** WhatsApp devuelve estados de entrega por el webhook, con nuestro id en `biz_opaque_callback_data`. `apply_status` (`runtime/process.py`) convierte `sent`/`delivered`/`read` en `sent` para un `unknown`, y `failed` en `failed`.
-2. **Una persona.** Con las acciones de `apps/backend/src/autobot/ops/actions.py`, que usan el panel y el comando `outbound_resolve`:
+2. **Conciliación automática** (`reconcile_unknown`, `runtime/reconcile.py`, cada 5 minutos, por negocio y en lotes de 100). Un `unknown` de más de `RECONCILE_WAIT` (10 minutos), sin `provider_message_id` y con `ambiguous_resends = 0`, se reenvía **una vez** por la vía normal de `send_message` (candados, cortacircuitos, `expires_at`) si su clase es `safe` en `DUP_POLICY` (`runtime/outbound.py`: respuestas, menús, disculpas y recordatorios; lo no declarado es `unsafe`). Si ya pasó `expires_at`, pasa a `expired` sin reenviar. Si el reenvío vuelve a ser ambiguo, queda `unknown` para una persona. Duplicado máximo: uno por mensaje.
+3. **Una persona.** Con las acciones de `apps/backend/src/autobot/ops/actions.py`, que usan el panel y el comando `outbound_resolve`:
     - `mark_sent`: confirma que llegó (revisado en el panel del proveedor o con el destinatario). Pasa a `sent`.
     - `resend`: autoriza un reenvío **sabiendo que puede duplicarse**. Pasa a `pending` y encola `send_message` en la misma transacción.
     - Ambas exigen estado `unknown` y que lleve más de 10 minutos (`unknown_at`), porque uno reciente aún puede resolverse solo con un estado de entrega. `resend` exige además que el contenido siga disponible (el payload se vacía a los 30 días), que el negocio se resuelva sin ambigüedad, no esté dado de baja y su canal esté activo. Ambas dejan registro de auditoría.
-3. Los trabajos `send_message` y `send_notification` **nunca** se reintentan desde «Trabajos fallidos» (`NOT_RETRYABLE_TASKS`).
+    - Para tras una incidencia, `resend_many` reenvía en bloque `failed`, `unknown` y `expired` (hasta 500 por acción, con TOTP reciente y un único registro de auditoría con cifras). Un reenvío de una persona fija `ambiguous_resends = 1`: la plataforma no añade el suyo.
+4. Los trabajos `send_message` y `send_notification` **nunca** se reintentan desde «Trabajos fallidos» (`NOT_RETRYABLE_TASKS`).
 
 El procedimiento para el operador está en [envíos unknown](../incidencias/envios-unknown.md).
 
 ## Reintentos que sí son seguros
 
-`SendRetryStrategy` (`apps/backend/src/autobot/runtime/jobs.py`) reintenta `send_message` solo en dos casos: el proveedor pidió reintentar (`RetryLater`, que `send_message` lanza como `SendRetry`) y errores transitorios de base de datos. Las esperas son 5 s, 30 s, 2 min, 10 min y 30 min (`OUTBOUND_RETRY_WAITS_S`) salvo que el proveedor diga `retry_after`. El propio mensaje cuenta sus intentos y pasa a `failed` tras el quinto (`MAX_SEND_ATTEMPTS`).
+`send_message` reintenta **por tiempo, no por número** (decisión en [ADR-024](adr/ADR-024-envio-saliente-por-caducidad.md)). Cada mensaje lleva `expires_at`: 30 minutos desde su creación una respuesta; el menor de 24 h y el `not_after` que fije el pack un recordatorio (`salon`: 30 minutos antes de la cita). Mientras no llegue:
+
+- `RetryLater` deja el mensaje en `pending` y lanza `SendRetry` con la espera: el `Retry-After` del proveedor, o un retroceso exponencial con jitter (5 s, 10 s... hasta 300 s) que nunca pasa de la caducidad. `SendRetryStrategy` (`apps/backend/src/autobot/runtime/jobs.py`) lo reintenta siempre. Los errores transitorios de base de datos (`RETRYABLE`) siguen con un máximo de 5 reintentos (`DB_ERROR_RETRIES`); un `pending` que se quede sin trabajo lo reencola la barrida.
+- Lo ambiguo no cambia: `unknown`, nunca reenviado a ciegas.
+- Con el **cortacircuitos del proveedor** abierto, el mensaje se aplaza sin llamar a Meta o Telegram (ver [cola y workers](cola-y-workers.md#cortacircuitos-del-proveedor)).
+
+Pasado `expires_at`, el siguiente run lo marca `expired` en lugar de enviarlo. Si era una **respuesta**, no se entrega (sus botones pueden estar obsoletos): se crea **una** disculpa (`APOLOGY_TEXT`, `core/conversation.py`), como mucho una por contacto cada 6 horas, idempotente por `apology:<id del mensaje caducado>`, que caduca a las 6 horas y no genera otra disculpa. Si era un **recordatorio**, queda `expired` sin disculpa; cuando el barrido del pack vuelve a ofrecer esa misma clave `reminder:*` y la cita sigue por delante, `create_proactive` lo revive (`pending`, `expires_at` nuevo, intentos a cero). Un `failed` (rechazo del proveedor), un `sent` o un `unknown` no se reviven.
+
+Las respuestas de un contacto salen en orden con el candado `out:<h>`; los envíos proactivos usan `outp:<h>`, así que un recordatorio atascado no bloquea una respuesta (y entre ambos tipos no hay orden). Un `resend` manual (`ops/actions.py`) da al mensaje un `expires_at` nuevo.
 
 Si el trabajo se reintenta porque murió un worker con el mensaje en `sending`, el reintento lo ve y lo deja `unknown`. Nunca reenvía.
+
+`send_notification` (avisos al dueño) también reintenta por tiempo, con `NotificationRetryStrategy`: un aviso de más de 2 h (`NOTICE_TTL`) pasa a `expired` sin enviarse. Ver [Avisos al dueño en ADR-024](adr/ADR-024-envio-saliente-por-caducidad.md#avisos-al-dueno).
 
 ## Idempotencia en cada capa
 
@@ -129,7 +146,9 @@ El uso real es `Conversation.cancel` del pack `salon` (`packs/salon/conversation
 
 ## Avisos al dueño
 
-`send_notification` (`apps/backend/src/autobot/runtime/notifications.py`) aplica el mismo principio con una versión más estricta: antes de llamar a Telegram **reclama** la fila marcándola `failed` (confirmado) y solo después envía. Un corte o un resultado ambiguo se queda en `failed` y nunca se reenvía: `Notification` no tiene estado `unknown`. Solo se devuelve a `pending` ante un `RetryLater` seguro y mientras queden intentos.
+`send_notification` (`apps/backend/src/autobot/runtime/notifications.py`) aplica el mismo principio con una versión más estricta: antes de llamar a Telegram **reclama** la fila marcándola `failed` (confirmado) y solo después envía. Un corte o un resultado ambiguo se queda en `failed` y nunca se reenvía: `Notification` no tiene estado `unknown`. Solo se devuelve a `pending` ante un `RetryLater` seguro y mientras queden intentos. Por eso no sigue la conciliación de `unknown` de arriba: caducan a las 2 horas y no compensa un estado nuevo.
+
+Si el dueño **no tiene chat conectado**, el aviso queda `held` en lugar de `failed`. Al conectar el chat (`owner/links.py`), los `held` de menos de 2 horas se encolan y los más viejos caducan (`release_held`); `reconcile_unknown` caduca los que nadie reclama. Un `held` no cuenta como fallo.
 
 ## Barridas: la red de seguridad
 
@@ -173,10 +192,10 @@ La regla de las transacciones se comprueba en los tests de plataforma con aserci
 ## Dónde está el código
 
 - `apps/backend/src/core/effects.py` (`EffectJournal`), `apps/backend/src/core/idem.py` (`IdemKeys`).
-- `apps/backend/src/autobot/runtime/effects.py` (`StoredEffects`), `outbound.py` (`send_message`, `_record`), `sweeps.py`, `notifications.py`.
+- `apps/backend/src/autobot/runtime/effects.py` (`StoredEffects`), `outbound.py` (`send_message`, `_record`, `DUP_POLICY`), `reconcile.py`, `sweeps.py`, `notifications.py`.
 - `apps/backend/src/autobot/ops/actions.py` (`mark_sent`, `resend`, `retry_job`).
 - `apps/backend/src/core/testing/` (`harness.py`, `effects.py`, `clock.py`).
 
 ## Relacionado
 
-[Vida de un mensaje](vida-de-un-mensaje.md) · [Cola y workers](cola-y-workers.md) · [Packs](packs.md) · [Envíos unknown](../incidencias/envios-unknown.md) · [ADR-004](adr/ADR-004-entrada-idempotente.md)
+[Vida de un mensaje](vida-de-un-mensaje.md) · [Cola y workers](cola-y-workers.md) · [Packs](packs.md) · [Envíos unknown](../incidencias/envios-unknown.md) · [ADR-004](adr/ADR-004-entrada-idempotente.md) · [ADR-026](adr/ADR-026-conciliacion-de-envios-ambiguos.md)

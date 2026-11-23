@@ -3,11 +3,14 @@
 import base64
 import json
 import logging
+import random
 import re
 import secrets as random_secrets
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from datetime import time as day_time
@@ -24,16 +27,54 @@ from httplib2.error import HttpLib2Error  # type: ignore[import-untyped]
 
 from core.errors import PermanentError, TransientError
 from core.text import fold, strip_html
+from integrations.google_calendar.breaker import CircuitBreaker
 
-# Short, so an outage blocks an `inbound` thread for as little time as possible
-# (`inbound` has its own worker, but a long wait here still delays that
-# contact's retries and the alert from catching on).
-TIMEOUT_S = 5
+# Short, so an outage blocks a worker thread for as little time as possible. With
+# `MAX_ATTEMPTS` it bounds a call at ~5 s plus the pause, inside the per-message budget
+# (ADR-023).
+TIMEOUT_S = 2.5
+MAX_ATTEMPTS = 2
 
 log = logging.getLogger(__name__)
 
+# One breaker per process (the workers are processes, the threads share it): Google
+# failing is a fact about Google, not about one calendar.
+BREAKER = CircuitBreaker()
+
+# The time a caller allows itself for everything it does with Calendar for one message
+# (a monotonic deadline). Unset: no limit. Set by `time_budget`; a ContextVar so each
+# thread (each job) has its own.
+_deadline: ContextVar[float | None] = ContextVar("calendar_deadline", default=None)
+
+
+def _monotonic() -> float:
+    return time.monotonic()
+
+
+def _jitter(low: float, high: float) -> float:
+    return random.uniform(low, high)
+
+
+@contextmanager
+def time_budget(seconds: float) -> Iterator[None]:
+    """Everything this thread calls on Calendar inside the block shares `seconds`: no
+    attempt starts once it is spent, and an attempt's timeout never exceeds what is left
+    (`CalendarTransientError` instead)."""
+    token = _deadline.set(_monotonic() + seconds)
+    try:
+        yield
+    finally:
+        _deadline.reset(token)
+
+
+def _remaining() -> float | None:
+    deadline = _deadline.get()
+    return None if deadline is None else deadline - _monotonic()
+
+
 # A 403 with one of these reasons is Google asking to slow down, not a denial: it is
-# retried with backoff like a 429 (and, after the last attempt, is transient).
+# transient, and never retried by the client itself (retrying a quota error only adds
+# load; the job's own retry or the person's next message tries later).
 _RATE_LIMIT_REASONS = frozenset(
     {"rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded", "dailyLimitExceeded"}
 )
@@ -112,16 +153,35 @@ def service_account_email(credentials_file: str) -> str | None:
         return None
 
 
-def service(credentials_file: str) -> Any:
+def _service_and_http(credentials_file: str) -> tuple[Any, Any]:
     credentials = _credentials(credentials_file)
-    return build(
+    http = httplib2.Http(timeout=TIMEOUT_S)
+    api = build(
         "calendar",
         "v3",
-        http=google_auth_httplib2.AuthorizedHttp(
-            credentials, http=httplib2.Http(timeout=TIMEOUT_S)
-        ),
+        http=google_auth_httplib2.AuthorizedHttp(credentials, http=http),
         cache_discovery=False,
     )
+    return api, http
+
+
+def service(credentials_file: str) -> Any:
+    return _service_and_http(credentials_file)[0]
+
+
+_thread_services = threading.local()
+
+
+def thread_service(credentials_file: str) -> tuple[Any, Any]:
+    """The service object and its `httplib2.Http` of this thread, built once. httplib2
+    is not thread-safe, so each thread has its own; the credentials (and their token)
+    are the process-wide ones. Saves rebuilding the client, and re-opening the
+    connection, for every pack context."""
+    cache: dict[str, tuple[Any, Any]] = _thread_services.__dict__.setdefault("by_file", {})
+    pair = cache.get(credentials_file)
+    if pair is None:
+        pair = cache[credentials_file] = _service_and_http(credentials_file)
+    return pair
 
 
 def _phone(value: str) -> str:
@@ -157,8 +217,11 @@ class CalendarClient:
         api: Any = None,
         sleep: Callable[[float], None] = time.sleep,
         observe: Callable[[str], None] | None = None,
+        breaker: CircuitBreaker | None = None,
     ) -> None:
         self._observer = observe
+        self._breaker = BREAKER if breaker is None else breaker
+        self._http: Any = None  # the httplib2.Http behind `api`, when we built it
         self._calendar_id = calendar_id
         self._credentials_file = credentials_file
         self._api = api
@@ -178,37 +241,76 @@ class CalendarClient:
     def api(self) -> Any:
         if self._api is None:
             try:
-                self._api = service(self._credentials_file)
+                self._api, self._http = thread_service(self._credentials_file)
             except OSError, ValueError:
                 raise CalendarPermanentError("Calendar credentials unavailable") from None
         return self._api
 
+    def _attempt_timeout(self) -> float:
+        """The timeout of the next attempt, within the caller's budget."""
+        remaining = _remaining()
+        if remaining is None:
+            return TIMEOUT_S
+        if remaining < 0.1:
+            self._observe("error")
+            raise CalendarTransientError("Calendar time budget spent")
+        return min(TIMEOUT_S, remaining)
+
+    def _apply_timeout(self, timeout: float) -> None:
+        # httplib2 reads the timeout when it opens a connection: a changed one needs the
+        # cached connections closed (rare: only when the budget is nearly spent).
+        if self._http is not None and self._http.timeout != timeout:
+            self._http.close()
+            self._http.timeout = timeout
+
     def _call(self, operation: str, **kwargs: Any) -> Any:
-        for attempt in range(3):
+        for attempt in range(MAX_ATTEMPTS):
             base_delay = 0.2
+            timeout = self._attempt_timeout()
+            if not self._breaker.allow():
+                # Google is not answering: fail at once, do not wait for a timeout.
+                self._observe("error")
+                raise CalendarTransientError("Calendar circuit open")
+            started = _monotonic()
+            judged = False
+
+            def judge(ok: bool, started: float = started) -> None:
+                nonlocal judged
+                judged = True
+                self._breaker.record(ok=ok, duration_s=_monotonic() - started)
+
             try:
+                self._apply_timeout(timeout)
                 request = getattr(self.api.events(), operation)(
                     calendarId=self._calendar_id, **kwargs
                 )
                 result = request.execute(num_retries=0)
+                judge(True)
                 self._observe("ok")
                 return result
             except HttpError as exc:
                 status = int(exc.resp.status)
-                if _is_rate_limited(exc):
-                    base_delay = 1.0  # asked to slow down: wait longer than for a glitch
-                if status not in (429, 500, 502, 503, 504) and not _is_rate_limited(exc):
-                    # An event-level 404/410 can mean either a missing event or no
-                    # access, so it is no evidence of recovery from a prior denial.
+                if status == 429 or _is_rate_limited(exc):
+                    # Asked to slow down: not retried here, not a denial.
+                    judge(False)
+                    self._observe("error")
+                    raise CalendarTransientError("Calendar rate limited") from None
+                if status not in (500, 502, 503, 504):
+                    # Google answered: a refusal, not an outage. An event-level 404/410
+                    # can mean either a missing event or no access, so it is no evidence
+                    # of recovery from a prior denial.
+                    judge(True)
                     if status not in (404, 410) or operation == "list":
                         self._observe("denied" if status in (401, 403, 404) else "error")
                     raise
+                judge(False)
             except RefreshError as exc:
                 if not exc.retryable:
                     self._observe("denied")
                     raise CalendarPermanentError(
                         "Calendar credentials could not be refreshed"
                     ) from None
+                judge(False)
             except CalendarPermanentError:
                 self._observe("denied")
                 raise
@@ -217,9 +319,16 @@ class CalendarClient:
                 # connection...) may mean the request reached Google: treated as
                 # transient so the job retries, and `insert_event`'s 409 handling
                 # finds the reservation already made instead of duplicating it.
-                pass
-            if attempt < 2:
-                self._sleep(base_delay * (2**attempt))
+                judge(False)
+            finally:
+                if not judged:
+                    self._breaker.abort()
+            if attempt < MAX_ATTEMPTS - 1:
+                delay = base_delay * (2**attempt) * _jitter(0.5, 1.5)  # jitter
+                remaining = _remaining()
+                if remaining is not None and remaining <= delay:
+                    break  # no time left for another attempt
+                self._sleep(delay)
         self._observe("error")
         raise CalendarTransientError("Calendar temporarily unavailable")
 

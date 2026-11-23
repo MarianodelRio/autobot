@@ -1,7 +1,7 @@
 # Base: what local and production share. Local adds dev tooling and local passwords
 # (compose.local.yaml); production adds Caddy, GHCR images and restart policies
 # (compose.prod.yaml). Relative paths here resolve against this directory.
-# What web and both workers share: where their logs go and the wait for the database.
+# What web and the workers share: where their logs go and the wait for the database.
 x-app-base: &app-base
   environment:
     VICTORIALOGS_URL: http://victorialogs:9428
@@ -12,22 +12,42 @@ x-app-base: &app-base
 services:
   web: *app-base
 
-  # Two workers, so a Google Calendar outage cannot starve the sends: Google is
-  # only called from `inbound` (the packs) and `periodic` (the salon calendar sweep),
-  # both in worker-inbound; worker-outbound only sends. Both also listen to `ops`
-  # (ops_check), so one worker staying down does not also silence its own alert.
-  # Graceful stop: on SIGTERM a worker takes no new jobs and lets running ones finish
-  # for up to 50 s, within the 60 s before Docker kills it; a cut job is retried
-  # (every job is idempotent). The local file prefixes the command with its reloader.
+  # Four workers, so one slow dependency cannot starve the rest (ADR-023). Google
+  # Calendar is only called from `inbound_ext` (the packs that need it: process_event of
+  # the salon) and `periodic` (the calendar sweep). Each pool of slots is its own process:
+  #   worker-inbound   inbound            conversation of packs with no external call, demo
+  #                                       selector, owner chat, delivery statuses
+  #   worker-calendar  inbound_ext        process_event of the packs that need Calendar
+  #   worker-periodic  periodic, ops      sweeps, summaries, retry_stalled_jobs, cleanup
+  #   worker-outbound  outbound           sends to Meta and Telegram
+  # Only worker-periodic listens to `ops` (ops_check): its health checks call Meta,
+  # Telegram and Google one after another and must never hold a slot that sends or answers
+  # (the alert of a worker that is down comes from the external heartbeat, not from
+  # ops_check). Graceful stop: on SIGTERM a worker takes no new
+  # jobs and lets running ones finish for up to 50 s, within the 60 s before Docker
+  # kills it; a cut job is retried (every job is idempotent). The local file prefixes
+  # the command with its reloader.
   worker-inbound:
     <<: *app-base
-    command: python manage.py procrastinate worker --queues inbound,periodic,ops --concurrency 2 --shutdown-graceful-timeout 50
+    command: python manage.py procrastinate worker --queues inbound --concurrency 4 --shutdown-graceful-timeout 50
+    stop_grace_period: 60s
+    init: true
+
+  worker-calendar:
+    <<: *app-base
+    command: python manage.py procrastinate worker --queues inbound_ext --concurrency 8 --shutdown-graceful-timeout 50
+    stop_grace_period: 60s
+    init: true
+
+  worker-periodic:
+    <<: *app-base
+    command: python manage.py procrastinate worker --queues periodic,ops --concurrency 2 --shutdown-graceful-timeout 50
     stop_grace_period: 60s
     init: true
 
   worker-outbound:
     <<: *app-base
-    command: python manage.py procrastinate worker --queues outbound,ops --concurrency 2 --shutdown-graceful-timeout 50
+    command: python manage.py procrastinate worker --queues outbound --concurrency 8 --shutdown-graceful-timeout 50
     stop_grace_period: 60s
     init: true
 

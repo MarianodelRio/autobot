@@ -33,6 +33,7 @@ from autobot.owner import links as owner_links
 from autobot.panel.errors import ApiError
 from autobot.panel.services._common import get_tenant_or_404
 from autobot.panel.services.month import month_aggregates
+from autobot.panel.services.pagination import DEFAULT_LIMIT, page
 from autobot.runtime import privacy
 from autobot.runtime.models import Notification
 from autobot.runtime.summary import build_summary, month_to_date
@@ -427,24 +428,34 @@ class NotificationOut(Schema):
     sent_at: datetime | None
 
 
-MAX_NOTIFICATIONS = 50
+class NotificationPage(Schema):
+    items: list[NotificationOut]
+    next_cursor: str | None
 
 
-def tenant_notifications(slug: str, *, actor: str) -> list[NotificationOut]:
+def tenant_notifications(
+    slug: str, *, actor: str, cursor: str = "", limit: int = DEFAULT_LIMIT
+) -> NotificationPage:
     tenant = get_tenant_or_404(slug)
     # The texts are messages to the owner (names, bookings): reading them is audited.
     record_tenant(actor, "tenant.notifications.view", tenant, "Consulta de avisos del negocio")
-    rows = (
-        Notification.objects.using("owner")
-        .filter(tenant_id=tenant.id, audience=Notification.Audience.OWNER)
-        .order_by("-created_at")[:MAX_NOTIFICATIONS]
+    qs = Notification.objects.using("owner").filter(
+        tenant_id=tenant.id, audience=Notification.Audience.OWNER
     )
-    return [
-        NotificationOut(
-            kind=n.kind, text=n.text, status=n.status, created_at=n.created_at, sent_at=n.sent_at
-        )
-        for n in rows
-    ]
+    rows, next_cursor = page(qs, field="created_at", cursor=cursor, limit=limit)
+    return NotificationPage(
+        items=[
+            NotificationOut(
+                kind=n.kind,
+                text=n.text,
+                status=n.status,
+                created_at=n.created_at,
+                sent_at=n.sent_at,
+            )
+            for n in rows
+        ],
+        next_cursor=next_cursor,
+    )
 
 
 class HealthIssueOut(Schema):

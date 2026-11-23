@@ -18,7 +18,7 @@ Cómo probar en tu máquina las puertas del bot de demo (Telegram y WhatsApp) co
 3. Reinicia y registra el webhook:
 
 ```bash
-docker compose restart web worker-inbound worker-outbound
+docker compose restart web worker-inbound worker-calendar worker-periodic worker-outbound
 docker compose exec web python manage.py telegram_set_webhook demo
 ```
 
@@ -37,7 +37,7 @@ Necesita una app de WhatsApp **de desarrollo** con su propio número y cuenta, y
 1. `make ngrok` abre el túnel.
 2. En la app, el webhook de la suscripción es `<URL de ngrok>/webhooks/whatsapp-demo`, con `DEMO_WHATSAPP_VERIFY_TOKEN` como `verify_token`.
 3. En `.env`: `PUBLIC_URL` y las cinco `DEMO_WHATSAPP_*` (`_PHONE_NUMBER_ID`, `_WABA_ID`, `_APP_SECRET`, `_ACCESS_TOKEN`, `_VERIFY_TOKEN`) de la app de desarrollo, más `DEMO_WHATSAPP_USERS`.
-4. `docker compose restart web worker-inbound worker-outbound`.
+4. `docker compose restart web worker-inbound worker-calendar worker-periodic worker-outbound`.
 5. Si la URL de ngrok cambia, repite los pasos 2 y 3.
 
 ## Sin canal real

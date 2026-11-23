@@ -24,7 +24,7 @@ Los pasos de restauración están en [restauración y simulacro](../procedimient
 3. Arranca los workers. En la VPS nueva, como `deploy`, en `/srv/autobot` (`restore.sh` se niega a repetirse sobre un `var/.deployed-sha` ya restaurado):
 
     ```bash
-    deploy/scripts/compose.sh up -d worker-inbound worker-outbound
+    deploy/scripts/compose.sh up -d worker-inbound worker-calendar worker-periodic worker-outbound
     ```
 
     El bot vuelve a responder y `calendar_sweep` corre con lo que la revisión del paso 2 dejó corregido.

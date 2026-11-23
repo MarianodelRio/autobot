@@ -10,7 +10,7 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `COMPOSE_PROJECT_NAME` | Nombre del proyecto Compose (nombres de contenedor y volumen) | sí | `autobot` | fija en `.env.example`; `ensure-env.sh` la fuerza en el servidor |
 | `PUBLIC_HOST` | Dominio público que atiende Caddy | sí (prod) | vacío | la persona |
 | `SHA` | SHA completo de la imagen a desplegar | sí (prod) | vacío | `make deploy`/CI |
-| `AUTOBOT_IMAGE` | Imagen de `web`/`worker-inbound`/`worker-outbound`, sin tag (p.ej. `ghcr.io/<owner>/autobot`) | sí (prod) | vacío | la persona |
+| `AUTOBOT_IMAGE` | Imagen de `web`/`web-panel` y los workers, sin tag (p.ej. `ghcr.io/<owner>/autobot`) | sí (prod) | vacío | la persona |
 | `AUTOBOT_PANEL_IMAGE` | Imagen del panel, sin tag | sí (prod) | vacío | la persona |
 | `DEPLOY_UID` | `id -u deploy` en la VPS; dueño de los ficheros montados en modo 0600 | sí (prod) | vacío | `ensure-env.sh` en el servidor (`id -u`; se recalcula siempre, incluso tras restaurar un `.env` de otro servidor) |
 | `ENVIRONMENT` | `local` o `prod`; cambia los valores por defecto exigidos. Si falta, `settings.py` asume `prod` (falla cerrado: sin DEBUG ni claves de ejemplo). Las herramientas locales (pytest, mypy, `make`) usan `config.settings_dev`, que fija `local`; los contenedores de `compose.local.yaml` deben declararla | sí | `prod` si falta | fija en `.env.example` (`local`) y en `compose.prod.yaml` (`prod`) |
@@ -24,9 +24,10 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `DB_APP_URL` | URL de conexión del alias `default` (`fp_app`) | sí | `postgres://fp_app:fp_app@localhost:5433/autobot` | `ensure-env.sh` en el servidor (en prod, se rechaza si contiene `localhost`) |
 | `DB_OWNER_URL` | URL de conexión del alias `owner` (`fp_owner`) | sí | `postgres://fp_owner:fp_owner@localhost:5433/autobot` | `ensure-env.sh` en el servidor (en prod, se rechaza si contiene `localhost`) |
 | `DB_READONLY_URL` | URL de conexión del alias `readonly` (`fp_readonly`) | sí | `postgres://fp_readonly:fp_readonly@localhost:5433/autobot` | `ensure-env.sh` en el servidor (en prod, se rechaza si contiene `localhost`) |
-| `DB_CONN_MAX_AGE` | Segundos que Django reutiliza una conexión a la BD (`default` y `owner`; `readonly` siempre 0) | no | `0` en `worker-inbound` y `worker-outbound` (local y prod); `web` usa el valor por defecto (gunicorn acota los hilos, así que las conexiones persistentes también están acotadas) | por defecto `60` |
-| `WORKER_DB_POOL_MIN` / `WORKER_DB_POOL_MAX` | Tamaño mínimo y máximo del pool psycopg propio de `procrastinate worker` (LISTEN, búsqueda, latido y cierre de los trabajos de `--concurrency`) | no | por defecto del código | por defecto `1` y `6` |
-| `SECRETS_ENCRYPTION_KEY` | Claves Fernet (separadas por comas) para cifrar secretos de canal; la primera cifra, todas descifran | sí | clave de ejemplo en `.env.example` | `ensure-env.sh` en el servidor (en prod, `settings.py` y `ensure-env.sh` rechazan la clave de ejemplo) |
+| `DB_CONN_MAX_AGE` | Segundos que Django reutiliza una conexión a la BD (`default` y `owner`; `readonly` siempre 0) | no | `0` en los cuatro workers (local y prod); `web` usa el valor por defecto (gunicorn acota los hilos, así que las conexiones persistentes también están acotadas) | por defecto `60` |
+| `WORKER_DB_POOL_MIN` / `WORKER_DB_POOL_MAX` | Tamaño mínimo y máximo del pool psycopg propio de `procrastinate worker` (LISTEN, búsqueda, latido y cierre de los trabajos de `--concurrency`) | no | el compose fija `WORKER_DB_POOL_MAX` por worker: 8 (`worker-inbound`), 10 (`worker-calendar`), 6 (`worker-periodic`) y 10 (`worker-outbound`) | por defecto `1` y `6` |
+| `PYTHON_CPU_COUNT` | De Python, no de Autobot: fija cuántas CPU cree tener el proceso; el compose de producción lo pone en los workers para que el pool de hilos por defecto de asyncio (`min(32, CPU + 4)`), que ejecuta los trabajos síncronos, no limite su concurrencia (ADR-023) | no | sin definir | `compose.prod.yaml`: 4, 6, 4 y 6 |
+| `SECRETS_ENCRYPTION_KEY` | Claves Fernet (separadas por comas) para cifrar secretos de canal; la primera cifra, todas descifran | sí | clave de ejemplo en `.env.example` | `ensure-env.sh --first-install`, solo en la primera instalación; después, si falta, el despliegue aborta (ADR-022). En prod, `settings.py` y `ensure-env.sh` rechazan la clave de ejemplo |
 | `WHATSAPP_GRAPH_VERSION` | Versión de la Graph API de Meta usada por los adaptadores | no | `v23.0` | fija en `.env.example` |
 | `DEMO_TELEGRAM_TOKEN` | Token del bot de Telegram de la puerta de demo | no (apaga la puerta) | vacío | la persona (@BotFather) |
 | `DEMO_TELEGRAM_WEBHOOK_SECRET` | Secreto del webhook de la puerta de demo (Telegram) | no (local no lo necesita) | vacío | `ensure-env.sh` en el servidor |
@@ -51,10 +52,10 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `SENTRY_DSN` | DSN del proyecto de Sentry; vacío desactiva la integración | no | vacío | la persona |
 | `HEALTHCHECKS_PING_URL` | URL de latido del check "worker" de healthchecks.io | no | vacío | la persona |
 | `RELEASE_SHA` | SHA desplegado, expuesto a la app para los logs | sí (prod) | vacío | lo fija el compose de producción (= `SHA`); no va en `.env` |
-| `SERVICE_NAME` | Nombre del servicio en los logs estructurados (`web`/`worker-inbound`/`worker-outbound`) | no | `web` | lo fija el compose por cada servicio; no va en `.env` |
+| `SERVICE_NAME` | Nombre del servicio en los logs estructurados (`web`/`web-panel`/`worker-inbound`/`worker-calendar`/`worker-periodic`/`worker-outbound`) | no | `web` | lo fija el compose por cada servicio; no va en `.env` |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Ruta de la clave de la cuenta de servicio de Google Calendar; vacío monta `/dev/null` | no | vacío | la persona |
-| `RETENTION_CLEANUP_ENABLED` | Permiso explícito para el borrado nocturno de retención RGPD | sí (para activarlo) | `false` | la persona (aprobación humana) |
-| `OPS_STATE_DIR` | Directorio con el estado de operación que el panel y `ops_check` leen (`backup.json`, `deploys.jsonl`, instantánea de contenedores) | no | `/tmp/ops` en `compose.local.yaml` | por defecto `<app>/state/ops`; `/run/ops` en `compose.prod.yaml` (montaje de solo lectura de `var/state/ops`) |
+| `RETENTION_CLEANUP_ENABLED` | Borrado nocturno de retención RGPD | no | `true` en producción (`compose.prod.yaml`, aprobado 2026-11-23); `false` en local y en `settings.py` | la persona: `false` en el `.env` del servidor lo apaga; `check_prod_config.py` exige `true` en el compose |
+| `OPS_STATE_DIR` | Directorio con el estado de operación que el panel y `ops_check` leen (`backup.json`, `backup-prune.json`, `deploys.jsonl`, instantánea de contenedores) | no | `/tmp/ops` en `compose.local.yaml` | por defecto `<app>/state/ops`; `/run/ops` en `compose.prod.yaml` (montaje de solo lectura de `var/state/ops`) |
 | `VICTORIALOGS_URL` | URL de VictoriaLogs: destino de los logs estructurados y de la consulta de logs del panel; vacío los deja solo en stdout | no | `http://victorialogs:9428` | fija en `compose.yaml` |
 | `AUTOBOT_BINARY_STDOUT` | Interna: `manage.py` la fija en `1` cuando un comando escribe binario por stdout (`tenant_config export -`, `dataset_library pull -`) para que el log vaya a stderr | no | no se define a mano | `manage.py` |
 | `AUTOBOT_CADDY_HTTP_PORT` / `AUTOBOT_CADDY_HTTPS_PORT` | Puertos del host a los que publica Caddy el 80 y el 443; solo se cambian en `localprod` para convivir con el stack de desarrollo | no | no aplica | por defecto `80` / `443`; `localprod.sh` fija `8081` / `8443` |
@@ -79,7 +80,7 @@ No las lee Django: solo cambian el comportamiento del script en sí (pruebas loc
 | `AUTOBOT_BOOTSTRAP_MARKER` | `restore.sh` | Ruta al marcador de bootstrap, que escribe `install-vm.sh` | `/var/lib/autobot/bootstrap-complete` |
 | `RESTIC_BIN` | `backup.sh`, `restore.sh`, `restore-test.sh` | Binario de restic a usar | `restic` |
 | `AUTOBOT_RESTORE_DB_ONLY` | `restore.sh` | Solo restaura la base de datos; no arranca ningún servicio ni marca el destino como desplegado (ensayo de traslado) | `false` |
-| `AUTOBOT_RESTORE_START_WORKERS` | `restore.sh` | Arranca también los workers en la misma ejecución; para arrancarlos después de verificar, usa `compose.sh up -d worker-inbound worker-outbound` en vez de repetir `restore.sh` | `false` |
+| `AUTOBOT_RESTORE_START_WORKERS` | `restore.sh` | Arranca también los workers en la misma ejecución; para arrancarlos después de verificar, usa `compose.sh up -d worker-inbound worker-calendar worker-periodic worker-outbound` en vez de repetir `restore.sh` | `false` |
 | `AUTOBOT_RESTORE_SNAPSHOT` | `restore.sh` | Id de snapshot concreto a restaurar en vez de `latest` (el destino de un traslado restaura exactamente el snapshot del corte) | `latest` |
 | `AUTOBOT_PRUNE_LOCK_WAIT` | `prune.sh` | Segundos que espera el candado compartido con `deploy.sh` antes de omitir el prune | `60` |
 | `AUTOBOT_HTTPS_CHECK_TIMEOUT` / `AUTOBOT_HTTPS_CHECK_INTERVAL` | `deploy.sh` | Reintentos de la comprobación HTTPS tras desplegar | `60` / `5` (segundos) |

@@ -3,6 +3,7 @@
 import json
 import shutil
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -104,6 +105,39 @@ def read_backup_status(state_dir: Path) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def read_prune_status(state_dir: Path) -> dict[str, Any] | None:
+    """`backup-prune.json`, written by backup.sh from the prune marker snapshots."""
+    text = _read(state_dir / "backup-prune.json")
+    if text is None:
+        return None
+    try:
+        data: Any = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _parse_time(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.utcoffset() is not None else None
+
+
+def prune_overdue(status: dict[str, Any] | None, now: datetime, limit: timedelta) -> bool:
+    """True when the last prune (or, if there never was one, the oldest snapshot) is older
+    than `limit`. No file, or no snapshot at all, is not an alert: nothing to prune yet."""
+    if status is None:
+        return False
+    reference = _parse_time(status.get("last_prune_at")) or _parse_time(
+        status.get("oldest_snapshot_at")
+    )
+    return reference is not None and now - reference > limit
 
 
 def read_deploys(state_dir: Path, limit: int = 20) -> list[dict[str, Any]]:

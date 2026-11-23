@@ -76,6 +76,8 @@ case $phase in
   if [[ -f $base_marker && $(cat "$base_marker") == "$fingerprint" ]] &&
     systemctl is-active --quiet docker &&
     systemctl is-active --quiet unattended-upgrades &&
+    systemctl is-active --quiet systemd-timesyncd &&
+    [[ $(timedatectl show -p NTP --value) == yes ]] &&
     systemctl is-enabled --quiet autobot-backup.timer &&
     systemctl is-enabled --quiet autobot-containers.timer &&
     systemctl is-enabled --quiet autobot-prune.timer &&
@@ -102,7 +104,7 @@ case $phase in
 
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq ca-certificates curl gnupg git ufw fail2ban unattended-upgrades restic
+  apt-get install -y -qq ca-certificates curl gnupg git ufw fail2ban unattended-upgrades restic systemd-timesyncd
   if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then
     install -m 0755 -d /etc/apt/keyrings
     curl --fail --silent --show-error https://download.docker.com/linux/ubuntu/gpg \
@@ -125,6 +127,17 @@ EOF
   fi
   apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable --now docker unattended-upgrades
+  # Clock: TOTP codes of the panel, webhook signatures' timestamps, restic locks, the
+  # backup timer and the retention cutoffs all depend on a correct clock. Ubuntu 24.04
+  # ships systemd-timesyncd (installed above if a minimal image lacks it); make sure it
+  # runs and NTP is on. The sync itself can take a minute after enabling, so a clock that
+  # is not synchronized yet is only a warning here; install-vm.sh's health step and
+  # `timedatectl` (docs/procedimientos/servidor.md) check it again.
+  systemctl enable --now systemd-timesyncd
+  timedatectl set-ntp true
+  if [[ $(timedatectl show -p NTPSynchronized --value) != yes ]]; then
+    echo 'WARNING: the clock is not synchronized yet (timedatectl show -p NTPSynchronized); check again in a few minutes' >&2
+  fi
   unattended_conf_text >"$unattended_conf"
   chmod 0644 "$unattended_conf"
 

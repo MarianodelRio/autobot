@@ -85,7 +85,7 @@ Los datos de demo se conservan menos que los de un cliente real (`apps/backend/s
 | Concesiones con caducidad | al caducar |
 | Invitaciones revocadas o caducadas | 30 días después (`INVITE_RETENTION_DAYS`) |
 
-La limpieza solo actúa con `RETENTION_CLEANUP_ENABLED=true`, que sigue en `false` hasta que la persona lo apruebe a mano en el `.env` del servidor (nunca lo activa `install-vm.sh`). Ver [Retención y RGPD](../procedimientos/retencion-rgpd.md).
+La limpieza solo actúa con `RETENTION_CLEANUP_ENABLED=true`: en producción `compose.prod.yaml` lo activa por defecto (aprobado el 2026-11-23); en local vale `false`. Ver [Retención y RGPD](../procedimientos/retencion-rgpd.md).
 
 ## Dónde está el código
 

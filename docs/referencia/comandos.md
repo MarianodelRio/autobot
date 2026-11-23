@@ -126,7 +126,7 @@ también se puede pasar en la línea de comandos.
 | `tenant_data_export <slug> --output <fichero>` | Exporta todos los datos de un negocio a un fichero privado (derechos RGPD) |
 | `contact_forget <slug> <external_id> [--channel ...]` | Borra los datos de un contacto |
 | `tenant_purge <slug>` | Solo tras la baja: borra todo lo que el sistema guarda del negocio, incluida su fila y su slug (que queda libre); exige escribir el slug |
-| `privacy_ledger_export` | Imprime el libro de supresiones (JSON lines, sin datos personales); guárdalo fuera del servidor tras cada olvido o purga (ADR-019) |
+| `privacy_ledger_export` | Imprime el libro de supresiones (JSON lines, sin datos personales). `backup.sh` ya lo sube cada hora a restic (ADR-025); la exportación manual es una copia opcional |
 | `privacy_reapply [--ledger FICHERO]` | Tras restaurar: vuelve a aplicar los olvidos y purgas del libro (tabla + fichero, o `--ledger -` por stdin); idempotente |
 | `outbound_resolve <uuid> (--mark-sent\|--resend) --confirm` | Resuelve un envío ambiguo a mano; sin `--confirm` explica el riesgo y no hace nada |
 | `job_retry <id>` | Reintenta un trabajo fallido idempotente a mano; rechaza los de envío (`send_message`, `send_notification`) |

@@ -2,7 +2,7 @@
 
 ## Síntoma
 
-Llega una alerta `container_down:<servicio>`, `container_unhealthy:<servicio>`, `container_restarted:<servicio>`, `container_image:<servicio>`, `container_unexpected:<servicio>` o `containers_stale`, o la tarjeta Contenedores de Sistema en el panel muestra un servicio en rojo o ámbar. Los servicios esperados son `caddy`, `web`, `worker-inbound`, `worker-outbound`, `panel`, `db` y `victorialogs`.
+Llega una alerta `container_down:<servicio>`, `container_unhealthy:<servicio>`, `container_restarted:<servicio>`, `container_image:<servicio>`, `container_unexpected:<servicio>` o `containers_stale`, o la tarjeta Contenedores de Sistema en el panel muestra un servicio en rojo o ámbar. Los servicios esperados son `caddy`, `web`, `web-panel`, `worker-inbound`, `worker-calendar`, `worker-periodic`, `worker-outbound`, `panel`, `db` y `victorialogs`.
 
 ## Diagnóstico
 
@@ -33,7 +33,7 @@ Todo en la VPS, como `deploy`, en `/srv/autobot`.
     journalctl -u autobot-containers.service --since -10min
     ```
 
-5. `container_unexpected:<servicio>` señala un contenedor huérfano de un despliegue anterior (p. ej. el `worker` único previo a la separación en dos workers), no uno de los siete servicios actuales.
+5. `container_unexpected:<servicio>` señala un contenedor huérfano de un despliegue anterior (p. ej. el `worker` único previo a la separación en workers), no uno de los diez servicios actuales.
 6. Durante un despliegue (`maintenance: "deploy"` en la instantánea) la tarjeta sigue mostrando la verdad pero no genera alertas nuevas de contenedores; espera a que termine. Con una restauración a medias (`var/.restore-incomplete`) solo salta `containers_restore`: ve a [restauración](../procedimientos/restaurar.md).
 
 ## Arreglo

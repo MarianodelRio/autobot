@@ -5,7 +5,7 @@ common replies into the provider's format and sends them. Packs and the runtime 
 see the provider's format: the differences between channels live only in the adapters.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
@@ -65,16 +65,23 @@ class Rejected:
 
 @dataclass(frozen=True)
 class RetryLater:
-    """Certainly not sent; may be retried (after `after_s` seconds, if the provider says)."""
+    """Certainly not sent; may be retried (after `after_s` seconds, if the provider says).
+    `kind` says why: `rate` (the provider asked to slow down), `server` (it answered with
+    an error of its own) or `network` (no connection was made). Only the last two count
+    for the outbound provider breaker."""
 
     after_s: float | None = None
+    kind: Literal["rate", "server", "network"] = "rate"
 
 
 @dataclass(frozen=True)
 class Ambiguous:
-    """It may or may not have been sent: never resent blindly."""
+    """It may or may not have been sent: never resent blindly. `transport` marks a
+    failure of the provider or the network (timeout, 5xx), as opposed to an answer we could
+    not read; it feeds the provider breaker and takes no part in equality."""
 
     reason: str
+    transport: bool = field(default=False, compare=False)
 
 
 type SendOutcome = Sent | Rejected | RetryLater | Ambiguous
@@ -111,6 +118,12 @@ class ChannelAdapter[C, S](Protocol):
     def send(
         self, rendered: dict[str, Any], recipient: str, channel: C, secrets: S, outbound_id: UUID
     ) -> SendOutcome: ...
+
+    def probe(self, channel: C, secrets: S) -> bool:
+        """A read-only call that sends nothing (WhatsApp: GET of the phone number; Telegram:
+        getMe): is the provider answering at all? Any answer below 500 counts as yes, even a
+        4xx; a timeout, a network error or a 5xx counts as no. Used by the outbound breaker."""
+        ...
 
 
 def parse_stored[C](

@@ -129,7 +129,7 @@ Resumen de [Seguridad y secretos](../arquitectura/seguridad-y-secretos.md), a fe
 
 **Resiliencia y continuidad**
 
-- Mensajes entrantes guardados antes de contestar al proveedor; efectos externos idempotentes; no se reintenta a ciegas un envío ambiguo.
+- Mensajes entrantes guardados antes de contestar al proveedor; efectos externos idempotentes; un envío ambiguo se concilia y, como mucho, se reenvía una vez si su clase admite duplicados (ADR-026).
 - Copias de seguridad periódicas con simulacro de restauración y vigilancia externa de que la plataforma está viva.
 
 **Organizativas**

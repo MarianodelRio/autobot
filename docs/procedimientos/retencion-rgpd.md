@@ -40,11 +40,18 @@ deploy/scripts/manage.sh contact_forget <slug> <external_id> --channel main
 
 ## Limpieza automática
 
-La limpieza nocturna se programa a las 03:00 UTC y permanece inerte con
-`RETENTION_CLEANUP_ENABLED=false` (valor predeterminado). Solo el operador, tras la
-aprobación humana explícita, puede establecer `true` y reiniciar `worker-inbound` (ejecuta la cola `periodic`).
-El permiso se comprueba al ejecutar el trabajo, incluidos los trabajos ya encolados.
-No se ha autorizado ni activado esa limpieza en producción.
+La limpieza nocturna se programa a las 03:00 UTC. En **producción está activada por
+defecto** (`compose.prod.yaml` pasa `RETENTION_CLEANUP_ENABLED=true`; la persona lo aprobó el
+2026-11-23 y `check_prod_config.py` lo exige en el compose renderizado); en local vale
+`false`. Para pararla en un servidor, `RETENTION_CLEANUP_ENABLED=false` en su `.env` y
+reiniciar `worker-periodic` (ejecuta la cola `periodic`): el permiso se comprueba al ejecutar
+el trabajo, incluidos los trabajos ya encolados. Los plazos aplicados son exactamente los de
+[Registro de actividades](../cumplimiento/registro-de-actividades.md) (`runtime/retention.py`,
+revisado el 2026-11-23): `inbound_event` vaciado a los 30 días y borrado a los 90;
+`outbound_message` con `payload` vaciado a los 30 días y fila a los 12 meses; `notification`,
+`metric_event` y contactos a los 12 meses de inactividad; negocios de demo, 30 días;
+`demo_event` y `owner_event`, 7 días; `demo_session`, 30; `audit_event` y `ops_alert`, 1 año.
+Las excepciones: los eventos de entrada de un negocio de demo siguen los 90 días generales.
 
 La limpieza usa lotes de hasta 1.000 filas padre y una transacción corta por lote y
 negocio bajo RLS. Los borrados en cascada de un contacto pueden afectar a más filas
@@ -151,15 +158,17 @@ demo). `tenant_purge` no puede borrar accesos de demo porque no pertenecen a un 
 Cada `contact_forget`/`tenant_purge` (también desde el panel) escribe en la misma
 transacción una fila de `privacy_suppression` (ADR-019): ids internos y HMAC de la
 identidad, nunca el dato en claro. Como esa tabla vive en la base que se restaura, hay
-que **guardar el libro fuera del servidor** tras cada olvido o purga:
+que sacarlo del servidor: lo hace solo el backup. Copia manual opcional:
 
 ```bash
 make prod-manage CMD="privacy_ledger_export" > libro-supresiones.jsonl   # acumulativo
 ```
 
-Tras una restauración se reaplica con `privacy_reapply --ledger -` **antes de arrancar los
-workers** (paso obligatorio de [restaurar.md](restaurar.md)). El comando es idempotente y
-no necesita aprobación adicional más allá de la de la propia restauración.
+Desde el ADR-025 no hace falta exportarlo a mano: `backup.sh` lo sube cada hora a restic
+(etiqueta `autobot-ledger`) y `restore.sh` reaplica el último con `privacy_reapply --ledger -`
+**antes de arrancar los workers** ([restaurar.md](restaurar.md)). El comando es idempotente
+y no necesita aprobación adicional más allá de la de la propia restauración. La exportación
+manual (`privacy_ledger_export`) queda como copia opcional adicional.
 
 Para dar de baja un negocio, el operador registra la fecha real de baja y una
 fecha límite de borrado de como máximo 30 días en el registro operativo de la baja.
@@ -180,10 +189,9 @@ y [pymes y Facilita](https://www.aepd.es/derechos-y-deberes/cumple-tus-deberes/d
   `contact.forget`, `tenant.export` o `tenant.purge`).
 - Tras `tenant_purge`, el negocio no aparece en la lista del panel y no quedan secretos ni
   datasets.
-- El libro de supresiones está guardado fuera del servidor tras el olvido o la purga
-  (`privacy_ledger_export`).
-- La limpieza nocturna sigue apagada salvo autorización expresa
-  (`RETENTION_CLEANUP_ENABLED`).
+- El libro de supresiones llega al repositorio de backups con el siguiente backup horario
+  (snapshot `autobot-ledger`; `restic snapshots --tag autobot-ledger`).
+- La limpieza nocturna está activa en producción (`RETENTION_CLEANUP_ENABLED=true`).
 
 ## Dónde está el código
 

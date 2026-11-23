@@ -89,7 +89,7 @@ write_env() {
   # does -- a real bug this drill found: Caddy's own CA setup needs to write to
   # /data (var/state/caddy-data), and a root-owned directory refuses it.
   ensure_state_dirs "$srv_dir"
-  (cd "$srv_dir" && deploy/scripts/ensure-env.sh)
+  (cd "$srv_dir" && deploy/scripts/ensure-env.sh --first-install)
 }
 
 cmd_up() {

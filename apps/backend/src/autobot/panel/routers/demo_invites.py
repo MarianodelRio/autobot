@@ -32,7 +32,7 @@ class DemoInviteOut(Schema):
 
 class DemoInvitePage(Schema):
     items: list[DemoInviteOut]
-    total: int
+    next_cursor: str | None
 
 
 class DemoInviteQr(Schema):
@@ -67,11 +67,11 @@ def _out(invite: DemoInvite) -> dict[str, Any]:
 @router.get("/demo/invites", response=DemoInvitePage)
 def list_invites(
     request: HttpRequest,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    cursor: str = "",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> dict[str, Any]:
-    invites, total = demo_invites.list_invites(limit=limit, offset=offset)
-    return {"items": [_out(invite) for invite in invites], "total": total}
+    invites, next_cursor = demo_invites.list_invites(limit=limit, cursor=cursor)
+    return {"items": [_out(invite) for invite in invites], "next_cursor": next_cursor}
 
 
 @router.get("/demo/invites/{id}/qr", response=DemoInviteQr)

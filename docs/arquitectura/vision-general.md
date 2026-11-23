@@ -17,15 +17,17 @@ Es un monolito modular Django 5.2 con PostgreSQL 18 y Procrastinate, en una VPS 
 | `caddy` | Solo en producción. HTTPS automático; expone únicamente los webhooks (negocio, demo y bot de avisos) y `/health` |
 | `web` | Público, detrás de `caddy`: sirve los webhooks (verifica, guarda, encola). Solo usa `fp_app`, sin credenciales `owner` ni `readonly` |
 | `web-panel` | Misma imagen que `web`, solo en producción: sirve la API del panel (`/api/panel/`) con `fp_owner` y `fp_readonly`. Sin puerto publicado; solo lo alcanza `panel` ([ADR-020](adr/ADR-020-api-del-panel-aparte.md)). En local, un único `web` hace las dos cosas |
-| `worker-inbound` | Procrastinate: colas `inbound`, `periodic` y `ops` |
-| `worker-outbound` | Procrastinate: colas `outbound` y `ops` |
+| `worker-inbound` | Procrastinate: cola `inbound` (4 huecos) |
+| `worker-calendar` | Procrastinate: cola `inbound_ext`, los mensajes de los packs que llaman a Google Calendar (8 huecos) |
+| `worker-periodic` | Procrastinate: colas `periodic` y `ops` (tareas periódicas y barridas, 2 huecos) |
+| `worker-outbound` | Procrastinate: cola `outbound` (8 huecos) |
 | `db` | PostgreSQL 18 con Row-Level Security forzada |
 | `panel` | SPA estática con su propia Caddy interna, proxy de `/api/` hacia `web-panel`; solo accesible por túnel SSH ([ADR-008](adr/ADR-008-panel.md), [ADR-020](adr/ADR-020-api-del-panel-aparte.md)) |
 | `victorialogs` | Almacén de logs técnicos (31 días), sin puerto publicado |
 
 En producción los contenedores se reparten en redes de Compose separadas (`edge`, `panel`, `egress`, `data` y `logs`; ver [ADR-020](adr/ADR-020-api-del-panel-aparte.md)): `caddy` solo alcanza `web`, y ni `caddy` ni `victorialogs` tienen camino hasta la base de datos, que además no tiene salida a internet. Todos los contenedores de la aplicación descartan todas las capacidades de Linux y no pueden ganar privilegios.
 
-Hay dos workers para que una caída de Google Calendar (que llaman los packs desde `inbound` y `periodic`) no frene los envíos. Los detalles están en [cola y workers](cola-y-workers.md).
+Hay cuatro workers, cada uno con sus colas, para que un servicio lento no frene a quien no depende de él: una caída de Google Calendar (que llaman los packs desde `inbound_ext` y `periodic`) no frena los envíos, las conversaciones de los packs sin Calendar ni las tareas periódicas ([ADR-023](adr/ADR-023-colas-aisladas-y-degradacion.md)). Los detalles están en [cola y workers](cola-y-workers.md).
 
 ```mermaid
 flowchart LR
@@ -33,16 +35,19 @@ flowchart LR
     C --> W[web]
     W -->|inbound_event + job| DB[(db<br/>PostgreSQL + Procrastinate)]
     DB --> WI[worker-inbound]
-    WI -->|handle_message| PK[packs]
-    WI -->|outbound_message + job| DB
+    DB --> WC[worker-calendar]
+    WI & WC -->|handle_message| PK[packs]
+    WI & WC -->|outbound_message + job| DB
     DB --> WO[worker-outbound]
     WO -->|adaptador de canal| P
-    WI -->|Calendar| G[Google Calendar]
+    WC -->|Calendar| G[Google Calendar]
+    DB --> WPE[worker-periodic]
+    WPE -->|Calendar| G
     OP[Operador] -.túnel SSH.-> PA[panel]
     PA -->|/api/| WP[web-panel]
     WP --> DB
     W --> DB
-    W & WP & WI & WO --> VL[victorialogs]
+    W & WP & WI & WC & WPE & WO --> VL[victorialogs]
     PA -.logs.-> VL
 ```
 

@@ -74,3 +74,13 @@ export function fromLocalInput(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
+
+/** A duration in seconds as "45 s", "7 min" or "2 h 05 min". */
+export function formatAge(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s} s`;
+  const minutes = Math.floor(s / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const rest = String(minutes % 60).padStart(2, "0");
+  return `${Math.floor(minutes / 60)} h ${rest} min`;
+}

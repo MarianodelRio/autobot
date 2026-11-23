@@ -53,7 +53,13 @@ def setup(tmp_path: Path, *, bootstrapped: bool = True) -> tuple[Path, Path]:
         "[[ $1 != --no-lock ]] || shift\n"
         "if [[ $1 == restore ]]; then\n"
         '  target="${*: -1}"\n'
-        '  cp -r "$RESTIC_FAKE_SNAPSHOT_DIR"/. "$target"/\n'
+        "  if [[ $* == *autobot-ledger* ]]; then\n"
+        # The ledger is its own tagged snapshot; none may exist (older repository).
+        "    [[ -d ${RESTIC_FAKE_LEDGER_DIR:-/nonexistent} ]] || exit 1\n"
+        '    cp -r "$RESTIC_FAKE_LEDGER_DIR"/. "$target"/\n'
+        "  else\n"
+        '    cp -r "$RESTIC_FAKE_SNAPSHOT_DIR"/. "$target"/\n'
+        "  fi\n"
         "fi\n"
     )
     restic.chmod(0o755)
@@ -63,7 +69,16 @@ def setup(tmp_path: Path, *, bootstrapped: bool = True) -> tuple[Path, Path]:
         'printf \'%s\\n\' "$*" >>"$TEST_LOG"\n'
         "[[ $* != *'volume inspect'* ]] || exit 1\n"
         "[[ $* != *'ps -q'* ]] || exit 0\n"
+        # The services the restored SHA's compose file defines (four workers, ADR-023).
+        "if [[ $* == *'config --services'* ]]; then\n"
+        "  printf 'web\\nworker-inbound\\nworker-calendar\\n'\n"
+        "  printf 'worker-periodic\\nworker-outbound\\ndb\\n'\n"
+        "fi\n"
         "[[ $* != *'manage.py shell'* || ${DECRYPT_FAIL:-} != 1 ]] || exit 1\n"
+        # The ledger arrives by stdin: keep what the container would have read.
+        "if [[ $* == *privacy_reapply* ]]; then\n"
+        '  cat >"$TEST_LOG.reapply-stdin"\n'
+        "fi\n"
     )
     docker.chmod(0o755)
     git = binaries / "git"
@@ -98,6 +113,7 @@ def invoke(
         "PATH": f"{binaries}:{os.environ['PATH']}",
         "TEST_LOG": str(tmp_path / "docker.log"),
         "RESTIC_FAKE_SNAPSHOT_DIR": str(tmp_path / "snapshot"),
+        "RESTIC_FAKE_LEDGER_DIR": str(tmp_path / "ledger"),
         "AUTOBOT_BACKUP_CONFIG": str(backup_config(tmp_path)),
         "AUTOBOT_BOOTSTRAP_MARKER": str(tmp_path / "bootstrap-complete"),
         "AUTOBOT_SECRETS_KEY_FILE": str(key_file),
@@ -127,8 +143,7 @@ def test_workers_are_not_started_by_default(tmp_path: Path) -> None:
     result = invoke(script, binaries, tmp_path)
     assert result.returncode == 0, result.stderr
     log = (tmp_path / "docker.log").read_text()
-    assert "worker-inbound" not in log
-    assert "worker-outbound" not in log
+    assert "up -d worker" not in log
     assert "up -d web web-panel panel victorialogs caddy" in log
 
 
@@ -137,7 +152,7 @@ def test_workers_start_when_explicitly_requested(tmp_path: Path) -> None:
     result = invoke(script, binaries, tmp_path, AUTOBOT_RESTORE_START_WORKERS="true")
     assert result.returncode == 0, result.stderr
     log = (tmp_path / "docker.log").read_text()
-    assert "up -d worker-inbound worker-outbound" in log
+    assert "up -d worker-inbound worker-calendar worker-periodic worker-outbound" in log
 
 
 def test_checks_out_the_snapshot_sha(tmp_path: Path) -> None:
@@ -341,3 +356,54 @@ def test_several_comma_separated_keys_are_accepted(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert f"SECRETS_ENCRYPTION_KEY={KEY},{OTHER_KEY}" in _env_lines(tmp_path)
+
+
+def _ledger_snapshot(tmp_path: Path, text: str) -> None:
+    ledger = tmp_path / "ledger" / "var" / "backups"
+    ledger.mkdir(parents=True)
+    (ledger / "privacy-ledger.jsonl").write_text(text)
+
+
+def test_the_latest_ledger_snapshot_is_reapplied_before_the_workers_start(
+    tmp_path: Path,
+) -> None:
+    """ADR-025: its own tag, not the restored snapshot's, and `privacy_reapply` runs before
+    any service that talks to customers."""
+    script, binaries = setup(tmp_path)
+    row = '{"ledger": "privacy.v1", "id": 7, "kind": "forget"}\n'
+    _ledger_snapshot(tmp_path, row)
+    result = invoke(script, binaries, tmp_path, AUTOBOT_RESTORE_START_WORKERS="true")
+    assert result.returncode == 0, result.stderr
+    restic_log = (tmp_path / "docker.log").read_text().splitlines()
+    assert "--no-lock restore latest --tag autobot-ledger --target" in "\n".join(
+        line for line in restic_log if "autobot-ledger" in line
+    )
+    reapply = next(i for i, line in enumerate(restic_log) if "privacy_reapply --ledger -" in line)
+    web_up = next(i for i, line in enumerate(restic_log) if "up -d web web-panel" in line)
+    workers_up = next(i for i, line in enumerate(restic_log) if "up -d worker-inbound" in line)
+    assert reapply < web_up < workers_up
+    assert (tmp_path / "docker.log.reapply-stdin").read_text() == row
+    assert "WARNING: no suppression-ledger snapshot" not in result.stderr
+
+
+def test_the_ledger_snapshot_is_fetched_apart_from_the_restored_snapshot(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    _ledger_snapshot(tmp_path, "")
+    result = invoke(script, binaries, tmp_path, AUTOBOT_RESTORE_SNAPSHOT="abcd1234")
+    assert result.returncode == 0, result.stderr
+    lines = (tmp_path / "docker.log").read_text().splitlines()
+    assert any("restore abcd1234 --tag autobot --target" in line for line in lines)
+    ledger_lines = [line for line in lines if "autobot-ledger" in line]
+    assert len(ledger_lines) == 1 and "restore latest --tag autobot-ledger" in ledger_lines[0]
+
+
+def test_a_missing_ledger_snapshot_warns_and_restores_with_the_table_only(
+    tmp_path: Path,
+) -> None:
+    script, binaries = setup(tmp_path)  # no ledger snapshot in the repository
+    result = invoke(script, binaries, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "WARNING: no suppression-ledger snapshot" in result.stderr
+    log = (tmp_path / "docker.log").read_text()
+    assert "privacy_reapply" in log and "privacy_reapply --ledger" not in log
+    assert (tmp_path / "docker.log.reapply-stdin").read_text() == ""

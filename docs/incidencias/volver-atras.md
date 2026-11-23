@@ -6,7 +6,7 @@ Un SHA nuevo rompe `/health` o el flujo tras desplegar, o llega `deploy_rollback
 
 ## Diagnóstico
 
-`deploy/scripts/deploy.sh` revierte solo si `/health/internal` no queda sano en 60 s o si `worker-inbound` o `worker-outbound` se paran o reinician en sus primeros ~10 s. Si falla antes de cambiar la imagen (pull, migración o validación de configuración), mantiene la imagen anterior, devuelve el repositorio al SHA anterior y avisa con `deploy_aborted`.
+`deploy/scripts/deploy.sh` revierte solo si `/health/internal` no queda sano en 60 s o si alguno de los cuatro workers se para o reinicia en sus primeros ~10 s. Si falla antes de cambiar la imagen (pull, migración o validación de configuración), mantiene la imagen anterior, devuelve el repositorio al SHA anterior y avisa con `deploy_aborted`.
 
 1. SHA desplegado. En la VPS, como `deploy`:
 
@@ -19,7 +19,7 @@ Un SHA nuevo rompe `/health` o el flujo tras desplegar, o llega `deploy_rollback
 2. Logs de los servicios. En la VPS, como `deploy`, en `/srv/autobot`:
 
     ```bash
-    deploy/scripts/compose.sh logs --tail=100 web web-panel worker-inbound worker-outbound
+    deploy/scripts/compose.sh logs --tail=100 web web-panel worker-inbound worker-calendar worker-periodic worker-outbound
     ```
 
 3. Resultado del workflow `deploy.yml` en GitHub, y si el aviso a ops llegó.

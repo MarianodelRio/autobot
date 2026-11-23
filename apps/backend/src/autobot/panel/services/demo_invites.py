@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from autobot.channels.demo.invites import generate_code
 from autobot.ops.audit import record
+from autobot.panel.services.pagination import page
 from autobot.runtime.models import DemoAccessGrant, DemoInvite
 from tools.ops.qr import svg_markup
 
@@ -78,9 +79,9 @@ def revoke_invite(invite: DemoInvite, *, actor: str) -> None:
         )
 
 
-def list_invites(*, limit: int, offset: int) -> tuple[list[DemoInvite], int]:
-    """One query for the page (grants counted by a subquery, not one COUNT per row)
-    and one for the total."""
+def list_invites(*, limit: int, cursor: str) -> tuple[list[DemoInvite], str | None]:
+    """One keyset page (grants counted by a subquery, not one COUNT per row); no total:
+    counting every invite for each page is what a cursor avoids."""
     grants = (
         DemoAccessGrant.objects.using("owner")
         .filter(invite_id=OuterRef("pk"))
@@ -89,11 +90,8 @@ def list_invites(*, limit: int, offset: int) -> tuple[list[DemoInvite], int]:
         .annotate(n=Count("pk"))
         .values("n")
     )
-    queryset = DemoInvite.objects.using("owner")
-    page = queryset.annotate(grant_total=Coalesce(Subquery(grants), 0)).order_by(
-        "-created_at", "-id"
-    )[offset : offset + limit]
-    return list(page), queryset.count()
+    queryset = DemoInvite.objects.using("owner").annotate(grant_total=Coalesce(Subquery(grants), 0))
+    return page(queryset, field="created_at", cursor=cursor, limit=limit)
 
 
 def grant_count(invite: DemoInvite) -> int:

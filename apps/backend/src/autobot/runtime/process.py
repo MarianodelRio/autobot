@@ -53,6 +53,7 @@ from core.conversation import (
     HUMAN_REQUESTED,
     EffectiveState,
     command_result,
+    degraded_result,
     effective_state,
     first_contact_notice,
     global_command,
@@ -67,11 +68,17 @@ from core.pack import ContactInfo, PackResult
 from core.phone import phone_key
 from core.proactive import ProactiveMessage
 from core.replies import Reply, Text
+from integrations.google_calendar import time_budget
 
 log = logging.getLogger(__name__)
 
 # What the contacts of a degraded tenant receive: its pack cannot run.
 UNAVAILABLE_TEXT = "Ahora mismo no puedo atenderte; inténtalo más tarde."
+
+# The most a message may spend on Google Calendar between all the attempts of one run
+# (the client checks it before each attempt; ADR-023). Two attempts of 2.5 s fit, a whole
+# second run does not: a slow Google costs a slot ~8 s, not a minute.
+CALENDAR_BUDGET_S = 8.0
 
 # More than 20 messages in 60 s from one contact are saved and not answered. The
 # worker is a single process, so an in-memory window covers all its threads.
@@ -254,8 +261,9 @@ def _run_pack(
     calendars: CalendarFactory,
 ) -> tuple[PackResult, str]:
     """The pack's result and, if it failed, the error recorded on the event. A
-    `TransientError` is retried by the job; on the last attempt, and on any other
-    exception, the contact gets the recovery text and the state is reset."""
+    `TransientError` is retried by the job; on its last attempt the contact gets the
+    degraded text and the conversation keeps its state. Any other exception gets the
+    recovery text and the state is reset."""
     assert tenant.pack is not None
     try:
         ctx = build_context(
@@ -268,13 +276,16 @@ def _run_pack(
             event_id=event.id,
             calendars=calendars,
         )
-        result = tenant.pack.handle_message(ctx, message)
+        with time_budget(CALENDAR_BUDGET_S):
+            result = tenant.pack.handle_message(ctx, message)
     except TransientError:
         _record_signal(tenant, event, failed=True)
         if not last_attempt:
             raise
         log.warning("event %s: transient error on the last attempt", event.id)
-        return recovery_result(), "TransientError on the last attempt"
+        # Not the recovery text: the conversation is intact, only something outside the
+        # platform is not answering, so it keeps its state and the person tries again.
+        return degraded_result(), "TransientError on the last attempt"
     except Exception as e:
         _record_signal(tenant, event, failed=True)
         # Sentry, once configured takes it from this log record.
@@ -323,7 +334,9 @@ def apply_actions(
                 if target is None:
                     continue
                 proactive = ProactiveMessage(action.template, action.params, action.button_payloads)
-                row = create_proactive(tenant.id, target, proactive, action.idem_key, event)
+                row = create_proactive(
+                    tenant.id, target, proactive, action.idem_key, event, not_after=action.not_after
+                )
                 if row is not None:
                     messages.append(row)
             case NotifyOwner():

@@ -1,6 +1,6 @@
 """One Calendar read per sweep; the runtime persists/deduplicates the actions."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from core.actions import Action, ContactRef, SendProactive
@@ -73,6 +73,17 @@ def _target(ctx: PackContext, event: CalEvent) -> ContactRef | None:
     return ContactRef(phone=phone) if phone else None
 
 
+# A reminder or confirmation that arrives later than this before the appointment is useless.
+NOTICE_LEAD = timedelta(minutes=30)
+
+
+def _not_after(event: CalEvent) -> datetime:
+    """Thirty minutes before the start, computed in UTC: subtracting from a datetime that
+    carries a zone (not a fixed offset) is wall-clock arithmetic, which is wrong on the
+    nights the clocks change."""
+    return event.start.astimezone(UTC) - NOTICE_LEAD
+
+
 def _reminder(
     ctx: PackContext, event: CalEvent, target: ContactRef, params: list[str]
 ) -> SendProactive:
@@ -82,6 +93,7 @@ def _reminder(
         params,
         [f"reminder_confirm:{event.gcal_id}", f"reminder_cancel:{event.gcal_id}"],
         ctx.idem.stable(f"reminder:{event.gcal_id}:{event.start.isoformat()}"),
+        not_after=_not_after(event),
     )
 
 
@@ -106,4 +118,5 @@ def _confirmation(
         [parse_name(event.description) or "Cliente", *params],
         [f"booking_cancel:{event.gcal_id}"],
         ctx.idem.stable(f"confirm:{event.gcal_id}"),
+        not_after=_not_after(event),
     )

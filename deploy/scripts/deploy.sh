@@ -48,16 +48,22 @@ export SHA="$target"
 
 # The service list follows the compose file that is checked out: rolling back to a commit
 # from before ADR-020 must not ask for a `web-panel` that file does not define (there, `web`
-# still holds the owner credentials and serves the panel's API). Called again whenever the
+# still holds the owner credentials and serves the panel's API), nor, from before ADR-023,
+# for the `worker-calendar` and `worker-periodic` it lacks. Called again whenever the
 # checkout changes.
 app_svcs=() owner_svc=web
 refresh_services() {
-  app_svcs=(web worker-inbound worker-outbound panel)
-  owner_svc=web
-  if "${compose[@]}" config --services 2>/dev/null | grep -qx web-panel; then
-    app_svcs=(web web-panel worker-inbound worker-outbound panel)
-    owner_svc=web-panel
+  local defined want
+  defined=$("${compose[@]}" config --services 2>/dev/null) || defined=
+  app_svcs=() owner_svc=web
+  if [[ -z $defined ]]; then
+    app_svcs=(web worker-inbound worker-outbound panel)
+    return
   fi
+  for want in web web-panel worker-inbound worker-calendar worker-periodic worker-outbound panel; do
+    if grep -qx "$want" <<<"$defined"; then app_svcs+=("$want"); fi
+  done
+  if grep -qx web-panel <<<"$defined"; then owner_svc=web-panel; fi
 }
 refresh_services
 
@@ -128,12 +134,13 @@ wait_panel() {
   return 1
 }
 
-# Neither worker has an HTTP endpoint: a crash at start shows as a stopped container or
+# No worker has an HTTP endpoint: a crash at start shows as a stopped container or
 # a restart under `restart: unless-stopped`, so each must stay up and unrestarted for
-# ~10 s (inbound and outbound/periodic are now two separate workers).
+# ~10 s (the workers this checkout defines: four since ADR-023).
 wait_worker() {
   local service id sample
-  for service in worker-inbound worker-outbound; do
+  for service in "${app_svcs[@]}"; do
+    [[ $service == worker-* ]] || continue
     id=$("${compose[@]}" ps -q "$service") || return 1
     [[ -n $id ]] || return 1
     for sample in 1 2 3 4 5; do

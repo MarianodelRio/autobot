@@ -38,11 +38,13 @@ def enqueue(
     lock: str | None = None,
     queueing_lock: str | None = None,
     schedule_in: dict[str, int] | None = None,
+    priority: int | None = None,
     alias: str = "default",
 ) -> int:
     """Defer task `task` (by name) with the keyword `args` in the transaction open on
     connection `alias`: the job commits or rolls back with it (with no transaction open,
-    it is inserted at once). Returns the job id; raises `AlreadyEnqueued` if
+    it is inserted at once). `priority`: higher runs first among ready jobs of the queue
+    (Procrastinate's, default 0). Returns the job id; raises `AlreadyEnqueued` if
     `queueing_lock` is taken (only that attempt is rolled back, never the caller's
     transaction). `args` are ids only (CLAUDE.md)."""
     extra: dict[str, Any] = {}
@@ -50,6 +52,8 @@ def enqueue(
         extra["lock"] = lock
     if schedule_in is not None:
         extra["schedule_in"] = schedule_in
+    if priority is not None:
+        extra["priority"] = priority
     deferrer = queue_app(alias)
     if queueing_lock is None:
         return deferrer.configure_task(task, queue=queue, **extra).defer(**args)

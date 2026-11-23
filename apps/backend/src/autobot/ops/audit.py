@@ -3,7 +3,7 @@
 from typing import Any, Protocol
 from uuid import UUID
 
-from django.db import transaction
+from django.db import connections, transaction
 
 from autobot.ops.models import AuditEvent
 
@@ -91,3 +91,22 @@ def record_tenant(
         target_id=str(tenant_id),
         details=details or None,
     )
+
+
+_DISTINCT_ACTIONS = """
+WITH RECURSIVE t AS (
+    (SELECT action FROM audit_event ORDER BY action LIMIT 1)
+    UNION ALL
+    SELECT (SELECT action FROM audit_event WHERE action > t.action ORDER BY action LIMIT 1)
+    FROM t WHERE t.action IS NOT NULL
+)
+SELECT action FROM t WHERE action IS NOT NULL
+"""
+
+
+def distinct_actions() -> list[str]:
+    """Every action recorded, sorted. A skip scan over the `action` index: one probe per
+    distinct action instead of a pass over every row of the (ever growing) log."""
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(_DISTINCT_ACTIONS)
+        return [action for (action,) in cursor.fetchall()]

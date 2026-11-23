@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from autobot.channels.base import InboundItem, ParsedItem
 from autobot.ops.logging import bind
-from autobot.runtime.jobs import APPLY_STATUS, INBOUND, PROCESS_EVENT
+from autobot.runtime.jobs import APPLY_STATUS, INBOUND, PROCESS_EVENT, process_event_queue
 from autobot.runtime.locks import conversation_lock
 from autobot.runtime.models import Channel, InboundEvent
 from autobot.runtime.queue import enqueue
@@ -84,7 +84,7 @@ def store(tenant: LoadedTenant, items: list[ParsedItem], channel: Channel = Chan
             ids = {"tenant_id": str(tenant.id), "event_id": str(row[0])}
             if isinstance(item, InboundItem):
                 lock = conversation_lock(tenant.id, channel, item.external_id)
-                enqueue(PROCESS_EVENT, ids, queue=INBOUND, lock=lock)
+                enqueue(PROCESS_EVENT, ids, queue=process_event_queue(tenant.pack), lock=lock)
             else:
                 enqueue(APPLY_STATUS, ids, queue=INBOUND)
     return created

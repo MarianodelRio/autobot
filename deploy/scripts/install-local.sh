@@ -77,7 +77,7 @@ if [[ $skip_panel_user != true ]]; then
     echo 'Usuario del panel: pendiente (terminal no interactivo); ejecuta: docker compose run --rm web python manage.py panel_user create panel'
   fi
 fi
-docker compose up -d --no-build --remove-orphans web worker-inbound worker-outbound victorialogs
+docker compose up -d --no-build --remove-orphans web worker-inbound worker-calendar worker-periodic worker-outbound victorialogs
 
 for ((i = 0; i < 30; i++)); do
   health && break
@@ -88,7 +88,7 @@ if ! health; then
   echo 'web no quedó sana en 60 s: revisa `make logs SERVICE=web`' >&2
   exit 1
 fi
-for service in worker-inbound worker-outbound; do
+for service in worker-inbound worker-calendar worker-periodic worker-outbound; do
   if [[ -z $(docker compose ps -q --status running "$service") ]]; then
     echo "$service no está en marcha: revisa make logs SERVICE=$service" >&2
     exit 1

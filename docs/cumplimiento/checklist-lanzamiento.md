@@ -9,11 +9,11 @@ Lista priorizada de lo que debe estar resuelto antes de atender datos de un **pr
 
 ### A. Ajustes técnicos y operativos
 
-- [ ] **Activar la limpieza de retención** (`RETENTION_CLEANUP_ENABLED=true`) con aprobación humana y reiniciar `worker-inbound`; comprobar un ciclo nocturno. Hoy está `false` por defecto ([Retención y RGPD](../procedimientos/retencion-rgpd.md#limpieza-automatica)).
+- [x] **Limpieza de retención activada en producción** (`RETENTION_CLEANUP_ENABLED=true` por defecto en `compose.prod.yaml`, aprobado el 2026-11-23); comprobar tras el primer despliegue un ciclo nocturno (`retention_cleanup`, 03:00 UTC). En local sigue `false` ([Retención y RGPD](../procedimientos/retencion-rgpd.md#limpieza-automatica)).
 - [ ] Elegir el **proveedor VPS** en la UE y firmar su DPA ([subencargados](subencargados.md)).
 - [ ] Elegir el **almacenamiento de backups** (otro proveedor, UE) y firmar su DPA; ejecutar un simulacro de restauración ([Restaurar](../procedimientos/restaurar.md)).
 - [x] Procedimiento para **reaplicar las supresiones** tras restaurar un backup: libro de supresiones, `privacy_ledger_export` y `privacy_reapply` (ADR-019, [Restaurar](../procedimientos/restaurar.md)).
-- [ ] Guardar fuera del servidor la exportación del libro de supresiones tras cada olvido o purga (paso operativo).
+- [x] El libro de supresiones sale del servidor solo: `backup.sh` lo sube cada hora a restic y `restore.sh` lo reaplica (ADR-025). Comprobar tras el primer backup real que existe un snapshot `autobot-ledger`.
 - [ ] Confirmar la ubicación y política de Healthchecks.io, y decidir si se usa Sentry (con su DPA).
 - [x] **Primera capa de información** en el primer mensaje del bot, aviso de asistente automático y comando `PERSONA` ([información](informacion-al-interesado.md)).
 - [ ] Rellenar `privacy.policy_url` y `support.human_contact` en cada negocio (la activación del canal real lo exige; los negocios ya activos deben completarlo).

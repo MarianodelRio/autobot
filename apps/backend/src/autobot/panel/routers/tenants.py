@@ -222,9 +222,16 @@ def tenant_summary(request: HttpRequest, slug: str) -> service.SummaryOut:
     return service.tenant_summary(slug)
 
 
-@router.get("/tenants/{slug}/notifications", response=list[service.NotificationOut])
-def tenant_notifications(request: HttpRequest, slug: str) -> list[service.NotificationOut]:
-    return service.tenant_notifications(slug, actor=request.user.username)
+@router.get("/tenants/{slug}/notifications", response=service.NotificationPage)
+def tenant_notifications(
+    request: HttpRequest,
+    slug: str,
+    cursor: str = "",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> service.NotificationPage:
+    return service.tenant_notifications(
+        slug, actor=request.user.username, cursor=cursor, limit=limit
+    )
 
 
 @router.post("/tenants/{slug}/health-check", response=list[service.HealthIssueOut])

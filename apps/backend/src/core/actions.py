@@ -1,6 +1,7 @@
 """What a pack wants to happen besides replying."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -26,6 +27,10 @@ class SendProactive:
     params: list[str]
     button_payloads: list[str]
     idem_key: str
+    # Latest moment at which the message is still useful (a reminder after the appointment
+    # has started is not); an aware datetime. The platform stops retrying at the earlier of
+    # this and its own 24 h limit (ADR-024).
+    not_after: datetime | None = None
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 
+from core.conversation import DEGRADED_TEXT
 from core.errors import TransientError
 from core.replies import List
 from core.testing.harness import Conversation
@@ -56,14 +57,33 @@ def test_replayed_booking_is_not_duplicated(salon: Conversation) -> None:
     assert len(salon.notifications) == 1
 
 
-def test_limit_failure_is_open_but_creation_failure_recovers(salon: Conversation) -> None:
+def test_limit_failure_is_open_but_creation_failure_degrades_and_keeps_the_step(
+    salon: Conversation,
+) -> None:
     salon.calendar.fail("list_contact_events", TransientError("offline"))
     choose(salon)
+    step = salon.state
     salon.calendar.fail("insert_event", TransientError("offline"))
-    salon.send("Lucía").expect(text_contains="problema")
-    assert salon.state == {} and salon.calendar.created == []
+    salon.send("Lucía").expect(text=DEGRADED_TEXT)
+    assert salon.state == step and salon.calendar.created == []
     salon.replay().expect(text_contains="¡Tu cita está confirmada!")
     assert len(salon.calendar.created) == 1
+
+
+def test_a_calendar_outage_mid_conversation_keeps_every_step(salon: Conversation) -> None:
+    """With Google down for the whole conversation the person is told so at each step,
+    never restarted, and carries on from the same point once it is back."""
+    salon.send("hola")
+    salon.press("menu_book")
+    step = salon.state
+    salon.calendar.fail("list_events", TransientError("offline"))
+    salon.press("service_corte").expect(text=DEGRADED_TEXT)
+    assert salon.state == step
+    salon.press("service_corte").expect(text_contains="día")
+    salon.calendar.fail("list_events", TransientError("offline"))
+    day = salon.state
+    salon.press("day_2026-03-24").expect(text=DEGRADED_TEXT)
+    assert salon.state == day
 
 
 def test_another_contact_takes_the_slot(salon: Conversation) -> None:

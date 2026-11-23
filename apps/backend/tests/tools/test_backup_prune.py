@@ -52,10 +52,27 @@ def test_forgets_and_prunes_with_the_delete_credential(tmp_path: Path) -> None:
     binaries, config = setup(tmp_path)
     result = invoke(tmp_path, binaries, config)
     assert result.returncode == 0, result.stderr
-    line = (tmp_path / "restic.log").read_text().strip()
+    line = (tmp_path / "restic.log").read_text().splitlines()[0]
     assert line.startswith("forget --tag autobot --group-by tags")
     assert "--keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune" in line
     assert "delete-capable-key" in line
+
+
+def test_a_successful_prune_leaves_a_marker_snapshot_the_server_can_read(tmp_path: Path) -> None:
+    """ADR-025: the server never deletes, it only reads when the last prune happened."""
+    binaries, config = setup(tmp_path)
+    result = invoke(tmp_path, binaries, config)
+    assert result.returncode == 0, result.stderr
+    lines = (tmp_path / "restic.log").read_text().splitlines()
+    assert lines[1].startswith("forget --tag autobot-ledger")
+    assert lines[2].startswith("backup --stdin --stdin-filename prune-marker --tag autobot-prune")
+    assert lines[3].startswith("forget --tag autobot-prune --group-by tags --keep-last 3 --prune")
+
+
+def test_a_dry_run_leaves_no_marker(tmp_path: Path) -> None:
+    binaries, config = setup(tmp_path, minute="00")
+    invoke(tmp_path, binaries, config, "--dry-run")
+    assert "autobot-prune" not in (tmp_path / "restic.log").read_text()
 
 
 def test_refuses_to_run_on_the_server(tmp_path: Path) -> None:

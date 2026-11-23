@@ -39,7 +39,7 @@ SAMPLE_INTERVAL = timedelta(minutes=5)
 SAMPLE_WINDOW = timedelta(days=2)
 # (kind, tenant-specific, severity, emoji, message, already resolved) — 3 open, 5 resolved.
 ALERT_SAMPLES: list[tuple[str, bool, str, str, str, bool]] = [
-    ("disk", False, "warning", "🟠", "Disco por encima del 85 %.", False),
+    ("disk", False, "warning", "🟠", "Disco por encima del 80 %.", False),
     (
         "outbound_failed",
         True,

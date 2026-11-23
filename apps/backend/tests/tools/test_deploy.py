@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[4]
+APP_SERVICES = "web web-panel worker-inbound worker-calendar worker-periodic worker-outbound panel"
 OLD = "a" * 40
 NEW = "b" * 40
 THIRD = "c" * 40
@@ -56,6 +57,8 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
         "if [[ $* == *'config --services'* ]]; then\n"
         "  printf 'caddy\\nweb\\nworker-inbound\\nworker-outbound\\npanel\\ndb\\nvictorialogs\\n'\n"
         "  [[ ${LEGACY_COMPOSE:-} == 1 ]] || echo web-panel\n"
+        "  [[ ${LEGACY_COMPOSE:-}${TWO_WORKERS:-} == *1* ]] ||"
+        " printf 'worker-calendar\\nworker-periodic\\n'\n"
         "fi\n"
         "if [[ $* == *'ps -q worker'* ]]; then echo worker-id; fi\n"
         "if [[ $* == *'ps -q web-panel'* ]]; then echo web-panel-id; fi\n"
@@ -74,12 +77,12 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
         "[[ $* != *https://* || ${BROKEN_HTTPS:-} != 1 ]] || exit 28\n"
         '[[ ${BROKEN_SHA:-} != "$SHA" ]] || exit 22\n'
         # DEGRADED_AFTER while NEW's containers are the last ones started with "up
-        # --no-deps [--remove-orphans] -d web web-panel worker-inbound worker-outbound panel"
+        # --no-deps [--remove-orphans] -d <APP_SERVICES>"
         # (not yet, or restored to a previous sha by a rollback: DEGRADED_BEFORE). Lets
         # a test simulate a tenant already degraded ahead of the deploy, or one that
         # becomes degraded because of it.
         "last=$(grep -E"
-        " 'up --no-deps (--remove-orphans )?-d web web-panel worker-inbound worker-outbound panel'"
+        f" 'up --no-deps (--remove-orphans )?-d {APP_SERVICES}'"
         ' "$TEST_LOG" 2>/dev/null | tail -1)\n'
         f'if [[ $last == "{NEW} "* ]]; then\n'
         "  degraded=${DEGRADED_AFTER:-0}\n"
@@ -118,6 +121,8 @@ def invoke(
         "PUBLIC_HOST": "api.example.com",
         "DJANGO_ALLOWED_HOSTS": "api.example.com,localhost,127.0.0.1",
         "DEPLOY_UID": "10001",
+        # ensure-env.sh never generates the key outside a first install (ADR-022).
+        "SECRETS_ENCRYPTION_KEY": "k" * 43 + "=",
         "AUTOBOT_IMAGE": "ghcr.io/example-owner/autobot",
         "AUTOBOT_PANEL_IMAGE": "ghcr.io/example-owner/autobot-panel",
         "AUTOBOT_HTTPS_CHECK_TIMEOUT": "2",
@@ -143,12 +148,22 @@ def invoke_env(
         "PUBLIC_HOST": "api.example.com",
         "DJANGO_ALLOWED_HOSTS": "api.example.com,localhost,127.0.0.1",
         "DEPLOY_UID": "10001",
+        "SECRETS_ENCRYPTION_KEY": "k" * 43 + "=",
         "AUTOBOT_IMAGE": "ghcr.io/example-owner/autobot",
         "AUTOBOT_PANEL_IMAGE": "ghcr.io/example-owner/autobot-panel",
         "AUTOBOT_HTTPS_CHECK_TIMEOUT": "2",
         "AUTOBOT_HTTPS_CHECK_INTERVAL": "1",
         **environment,
     }
+
+
+def test_deploy_aborts_when_the_encryption_key_is_missing(tmp_path: Path) -> None:
+    """ADR-022: a deploy never invents a new key for an existing install."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, SECRETS_ENCRYPTION_KEY="")
+    assert result.returncode != 0
+    assert "SECRETS_ENCRYPTION_KEY" in result.stderr
+    assert "SECRETS_ENCRYPTION_KEY=" not in (tmp_path / ".env").read_text()
 
 
 def test_success_records_image_after_health(tmp_path: Path) -> None:
@@ -163,9 +178,7 @@ def test_success_records_image_after_health(tmp_path: Path) -> None:
     assert any(line.startswith(NEW) and "up --no-deps -d caddy" in line for line in lines)
     # The single `worker` from before X14 must not survive the deploy as an orphan.
     assert any(
-        line.startswith(NEW)
-        and "up --no-deps --remove-orphans -d web web-panel worker-inbound worker-outbound panel"
-        in line
+        line.startswith(NEW) and f"up --no-deps --remove-orphans -d {APP_SERVICES}" in line
         for line in lines
     )
     assert lines[-1].startswith(NEW) and "deploy_ok" in lines[-1]
@@ -279,7 +292,20 @@ def test_a_checkout_without_web_panel_uses_web_for_everything(tmp_path: Path) ->
     log = (tmp_path / "docker.log").read_text()
     assert "web-panel" not in log
     assert "run --rm web python manage.py migrate --noinput" in log
-    assert "up --no-deps --remove-orphans -d web worker-inbound worker-outbound panel" in log
+    assert "-d web worker-inbound worker-outbound panel" in log
+
+
+def test_a_checkout_with_two_workers_does_not_ask_for_the_new_ones(tmp_path: Path) -> None:
+    """ADR-023: rolling back to a commit from before the four workers must not ask for
+    worker-calendar or worker-periodic."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, TWO_WORKERS="1")
+    assert result.returncode == 0, result.stderr
+    log = (tmp_path / "docker.log").read_text()
+    assert "worker-calendar" not in log and "worker-periodic" not in log
+    assert (
+        "up --no-deps --remove-orphans -d web web-panel worker-inbound worker-outbound panel" in log
+    )
 
 
 def test_a_failed_deploy_realigns_db_with_the_restored_compose(tmp_path: Path) -> None:

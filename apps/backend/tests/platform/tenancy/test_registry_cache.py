@@ -41,6 +41,8 @@ def test_reload_waits_two_seconds(state: Any) -> None:
     state.now += 1.99
     assert registry.get_registry() is first
     state.now += 0.01
+    assert registry.get_registry() is first  # stale-while-revalidate: nobody waits
+    registry.wait_for_refresh()
     second = registry.get_registry()
     assert second is not first
     assert second.tenants[0].version == 2
@@ -81,6 +83,8 @@ def test_nested_scopes_pin_until_exit(state: Any) -> None:
         with registry.registry_scope():
             assert registry.get_registry() is first
         assert registry.loaded_registry() is first
+    registry.get_registry()
+    registry.wait_for_refresh()
     assert registry.get_registry() is not first
 
 
@@ -99,37 +103,117 @@ def test_work_and_request_wrappers_pin_registry(state: Any) -> None:
         return HttpResponse()
 
     assert RegistryScopeMiddleware(respond)(HttpRequest()).status_code == 200
+    # A refresh started inside the wrapped calls may have read the revision before its
+    # bump; a revision change during a refresh is only seen by the next check. Let it
+    # finish so the check below is the one that reads the latest revision.
+    registry.wait_for_refresh()
+    state.now += 2
+    registry.get_registry()
+    registry.wait_for_refresh()
     assert registry.get_registry().tenants[0].version == state.revision
 
 
-def test_concurrent_reload_loads_once(state: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    registry.get_registry()
+def test_concurrent_reload_loads_once_and_nobody_waits(
+    state: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = registry.get_registry()
     state.now += 2
     state.revision = 2
     original = registry.sources_from_database
     entered, release = threading.Event(), threading.Event()
-    barrier = threading.Barrier(2)
 
     def sources(alias: str = "default") -> tuple[int, list[registry.TenantSource]]:
         entered.set()
         assert release.wait(3)
         return original(alias)
 
-    def read() -> registry.Registry:
-        barrier.wait(timeout=3)
-        return registry.get_registry()
-
     monkeypatch.setattr(registry, "sources_from_database", sources)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(read) for _ in range(2)]
+    with ThreadPoolExecutor(max_workers=4) as executor:
         try:
+            futures = [executor.submit(registry.get_registry) for _ in range(4)]
             assert entered.wait(3)
+            # The rebuild is still blocked, yet every caller already has the old snapshot.
+            assert [future.result(timeout=3) for future in futures] == [first] * 4
         finally:
             release.set()
-        results = [future.result(timeout=3) for future in futures]
-    assert results[0] is results[1]
-    assert results[0].tenants[0].version == 2
+    registry.wait_for_refresh()
+    assert registry.get_registry().tenants[0].version == 2
     assert state.loads == 2
+
+
+def test_force_rebuilds_synchronously(state: Any) -> None:
+    first = registry.get_registry()
+    state.revision = 2
+    second = registry.get_registry(force=True)
+    assert second is not first
+    assert second.tenants[0].version == 2
+
+
+def test_force_waits_for_the_rebuild_in_flight(state: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    registry.get_registry()
+    state.now += 2
+    state.revision = 2
+    original = registry.sources_from_database
+    entered, release = threading.Event(), threading.Event()
+
+    def sources(alias: str = "default") -> tuple[int, list[registry.TenantSource]]:
+        entered.set()
+        assert release.wait(3)
+        return original(alias)
+
+    monkeypatch.setattr(registry, "sources_from_database", sources)
+    registry.get_registry()
+    assert entered.wait(3)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(registry.get_registry, force=True)
+        release.set()
+        fresh = future.result(timeout=3)
+    assert fresh.tenants[0].version == 2
+    assert state.loads == 2  # the forced call reused the finished rebuild
+
+
+def test_failed_background_rebuild_keeps_snapshot(
+    state: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = registry.get_registry()
+    state.now += 2
+    state.revision = 2
+
+    def broken(alias: str = "default") -> Any:
+        raise ValueError("invalid configuration")
+
+    monkeypatch.setattr(registry, "sources_from_database", broken)
+    assert registry.get_registry() is first
+    registry.wait_for_refresh()
+    assert registry.get_registry() is first
+    state.now += 2
+    monkeypatch.setattr(registry, "sources_from_database", state_sources(state))
+    registry.get_registry()
+    registry.wait_for_refresh()
+    assert registry.get_registry().tenants[0].version == 2
+
+
+def state_sources(state: Any) -> Any:
+    def sources(alias: str = "default") -> tuple[int, list[registry.TenantSource]]:
+        state.loads += 1
+        return state.revision, [
+            registry.TenantSource("a", tenant_document("a"), version=state.revision)
+        ]
+
+    return sources
+
+
+def test_warm_up_loads_and_never_raises(state: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    registry.warm_up()
+    assert registry.loaded_registry() is not None
+    registry.reset_registry()
+
+    def fail(alias: str = "default") -> Any:
+        raise OperationalError("down")
+
+    monkeypatch.setattr(registry, "sources_from_database", fail)
+    registry.warm_up()
+    assert registry.loaded_registry() is None
 
 
 def test_redaction_never_loads_registry(state: Any, monkeypatch: pytest.MonkeyPatch) -> None:

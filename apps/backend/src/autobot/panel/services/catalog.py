@@ -151,6 +151,7 @@ CATALOG: dict[str, TableDoc] = {
         {
             "idem_key": "Clave de idempotencia del envío.",
             "unknown_at": "Inicio del estado de entrega ambigua.",
+            "expires_at": "Límite para entregarlo; pasado, queda caducado y no se envía.",
         },
     ),
     "notification": TableDoc(

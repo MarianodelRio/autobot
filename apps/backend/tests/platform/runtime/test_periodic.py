@@ -184,7 +184,8 @@ def test_dispatch_and_run_through_the_worker(tenants: Any, monkeypatch: pytest.M
     with connections["owner"].cursor() as cursor:
         cursor.execute(
             "SELECT task_name, status FROM procrastinate_jobs WHERE queue_name = 'periodic'"
-            " AND task_name NOT IN ('retry_stalled_jobs', 'ops_check', 'dispatch_owner_summaries')"
+            " AND task_name NOT IN ('retry_stalled_jobs', 'ops_check', 'dispatch_owner_summaries',"
+            " 'reconcile_unknown')"
         )
         statuses = dict(cursor.fetchall())
     assert statuses == {"dispatch_periodic": "succeeded", "run_periodic": "succeeded"}

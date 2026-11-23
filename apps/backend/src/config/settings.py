@@ -290,5 +290,6 @@ SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 RELEASE_SHA = os.environ.get("RELEASE_SHA", os.environ.get("SHA", ""))
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "web")
 
-# Explicit human approval is required before enabling destructive periodic retention.
+# Destructive periodic retention: off unless the environment says so. compose.prod.yaml
+# turns it on for production (approved by the person, 2026-11-23); local stays off.
 RETENTION_CLEANUP_ENABLED = os.environ.get("RETENTION_CLEANUP_ENABLED", "false").lower() == "true"

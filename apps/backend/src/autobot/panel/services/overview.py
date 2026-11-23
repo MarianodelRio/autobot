@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import connections
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from ninja import Schema
@@ -30,6 +30,7 @@ from autobot.panel.services.month import MADRID, MonthAggregates, month_aggregat
 from autobot.panel.services.system import tls_days_left
 from autobot.runtime.models import InboundEvent, MetricEvent, OutboundMessage
 from autobot.runtime.summary import month_to_date
+from autobot.tenancy.models import Tenant
 from autobot.tenancy.registry import LoadedTenant, get_registry
 
 STALE_MINUTES = 10
@@ -144,11 +145,6 @@ def _channel_label(tenant: LoadedTenant) -> Literal["whatsapp", "telegram", "dem
     return "demo"
 
 
-def _health_checked_at(tenant_id: UUID) -> datetime | None:
-    snapshot = health.read_snapshot(tenant_id)
-    return snapshot.checked_at if snapshot is not None else None
-
-
 def _stale_outbound(now: datetime, tenant_ids: list[UUID]) -> int:
     return (
         OutboundMessage.objects.using("owner")
@@ -182,27 +178,38 @@ def tenant_rows(now: datetime) -> list[TenantRow]:
         month.update(month_aggregates([t.id for t in group], start))
 
     all_ids = [t.id for t in tenants]
-    last_received: dict[UUID, datetime] = dict(
-        InboundEvent.objects.using("owner")
-        .filter(tenant_id__in=all_ids)
-        .values("tenant_id")
-        .annotate(latest=Max("received_at"))
-        .values_list("tenant_id", "latest")
-    )
-    last_sent: dict[UUID, datetime] = dict(
-        OutboundMessage.objects.using("owner")
-        .filter(tenant_id__in=all_ids, status="sent")
-        .values("tenant_id")
-        .annotate(latest=Max("sent_at"))
-        .values_list("tenant_id", "latest")
-    )
+    # One correlated sub-select per tenant, each served by the (tenant, received_at) /
+    # (tenant, sent_at) indexes with a single probe: the cost follows the number of tenants,
+    # never the number of messages (a GROUP BY tenant_id would read the whole table).
+    latest = {
+        row["id"]: row
+        for row in Tenant.objects.using("owner")
+        .filter(id__in=all_ids)
+        .annotate(
+            received=Subquery(
+                InboundEvent.objects.using("owner")
+                .filter(tenant_id=OuterRef("pk"))
+                .order_by("-received_at")
+                .values("received_at")[:1]
+            ),
+            sent=Subquery(
+                OutboundMessage.objects.using("owner")
+                .filter(tenant_id=OuterRef("pk"), status="sent", sent_at__isnull=False)
+                .order_by("-sent_at")
+                .values("sent_at")[:1]
+            ),
+        )
+        .values("id", "received", "sent")
+    }
 
+    snapshots = health.read_snapshots(all_ids)
     rows = []
     for tenant in tenants:
-        status = tenant_status(tenant, open_alerts=open_alerts)
+        status = tenant_status(tenant, open_alerts=open_alerts, snapshots=snapshots)
+        snapshot = snapshots[tenant.id]
         figures = month[tenant.id]
-        received = last_received.get(tenant.id)
-        sent = last_sent.get(tenant.id)
+        received = latest.get(tenant.id, {}).get("received")
+        sent = latest.get(tenant.id, {}).get("sent")
         last_activity = max((d for d in (received, sent) if d is not None), default=None)
         rows.append(
             TenantRow(
@@ -213,7 +220,7 @@ def tenant_rows(now: datetime) -> list[TenantRow]:
                 status=tenant.document.status,
                 health=status.level,
                 health_reasons=status.reasons,
-                health_checked_at=_health_checked_at(tenant.id),
+                health_checked_at=snapshot.checked_at if snapshot is not None else None,
                 inbound_month=figures.inbound,
                 outbound_month=figures.outbound,
                 cost_eur_month=figures.cost_eur,

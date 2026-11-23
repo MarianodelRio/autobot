@@ -49,7 +49,8 @@ planificado, [traslado.md](traslado.md).
     1. Hace checkout del SHA del snapshot y restaura `.env` (con la clave que le has dado),
        `google_sa.json`, el
        `Caddyfile` y, si estaban, el estado de Caddy y `deploys.jsonl`.
-    2. Ejecuta `ensure-env.sh` (recalcula `DEPLOY_UID` para esta máquina).
+    2. Ejecuta `ensure-env.sh` (recalcula `DEPLOY_UID` para esta máquina). La clave ya está
+       en `.env` y nunca se genera una nueva (ADR-022).
     3. Levanta `db` y restaura el volcado con `pg_restore --clean`.
     4. Reaplica los roles (`init-roles.sh`) y los permisos (`apply_grants`), que
        `pg_restore --no-acl` pierde, y comprueba que la clave descifra los `tenant_secret`.
@@ -64,7 +65,7 @@ planificado, [traslado.md](traslado.md).
    negocios purgados después de él.
 6. **Verifica** (sección siguiente) antes de tocar el DNS.
 7. **Arranca los workers**: como `restore.sh` ya no puede repetirse (`Existing deployment`),
-   usa `deploy/scripts/compose.sh up -d worker-inbound worker-outbound`.
+   usa `deploy/scripts/compose.sh up -d worker-inbound worker-calendar worker-periodic worker-outbound`.
    `AUTOBOT_RESTORE_START_WORKERS=true` solo sirve dentro de la misma ejecución, cuando no
    hace falta verificar antes (por ejemplo, `make restore-test`).
 8. **Apunta el DNS** a la nueva IP si cambió, y despliega con normalidad desde ahí
@@ -72,31 +73,29 @@ planificado, [traslado.md](traslado.md).
 9. **Simulacro:** anota SHA, snapshot, hora de inicio y fin y duración, y borra la VPS
    temporal (con autorización).
 
-### Reaplicar olvidos y purgas (obligatorio)
+### Reaplicar olvidos y purgas (automático)
 
 Un backup conserva lo que luego se olvidó con `contact_forget`, `tenant_purge` o el panel.
 El **libro de supresiones** (tabla `privacy_suppression`, sin datos personales: ids y
 HMAC; ADR-019) registra cada olvido o purga, pero vive en la misma base, así que el
-snapshot no incluye los posteriores a él. Por eso:
+snapshot no incluye los posteriores a él. Desde el ADR-025 no depende de nadie:
 
-1. **Tras cada olvido o purga** (y como mínimo una vez al día mientras haya actividad),
-   guarda el libro fuera del servidor, en un sitio que sobreviva a perder la VPS:
-   `make prod-manage CMD="privacy_ledger_export" > libro-supresiones.jsonl` (sobrescribe
-   la copia anterior; es acumulativo). Guarda también la `SECRET_KEY`/`.env` como ya exige
-   el backup.
-2. **Tras restaurar**, con `web-panel` arriba y **antes de arrancar los workers**, copia ese
-   fichero a la VPS y ejecuta
-   `deploy/scripts/manage.sh privacy_reapply --ledger - < libro-supresiones.jsonl`
-   (`--ledger -` lee de stdin, porque el contenedor efímero no ve ficheros de la VPS; con
-   `make prod-manage` desde el portátil: `... CMD="privacy_reapply --ledger -" < libro-supresiones.jsonl`
-   si tu `make` reenvía stdin, o por SSH como arriba).
-   Une el fichero con la tabla restaurada, repite los olvidos y purgas (idempotente: se
-   puede repetir) y deja un evento `privacy.reapply`. Si informa de purgas bloqueadas,
-   repítelo.
-3. Sin el fichero solo se reaplican los olvidos que ya contenía el snapshot. Si no
-   puedes conseguirlo, es una incidencia de protección de datos: anótalo y decide con el
-   responsable qué datos olvidados pueden haber reaparecido (los de los últimos días entre
-   el snapshot y la pérdida).
+1. **Cada backup horario** sube el libro como snapshot propio con la etiqueta
+   `autobot-ledger` (`backup.sh`), en el mismo repositorio cifrado.
+2. **`restore.sh`** descarga el snapshot `autobot-ledger` **más reciente** (no el del
+   snapshot que restauras), y tras restaurar la base, **antes de arrancar `web` o los
+   workers**, ejecuta `privacy_reapply --ledger -` (por stdin: el contenedor efímero es de
+   solo lectura y no ve ficheros de la VPS). Une el libro con la tabla restaurada, repite
+   los olvidos y purgas (idempotente) y deja un evento `privacy.reapply`. Si informa de
+   purgas bloqueadas, el script falla: repítelo con `deploy/scripts/manage.sh privacy_reapply`.
+3. **Si el repositorio no tiene ningún snapshot `autobot-ledger`** (anterior al ADR-025),
+   `restore.sh` lo avisa («WARNING: no suppression-ledger snapshot…») y reaplica solo lo que
+   ya contenía la base restaurada. Entonces, si tienes una exportación manual
+   (`make prod-manage CMD="privacy_ledger_export" > libro-supresiones.jsonl`, que sigue
+   siendo una copia opcional), aplícala a mano:
+   `deploy/scripts/manage.sh privacy_reapply --ledger - < libro-supresiones.jsonl`. Sin ella
+   es una incidencia de protección de datos: anótalo y decide con el responsable qué datos
+   olvidados pueden haber reaparecido (los de las horas entre el último libro y la pérdida).
 4. La clave `SECRET_KEY` restaurada debe ser la original: los HMAC de identidad dependen
    de ella (sin ella solo se reaplican los olvidos por id de contacto).
 
@@ -117,7 +116,7 @@ VM, `restore.sh` salta la comprobación del marcador con
 - Por tenant, los conteos de `contact`, `inbound_event` y `outbound_message` coinciden con
   el origen o con el informe previo (en el panel, Datos, o `psql` en el contenedor `db`
   como `postgres`).
-- `privacy_reapply` ejecutado; los contactos y negocios del libro ya no están.
+- `restore.sh` ejecutó `privacy_reapply` sin avisar de falta de libro; los contactos y negocios del libro ya no están.
 - Un flujo por el bot de demo funciona.
 - `deploy/scripts/compose.sh ps` muestra los servicios esperados; los workers, solo tras
   verificar.

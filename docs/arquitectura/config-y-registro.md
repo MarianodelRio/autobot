@@ -47,7 +47,14 @@ Los mensajes de error llevan rutas y tipos, nunca valores (podrían ser secretos
 
 `sources_from_database` lee revisión, documentos, datasets y secretos con cuatro consultas, sin una por negocio. Fuera de una transacción usa una instantánea `REPEATABLE READ READ ONLY`, y los secretos se descifran después de cerrar la lectura.
 
-`get_registry` mantiene una caché por proceso: comprueba la revisión (`config_revision`) como máximo cada dos segundos, bajo un candado, y solo publica la instantánea nueva cuando termina de construirla. Si la base falla conserva la anterior, salvo en la primera carga, que propaga el error (los webhooks responden entonces 503 para que el proveedor reintente). `get_registry(force=True)` salta la ventana de dos segundos: lo usan los servicios del panel cuando buscan un negocio recién creado por otro worker de gunicorn.
+`get_registry` mantiene una caché por proceso con la política *stale-while-revalidate*:
+
+- Pasados dos segundos desde la última comprobación, el primer llamante lanza **un único hilo de fondo** que lee la revisión (`config_revision`) y, si cambió, reconstruye el registro. Mientras tanto todas las peticiones y trabajos siguen con la instantánea anterior (sin esperar 4 s con 300 negocios ni 40 s con 3.000), y la nueva se publica de golpe, ya completa, al terminar.
+- Si la reconstrucción falla conserva la anterior y lo registra en el log (`Configuration reload failed` o `rebuild failed`); nunca se publica un registro a medias. La primera carga, que no tiene nada que conservar, propaga el error (los webhooks responden entonces 503 para que el proveedor reintente).
+- `get_registry(force=True)` es la vía **síncrona**: salta la ventana, comprueba la revisión ahora y, si cambió, reconstruye en el propio llamante (esperando a la reconstrucción de fondo si hay una). La usan los servicios del panel cuando buscan un negocio recién creado por otro worker de gunicorn, y todo código que necesite ver una escritura propia de inmediato.
+- **Precarga**: `config/wsgi.py` lanza `warm_up_in_background()` al arrancar cada worker de gunicorn, y `procrastinate worker` hace lo mismo desde `runtime/worker_pool.py` (`configure`), así la primera petición o trabajo ya encuentra el registro cargado. Los comandos de `manage.py` siguen siendo perezosos. `wait_for_refresh()` espera al hilo de fondo (tests y apagado).
+
+Efecto en la visibilidad: un cambio hecho por otro proceso llega a lo sumo dos segundos más el tiempo de reconstrucción después (antes los llamantes esperaban esa reconstrucción; ahora la esperan solo los que piden `force=True`).
 
 `registry_scope` fija el primer registro leído durante una petición o trabajo (incluidos ámbitos anidados), de modo que una unidad de trabajo ve una sola versión de la configuración. `loaded_registry` devuelve el registro ya cargado sin consultas; lo usa la redacción de logs.
 

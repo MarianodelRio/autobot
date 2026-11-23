@@ -26,7 +26,7 @@ make local
 2. Levanta `db`, reaplica los roles de PostgreSQL y construye la imagen de `web`.
 3. Aplica las migraciones como `fp_owner`, ejecuta `apply_grants` y siembra los negocios de demo (`seed_demos`).
 4. Si no existe el usuario `panel`, pide crearlo (`panel_user create`). Sin terminal interactivo, lo deja anotado.
-5. Levanta `web`, `worker-inbound`, `worker-outbound` y `victorialogs`, y espera hasta 60 s a que `/health/internal` responda bien y los dos workers estén en marcha.
+5. Levanta `web`, los cuatro workers (`worker-inbound`, `worker-calendar`, `worker-periodic` y `worker-outbound`) y `victorialogs`, y espera hasta 60 s a que `/health/internal` responda bien y los workers estén en marcha.
 
 Se puede repetir sin miedo: conserva las versiones de configuración existentes y los cambios hechos en los demos. Cuando termina, `web` escucha en `http://127.0.0.1:8000`.
 

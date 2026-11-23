@@ -27,20 +27,23 @@ El principio de ADR-008: **el bot de ops es un reflejo del panel**. Toda alerta 
 
 ## La comprobación periódica (`ops/check.py`)
 
-El trabajo `ops_check` (`autobot/runtime/jobs.py`) corre cada 5 minutos en la cola `ops`, con un candado para que no haya dos a la vez. Ejecuta `autobot.ops.check.run`:
+El trabajo `ops_check` (`autobot/runtime/jobs.py`) corre cada 5 minutos en la cola `ops` (solo la escucha `worker-periodic`), con un candado para que no haya dos a la vez. Ejecuta `autobot.ops.check.run`:
 
 1. `collect()` reúne los **hallazgos** (`Finding`: clave, negocio opcional y texto).
+   - **Salud diaria acotada y repartida.** Las comprobaciones de salud de cada negocio (Graph de Meta, `getWebhookInfo`, Calendar) son llamadas HTTP en serie. Cada negocio tiene un desfase estable dentro de una ventana de 2 h (hash de su id) que se resta al día de validez de un resultado correcto, y cada pasada gasta como mucho `HEALTH_BUDGET_S` (60 s) en ellas: los vencidos que no caben se comprueban en las pasadas siguientes, el más atrasado primero. Con 700 negocios, el arranque en frío pasó de 581 s a unos 60 s por pasada, y todos quedan comprobados en menos de una hora. Un resultado con problemas se reintenta a los 15 minutos como antes.
+   - **Caídas de proveedor.** Con una caída conocida de Meta o Telegram (señal del cortacircuitos de salida) o de Google (`calendar_outage`, derivada: al menos 5 negocios con calendario y el 30 % con problemas de Calendar en la misma pasada), se levanta una sola alerta de plataforma y se marcan como `suppressed` los hallazgos por negocio que esa caída explica; mientras dura y 20 minutos después, `sync_alerts()` no los crea y resuelve sin mensaje los que ya estaban abiertos.
 2. `sync_alerts()` registra cada uno con `send_ops_alert` y resuelve automáticamente las alertas abiertas que ya no aparecen.
 3. `take_sample()` guarda una muestra de máquina (`system_sample`, 62 días).
 4. Si no se lanzó ninguna excepción, envía el latido a Healthchecks.
 
 `collect()` consulta como `fp_app`, con RLS: nada de datos de cliente ni saltos de permisos. Mira, entre otras cosas:
 
-- La cola: trabajos `inbound` listos desde hace más de 2 minutos y trabajos fallidos en los últimos 10.
+- La cola, con una sola consulta de edades por cola (`ops/queues.py`): la edad del trabajo listo más antiguo y del trabajo en curso más antiguo. De ahí salen `inbound_delay` (🔴, colas `inbound` e `inbound_ext`, 2 minutos: se mantiene porque es lo que el cliente final nota, y se alimenta de la misma consulta para no duplicar el cálculo), `queue_lag:<cola>` (🟠, `outbound` 5 min, `ops` 10 min, `periodic` 20 min, y trabajos en curso de más de 15 minutos, 1 hora en `periodic`) y los trabajos fallidos en los últimos 10 minutos. La espera se mide desde `scheduled_at` (los `run_periodic` se reparten a propósito en 15 minutos), no desde la creación. La consulta solo lee filas `todo` y `doing`, que sirven los índices parciales de Procrastinate, así que no crece con el historial de trabajos terminados.
 - El registro: configuraciones ilegibles, negocios degradados o con el canal sin configurar.
 - Por negocio: barridos de trabajo atascado (`runtime/sweeps.py`), envíos fallidos o ambiguos, avisos al dueño fallidos, rechazos de autenticación, umbral mensual de mensajes facturables de WhatsApp, errores seguidos y estado de Calendar (`ops/state.py`), y barridos periódicos que no se completan.
 - La salud diaria de cada negocio y de los bots de plataforma (`ops/health.py`).
-- Disco por encima del 85 % o el 95 %.
+- Disco por encima del 80 % o el 95 %.
+- Más de 10 días sin purgar las copias de seguridad (`backup_prune_overdue`).
 - Los contenedores (`ops/containers.py`), salvo en local.
 
 La lista completa y su significado: [Alertas](../referencia/alertas.md).
@@ -55,7 +58,7 @@ Las comprobaciones de canal, plantillas y pack de cada negocio (`ops/health.py`,
 
 ### Estado de contenedores y máquina
 
-Los contenedores no tocan `docker.sock`. Un temporizador del host (`deploy/systemd/autobot-containers.timer`, cada minuto) ejecuta `deploy/scripts/containers.sh`, que escribe una instantánea acotada en `var/state/ops/`, montada en solo lectura en `web` y los workers. `ops/containers.py` (`assess`) la evalúa: servicios esperados (`caddy`, `web`, `worker-inbound`, `worker-outbound`, `panel`, `db`, `victorialogs`), reinicios, OOM, salud, imagen desplegada frente a `RELEASE_SHA` y, si la instantánea tiene más de 3 minutos, `containers_stale`. Durante un despliegue o una restauración se silencian los hallazgos. `victorialogs` nunca es crítico.
+Los contenedores no tocan `docker.sock`. Un temporizador del host (`deploy/systemd/autobot-containers.timer`, cada minuto) ejecuta `deploy/scripts/containers.sh`, que escribe una instantánea acotada en `var/state/ops/`, montada en solo lectura en `web` y los workers. `ops/containers.py` (`assess`) la evalúa: servicios esperados (`caddy`, `web`, `web-panel`, `worker-inbound`, `worker-calendar`, `worker-periodic`, `worker-outbound`, `panel`, `db`, `victorialogs`), reinicios, OOM, salud, imagen desplegada frente a `RELEASE_SHA` y, si la instantánea tiene más de 3 minutos, `containers_stale`. Durante un despliegue o una restauración se silencian los hallazgos. `victorialogs` nunca es crítico.
 
 La máquina se lee de `/proc` dentro del contenedor (`ops/system.py`: CPU, memoria, carga, disco), sin agente externo. El estado de backups y despliegues sale de ficheros de estado del mismo directorio. Todo ello alimenta la pantalla Sistema (`panel/services/system.py`).
 
@@ -63,7 +66,7 @@ La máquina se lee de `/proc` dentro del contenedor (`ops/system.py`: CPU, memor
 
 La aplicación emite logs JSON estructurados por consola y, si `VICTORIALOGS_URL` está definida, los envía también a VictoriaLogs (31 días, solo red interna, sin puerto publicado). El panel los consulta con consultas acotadas (`panel/services/logs.py`), nunca directamente.
 
-- `ops/logging.py`: `PrivacyFilter` redacta cada registro (`redact`: secretos configurados, cabeceras de autorización, tokens de bot, teléfonos) y `bind`/`contextual` fijan identificadores seguros (`tenant`, `channel`, `event_id`, `job`) en el contexto del trabajo. `JsonFormatter` da formato a la salida.
+- `ops/logging.py`: `PrivacyFilter` redacta cada registro (`redact`: secretos configurados, cabeceras de autorización, tokens de bot, teléfonos) y `bind`/`contextual` fijan identificadores seguros (`tenant`, `channel`, `event_id`, `job`) en el contexto del trabajo. `JsonFormatter` da formato a la salida. Los secretos de todos los negocios se indexan una sola vez por registro cargado (una consulta de diccionario por posición del texto, sin recorrer los secretos), y el índice se reconstruye solo cuando cambia el registro o los secretos configurados; un registro ya filtrado no se vuelve a redactar. Los secretos solapados se funden y se tapan juntos.
 - `ops/logship.py` (`VictoriaLogsHandler`): envía lotes en un hilo, **nunca bloquea ni lanza** y no se registra a sí mismo (evita recursión). Si la cola se llena descarta; si VictoriaLogs no responde, avisa por `stderr` como mucho una vez por minuto. Los logs no son críticos: perderlos no detiene nada.
 - Sentry es opcional (`SENTRY_DSN`) y sus eventos van **vacíos de datos**: `before_send` solo deja pasar identificadores, ubicaciones de pila y un mensaje redactado, sin cuerpos de petición, variables locales ni texto de excepciones.
 
@@ -79,6 +82,8 @@ Dos rutas sin autenticación, sin llamadas externas y sin nombres de negocio:
 ## Healthchecks
 
 `ops_check` pide `HEALTHCHECKS_PING_URL` al terminar, y **solo** si no ha fallado ninguna comprobación global ni de base de datos (sin `finally`): un `ops_check` caído deja de dar latido y es Healthchecks, desde fuera, quien avisa de que el worker o la cola no corren, algo que ninguna alerta interna puede detectar. El backup tiene su propio latido (`HEALTHCHECKS_BACKUP_PING_URL`, en `deploy/scripts/backup.sh`). Qué hacer cuando salta: [Cola y latido](../incidencias/cola-y-latido.md).
+
+**Configurar el monitor externo.** En healthchecks.io (o equivalente) crea un check con periodo de 5 minutos (el de `ops_check`) y gracia de 10, con aviso por un canal distinto del bot de avisos (correo o SMS: si cae la VPS, el bot de avisos cae con ella), y copia su URL en `HEALTHCHECKS_PING_URL` del `.env`. El ping no lleva datos: es un GET a esa URL. Para cubrir además que el proxy público contesta, añade un monitor HTTP externo (UptimeRobot o similar) contra `https://<dominio>/health`. Un fallo del ping solo se registra en el log; no rompe `ops_check`.
 
 ## Avisos al operador
 

@@ -79,15 +79,18 @@ function setup(status = "active") {
         next_cursor: null,
       };
     else if (url.pathname.endsWith("/notifications"))
-      value = [
-        {
-          kind: "booking",
-          text: "Aviso enviado",
-          status: "sent",
-          created_at: "2026-11-04T10:00:00Z",
-          sent_at: null,
-        },
-      ];
+      value = {
+        items: [
+          {
+            kind: "booking",
+            text: "Aviso enviado",
+            status: "sent",
+            created_at: "2026-11-04T10:00:00Z",
+            sent_at: null,
+          },
+        ],
+        next_cursor: null,
+      };
     else if (url.pathname.endsWith("/contacts/id1/export"))
       value = { tenant: "demo", data: { contact: [{ id: "id1" }] } };
     else if (url.pathname.endsWith("/contacts/id1/forget"))

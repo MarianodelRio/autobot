@@ -19,12 +19,12 @@ from pydantic import BaseModel
 from core.actions import Action, NotifyOwner, RecordMetric, SendProactive, UpdateContact
 from core.conversation import (
     command_result,
+    degraded_result,
     effective_state,
     first_contact_notice,
     global_command,
     menu_message,
     pack_message,
-    recovery_result,
 )
 from core.errors import TransientError
 from core.idem import IdemKeys
@@ -145,7 +145,7 @@ class Conversation:
     ```
 
     `attempts` is how many times a `TransientError` is tried with the same event before
-    the recovery text, as the job retries in production.
+    the degraded text (state kept), as the job retries in production.
     """
 
     def __init__(
@@ -313,11 +313,11 @@ class Conversation:
                 return self.pack.handle_message(ctx, message)
             except TransientError:
                 # Retried with the same event; after the last attempt the runtime answers
-                # with the recovery text. Any other exception propagates, so a bug fails
-                # the test.
+                # with the degraded text and keeps the state. Any other exception
+                # propagates, so a bug fails the test.
                 if attempt == self.attempts:
                     break
-        return recovery_result()
+        return degraded_result()
 
     def _context(
         self, contact: ContactInfo | None, state: dict[str, Any], idem: IdemKeys
@@ -373,6 +373,8 @@ class Conversation:
         for payload in action.button_payloads:
             if not payload or len(payload.encode()) > MAX_ID_BYTES:
                 raise AssertionError(f"button payload of {template.name} is empty or too long")
+        if action.not_after is not None and action.not_after.utcoffset() is None:
+            raise AssertionError(f"not_after of {template.name} must be timezone-aware")
         n = len(action.params)
         expected = [f"{{{i}}}" for i in range(1, n + 1)]
         if any(p not in template.text for p in expected) or f"{{{n + 1}}}" in template.text:

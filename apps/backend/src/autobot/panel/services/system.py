@@ -10,26 +10,25 @@ import httpx
 from django.conf import settings
 from django.core.cache import cache
 from django.db import DatabaseError, connections
-from django.db.models import Count, Min
 from django.utils import timezone
 from ninja import Schema
-from procrastinate.contrib.django.models import (
-    ProcrastinateEvent,
-    ProcrastinateJob,
-    ProcrastinateWorker,
-)
+from procrastinate.contrib.django.models import ProcrastinateWorker
 
 from autobot.channels.demo.doors import door
 from autobot.ops import containers, health
 from autobot.ops import system as host
 from autobot.ops.models import SystemSample
+from autobot.ops.queues import INBOUND_DELAY_S, queue_lags
 from autobot.panel.services.month import MADRID
 from autobot.runtime.cache import auth_flag_key
+from autobot.runtime.jobs import INBOUND, INBOUND_EXT
 from autobot.runtime.models import Channel, InboundEvent, OutboundMessage
 from autobot.runtime.summary import month_to_date
 from autobot.tenancy.registry import get_registry
 
-EXPECTED_WORKERS = 2  # worker-inbound and worker-outbound (compose)
+EXPECTED_WORKERS = 4  # worker-inbound, -calendar, -periodic and -outbound (compose)
+
+INBOUND_QUEUES = (INBOUND, INBOUND_EXT)
 
 
 class SystemOut(Schema):
@@ -137,25 +136,10 @@ def database_info() -> dict[str, Any]:
 
 
 def queue_rows(now: datetime) -> list[dict[str, Any]]:
-    rows = list(
-        ProcrastinateJob.objects.using("owner")
-        .filter(status="todo")
-        .values("queue_name")
-        .annotate(pending=Count("id"))
-    )
-    # Same semantics as the retired OperationsSite.state, batched across queues.
-    oldest = dict(
-        ProcrastinateEvent.objects.using("owner")
-        .filter(job__status="todo", type="deferred")
-        .values("job__queue_name")
-        .annotate(at=Min("at"))
-        .values_list("job__queue_name", "at")
-    )
-    for row in rows:
-        at = oldest.get(row["queue_name"])
-        row["oldest"] = at
-        row["age_s"] = (now - at).total_seconds() if at else None
-    return sorted(rows, key=lambda row: row["queue_name"])
+    """Per queue: pending and running jobs, the age of the oldest ready job (`age_s`)
+    and of the oldest running one (`running_age_s`); see `autobot.ops.queues`."""
+    with connections["owner"].cursor() as cursor:
+        return [lag.as_row(now) for lag in queue_lags(cursor, now)]
 
 
 def flow(now: datetime, queues: list[dict[str, Any]]) -> FlowOut:
@@ -176,7 +160,9 @@ def flow(now: datetime, queues: list[dict[str, Any]]) -> FlowOut:
         .first()
     )
     delayed = any(
-        row["queue_name"] == "inbound" and row["age_s"] is not None and row["age_s"] > 120
+        row["queue_name"] in INBOUND_QUEUES
+        and row["age_s"] is not None
+        and row["age_s"] > INBOUND_DELAY_S
         for row in queues
     )
     if delayed or failed_1h:
@@ -246,8 +232,9 @@ def _calendar_integration() -> IntegrationOut:
     accessible = 0
     failing = 0
     latest_checked: datetime | None = None
+    snapshots = health.read_snapshots(tenant.id for tenant in candidates)
     for tenant in candidates:
-        snapshot = health.read_snapshot(tenant.id)
+        snapshot = snapshots[tenant.id]
         if snapshot is None:
             continue
         if latest_checked is None or snapshot.checked_at > latest_checked:
@@ -295,8 +282,8 @@ def build_system() -> SystemOut:
         .values("taken_at", "cpu_pct", "mem_used_pct", "load1", "disk_used_pct", "db_bytes")
     )
     database = database_info()
-    # worker-inbound and worker-outbound: green only while both beat, so one
-    # dead worker is not hidden by the other.
+    # The four workers: green only while all beat, so one dead worker is not hidden
+    # by the others.
     worker = (
         ProcrastinateWorker.objects.using("owner")
         .filter(last_heartbeat__gt=now - timedelta(seconds=60))

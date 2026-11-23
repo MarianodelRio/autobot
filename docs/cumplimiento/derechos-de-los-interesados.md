@@ -57,7 +57,7 @@ Un borrado de contacto o de negocio **no alcanza** a:
 
 - **Google Calendar del negocio.** La plataforma escribe nombre y teléfono en el evento y no los borra: lo hace el negocio en su cuenta. Hay que decírselo siempre.
 - **Logs técnicos** (VictoriaLogs): caducan a los 31 días y llevan teléfonos redactados.
-- **Backups** (restic): hasta unos 6 meses; los datos borrados siguen en copias antiguas. Si se restaura un backup, hay que **volver a aplicar las supresiones** atendidas desde su fecha (anota cada supresión con fecha en el registro de derechos para poder reaplicarlas; ver [Restaurar](../procedimientos/restaurar.md)).
+- **Backups** (restic): hasta unos 6 meses; los datos borrados siguen en copias antiguas. Si se restaura un backup, las supresiones se **reaplican solas** con el libro de supresiones, que el backup horario sube a restic (ADR-025; ver [Restaurar](../procedimientos/restaurar.md)); sigue anotando cada supresión con fecha en el registro de derechos por si el libro faltara.
 - **Meta y Telegram**: tienen sus propias copias de los mensajes; la persona debe dirigirse a ellos.
 - **La marca `opt_out`**: el borrado la elimina; si la persona vuelve a escribir sin darse de baja, recibirá recordatorios.
 - **Datos del dueño en Telegram**: se desvinculan con `owner_unlink`.

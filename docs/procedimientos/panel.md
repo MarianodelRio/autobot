@@ -95,7 +95,7 @@ El asistente guarda su progreso en `sessionStorage` del navegador, nunca en el s
 ### Avisos del cliente
 
 La pestaña Avisos (`features/tenants/notifications-tab.tsx`, `GET /tenants/{slug}/notifications`,
-`autobot/panel/services/tenants.py`) lista los últimos 50 mensajes que la plataforma envió al
+`autobot/panel/services/tenants.py`) lista, de más reciente a más antigua y de 50 en 50 («Cargar más»), los mensajes que la plataforma envió al
 **dueño** del negocio (resumen mensual, avisos de citas...), con su texto, su estado de
 envío y cuándo se crearon. Sirve para comprobar que el dueño recibe lo que debe; no incluye
 los mensajes a clientes finales (eso está en Actividad).
@@ -183,7 +183,7 @@ accesibles», solo cuenta clientes con `calendar_sweep`—). `web` ya no está e
 tarjeta: lo cubre la de Contenedores.
 
 Debajo, la tarjeta Contenedores: una fila por contenedor de producción (`caddy`,
-`web`, `worker-inbound`, `worker-outbound`, `panel`, `db`, `victorialogs`), con su
+`web`, `web-panel`, `worker-inbound`, `worker-calendar`, `worker-periodic`, `worker-outbound`, `panel`, `db`, `victorialogs`), con su
 estado, salud, reinicios, desde cuándo está en marcha y la etiqueta de su imagen
 (en ámbar si no coincide con el SHA desplegado). «Sin datos de contenedores» significa
 que `autobot-containers.timer` no ha escrito nunca la instantánea; «Datos
@@ -193,7 +193,9 @@ aviso de «Despliegue en curso» y no genera alertas nuevas; igual con una
 restauración a medias.
 
 Debajo, CPU, RAM, disco y carga actuales con la gráfica del mes, tamaño de la base
-de datos y sus tablas más grandes, y trabajos pendientes por cola. El backup se
+de datos y sus tablas más grandes, y por cola los trabajos pendientes, cuánto espera el
+más antiguo y los que están en curso (si una cola se retrasa, salta `queue_lag:<cola>`,
+ver [alertas](../referencia/alertas.md)). El backup se
 marca en rojo si `ok=false` o lleva más de 8 h; el TLS, en ámbar con menos de 20
 días y en rojo con menos de 7. Abajo, la versión desplegada y el historial de
 despliegues, con el SHA enlazado al commit en GitHub.
@@ -250,6 +252,22 @@ pausar o reactivar negocios, sustituir sus secretos de canal y eliminarlos por c
 (menú «⋯» de la ficha, deshabilitado si el negocio está activo: lo da de baja y lo
 borra en la misma operación; ver `retencion-rgpd.md`). Cada cambio queda auditado con
 el usuario del panel.
+
+## Listas largas
+
+Ninguna lista del panel lee la tabla entera: contactos, actividad, auditoría, avisos del
+cliente, invitaciones de demo e incidencias se piden por **cursor** (`next_cursor`, opaco; un
+cursor manipulado devuelve 400), con páginas de 50 y un máximo de 100 filas, y el panel
+carga más con «Cargar más». El cursor (marca de tiempo e id de la última fila) evita
+repetir o saltarse filas aunque entren otras nuevas y cuesta lo mismo en la página 1 que
+en la 100. Cada orden tiene su índice (`contact_panel_list_idx`, `inbound_feed_idx`,
+`outbound_feed_idx`, `notification_feed_idx`, `outbound_sent_feed_idx`, y los de
+`tenant, created_at` ya existentes). Las listas de negocios (decenas) y las tablas del
+catálogo no se paginan: el registro de negocios vive en memoria y el número de consultas
+no depende de cuántos haya (los últimos mensajes, el mes en curso y el estado de salud
+se leen en bloque; hay tests que lo comprueban con 2 y 14 negocios). Los logs se piden a
+VictoriaLogs siempre con rango de tiempo (por defecto 1 hora, máximo 31 días) y como mucho
+1.000 líneas.
 
 ## Dónde está el código
 

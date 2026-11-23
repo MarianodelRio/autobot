@@ -61,6 +61,32 @@ services:
     entrypoint: ["python", "/dev-worker.py"]
     restart: on-failure
 
+  worker-calendar:
+    <<: *app
+    environment:
+      DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
+      SERVICE_NAME: worker-calendar
+      ENVIRONMENT: local
+      DB_CONN_MAX_AGE: "0"
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
+      DB_OWNER_URL: ""  # the worker never uses fp_owner
+      DB_READONLY_URL: ""  # nor fp_readonly: it never runs the SQL console
+    entrypoint: ["python", "/dev-worker.py"]
+    restart: on-failure
+
+  worker-periodic:
+    <<: *app
+    environment:
+      DB_APP_URL: postgres://fp_app:fp_app@db:5432/autobot
+      SERVICE_NAME: worker-periodic
+      ENVIRONMENT: local
+      DB_CONN_MAX_AGE: "0"
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
+      DB_OWNER_URL: ""  # the worker never uses fp_owner
+      DB_READONLY_URL: ""  # nor fp_readonly: it never runs the SQL console
+    entrypoint: ["python", "/dev-worker.py"]
+    restart: on-failure
+
   worker-outbound:
     <<: *app
     environment:
@@ -69,8 +95,8 @@ services:
       ENVIRONMENT: local
       DB_CONN_MAX_AGE: "0"
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:+/app/google_sa.json}
-      DB_OWNER_URL: ""
-      DB_READONLY_URL: ""
+      DB_OWNER_URL: ""  # the worker never uses fp_owner
+      DB_READONLY_URL: ""  # nor fp_readonly: it never runs the SQL console
     entrypoint: ["python", "/dev-worker.py"]
     restart: on-failure
 

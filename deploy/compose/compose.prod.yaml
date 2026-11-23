@@ -33,7 +33,10 @@ x-app-env: &app-env
   HEALTHCHECKS_PING_URL: ${HEALTHCHECKS_PING_URL:-}
   RELEASE_SHA: ${SHA:?Set the published image SHA}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
-  RETENTION_CLEANUP_ENABLED: ${RETENTION_CLEANUP_ENABLED:-false}
+  # On by default in production (approved by the person, 2026-11-23): the retention periods
+  # of docs/cumplimiento/registro-de-actividades.md only hold if it runs. `false` in the
+  # host .env switches it off; check_prod_config.py and the launch checklist watch it.
+  RETENTION_CLEANUP_ENABLED: ${RETENTION_CLEANUP_ENABLED:-true}
   OPS_STATE_DIR: /run/ops
 
 x-app: &app
@@ -150,6 +153,16 @@ services:
       timeout: 5s
       retries: 6
 
+  # The four workers (ADR-023); queues and concurrency are in compose.yaml. Per worker,
+  # WORKER_DB_POOL_MAX bounds procrastinate's own pool (LISTEN, fetch, heartbeat and the
+  # finish of each running job) and each job thread opens one Django connection on top
+  # (closed when the job ends): concurrency + pool is the most it can hold. PYTHON_CPU_COUNT
+  # sizes asyncio's default thread pool, which runs the sync jobs: min(32, cpus + 4)
+  # threads, i.e. 6 on a 2-vCPU VPS, which would silently cap a --concurrency 8 worker.
+  # Connections in the worst case (max_connections in db, below): web 2x4 threads + one
+  # recycling worker = 12, web-panel 24, worker-inbound 4+8 = 12, worker-calendar 8+10 = 18,
+  # worker-periodic 2+6 = 8, worker-outbound 8+10 = 18: 92, plus 5 reserved for superusers,
+  # pg_dump, migrations and one-off commands: well under 200.
   worker-inbound:
     <<: *app
     environment:
@@ -158,6 +171,36 @@ services:
       DB_READONLY_URL: ""
       SERVICE_NAME: worker-inbound
       DB_CONN_MAX_AGE: "0"  # procrastinate's own connection handling; no idle persistent ones
+      WORKER_DB_POOL_MAX: "8"
+      PYTHON_CPU_COUNT: "4"
+    mem_limit: 384m
+    pids_limit: 128
+    networks: [egress, data, logs]
+
+  worker-calendar:
+    <<: *app
+    environment:
+      <<: *app-env
+      DB_OWNER_URL: ""
+      DB_READONLY_URL: ""
+      SERVICE_NAME: worker-calendar
+      DB_CONN_MAX_AGE: "0"  # procrastinate's own connection handling; no idle persistent ones
+      WORKER_DB_POOL_MAX: "10"
+      PYTHON_CPU_COUNT: "6"
+    mem_limit: 384m
+    pids_limit: 128
+    networks: [egress, data, logs]
+
+  worker-periodic:
+    <<: *app
+    environment:
+      <<: *app-env
+      DB_OWNER_URL: ""
+      DB_READONLY_URL: ""
+      SERVICE_NAME: worker-periodic
+      DB_CONN_MAX_AGE: "0"  # procrastinate's own connection handling; no idle persistent ones
+      WORKER_DB_POOL_MAX: "6"
+      PYTHON_CPU_COUNT: "4"
     mem_limit: 384m
     pids_limit: 128
     networks: [egress, data, logs]
@@ -169,7 +212,9 @@ services:
       DB_OWNER_URL: ""
       DB_READONLY_URL: ""
       SERVICE_NAME: worker-outbound
-      DB_CONN_MAX_AGE: "0"
+      DB_CONN_MAX_AGE: "0"  # procrastinate's own connection handling; no idle persistent ones
+      WORKER_DB_POOL_MAX: "10"
+      PYTHON_CPU_COUNT: "6"
     mem_limit: 384m
     pids_limit: 128
     networks: [egress, data, logs]
@@ -217,15 +262,33 @@ services:
       FP_OWNER_PASSWORD: ${FP_OWNER_PASSWORD:?Set FP_OWNER_PASSWORD}
       FP_APP_PASSWORD: ${FP_APP_PASSWORD:?Set FP_APP_PASSWORD}
       FP_READONLY_PASSWORD: ${FP_READONLY_PASSWORD:?Set FP_READONLY_PASSWORD}
-    # log_parameter_max_length=0 keeps a slow query's bound values (which can hold a
-    # secret or personal data) out of the log, even on the statement logged by
-    # log_min_duration_statement; *_on_error covers the same values on a failed query.
+    # Sized for the target VPS, 4 vCPU / 8 GB (docs/arquitectura/capacidad-y-crecimiento.md):
+    # shared_buffers 1 GB (~1/8 of RAM, the rest is the OS page cache that
+    # effective_cache_size tells the planner about), work_mem 8 MB per sort/hash node (the
+    # 92 connections of the worst case rarely all sort at once), SSD-appropriate planner
+    # costs, and fewer, smoother checkpoints (wal_compression, max_wal_size 2 GB, spread
+    # over 90 % of the interval).
+    # Slow-query log: OFF (log_min_duration_statement=-1) on purpose. Django binds
+    # parameters in the client (psycopg's default), so a logged statement carries its
+    # literal values (a phone number, a name) in the text; log_parameter_max_length only
+    # covers server-side bound parameters, so it cannot make that log safe. Logs must hold no personal data
+    # (CLAUDE.md). Turn it on only together with `server_side_binding` in Django's
+    # DATABASES OPTIONS. log_parameter_max_length*=0 stays for the values of failed
+    # server-bound queries.
     command:
       [
         "postgres",
-        "-c", "shared_buffers=512MB",
-        "-c", "max_connections=100",
-        "-c", "log_min_duration_statement=1000",
+        "-c", "shared_buffers=1GB",
+        "-c", "effective_cache_size=4GB",
+        "-c", "work_mem=8MB",
+        "-c", "maintenance_work_mem=256MB",
+        "-c", "random_page_cost=1.1",
+        "-c", "effective_io_concurrency=200",
+        "-c", "wal_compression=on",
+        "-c", "checkpoint_completion_target=0.9",
+        "-c", "max_wal_size=2GB",
+        "-c", "max_connections=200",  # see the worker connection budget above
+        "-c", "log_min_duration_statement=-1",
         "-c", "log_parameter_max_length=0",
         "-c", "log_parameter_max_length_on_error=0",
         "-c", "superuser_reserved_connections=5",
@@ -234,11 +297,16 @@ services:
         "-c", "tcp_keepalives_count=6",
         "-c", "log_lock_waits=on",
       ]
-    # Docker's default /dev/shm is 64 MB, too little for parallel queries' shared memory.
-    shm_size: 256mb
+    # Docker's default /dev/shm is 64 MB, too little for parallel queries' shared memory;
+    # 512 MB covers the parallel workers' dynamic shared memory with 8 MB of work_mem.
+    shm_size: 512mb
     # Gives PostgreSQL its fast shutdown time before SIGKILL.
     stop_grace_period: 60s
-    mem_limit: 1280m
+    # shared_buffers 1 GB + connections + maintenance_work_mem + page-cache headroom.
+    # Sum of every mem_limit: caddy 128 + web 640 + web-panel 512 + 4 workers x 384 + panel 64
+    # + db 2560 + victorialogs 320 = 5760 MB, leaving ~2.2 GB of the 8 GB for the kernel,
+    # the page cache and the swap cushion.
+    mem_limit: 2560m
     pids_limit: 200
     restart: unless-stopped
     logging: *logging

@@ -61,10 +61,10 @@ necesitan `sudo`, como `admin`.
     | Paso | Qué hace |
     |---|---|
     | `ci-key` | Genera dentro de la VM la clave ed25519 de CI; la privada queda en `/root/autobot-ci-deploy-key` (solo root) |
-    | `base` | `bootstrap-server.sh --base`: paquetes, Docker, swap, cuentas `deploy` y `admin`, clon en `/srv/autobot`, timers de systemd, `unattended-upgrades` (también con el repositorio de Docker; reinicio automático a las 03:30 hora del servidor si hace falta) y `autobot-docker-firewall.service`. La clave de CI se instala en `deploy` con `restrict,command=".../ssh-deploy.sh"` |
-    | `env` | `.env` (valores explícitos y `ensure-env.sh`, que genera los secretos internos y nunca inventa los externos) y `var/google_sa.json` |
+    | `base` | `bootstrap-server.sh --base`: paquetes, Docker, swap, cuentas `deploy` y `admin`, clon en `/srv/autobot`, timers de systemd, reloj sincronizado (`systemd-timesyncd` activo y NTP encendido), `unattended-upgrades` (también con el repositorio de Docker; reinicio automático a las 03:30 hora del servidor si hace falta) y `autobot-docker-firewall.service`. La clave de CI se instala en `deploy` con `restrict,command=".../ssh-deploy.sh"` |
+    | `env` | `.env` (valores explícitos y `ensure-env.sh`, que genera los secretos internos y nunca inventa los externos; la clave de cifrado solo se genera en la primera instalación: **cópiala al gestor de contraseñas** al terminar, ADR-022) y `var/google_sa.json` |
     | `deploy` | Primer despliegue del commit del clon (o `--sha`) por el mismo `ssh-deploy.sh` que usa el CI |
-    | `health` | Comprueba web, web-panel, panel, workers, HTTPS y timers |
+    | `health` | Comprueba web, web-panel, panel, workers, HTTPS, timers y que el reloj esté sincronizado (aviso, no fallo, si aún no lo está) |
     | `harden-ssh` | `bootstrap-server.sh --harden-ssh`: cierra root y contraseña, solo `admin` y `deploy`, `MaxAuthTries 4` y `LoginGraceTime 30`, `ufw` en 22/80/443 y `fail2ban`. **Pide confirmar** que has abierto otra sesión como `admin@` y `deploy@`; rechaza seguir si `sshd` no escucha solo en el 22 o la clave no está en ambas cuentas. Sin terminal y sin `--yes`, se omite y queda pendiente |
     | `marker` | Escribe `/var/lib/autobot/bootstrap-complete`, que exige `restore.sh`; solo con SSH endurecido |
     | `github` | Opcional: con `gh` autenticado en la VM y tu confirmación, crea el entorno `production` y sube `DEPLOY_HOST`, `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS`, y borra la clave privada con `shred` |
@@ -136,6 +136,13 @@ necesitan `sudo`, como `admin`.
 - `sudo ufw status numbered` solo abre 22/80/443, y un escaneo de puertos contra la IP
   pública desde otra máquina confirma que solo responden esos tres. Los puertos 8000
   (`web`) y 8080 (`panel`) escuchan solo en `127.0.0.1`; `web-panel` no publica ningún puerto.
+- Reloj: `timedatectl` muestra `System clock synchronized: yes` y `NTP service: active`
+  (`timedatectl show -p NTPSynchronized` da `yes`). Importa para los códigos TOTP del panel,
+  las marcas de tiempo de los webhooks, los bloqueos de restic y los plazos de retención;
+  tras el arranque puede tardar un minuto en sincronizar.
+- Disco: la alerta `disk` salta por encima del 80 % (🔴 `disk_critical` al 95 %) y mide `/`
+  (el disco del host: Docker, volumen de PostgreSQL, temporales del backup) y
+  `/srv/autobot/var/state/ops`; cuenta el más lleno.
 - `https://<PUBLIC_HOST>/health` responde 200. El panel solo se alcanza con
   `make panel-tunnel`, nunca por el Caddy público.
 
@@ -146,7 +153,10 @@ necesitan `sudo`, como `admin`.
   [despliegue.md](despliegue.md#comandos-de-operacion-en-el-servidor).
 - Copia de seguridad manual: `make backup-now`, que usa la clave de operación; la de CI no
   puede. Caducar snapshots antiguos es `make backup-prune`, desde tu máquina
-  ([backups.md](backups.md)).
+  ([backups.md](backups.md)); si pasan 10 días sin hacerlo, salta `backup_prune_overdue`.
+- Memoria de la VPS objetivo (4 vCPU, 8 GB): los `mem_limit` de `compose.prod.yaml` suman
+  5,6 GB (`db` 2,5 GB con `shared_buffers=1GB`); ver
+  [capacidad y crecimiento](../arquitectura/capacidad-y-crecimiento.md#servidor-y-proveedor).
 - Los secretos de canal están cifrados en la BD con `SECRETS_ENCRYPTION_KEY`; configúrala
   en `.env` antes del primer despliegue y conserva su copia con los backups
   ([rotar-secretos.md](rotar-secretos.md)).

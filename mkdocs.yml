@@ -88,6 +88,7 @@ nav:
       - arquitectura/panel.md
       - arquitectura/observabilidad.md
       - arquitectura/seguridad-y-secretos.md
+      - arquitectura/capacidad-y-crecimiento.md
   - Desarrollo:
       - desarrollo/entorno-local.md
       - desarrollo/tests.md
@@ -167,4 +168,9 @@ nav:
       - arquitectura/adr/ADR-019-libro-de-supresiones.md
       - arquitectura/adr/ADR-020-api-del-panel-aparte.md
       - arquitectura/adr/ADR-021-backups-resistentes.md
+      - arquitectura/adr/ADR-022-la-clave-de-cifrado-nunca-se-genera-sola.md
+      - arquitectura/adr/ADR-023-colas-aisladas-y-degradacion.md
+      - arquitectura/adr/ADR-024-envio-saliente-por-caducidad.md
+      - arquitectura/adr/ADR-025-libro-de-supresiones-y-purga-vigilados.md
+      - arquitectura/adr/ADR-026-conciliacion-de-envios-ambiguos.md
       - arquitectura/adr/plantilla.md

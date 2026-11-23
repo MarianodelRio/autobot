@@ -1,6 +1,8 @@
 """Daily pack/channel health, and the operator's on-demand health command."""
 
-from collections.abc import Collection
+import hashlib
+import time
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -15,6 +17,7 @@ from pydantic import SecretStr
 from autobot.channels.demo.doors import door
 from autobot.channels.telegram.adapter import TelegramApiError, call
 from autobot.channels.telegram.registration import expected_webhook_url
+from autobot.channels.whatsapp import registration
 from autobot.runtime.context import CalendarFactory, build_context, google_calendar
 from autobot.runtime.models import DEMO_CHANNELS, Channel
 from autobot.tenancy.registry import LoadedTenant
@@ -27,6 +30,15 @@ from autobot.tenancy.schema import (
 
 DAY_S = 86400
 RETRY_FAILED_S = 15 * 60  # a one-off failure is rechecked sooner than a success
+SPREAD_WINDOW_S = 2 * 3600  # the per-tenant offset of the daily check, up to this
+CHANNEL_CHECK_TIMEOUT_S = 5
+# Telegram queues updates it cannot deliver; a long queue means the webhook is not
+# reaching us (a healthy bot has a handful at most).
+TELEGRAM_BACKLOG = 100
+# Number states in which Meta does not let the number send normally.
+BLOCKED_NUMBER_STATUSES = frozenset(
+    {"RESTRICTED", "FLAGGED", "BANNED", "DISCONNECTED", "OFFLINE", "DELETED"}
+)
 
 
 @dataclass(frozen=True)
@@ -69,6 +81,59 @@ def telegram_health(token: str, *, expected_url: str | None = None) -> list[Issu
     ):
         issues.append(
             Issue("telegram_webhook", "Telegram registra errores recientes del webhook.", "🔴")
+        )
+    pending = info.get("pending_update_count")
+    if isinstance(pending, int) and pending > TELEGRAM_BACKLOG:
+        issues.append(
+            Issue(
+                "telegram_webhook_backlog",
+                "Telegram tiene muchas actualizaciones sin entregar al webhook.",
+                "🟠",
+            )
+        )
+    return issues
+
+
+def whatsapp_channel_health(channel: WhatsAppChannel, secrets: WhatsAppSecrets) -> list[Issue]:
+    """Read-only Graph checks of a tenant's own number: our app is still subscribed to
+    its WABA (otherwise Meta stops sending webhooks and nobody notices) and the number is
+    in good standing. A failed read is reported as unavailable so `daily` retries it
+    soon instead of caching a blind "ok" for a day."""
+    if not (channel.app_id and channel.waba_id and channel.phone_number_id):
+        return []
+    issues: list[Issue] = []
+    try:
+        if not registration.app_subscribed(channel, secrets, CHANNEL_CHECK_TIMEOUT_S):
+            issues.append(
+                Issue(
+                    "webhook_unsubscribed",
+                    "La app de Meta ya no está suscrita a la cuenta de WhatsApp: no llegarán"
+                    " mensajes.",
+                    "🔴",
+                )
+            )
+        number = registration.number_status(channel, secrets, CHANNEL_CHECK_TIMEOUT_S)
+    except registration.RegistrationError as exc:
+        if exc.outcome == "auth":
+            return [Issue("auth", "Token de WhatsApp inválido o sin acceso.", "🔴")]
+        return [Issue("whatsapp_unavailable", "No se puede consultar WhatsApp.", "🔴")]
+    tier = number.messaging_limit_tier or "desconocido"
+    if number.quality_rating == "RED" or number.status in BLOCKED_NUMBER_STATUSES:
+        issues.append(
+            Issue(
+                "number_quality",
+                f"Número de WhatsApp restringido o con calidad baja (estado {number.status},"
+                f" calidad {number.quality_rating}, límite {tier}).",
+                "🔴",
+            )
+        )
+    elif number.quality_rating == "YELLOW":
+        issues.append(
+            Issue(
+                "number_quality",
+                f"La calidad del número de WhatsApp ha bajado a media (límite {tier}).",
+                "🟠",
+            )
         )
     return issues
 
@@ -204,6 +269,12 @@ def tenant_health(
                 {(t.name, t.language) for t in tenant.pack.templates} if tenant.pack else set()
             )
             issues.extend(whatsapp_health(tenant.document.channel, tenant.secrets, templates))
+            seen = {i.code for i in issues}
+            issues.extend(
+                i
+                for i in whatsapp_channel_health(tenant.document.channel, tenant.secrets)
+                if i.code not in seen
+            )
     return issues
 
 
@@ -219,17 +290,28 @@ def cache_key(name: UUID | str) -> str:
     return f"health:{name}"
 
 
-def read_snapshot(name: UUID | str) -> HealthSnapshot | None:
-    """The cached result for `name`, or None when never checked (or unreadable). The cache
-    holds a plain dict (`checked_at` as a timestamp), so other readers and older entries
-    keep working."""
-    cached = cache.get(cache_key(name))
+def _snapshot_from(cached: Any) -> HealthSnapshot | None:
     if not isinstance(cached, dict) or not isinstance(cached.get("checked_at"), int | float):
         return None
     return HealthSnapshot(
         checked_at=datetime.fromtimestamp(cached["checked_at"], tz=UTC),
         issues=list(cached.get("issues") or []),
     )
+
+
+def read_snapshot(name: UUID | str) -> HealthSnapshot | None:
+    """The cached result for `name`, or None when never checked (or unreadable). The cache
+    holds a plain dict (`checked_at` as a timestamp), so other readers and older entries
+    keep working."""
+    return _snapshot_from(cache.get(cache_key(name)))
+
+
+def read_snapshots(names: Iterable[UUID | str]) -> dict[UUID | str, HealthSnapshot | None]:
+    """`read_snapshot` for many names in one cache round trip (the cache is a database
+    table: reading them one by one costs a query each)."""
+    names = list(names)
+    found = cache.get_many([cache_key(name) for name in names])
+    return {name: _snapshot_from(found.get(cache_key(name))) for name in names}
 
 
 def write_snapshot(name: UUID | str, snapshot: HealthSnapshot) -> None:
@@ -240,20 +322,85 @@ def write_snapshot(name: UUID | str, snapshot: HealthSnapshot) -> None:
     )
 
 
-def daily(name: UUID | str, check: Any, *, force: bool = False) -> list[Issue]:
-    """Cache a success for 24 h; a failure only for `RETRY_FAILED_S` (~15 min), so a
-    one-off failure does not stay cached a full day once the service is back.
+def spread_s(name: UUID | str) -> int:
+    """A stable offset of this tenant (or bot) within `SPREAD_WINDOW_S`, from a hash of its
+    id: the same every run and every process."""
+    digest = hashlib.sha256(str(name).encode()).digest()
+    return int.from_bytes(digest[:4]) % SPREAD_WINDOW_S
+
+
+def success_ttl_s(name: UUID | str) -> int:
+    """How long a clean result is trusted: a day minus the tenant's offset, so the tenants
+    checked together on a cold start (or after an outage) drift apart in the next days
+    instead of coming due in the same minute every day."""
+    return DAY_S - spread_s(name)
+
+
+def ttl_s(name: UUID | str, snapshot: HealthSnapshot) -> int:
+    return RETRY_FAILED_S if snapshot.issues else success_ttl_s(name)
+
+
+def overdue_s(name: UUID | str, snapshot: HealthSnapshot | None, now: datetime) -> float:
+    """How late is the check of `name` (negative: not due yet). A never-checked one is the
+    most overdue, in the stable order of its offset."""
+    if snapshot is None:
+        return float(10 * DAY_S - spread_s(name))
+    return (now - snapshot.checked_at).total_seconds() - ttl_s(name, snapshot)
+
+
+def _monotonic() -> float:
+    return time.monotonic()
+
+
+class HealthBudget:
+    """The seconds of external health checks one `ops_check` run may spend. A due check
+    that finds it spent is left for the next run (they come every five minutes), so the
+    first run after a cold start, or a restart that lost the cache, does not take
+    minutes with every tenant due at once."""
+
+    def __init__(self, seconds: float, clock: Callable[[], float] | None = None) -> None:
+        self._seconds = seconds
+        self._clock = clock or _monotonic
+        self._spent = 0.0
+        self.skipped = 0
+
+    @property
+    def exhausted(self) -> bool:
+        return self._spent >= self._seconds
+
+    def charge(self, seconds: float) -> None:
+        self._spent += seconds
+
+    def now(self) -> float:
+        return self._clock()
+
+
+def daily(
+    name: UUID | str, check: Any, *, force: bool = False, budget: HealthBudget | None = None
+) -> list[Issue]:
+    """Cache a success for about a day (see `success_ttl_s`); a failure only for
+    `RETRY_FAILED_S` (~15 min), so a one-off failure does not stay cached a full day once
+    the service is back.
 
     A separate checked_at controls refresh, so a stale failure remains observable if
-    a checker is interrupted. Calls are serialized by ops_check's queueing lock.
+    a checker is interrupted. Calls are serialized by ops_check's queueing lock. With a
+    `budget`, a due check is skipped (the cached result, if any, is returned) once the
+    run has spent it; the next run picks it up.
     """
     now = timezone.now()
     snapshot = read_snapshot(name)
-    stale = snapshot is None
-    if snapshot is not None:
-        ttl = RETRY_FAILED_S if snapshot.issues else DAY_S
-        stale = (now - snapshot.checked_at).total_seconds() >= ttl
-    if force or snapshot is None or stale:
-        snapshot = HealthSnapshot(checked_at=now, issues=check())
+    stale = snapshot is None or (now - snapshot.checked_at).total_seconds() >= ttl_s(name, snapshot)
+    if force or stale:
+        if budget is not None and not force:
+            if budget.exhausted:
+                budget.skipped += 1
+                return list(snapshot.issues) if snapshot is not None else []
+            started = budget.now()
+            issues = check()
+            budget.charge(budget.now() - started)
+        else:
+            issues = check()
+        snapshot = HealthSnapshot(checked_at=now, issues=issues)
         write_snapshot(name, snapshot)
+    assert snapshot is not None
     return list(snapshot.issues)

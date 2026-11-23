@@ -3,8 +3,18 @@
 #   - generates the internal secrets that are missing (passwords, keys, DB_*_URL);
 #   - never invents an external credential (Meta, Telegram, Sentry...); aborts and
 #     lists whatever external variable is missing instead;
-#   - never prints a value, only variable names.
+#   - never prints a value, only variable names;
+#   - generates SECRETS_ENCRYPTION_KEY only with --first-install (ADR-022): on an existing
+#     install a missing key must be restored from the password manager, never replaced,
+#     or every tenant_secret becomes unreadable.
 set -euo pipefail
+first_install=false
+for arg in "$@"; do
+  case $arg in
+    --first-install) first_install=true ;;
+    *) echo "Unknown argument: $arg (only --first-install is accepted)" >&2; exit 2 ;;
+  esac
+done
 cd "$(dirname "$0")/../.."
 
 ENV_FILE=.env
@@ -42,7 +52,20 @@ for name in FP_OWNER_PASSWORD FP_APP_PASSWORD FP_READONLY_PASSWORD POSTGRES_PASS
   DJANGO_SECRET_KEY DEMO_TELEGRAM_WEBHOOK_SECRET NOTIFY_BOT_WEBHOOK_SECRET; do
   generate_if_missing "$name" random_secret
 done
-generate_if_missing SECRETS_ENCRYPTION_KEY fernet_key
+if [[ -z ${SECRETS_ENCRYPTION_KEY:-} ]]; then
+  if [[ $first_install != true ]]; then
+    cat >&2 <<'MSG'
+SECRETS_ENCRYPTION_KEY is missing from .env and this is not a first install, so it will NOT be generated:
+a new key would make every channel secret in the database unreadable (ADR-022).
+Put back the key kept in the password manager (see docs/procedimientos/rotar-secretos.md),
+or restore with restore.sh, which takes it explicitly. Only on a brand-new server with no
+data, run: deploy/scripts/ensure-env.sh --first-install
+MSG
+    exit 1
+  fi
+  generate_if_missing SECRETS_ENCRYPTION_KEY fernet_key
+  echo 'A NEW SECRETS_ENCRYPTION_KEY was generated: save it NOW in the password manager (it is not in backups)' >&2
+fi
 
 # The DB_*_URL are derived from the FP_*_PASSWORD, never independent of them: they
 # are generated when missing and re-derived whenever they stop matching, so rotating

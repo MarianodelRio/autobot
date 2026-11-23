@@ -127,18 +127,19 @@ no lo mata (ignora `SIGHUP`).
 2. **`var/.frozen`:** si existe (lo crea [traslado.md](traslado.md) en el origen), se
    niega a desplegar.
 3. **`ensure-env.sh`:** prepara `.env`. Genera los secretos internos que falten
-   (contraseñas de PostgreSQL, `DJANGO_SECRET_KEY`, `SECRETS_ENCRYPTION_KEY`, secretos de
-   webhook), vuelve a derivar `DB_*_URL` de las contraseñas, fija `COMPOSE_FILE`,
+   (contraseñas de PostgreSQL, `DJANGO_SECRET_KEY`, secretos de webhook), vuelve a derivar `DB_*_URL` de las contraseñas, fija `COMPOSE_FILE`,
    `COMPOSE_PROJECT_NAME`, `DEPLOY_UID` y `PUBLIC_URL`, y **nunca inventa** credenciales
-   externas: aborta y lista las variables que faltan. También exige `var/google_sa.json`.
+   externas: aborta y lista las variables que faltan. `SECRETS_ENCRYPTION_KEY` **no** se genera
+   aquí: si falta, aborta (ADR-022). También exige `var/google_sa.json`.
 4. **Estado previo:** lee `var/.deployed-sha` (el SHA que corre) y, si el último despliegue
    correcto de `deploys.jsonl` tuvo como `previous` el SHA actual, marca este como
    `via: rollback`. Anota cuántos negocios estaban ya degradados (`/health/internal`),
    para que uno ya enfermo no bloquee el despliegue.
 5. **Mismo SHA:** si ya es el desplegado y está sano, registra `already` y sale; si no,
-   recrea `web`, `web-panel`, `worker-inbound`, `worker-outbound` y `panel`.
+   recrea `web`, `web-panel`, los cuatro workers (`worker-inbound`, `worker-calendar`,
+   `worker-periodic`, `worker-outbound`) y `panel`.
 6. **Descarga:** `pull db caddy`, `up -d --wait db`, `init-roles.sh` dentro de `db`,
-   `pull web web-panel worker-inbound worker-outbound panel`. VictoriaLogs se actualiza aparte: si
+   `pull web web-panel worker-inbound worker-calendar worker-periodic worker-outbound panel`. VictoriaLogs se actualiza aparte: si
    falla, solo avisa por consola. Un fallo en cualquiera de los demás pasos va a
    **abort**.
 7. **Volcado previo a migrar:** si `migrate --check` dice que hay migraciones pendientes,
@@ -149,8 +150,10 @@ no lo mata (ignora `SIGHUP`).
    `tenant_config validate --all` (todas las configuraciones válidas) y `seed_demos`.
    Todo con `docker compose run --rm web-panel`, el servicio con la conexión `owner`
    ([ADR-020](../arquitectura/adr/ADR-020-api-del-panel-aparte.md)): el `web` público no la tiene.
-9. **Cambio de imagen:** `up --no-deps --remove-orphans -d web web-panel worker-inbound
-   worker-outbound panel`.
+9. **Cambio de imagen:** `up --no-deps --remove-orphans -d web web-panel
+   worker-inbound worker-calendar worker-periodic worker-outbound panel`.
+   La lista sale del compose desplegado: un rollback a un commit sin `worker-calendar` ni
+   `worker-periodic` no los pide.
 10. **Comprobación de salud:**
     - `web` (hasta 60 s): `/health/internal` con `status: ok`, negocios degradados no
       mayores que la línea base y ninguno ilegible.
@@ -192,8 +195,9 @@ Verificación:
 1. El job de GitHub termina en verde y `deploys.jsonl` tiene una línea `deployed`
    (también en el panel, Sistema, historial de despliegues).
 2. `curl https://<PUBLIC_HOST>/health` devuelve 200 desde fuera.
-3. `make prod-compose ARGS="ps"` muestra los ocho servicios (`caddy`, `web`,
-   `web-panel`, `worker-inbound`, `worker-outbound`, `panel`, `db`, `victorialogs`) en marcha.
+3. `make prod-compose ARGS="ps"` muestra los diez servicios (`caddy`, `web`,
+   `web-panel`, `worker-inbound`, `worker-calendar`, `worker-periodic`, `worker-outbound`,
+   `panel`, `db`, `victorialogs`) en marcha.
 4. Una consulta al bot de demo responde.
 
 ### Cambiar `.env` sin desplegar
@@ -204,9 +208,9 @@ cambió:
 
 ```bash
 # en la VPS, como deploy, en /srv/autobot
-deploy/scripts/compose.sh up -d --no-deps web web-panel worker-inbound worker-outbound
+deploy/scripts/compose.sh up -d --no-deps web web-panel worker-inbound worker-calendar worker-periodic worker-outbound
 # o, desde el portátil
-make prod-compose ARGS="up -d --no-deps web web-panel worker-inbound worker-outbound"
+make prod-compose ARGS="up -d --no-deps web web-panel worker-inbound worker-calendar worker-periodic worker-outbound"
 ```
 
 ### Comandos de operación en el servidor

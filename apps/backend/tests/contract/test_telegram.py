@@ -337,9 +337,9 @@ def test_send_outcome_table(answer: httpx.Response, outcome: object) -> None:
     [
         (httpx.ReadTimeout("slow"), Ambiguous("ReadTimeout")),
         (httpx.RemoteProtocolError("cut"), Ambiguous("RemoteProtocolError")),
-        (httpx.ConnectError("refused"), RetryLater()),
-        (httpx.ConnectTimeout("no route"), RetryLater()),
-        (httpx.PoolTimeout("pool full"), RetryLater()),
+        (httpx.ConnectError("refused"), RetryLater(kind="network")),
+        (httpx.ConnectTimeout("no route"), RetryLater(kind="network")),
+        (httpx.PoolTimeout("pool full"), RetryLater(kind="network")),
     ],
 )
 def test_network_errors(error: Exception, outcome: object) -> None:
@@ -380,3 +380,27 @@ def test_scenarios_are_rendered_with_both_adapters(monkeypatch: pytest.MonkeyPat
 def test_a_reply_that_does_not_fit_telegram_fails_the_scenario() -> None:
     with pytest.raises(AssertionError, match="does not fit Telegram"):
         check_rendering(Text("😀" * 4000))
+
+
+@pytest.mark.parametrize(
+    ("answer", "up"),
+    [
+        (httpx.Response(200, json={"ok": True, "result": {"id": 1}}), True),
+        (httpx.Response(401), True),
+        (httpx.Response(502), False),
+        (httpx.ConnectError("refused"), False),
+        (httpx.ReadTimeout("slow"), False),
+    ],
+)
+def test_probe_calls_get_me(answer: httpx.Response | Exception, up: bool) -> None:
+    seen: list[httpx.Request] = []
+    adapter = TelegramAdapter(client_answering(answer, seen))
+    assert adapter.probe(None, SECRETS) is up
+    assert seen[0].url.path.endswith("/getMe")
+
+
+def test_a_5xx_or_a_timeout_is_a_transport_failure() -> None:
+    for answer in (httpx.Response(500), httpx.ReadTimeout("slow")):
+        adapter = TelegramAdapter(client_answering(answer))
+        outcome = adapter.send({"text": "x"}, "1", None, SECRETS, OUTBOUND_ID)
+        assert isinstance(outcome, Ambiguous) and outcome.transport

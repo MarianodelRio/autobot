@@ -13,8 +13,8 @@ bucket por primera vez, al rotar credenciales o al caducar snapshots. Para resta
 
 | Pieza | Dónde vive | Qué puede |
 |---|---|---|
-| `autobot-backup.timer` → `deploy/scripts/backup.sh` | El servidor, cada hora, como `deploy` | **Subir** snapshots y leer el repositorio (`restic check`). No puede borrar |
-| `deploy/scripts/backup-prune.sh` (`make backup-prune`) | **Tu máquina**, a mano | Caducar snapshots (`forget --prune`) con otra credencial |
+| `autobot-backup.timer` → `deploy/scripts/backup.sh` | El servidor, cada hora, como `deploy` | **Subir** snapshots (la base y el libro de supresiones, etiquetas `autobot` y `autobot-ledger`) y leer el repositorio (`restic check`, fecha de la última purga). No puede borrar |
+| `deploy/scripts/backup-prune.sh` (`make backup-prune`) | **Tu máquina**, a mano | Caducar snapshots (`forget --prune`) con otra credencial y dejar el testigo `autobot-prune` |
 | Contraseña de restic | `var/restic-password` en el servidor y copia en tu gestor | Cifra y descifra el repositorio |
 | Clave de cifrado de secretos (`SECRETS_ENCRYPTION_KEY`) | `.env` del servidor y copia en tu gestor | Descifra `tenant_secret`. **No viaja en el snapshot** |
 
@@ -39,11 +39,22 @@ borra objetos con una credencial que no debía. **Object Lock** en modo cumplimi
 protección, pero bloquea también la purga legítima hasta que expire la retención (el espacio
 se libera con retraso): úsalo solo si la retención es menor que la ventana diaria de restic.
 
+## El libro de supresiones viaja en el backup
+
+Cada backup horario exporta el libro de supresiones (ADR-019: ids y HMAC, sin datos
+personales) y lo sube como snapshot propio con la etiqueta `autobot-ledger` (ADR-025).
+`restore.sh` toma siempre el **último** y lo reaplica antes de arrancar nada
+([restaurar.md](restaurar.md)). Ya no hace falta exportarlo a mano tras cada olvido; si
+quieres una copia fuera de restic, `privacy_ledger_export` sigue disponible. Si la
+exportación falla, el backup termina en error (panel en rojo, sin latido) aunque la base sí
+se haya subido.
+
 ## Caducar snapshots
 
-La política (7 diarios, 4 semanales, 6 mensuales, etiqueta `autobot`) vive en
-`deploy/scripts/backup-prune.sh`. Ejecútalo desde tu portátil, más o menos una vez por
-semana (si no lo haces, el repositorio solo crece):
+La política (7 diarios, 4 semanales, 6 mensuales, etiqueta `autobot`; el libro, 7 diarios y
+4 semanales) vive en `deploy/scripts/backup-prune.sh`. Ejecútalo desde tu portátil, más o
+menos una vez por semana (si no lo haces, el repositorio solo crece y `ops_check` abre
+`backup_prune_overdue` 🟡 a los 10 días):
 
 ```bash
 make backup-prune ARGS="--dry-run"   # qué borraría
@@ -58,6 +69,12 @@ make backup-prune
 - Si se queja de un bloqueo viejo (un backup que murió a medias), mira
   `var/state/ops/backup.json` en el servidor y quítalo desde tu máquina con `restic unlock`,
   usando la misma configuración de purga.
+- Al terminar sube un snapshot diminuto con la etiqueta `autobot-prune` (el testigo, en
+  `--dry-run` no) y caduca los anteriores, dejando los tres últimos. El siguiente backup del
+  servidor lee su fecha (solo lectura) y la escribe en `var/state/ops/backup-prune.json`; la
+  alerta `backup_prune_overdue` se resuelve sola en cuanto el servidor la ve (hasta una hora).
+  En un repositorio sin testigo (anterior al ADR-025) la alerta salta una vez, hasta la
+  primera purga.
 - Tras purgar, comprueba que el siguiente backup termina bien (`var/state/ops/backup.json`,
   ping de Healthchecks).
 
@@ -87,6 +104,6 @@ esa cuenta de servicio y se puede revocar y reemitir desde Google.
 
 ## Dónde está el código
 
-`deploy/scripts/backup.sh`, `deploy/scripts/backup-prune.sh`, `deploy/env/backup.env.example`,
+`deploy/scripts/backup.sh`, `deploy/scripts/backup-prune.sh`, `autobot/ops/check.py` (`PRUNE_OVERDUE`), `deploy/env/backup.env.example`,
 `deploy/systemd/autobot-backup.*`; pruebas en `apps/backend/tests/tools/test_backup.py` y
 `make restore-test`.

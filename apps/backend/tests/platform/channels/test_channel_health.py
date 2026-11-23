@@ -199,6 +199,7 @@ def test_pack_health_uses_context_and_sanitizes_messages(tenants: Any, monkeypat
 
     object.__setattr__(tenant, "pack", replace(tenant.pack, health=failed_health))
     monkeypatch.setattr(health, "whatsapp_health", lambda channel, secrets, templates: [])
+    monkeypatch.setattr(health, "whatsapp_channel_health", lambda channel, secrets: [])
     issues = health.tenant_health(tenant)
     assert len(seen) == 1 and seen[0].contact is None
     assert issues[0].severity == "🔴" and issues[0].code == "main:calendar_unavailable"

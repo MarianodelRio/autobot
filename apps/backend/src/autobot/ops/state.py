@@ -1,7 +1,7 @@
 """Persistent, non-personal runtime signals shared by web and worker processes."""
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -75,3 +75,58 @@ def record_calendar(tenant_id: UUID, channel: str, status: str) -> None:
         data.setdefault("observed_at", timezone.now().isoformat())
         data["calendar_errors"], data["calendar_unavailable"] = _calendar_state(data, status)
         cache.set(name, data, timeout=None)
+
+
+# ── Provider outages (ADR-024) ─────────────────────────────────────────────
+# The outbound breaker of a worker (`autobot.runtime.breaker`) writes here when it opens,
+# closes and, while open, after each failed probe. `ops_check` raises one `provider_outage`
+# alert from it; a signal nobody refreshed for PROVIDER_STALE_AFTER (a worker that died
+# with the breaker open) counts as closed.
+
+PROVIDER_STALE_AFTER = timedelta(minutes=10)
+
+
+def _provider_key(provider: str) -> str:
+    return f"runtime:provider:{provider}"
+
+
+def record_provider(provider: str, *, is_open: bool) -> None:
+    cache.set(
+        _provider_key(provider),
+        {"open": is_open, "at": timezone.now().isoformat()},
+        timeout=None,
+    )
+
+
+def providers_down(now: datetime) -> list[str]:
+    """The providers whose breaker is open and whose signal is fresh."""
+    down = []
+    for provider in ("telegram", "whatsapp"):
+        data = cache.get(_provider_key(provider))
+        if not isinstance(data, dict) or not data.get("open"):
+            continue
+        try:
+            at = datetime.fromisoformat(str(data["at"]))
+        except KeyError, ValueError:
+            continue
+        if now - at <= PROVIDER_STALE_AFTER:
+            down.append(provider)
+    return down
+
+
+def providers_recovering(now: datetime, grace: timedelta) -> list[str]:
+    """The providers whose breaker closed less than `grace` ago (the signal is only
+    written on a change, so a closed one with a recent time is an outage that just ended).
+    The tenants' own cached health results, taken during it, still say "unavailable"."""
+    recovering = []
+    for provider in ("telegram", "whatsapp"):
+        data = cache.get(_provider_key(provider))
+        if not isinstance(data, dict) or data.get("open"):
+            continue
+        try:
+            at = datetime.fromisoformat(str(data["at"]))
+        except KeyError, ValueError:
+            continue
+        if now - at <= grace:
+            recovering.append(provider)
+    return recovering

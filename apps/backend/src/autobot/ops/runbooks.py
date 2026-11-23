@@ -20,13 +20,22 @@ RUNBOOKS: dict[str, str] = {
     "outbound_stuck": "incidencias/envios-unknown.md",
     "outbound_failed": "incidencias/envios-unknown.md",
     "notification_failed": "incidencias/envios-unknown.md",
+    "owner_unlinked": "incidencias/envios-unknown.md#avisos-retenidos",
+    "provider_outage": "incidencias/envios-unknown.md",
+    "calendar_outage": "incidencias/calendar.md",
+    "check_failed": "incidencias/cola-y-latido.md",
     "registry": "incidencias/negocio-o-canal.md",
     "tenant_unavailable": "incidencias/negocio-o-canal.md",
     "auth": "incidencias/negocio-o-canal.md",
+    "tenant_silent": "incidencias/negocio-o-canal.md#negocio-en-silencio",
+    "webhook_unsubscribed": "incidencias/negocio-o-canal.md#webhook-sin-suscripcion",
+    "webhook_errors": "incidencias/negocio-o-canal.md#webhook-sin-suscripcion",
+    "number_quality": "incidencias/negocio-o-canal.md#calidad-del-numero",
     "containers_stale": "incidencias/contenedor-caido.md",
     "containers_restore": "procedimientos/restaurar.md",
     "deploy_aborted": "incidencias/volver-atras.md",
     "deploy_rollback": "incidencias/volver-atras.md",
+    "backup_prune_overdue": "procedimientos/backups.md#caducar-snapshots",
     "disk": "procedimientos/mantenimiento.md#disco-lleno",
     "disk_critical": "procedimientos/mantenimiento.md#disco-lleno",
 }
@@ -41,6 +50,7 @@ PREFIX_RUNBOOKS: dict[str, str] = {
     "calendar:": "incidencias/calendar.md",
     "sweep:": "incidencias/calendar.md",
     "container_": "incidencias/contenedor-caido.md",
+    "queue_lag:": "incidencias/cola-y-latido.md",
 }
 
 # Kinds that deliberately have no runbook: a message-volume threshold, nothing to repair.

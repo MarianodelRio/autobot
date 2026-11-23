@@ -214,17 +214,14 @@ function InviteQr({ invite }: { invite: Invite }) {
 export function DemoInvitesPage() {
   const query = useInfiniteQuery({
     queryKey: qk.demoInvites(),
-    initialPageParam: 0,
+    initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(
         api.GET("/demo/invites", {
-          params: { query: { limit: PAGE, offset: pageParam } },
+          params: { query: { limit: PAGE, cursor: pageParam } },
         }),
       ),
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, page) => n + page.items.length, 0);
-      return loaded < last.total ? loaded : undefined;
-    },
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
   const invites = query.data?.pages.flatMap((page) => page.items) ?? [];
   return (

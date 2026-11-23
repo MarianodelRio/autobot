@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 TIMEOUT_S = 10
 PIN = re.compile(r"[0-9]{6}")
-_ENUM = re.compile(r"[A-Z_]{1,40}")
+_ENUM = re.compile(r"[A-Z0-9_]{1,40}")
 
 
 class RegistrationError(Exception):
@@ -41,6 +41,7 @@ class NumberStatus:
     status: str | None
     name_status: str | None
     quality_rating: str | None
+    messaging_limit_tier: str | None = None
 
 
 def webhook_url(channel: WhatsAppChannel) -> str:
@@ -80,9 +81,14 @@ def _refused(response: httpx.Response, message: str) -> RegistrationError:
     return RegistrationError(message)
 
 
-def _get(url: str, headers: dict[str, str], params: dict[str, str] | None = None) -> Any:
+def _get(
+    url: str,
+    headers: dict[str, str],
+    params: dict[str, str] | None = None,
+    timeout: float = TIMEOUT_S,
+) -> Any:
     try:
-        with httpx.Client(timeout=TIMEOUT_S) as client:
+        with httpx.Client(timeout=timeout) as client:
             response = client.get(url, headers=headers, params=params)
         if not response.is_success:
             raise _refused(response, "Consulta de Meta fallida.")
@@ -114,11 +120,17 @@ def _enum(value: Any) -> str | None:
     return value if isinstance(value, str) and _ENUM.fullmatch(value) else None
 
 
-def number_status(channel: WhatsAppChannel, secrets: WhatsAppSecrets) -> NumberStatus:
+def number_status(
+    channel: WhatsAppChannel, secrets: WhatsAppSecrets, timeout: float = TIMEOUT_S
+) -> NumberStatus:
     data = _get(
         f"{_base()}/{_id(channel.phone_number_id)}",
         _user_token(secrets),
-        {"fields": "status,platform_type,code_verification_status,name_status,quality_rating"},
+        {
+            "fields": "status,platform_type,code_verification_status,name_status,"
+            "quality_rating,messaging_limit_tier"
+        },
+        timeout,
     )
     if not isinstance(data, dict):
         raise RegistrationError("Respuesta de Meta inválida.")
@@ -127,6 +139,7 @@ def number_status(channel: WhatsAppChannel, secrets: WhatsAppSecrets) -> NumberS
         status=_enum(data.get("status")),
         name_status=_enum(data.get("name_status")),
         quality_rating=_enum(data.get("quality_rating")),
+        messaging_limit_tier=_enum(data.get("messaging_limit_tier")),
     )
 
 
@@ -147,8 +160,12 @@ def register_number(channel: WhatsAppChannel, secrets: WhatsAppSecrets, pin: str
     return True
 
 
-def app_subscribed(channel: WhatsAppChannel, secrets: WhatsAppSecrets) -> bool:
-    data = _get(f"{_base()}/{_id(channel.waba_id)}/subscribed_apps", _user_token(secrets))
+def app_subscribed(
+    channel: WhatsAppChannel, secrets: WhatsAppSecrets, timeout: float = TIMEOUT_S
+) -> bool:
+    data = _get(
+        f"{_base()}/{_id(channel.waba_id)}/subscribed_apps", _user_token(secrets), None, timeout
+    )
     try:
         ids = {row.get("whatsapp_business_api_data", {}).get("id") for row in data["data"]}
     except KeyError, TypeError, AttributeError:

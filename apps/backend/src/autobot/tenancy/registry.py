@@ -433,14 +433,42 @@ _scope: ContextVar[_RegistryScope | None] = ContextVar("registry_scope", default
 _registry: Registry | None = None
 _revision: int | None = None
 _checked_at = 0.0
-_registry_lock = threading.Lock()
+_registry_lock = threading.Lock()  # held while checking the revision and rebuilding
+_refreshing = threading.Lock()  # held by the single background rebuild in flight
+_refresh_thread: threading.Thread | None = None
 
 
 def reset_registry() -> None:
     """Clear the process cache, for tests and explicit operator reloads."""
     global _registry, _revision, _checked_at
+    wait_for_refresh()
     with _registry_lock:
         _registry, _revision, _checked_at = None, None, 0.0
+
+
+def wait_for_refresh(timeout: float | None = 30) -> None:
+    """Wait for the background rebuild in flight, if any (tests, shutdown)."""
+    thread = _refresh_thread
+    if thread is not None and thread is not threading.current_thread():
+        thread.join(timeout)
+
+
+def warm_up() -> None:
+    """Load the registry now, so the first request or job does not pay for it.
+
+    Never raises: if the database is not reachable the first caller retries and
+    reports the error as before."""
+    try:
+        get_registry()
+    except Exception:
+        log.warning("Registry warm-up failed; the first caller will load it")
+    finally:
+        connections.close_all()
+
+
+def warm_up_in_background() -> None:
+    """`warm_up` on a daemon thread, for process boot that must not wait for it."""
+    threading.Thread(target=warm_up, name="registry-warm-up", daemon=True).start()
 
 
 def loaded_registry() -> Registry | None:
@@ -471,35 +499,77 @@ def _read_revision() -> int:
     return int(row[0])
 
 
-def _cached_registry(*, force: bool = False) -> Registry:
-    """`force`: skip the 2 s window and re-check the revision now (still only a
-    cheap `SELECT`, reloading only if it changed). Used when a caller looked up a
-    tenant that should exist (just created) and did not find it: with several
-    gunicorn workers, this process's own cache may be up to 2 s behind the write."""
+def _reload_locked(now: float) -> Registry:
+    """Check the revision and rebuild if it changed. Needs `_registry_lock`.
+
+    The new snapshot is published only once complete; if the rebuild fails the
+    previous one stays (the first load propagates the error)."""
     global _registry, _revision, _checked_at
-    now = time.monotonic()
-    if not force and _registry is not None and now - _checked_at < 2:
+    try:
+        if _registry is not None and _read_revision() == _revision:
+            _checked_at = now
+            return _registry
+        from packs.registry import PACKS
+
+        revision, sources = sources_from_database()
+        registry = load_registry(sources, PACKS)
+    except DatabaseError:
+        if _registry is None:
+            raise
+        _checked_at = now
+        log.warning("Configuration reload failed; keeping the loaded registry")
         return _registry
+    except Exception:
+        if _registry is None:
+            raise
+        _checked_at = now
+        log.exception("Configuration rebuild failed; keeping the loaded registry")
+        return _registry
+    _registry, _revision, _checked_at = registry, revision, now
+    return registry
+
+
+def _background_refresh() -> None:
+    try:
+        with _registry_lock:
+            _reload_locked(time.monotonic())
+    finally:
+        connections.close_all()
+        _refreshing.release()
+
+
+def _cached_registry(*, force: bool = False) -> Registry:
+    """Stale-while-revalidate. Within 2 s of the last check the loaded snapshot is
+    returned. After that, the first caller starts ONE background thread that checks
+    the revision and rebuilds if it changed; everyone keeps using the previous
+    snapshot until the new one is swapped in, so no request or job waits for a
+    rebuild (3.8 s at 300 tenants, 40 s at 3,000).
+
+    Synchronous (blocking) paths: the very first load, and `force`, which skips the
+    window and re-checks the revision now. Callers that need fresh config right after
+    a write (just-created tenant not found, panel services) use `force`: with several
+    gunicorn workers this process's own cache may be behind the write."""
+    global _checked_at, _refresh_thread
+    now = time.monotonic()
+    current = _registry
+    if not force and current is not None and now - _checked_at < 2:
+        return current
+    if not force and current is not None:
+        if _refreshing.acquire(blocking=False):
+            _checked_at = now  # one check per window, whatever the rebuild takes
+            _refresh_thread = threading.Thread(
+                target=_background_refresh, name="registry-refresh", daemon=True
+            )
+            try:
+                _refresh_thread.start()
+            except RuntimeError:  # cannot start a thread: serve the old snapshot
+                _refreshing.release()
+        return current
     with _registry_lock:
         now = time.monotonic()
         if not force and _registry is not None and now - _checked_at < 2:
             return _registry
-        try:
-            if _registry is not None and _read_revision() == _revision:
-                _checked_at = now
-                return _registry
-            from packs.registry import PACKS
-
-            revision, sources = sources_from_database()
-            registry = load_registry(sources, PACKS)
-        except DatabaseError:
-            if _registry is None:
-                raise
-            _checked_at = now
-            log.warning("Configuration reload failed; keeping the loaded registry")
-            return _registry
-        _registry, _revision, _checked_at = registry, revision, now
-        return registry
+        return _reload_locked(now)
 
 
 def get_registry(*, force: bool = False) -> Registry:

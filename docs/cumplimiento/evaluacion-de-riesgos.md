@@ -18,7 +18,7 @@ Escala: probabilidad y gravedad Baja/Media/Alta. Riesgo residual tras las medida
 | R1 | Acceso de un negocio a datos de otro | Baja | Alta | RLS forzada, `tenant_tx`, tests de aislamiento, roles separados ([Tenants y RLS](../arquitectura/tenants-y-rls.md)) | Bajo | |
 | R2 | Compromiso del panel o de la clave de operación | Baja | Alta | Solo túnel SSH, contraseña y TOTP, límite de intentos, auditoría | Medio | Plan de brechas ([brechas](brechas-de-seguridad.md)); revisión periódica de accesos |
 | R3 | Fuga de secretos de canal (toma de control del bot) | Baja | Alta | Cifrado Fernet, nunca en logs, rotación sin parada ([rotar secretos](../procedimientos/rotar-secretos.md)) | Bajo | |
-| R4 | Conservación excesiva por no estar activa la limpieza | **Alta hoy** | Media | `RETENTION_CLEANUP_ENABLED=false` por defecto | **Alto hasta activarla** | **Activarla antes del primer cliente** ([checklist](checklist-lanzamiento.md)) |
+| R4 | Conservación excesiva por no estar activa la limpieza | Baja | Media | `RETENTION_CLEANUP_ENABLED=true` por defecto en `compose.prod.yaml` (2026-11-23); `check_prod_config.py` lo exige | Bajo | Comprobar el primer ciclo nocturno tras desplegar ([checklist](checklist-lanzamiento.md)) |
 | R5 | Datos en backups tras un borrado | Media | Baja | Retención 7/4/6; copias cifradas | Medio | Reaplicar supresiones tras restaurar; informar a la persona |
 | R6 | Categorías especiales en texto libre (p. ej. salud en una peluquería) | Media | Media | Payload vaciado a 30 días; Sentry y logs sin texto; no se pide | Medio | Ver sección siguiente |
 | R7 | Cuenta gratuita de Google del negocio (sin DPA) | Alta si aplica | Media | Acceso limitado al calendario concreto | Medio | Comunicar y documentar ([roles](roles-y-tratamientos.md)) |

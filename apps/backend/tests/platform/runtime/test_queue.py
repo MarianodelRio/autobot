@@ -144,3 +144,14 @@ def test_a_taken_queueing_lock_does_not_abort_the_caller_transaction() -> None:
             enqueue("tests.record", {"label": "b"}, queue=INBOUND, queueing_lock="once")
         enqueue("tests.record", {"label": "c"}, queue=INBOUND)  # the transaction is still usable
     assert job_statuses() == ["todo", "todo"]
+
+
+def test_the_real_packs_are_routed_by_what_they_need() -> None:
+    """ADR-023: salon calls Google Calendar and gets its own queue; bus, a degraded
+    tenant (no pack) and any pack with no external call stay in `inbound`."""
+    from autobot.runtime.jobs import INBOUND, INBOUND_EXT, process_event_queue
+    from packs.registry import PACKS
+
+    assert process_event_queue(PACKS["salon"]) == INBOUND_EXT
+    assert process_event_queue(PACKS["bus"]) == INBOUND
+    assert process_event_queue(None) == INBOUND

@@ -1,6 +1,10 @@
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
+import pytest
+
+from core.actions import SendProactive
 from core.errors import PermanentError, TransientError
 from core.idem import IdemKeys
 from core.testing.harness import Conversation
@@ -120,3 +124,54 @@ def test_health_reports_access_failure_without_error_details(salon: Conversation
     salon.calendar.fail("check_access", PermanentError("credential-value-must-not-appear"))
     issue = salon.pack.health(ctx)[0]
     assert issue.code == "calendar_unavailable" and "credential" not in issue.message
+
+
+def test_reminders_and_confirmations_stop_being_useful_30_minutes_before_the_start(
+    salon: Conversation,
+) -> None:
+    salon.config = configuration(reminders_enabled=True)
+    event = upcoming(salon)
+    (reminder,) = salon.run_periodic("calendar_sweep")
+    assert isinstance(reminder, SendProactive)
+    assert reminder.not_after == event.start - timedelta(minutes=30)
+    assert reminder.not_after.utcoffset() is not None  # aware: the platform compares it with UTC
+
+
+@pytest.mark.parametrize(
+    ("local_start", "expected_utc"),
+    [
+        # Spring forward, Sunday 28 March 2027: 02:00 CET becomes 03:00 CEST. 03:15 local
+        # is 01:15 UTC; thirty minutes earlier is 00:45 UTC (01:45 CET), not "02:45 local",
+        # which does not exist.
+        (datetime(2027, 3, 28, 3, 15, tzinfo=ZoneInfo("Europe/Madrid")), "2027-03-28T00:45"),
+        # Fall back, Sunday 31 October 2027: 03:00 CEST becomes 02:00 CET. The first 02:15
+        # (CEST, 00:15 UTC) minus thirty minutes is 23:45 UTC the day before.
+        (
+            datetime(2027, 10, 31, 2, 15, tzinfo=ZoneInfo("Europe/Madrid"), fold=0),
+            "2027-10-30T23:45",
+        ),
+        # The second 02:15 (CET, 01:15 UTC) is an hour later: 00:45 UTC.
+        (
+            datetime(2027, 10, 31, 2, 15, tzinfo=ZoneInfo("Europe/Madrid"), fold=1),
+            "2027-10-31T00:45",
+        ),
+    ],
+)
+def test_not_after_is_computed_in_utc_across_the_dst_nights(
+    salon: Conversation, local_start: datetime, expected_utc: str
+) -> None:
+    salon.config = configuration(reminders_enabled=True)
+    salon.clock.set(local_start - timedelta(hours=24))
+    salon.calendar.add(
+        CalendarEvent(
+            "dst",
+            "Corte - Lucía",
+            "",
+            local_start,
+            local_start + timedelta(minutes=30),
+            private={"fp_contact": str(salon.contact.id), "fp_key": "booking"},
+        )
+    )
+    (reminder,) = salon.run_periodic("calendar_sweep")
+    assert isinstance(reminder, SendProactive) and reminder.not_after is not None
+    assert reminder.not_after.astimezone(UTC).strftime("%Y-%m-%dT%H:%M") == expected_utc

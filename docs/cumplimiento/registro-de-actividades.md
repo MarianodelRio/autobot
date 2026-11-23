@@ -5,8 +5,8 @@ Registro del art. 30 RGPD de Autobot en sus dos papeles: como **responsable** (a
 !!! warning "No es asesoramiento jurídico"
     Documento de trabajo. Las bases jurídicas y los plazos son la propuesta técnica del equipo; **revisar con abogado** las bases jurídicas de la demo, de los dueños y de la facturación, y el plazo de 12 meses. Los datos del titular quedan como marcadores.
 
-!!! danger "La limpieza automática está desactivada por defecto"
-    Los plazos de esta página **solo se cumplen si se activa la limpieza nocturna**: `RETENTION_CLEANUP_ENABLED` vale `false` por defecto (ver [Retención y RGPD](../procedimientos/retencion-rgpd.md#limpieza-automatica)). Mientras siga en `false`, nada caduca salvo los trabajos de la cola (`jobs_cleanup`, 30 días), los logs (31 días) y los backups (restic). **Debe activarse, con aprobación humana explícita, antes del primer cliente real**; si no, el registro y los avisos legales serían falsos.
+!!! note "La limpieza automática está activada en producción"
+    Los plazos de esta página **solo se cumplen con la limpieza nocturna activa**. En producción `compose.prod.yaml` la activa por defecto (`RETENTION_CLEANUP_ENABLED=true`, aprobado el 2026-11-23; `check_prod_config.py` lo comprueba); en local vale `false` y nada caduca salvo los trabajos de la cola (`jobs_cleanup`, 30 días), los logs (31 días) y los backups (restic). Un servidor con `RETENTION_CLEANUP_ENABLED=false` en su `.env` incumpliría este registro y los avisos legales. Ver [Retención y RGPD](../procedimientos/retencion-rgpd.md#limpieza-automatica).
 
 ## Datos identificativos
 

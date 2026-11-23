@@ -26,7 +26,13 @@ from autobot.runtime.models import (
 from autobot.tenancy.registry import LoadedTenant, get_registry, reset_registry
 from autobot.tenancy.tx import tenant_tx
 from core.actions import ContactRef, RecordMetric, SendProactive
-from core.conversation import OPT_IN_TEXT, OPT_OUT_TEXT, RECOVERY_TEXT, RESTART_TEXT
+from core.conversation import (
+    DEGRADED_TEXT,
+    OPT_IN_TEXT,
+    OPT_OUT_TEXT,
+    RECOVERY_TEXT,
+    RESTART_TEXT,
+)
 from core.errors import TransientError
 from core.messages import IncomingMessage
 from core.pack import PackContext, PackResult
@@ -191,8 +197,57 @@ def test_a_transient_error_is_retried_then_recovers(tenants: Any) -> None:
     process.process_event(tenant().id, event.id, last_attempt=True)
     event = InboundEvent.objects.using("owner").get(id=event.id)
     assert (event.status, event.error) == ("failed", "TransientError on the last attempt")
-    assert bodies(event) == [RECOVERY_TEXT]
+    assert bodies(event) == [DEGRADED_TEXT]
     assert conversation().state == {}
+
+
+def test_the_last_transient_failure_keeps_the_conversation_step(tenants: Any) -> None:
+    """ADR-023: only something outside the platform failed, so the person is told so and
+    carries on from the same step: no recovery text, no reset."""
+    tenants(wa_tenant())
+    receive(wa_text("hola"))
+    receive(wa_press("greet"))
+    assert conversation().state == {"step": "ask_name"}
+    assert post_wa(wa_press("fail")) == 200
+    event = events()[-1]
+    process.process_event(tenant().id, event.id, last_attempt=True)
+    event = InboundEvent.objects.using("owner").get(id=event.id)
+    assert (event.status, event.error) == ("failed", "TransientError on the last attempt")
+    assert bodies(event) == [DEGRADED_TEXT]
+    assert conversation().state == {"step": "ask_name"}
+
+
+def test_the_pack_runs_inside_the_calendar_time_budget(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from integrations.google_calendar import client as calendar_client
+
+    seen: list[float | None] = []
+
+    def spy(ctx: PackContext, msg: object) -> PackResult:
+        seen.append(calendar_client._remaining())
+        return PackResult(replies=[Text("ok")])
+
+    use_pack(monkeypatch, handle_message=spy)
+    tenants(wa_tenant())
+    receive(wa_text("hola"))
+    (remaining,) = seen
+    assert remaining is not None and 0 < remaining <= process.CALENDAR_BUDGET_S
+    assert calendar_client._remaining() is None  # the budget ends with the pack run
+
+
+@pytest.mark.parametrize(("needs_calendar", "queue"), [(True, "inbound_ext"), (False, "inbound")])
+def test_process_event_is_queued_by_what_its_pack_needs(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch, needs_calendar: bool, queue: str
+) -> None:
+    """salon (Calendar) goes to inbound_ext, bus to inbound; the lock is the same, and
+    delivery statuses stay in inbound."""
+    use_pack(monkeypatch, needs_calendar=needs_calendar)
+    tenants(wa_tenant())
+    assert post_wa(wa_text("hola")) == 200
+    ((name, lock, _, queue_name),) = jobs()
+    assert (name, queue_name) == ("process_event", queue)
+    assert lock is not None and lock.startswith("conv:")
 
 
 def test_an_unexpected_pack_error_gives_the_recovery_text(
@@ -644,6 +699,6 @@ def test_is_last_attempt() -> None:
     from autobot.runtime.jobs import is_last_attempt
 
     def ctx(attempts: int) -> Any:
-        return SimpleNamespace(job=SimpleNamespace(attempts=attempts))
+        return SimpleNamespace(job=SimpleNamespace(attempts=attempts, queue="inbound"))
 
     assert [is_last_attempt(ctx(n)) for n in range(4)] == [False, False, False, True]

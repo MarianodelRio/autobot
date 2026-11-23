@@ -15,6 +15,7 @@ from autobot.ops.models import OpsAlert
 from autobot.runtime import notifications, process
 from autobot.runtime.models import Notification, OwnerLink, PlatformCache
 from autobot.runtime.outbound import SendRetry
+from autobot.runtime.ratelimit import SlotLimiter
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
 from core.actions import NotifyOwner
@@ -160,13 +161,68 @@ def test_ambiguous_or_rejected_never_retried(tenants: Any, telegram: Any, answer
     assert len(seen) == 1 and reload(row).status == "failed"
 
 
-def test_final_retry_is_failed(tenants: Any, telegram: Any) -> None:
+def test_network_failure_is_retried_with_backoff_without_cap(tenants: Any, telegram: Any) -> None:
+    """No connection was made: certainly not sent, so it is retried by time, however many
+    attempts it already had."""
     tenants(owner())
     link()
-    telegram(httpx.Response(500))
+    telegram(httpx.ConnectError("down"), ok())
     row = notice()
-    send(row, last_attempt=True)
-    assert reload(row).status == "failed"
+    with pytest.raises(SendRetry) as caught:
+        send(row, attempts=40)
+    assert caught.value.after_s is not None and 0 < caught.value.after_s <= 300
+    assert reload(row).status == "pending"
+    send(row, attempts=41)
+    assert reload(row).status == "sent"
+
+
+def test_stale_notice_expires_without_being_sent(tenants: Any, telegram: Any) -> None:
+    tenants(owner())
+    link()
+    seen = telegram()
+    row = notice()
+    Notification.objects.using("owner").filter(id=row.id).update(
+        created_at=timezone.now() - notifications.NOTICE_TTL - timedelta(seconds=1)
+    )
+    send(row)
+    assert reload(row).status == "expired" and not seen
+    send(row)  # terminal
+    assert not seen
+
+
+def test_retry_wait_never_goes_past_the_expiry(tenants: Any, telegram: Any) -> None:
+    tenants(owner())
+    link()
+    telegram(httpx.Response(429, json={"parameters": {"retry_after": 3600}}))
+    row = notice()
+    Notification.objects.using("owner").filter(id=row.id).update(
+        created_at=timezone.now() - notifications.NOTICE_TTL + timedelta(seconds=30)
+    )
+    with pytest.raises(SendRetry) as caught:
+        send(row)
+    assert caught.value.after_s is not None and caught.value.after_s <= 31
+
+
+def test_no_slot_defers_without_calling_telegram(
+    tenants: Any, telegram: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenants(owner())
+    link()
+    seen = telegram(ok())
+    clock = [0.0]
+    limiter = SlotLimiter(
+        rate_per_s=25, key_interval_s=30, clock=lambda: clock[0], sleep=lambda _: None
+    )
+    monkeypatch.setattr(notifications, "LIMITER", limiter)
+    assert limiter.acquire("100") is None  # the chat just used its slot
+    row = notice()
+    with pytest.raises(SendRetry) as caught:
+        send(row)
+    assert caught.value.after_s is not None and 30 <= caught.value.after_s <= 31
+    assert reload(row).status == "pending" and not seen
+    clock[0] = 31.0
+    send(row)
+    assert reload(row).status == "sent" and len(seen) == 1
 
 
 def test_crash_after_claim_never_resends(tenants: Any, telegram: Any) -> None:
@@ -330,3 +386,43 @@ def test_resolve_alert_notify_is_a_noop_without_a_configured_bot(settings: Any) 
     settings.NOTIFY_BOT_TOKEN = ""
     notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
     notifications.resolve_alert(alert(), by="auto", notify=True)  # must not raise
+
+
+# ── Owner without a linked chat (ADR-026) ────────────────────────────────
+
+
+def test_unlinked_owner_holds_the_notice_then_it_goes_out_on_link(
+    tenants: Any, telegram: Any
+) -> None:
+    from autobot.owner import links
+
+    tenants(owner())
+    seen = telegram(ok())
+    row = notice()
+    send(row)
+    assert reload(row).status == "held" and not seen
+
+    code = links.new_invite(row.tenant_id)
+    assert links.start_link(code, 100).status == "linked"
+    assert reload(row).status == "pending"
+    assert jobs()[-1][0] == "send_notification"
+    send(row)
+    assert reload(row).status == "sent" and len(seen) == 1
+
+
+def test_stale_held_notices_expire_on_link_and_are_never_sent(tenants: Any, telegram: Any) -> None:
+    from autobot.owner import links
+
+    tenants(owner())
+    seen = telegram()
+    fresh, stale = notice(idem="fresh"), notice(idem="stale")
+    send(fresh)
+    send(stale)
+    Notification.objects.using("owner").filter(id=stale.id).update(
+        created_at=timezone.now() - notifications.NOTICE_TTL - timedelta(minutes=1)
+    )
+    code = links.new_invite(stale.tenant_id)
+    assert links.start_link(code, 100).status == "linked"
+    assert (reload(fresh).status, reload(stale).status) == ("pending", "expired")
+    assert not seen
+    assert notifications.release_held(stale.tenant_id) == 0  # idempotent

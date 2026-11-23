@@ -31,7 +31,8 @@ PROCRASTINATE_RETENTION_DAYS = 30
 # A demo tenant's contacts, conversations and owner notices outlive the selector's
 # own demo_event/demo_session (7/30 days) by this much, never a year like a real
 # client's: someone who tried the demo for an afternoon should not stay on file
-# as long as an actual customer. Not active yet (RETENTION_CLEANUP_ENABLED=false).
+# as long as an actual customer. Applies whenever RETENTION_CLEANUP_ENABLED is on (the
+# production default, compose.prod.yaml; off by default in local).
 DEMO_RETENTION_DAYS = 30
 # How long a revoked or expired invite stays visible in the panel before it is
 # purged, so a recent "código revocado"/"caducado" is still explainable there.

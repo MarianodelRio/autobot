@@ -79,6 +79,7 @@ function stubFetch() {
           alerts_total: 1,
           outbound_total: 1,
           jobs_total: 1,
+          held_notices: [{ tenant_id: "t1", tenant: "demo", count: 2 }],
         }),
         { headers: { "Content-Type": "application/json" } },
       );
@@ -95,6 +96,24 @@ function stubFetch() {
         JSON.stringify({ message: "Envío marcado como enviado." }),
         { headers: { "Content-Type": "application/json" } },
       );
+    if (url.pathname.endsWith("/resend-bulk/preview"))
+      return new Response(
+        JSON.stringify({ total: 3, will_resend: 3, cap: 500 }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    if (url.pathname.endsWith("/resend-bulk")) {
+      const body = await req.json();
+      return new Response(
+        JSON.stringify({
+          message: `${body.statuses.length} reenviados`,
+          selected: 3,
+          resent: 3,
+          skipped: 0,
+          over_cap: 0,
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    }
     if (url.pathname.endsWith("/resend")) {
       const body = req.body ? await req.json() : null;
       if (body?.confirm_duplicate_risk !== true)
@@ -145,12 +164,12 @@ test("an alert with a runbook links to it in the docs", async () => {
   vi.stubGlobal("fetch", stubFetch());
   renderPage();
 
-  const link = await screen.findByRole(
+  const links = await screen.findAllByRole(
     "link",
     { name: "Ver runbook" },
     { timeout: 8000 },
   );
-  expect(link.getAttribute("href")).toBe("/docs/incidencias/calendar/");
+  expect(links[0]?.getAttribute("href")).toBe("/docs/incidencias/calendar/");
 }, 10_000);
 
 test("resolves an alert that does not auto-resolve", async () => {
@@ -225,4 +244,38 @@ test("retries a failed job", async () => {
   );
 
   await waitFor(() => expect(posted(fetcher, "/jobs/1/retry")).toBe(true));
+}, 10_000);
+
+test("shows the owner notices held for lack of a linked chat", async () => {
+  vi.stubGlobal("fetch", stubFetch());
+  renderPage();
+
+  expect(
+    await screen.findByText("demo: 2 avisos retenidos", {}, { timeout: 8000 }),
+  ).toBeInTheDocument();
+}, 10_000);
+
+test("bulk resend previews the count and asks for confirmation", async () => {
+  const user = userEvent.setup();
+  const fetcher = stubFetch();
+  vi.stubGlobal("fetch", fetcher);
+  renderPage();
+
+  await user.click(
+    await screen.findByText("Reenvío en bloque", {}, { timeout: 8000 }),
+  );
+  await user.click(screen.getByRole("button", { name: "Previsualizar" }));
+  expect(await screen.findByText(/3 mensajes coinciden/)).toBeInTheDocument();
+  expect(posted(fetcher, "/outbound/resend-bulk")).toBe(false);
+
+  await user.click(screen.getByRole("button", { name: "Reenviar en bloque" }));
+  const confirm = (
+    await screen.findAllByRole("button", { name: "Reenviar" })
+  ).at(-1);
+  if (!confirm) throw new Error("confirm button not found");
+  await user.click(confirm);
+
+  await waitFor(() =>
+    expect(posted(fetcher, "/outbound/resend-bulk")).toBe(true),
+  );
 }, 10_000);

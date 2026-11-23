@@ -55,20 +55,20 @@ Ejecuta los pasos en orden; cada uno puede repetirse sola con `ONLY=<paso>`.
     1. Crea `var/.frozen` en `FROM` (`deploy.sh` y `restore.sh` lo respetan).
     2. Desactiva el workflow `deploy.yml` (`gh workflow disable`).
     3. Para el timer de backup (como `admin`) y los servicios `worker-inbound`,
-       `worker-outbound`, `web`, `web-panel`, `panel` y `caddy`.
+       `worker-calendar`, `worker-periodic`, `worker-outbound`, `web`, `web-panel`, `panel` y `caddy`.
     4. Hace un backup final y guarda el id del snapshot en `var/.server-migrate-snapshot`
        del portátil.
 3. **`cutover`**: antes del ensayo y de este paso, deja en `TO` la clave de cifrado
    (`SECRETS_ENCRYPTION_KEY`) en `/srv/autobot/var/secrets-key`, modo 0600 (o la ruta de
    `AUTOBOT_MIGRATE_SECRETS_KEY_FILE`): no viaja en el snapshot (ADR-021) y el script se
-   niega a continuar sin ella. En `TO`, restaura **ese snapshot concreto** (`AUTOBOT_RESTORE_SNAPSHOT`,
+   niega a continuar sin ella (y `ensure-env.sh` nunca genera una nueva, ADR-022). En `TO`, restaura **ese snapshot concreto** (`AUTOBOT_RESTORE_SNAPSHOT`,
    nunca `latest`), con `DEPLOY_UID`, roles, permisos y certificados nuevos para esa
    máquina; levanta todo menos los workers y comprueba
    `https://<PUBLIC_HOST>/health` con `curl --resolve` contra la propia `TO`. Verifica a
    mano antes de seguir.
 4. **`start-destination`**: comprueba que `FROM` no tiene ningún contenedor de aplicación en
    marcha (si no, se niega: evitaría envíos duplicados), pide confirmación y arranca los
-   workers de `TO` con `compose.sh up -d worker-inbound worker-outbound`. Después, **cambia
+   workers de `TO` con `compose.sh up -d worker-inbound worker-calendar worker-periodic worker-outbound`. Después, **cambia
    el DNS a mano** de `PUBLIC_HOST` a `TO`.
 5. **`finish`**: pone en GitHub `DEPLOY_HOST`, `DEPLOY_KNOWN_HOSTS` y `DEPLOY_SSH_KEY` (la
    clave de CI de `TO`, que sustituye a la de `FROM`), reactiva `deploy.yml` y arranca el

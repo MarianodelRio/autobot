@@ -21,6 +21,14 @@ RECOVERY_TEXT = (
     "Uy, ha habido un problema de conexión y puede que tu última acción no se completara. "
     "Escríbeme de nuevo y seguimos."
 )
+# The last attempt of a message failed on a temporary error of something outside the
+# platform: the person is told, and the conversation stays where it was so they can repeat.
+DEGRADED_TEXT = "Ahora mismo no puedo completar tu consulta. Prueba de nuevo en unos minutos."
+# Sent once (at most one per contact every 6 hours) in place of a reply that could not be
+# delivered in time, which is dropped: its buttons may be obsolete (ADR-024).
+APOLOGY_TEXT = (
+    "Perdona el retraso, hemos tenido un problema técnico. ¿Seguimos? Escribe *menú* para empezar."
+)
 OPT_OUT_TEXT = (
     "Hecho: ya no te enviaré avisos ni recordatorios (puedes seguir escribiéndome cuando "
     "quieras). Si quieres volver a recibirlos, escribe *alta*. Para que borren tus datos, "
@@ -199,6 +207,13 @@ def command_result(
 def recovery_result() -> PackResult:
     """After an unexpected error or the last failed retry: apologise and reset."""
     return PackResult(replies=[Text(RECOVERY_TEXT)], state={})
+
+
+def degraded_result() -> PackResult:
+    """After the last failed attempt on a temporary error: say so and keep the state
+    (`state=None`: unchanged), so repeating the last action carries on from the same
+    step instead of starting over."""
+    return PackResult(replies=[Text(DEGRADED_TEXT)])
 
 
 def human_result(tenant: TenantInfo, contact: ContactInfo | None, now: datetime) -> PackResult:

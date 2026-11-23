@@ -157,17 +157,18 @@ def test_retry_later_goes_back_to_pending_and_retries(tenants: Any, meta: Any) -
     assert (message.status, message.attempts) == ("pending", 1)
 
 
-def test_after_five_attempts_retry_later_fails(tenants: Any, meta: Any) -> None:
+def test_retry_later_never_fails_by_attempt_count(tenants: Any, meta: Any) -> None:
+    """ADR-024: no attempt cap for a provider that says "later": past five, it is still
+    pending (it ends `expired`, see test_outbound_expiry)."""
     tenants(wa_tenant())
-    meta(*[error(503, 131016)] * 5)
+    meta(*[error(503, 131016)] * 8)
     message = a_reply()
-    for _ in range(4):
+    for _ in range(8):
         with pytest.raises(SendRetry):
             send(message)
-    send(message)
     message = reload(message)
-    assert (message.status, message.attempts) == ("failed", 5)
-    assert message.last_error == "other: still refused after 5 attempts"
+    assert (message.status, message.attempts) == ("pending", 8)
+    assert message.last_error == "retry later (server)"
 
 
 def test_rejected_recipient_marks_the_contact_unreachable(tenants: Any, meta: Any) -> None:
@@ -249,12 +250,18 @@ def test_retry_strategy() -> None:
     def wait_s(exception: BaseException, attempts: int) -> float:
         before = timezone.now()
         retry_at = decision(exception, attempts).retry_at
-        return float(round((retry_at - before).total_seconds()))
+        return float((retry_at - before).total_seconds())
 
-    assert [wait_s(SendRetry(None), n) for n in range(5)] == [5, 30, 120, 600, 1800]
-    assert wait_s(SendRetry(6.2), 0) == 7  # retry_after, rounded up
-    assert decision(SendRetry(None), 5) is None  # the message is failed by then
+    assert wait_s(SendRetry(6.2), 0) == pytest.approx(7, abs=1)  # retry_after, rounded up
+    assert decision(SendRetry(6.2), 500) is not None  # no cap by count
     assert decision(RuntimeError("bug"), 0) is None
+
+
+def test_backoff_is_exponential_with_jitter_and_capped() -> None:
+    for attempts, top in [(1, 5), (2, 10), (3, 20), (6, 160), (7, 300), (40, 300)]:
+        waits = [outbound.backoff_s(attempts) for _ in range(50)]
+        assert top / 2 <= min(waits) and max(waits) <= top
+    assert len({outbound.backoff_s(7) for _ in range(20)}) > 1  # jitter
 
 
 def test_a_delivery_status_that_comes_first_is_not_overwritten(

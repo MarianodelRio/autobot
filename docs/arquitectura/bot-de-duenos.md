@@ -71,9 +71,9 @@ Cada resumen mezcla métricas de la plataforma (clientes atendidos, mensajes env
 
 ### Entrega
 
-`send_notification` (`autobot/runtime/notifications.py`) reclama la fila como `failed` **antes** de llamar a Telegram y solo la pasa a `sent` o la devuelve a `pending` (si el proveedor pide esperar y quedan intentos) después. Un resultado ambiguo se queda en `failed`: un aviso no tiene estado `unknown` y no se reenvía a ciegas. Un aviso del que no hay chat vinculado o bot configurado solo se registra. `owner.notify` filtra los avisos por evento; el resumen tiene su propio interruptor (`owner.summary_monthly`).
+`send_notification` (`autobot/runtime/notifications.py`) reclama la fila como `failed` **antes** de llamar a Telegram y solo la pasa a `sent` o la devuelve a `pending` (si el proveedor pide esperar) después. Antes de reclamarla pide un hueco a un limitador en memoria (`autobot/runtime/ratelimit.py`): 25 mensajes por segundo para todo el bot y uno por segundo por chat de dueño, por debajo de los límites de Telegram (unos 30/s por bot y 1/s por chat). Sin hueco no se llama a Telegram: el aviso sigue `pending` y el trabajo se aplaza hasta el hueco (una espera de 1 s o menos se duerme en el propio hilo). El limitador es **por proceso**: vale mientras haya un solo proceso `worker-outbound`; uno compartido es trabajo futuro ([Capacidad y crecimiento](capacidad-y-crecimiento.md)). Los avisos reintentan por tiempo ([ADR-024](adr/ADR-024-envio-saliente-por-caducidad.md#avisos-al-dueno)): un 429 respeta su `retry_after` y no consume intentos, un fallo de red reintenta con retroceso y jitter (tope 300 s), y un aviso de más de 2 h (`NOTICE_TTL`) pasa a `expired` sin enviarse ni disculpa. Un resultado ambiguo (5xx o tiempo agotado) se queda en `failed`: un aviso no tiene estado `unknown` y no se reenvía a ciegas. Un aviso del que no hay chat vinculado o bot configurado solo se registra. `owner.notify` filtra los avisos por evento; el resumen tiene su propio interruptor (`owner.summary_monthly`).
 
-Un aviso fallido en las últimas 24 horas, con bot y chat configurados, genera la alerta `notification_failed` ([Observabilidad](observabilidad.md)).
+Un aviso fallido o caducado en las últimas 24 horas, con bot y chat configurados, genera la alerta `notification_failed` ([Observabilidad](observabilidad.md)).
 
 ## Dónde está el código
 

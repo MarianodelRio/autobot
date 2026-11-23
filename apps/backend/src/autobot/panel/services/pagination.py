@@ -1,0 +1,53 @@
+"""Keyset (cursor) pagination shared by the panel lists.
+
+The cursor is the opaque `(timestamp, id)` of the last row served; the next page starts
+strictly after it in `(field desc, id desc)` order, so a row is never repeated nor
+skipped however many rows arrive meanwhile, and the cost of a page does not grow with its
+depth (an OFFSET would read and discard every earlier row). Back every list that uses it
+with an index on `(field, id)` or, per tenant, `(tenant, field)`.
+"""
+
+import base64
+import json
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from django.db.models import Q
+from django.utils.dateparse import parse_datetime
+
+from autobot.panel.errors import ApiError
+
+DEFAULT_LIMIT = 50
+MAX_LIMIT = 100
+
+
+def position(cursor: str, *, numeric: bool = False) -> tuple[datetime, Any]:
+    try:
+        data = json.loads(
+            base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True)
+        )
+        at = parse_datetime(data["at"])
+        id = int(data["id"]) if numeric else UUID(data["id"])
+        if at is None or at.utcoffset() is None:
+            raise ValueError
+        return at, id
+    except ValueError, TypeError, KeyError, OverflowError:
+        raise ApiError("bad_request", "Cursor no válido.", 400) from None
+
+
+def page(
+    qs: Any, *, field: str, cursor: str, limit: int, numeric: bool = False
+) -> tuple[list[Any], str | None]:
+    limit = max(1, min(limit, MAX_LIMIT))
+    if cursor:
+        at, id = position(cursor, numeric=numeric)
+        qs = qs.filter(Q(**{field + "__lt": at}) | Q(**{field: at, "id__lt": id}))
+    rows = list(qs.order_by("-" + field, "-id")[: limit + 1])
+    items = rows[:limit]
+    next_cursor = None
+    if len(rows) > limit:
+        last = items[-1]
+        data = {"at": getattr(last, field).isoformat(), "id": str(last.pk)}
+        next_cursor = base64.urlsafe_b64encode(json.dumps(data).encode()).decode().rstrip("=")
+    return items, next_cursor

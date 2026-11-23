@@ -31,27 +31,31 @@ from core.pack import Pack
 
 log = logging.getLogger(__name__)
 
-# Each queue shows what gets stuck. `ops` is the one exception to "one worker per
-# queue group": both worker-inbound and worker-outbound listen to it, so
-# ops_check keeps running, and keeps able to alert, even if one of the two is the
-# one that is down.
-INBOUND = "inbound"  # process_event, apply_status, route_demo_event
+# Each queue shows what gets stuck, and each worker serves its own (ADR-023), so a slow
+# dependency only ever holds the slots of its own queue. `ops` (ops_check, whose
+# health checks make slow external calls one after another) is served by worker-periodic
+# alone, so it never takes a slot of a worker that answers or sends.
+INBOUND = "inbound"  # process_event (packs with no external call), apply_status, route_demo_event
+# process_event of the packs that call Google Calendar (`Pack.needs_calendar`): the
+# bulkhead that keeps a Google outage away from the other tenants' conversations.
+INBOUND_EXT = "inbound_ext"
 OUTBOUND = "outbound"  # send_message, send_notification
 PERIODIC = "periodic"  # run_periodic, retention_cleanup
-OPS = "ops"  # ops_check: listened to by both workers
-QUEUES = (INBOUND, OUTBOUND, PERIODIC, OPS)
+OPS = "ops"  # ops_check: listened to by worker-periodic only
+QUEUES = (INBOUND, INBOUND_EXT, OUTBOUND, PERIODIC, OPS)
 
 # Job names: a job is deferred by name, so modules that defer it do not import its task.
 PROCESS_EVENT = "process_event"  # (tenant_id, event_id), lock conv:<h>
 APPLY_STATUS = "apply_status"  # (tenant_id, event_id), no lock
-SEND_MESSAGE = "send_message"  # (tenant_id, outbound_id), lock out:<h>
+SEND_MESSAGE = "send_message"  # (tenant_id, outbound_id), lock out:<h> (replies) / outp:<h>
 SEND_NOTIFICATION = "send_notification"  # (tenant_id, notification_id), lock owner:<tenant>
 ROUTE_DEMO_EVENT = "route_demo_event"  # (event_id) of demo_event, lock demo:<h>
 DISPATCH_PERIODIC = "dispatch_periodic"  # (timestamp, pack, name): one per pack Periodic
 RUN_PERIODIC = "run_periodic"  # (tenant_id, name, scheduled_at), queueing lock per both
-RETRY_STALLED_JOBS = "retry_stalled_jobs"  # (timestamp): every 5 min
+RETRY_STALLED_JOBS = "retry_stalled_jobs"  # (timestamp): every minute
 DISPATCH_OWNER_SUMMARIES = "dispatch_owner_summaries"  # (timestamp): hourly, platform-wide
 SEND_OWNER_SUMMARY = "send_owner_summary"  # (tenant_id, year, month), queueing_lock summary:<t>
+RECONCILE_UNKNOWN = "reconcile_unknown"  # (timestamp): every 5 minutes, platform-wide
 HANDLE_OWNER_EVENT = "handle_owner_event"  # (event_id) of owner_event, lock ownerchat:<h>
 
 
@@ -71,14 +75,38 @@ RETRYABLE: tuple[type[Exception], ...] = (
 
 SUMMARY_RETRY = RetryStrategy(max_attempts=3, wait=300, retry_exceptions=RETRYABLE)
 
-# `inbound` jobs are retried 3 times, on `RETRYABLE`, after 2, 4 and 8 s.
+# `inbound` jobs are retried 3 times, on `RETRYABLE`, after 2, 4 and 8 s. `inbound_ext`
+# ones, once (after 2 s): the Calendar client already tries twice and has a circuit
+# breaker, and a job holding a slot through three more rounds is what made a Google
+# outage starve everything (ADR-023). The last failed run answers with the degraded
+# text instead of failing silently.
 INBOUND_RETRIES = 3
+INBOUND_EXT_RETRIES = 1
 INBOUND_RETRY = RetryStrategy(
     max_attempts=INBOUND_RETRIES, exponential_wait=2, retry_exceptions=RETRYABLE
 )
+INBOUND_EXT_RETRY = RetryStrategy(
+    max_attempts=INBOUND_EXT_RETRIES, exponential_wait=2, retry_exceptions=RETRYABLE
+)
 
 
-@app.task(queue=INBOUND, name=PROCESS_EVENT, pass_context=True, retry=INBOUND_RETRY)
+def process_event_queue(pack: Pack | None) -> str:
+    """The queue of a tenant's `process_event`: `inbound_ext` when its pack calls Google
+    Calendar, `inbound` otherwise. A contact belongs to one tenant, so its messages always
+    land in the same queue, and the conversation lock keeps them in order."""
+    return INBOUND_EXT if pack is not None and pack.needs_calendar else INBOUND
+
+
+class ProcessEventRetry(BaseRetryStrategy):
+    """`process_event` retries by the queue it runs in (`INBOUND_RETRY`,
+    `INBOUND_EXT_RETRY`)."""
+
+    def get_retry_decision(self, *, exception: BaseException, job: Job) -> RetryDecision | None:
+        strategy = INBOUND_EXT_RETRY if job.queue == INBOUND_EXT else INBOUND_RETRY
+        return strategy.get_retry_decision(exception=exception, job=job)
+
+
+@app.task(queue=INBOUND, name=PROCESS_EVENT, pass_context=True, retry=ProcessEventRetry())
 def process_event(context: JobContext, tenant_id: str, event_id: str) -> None:
     from autobot.runtime import process
 
@@ -108,28 +136,43 @@ def apply_status(tenant_id: str, event_id: str) -> None:
 
 
 class SendRetryStrategy(BaseRetryStrategy):
-    """`send_message` is retried when the provider asked for it (`RetryLater`, raised
-    as `SendRetry`), after its `retry_after` or the `OUTBOUND_RETRY_WAITS_S` schedule
-    (spaced out to survive a ~30 s outage without losing the message), and on the
-    database errors of `RETRYABLE` (the message is still `pending`, or `sending`, which
-    the retry leaves `unknown`: never resent). The message itself counts its attempts
-    and becomes `failed` after the fifth."""
+    """`send_message` retries by time, not by count (ADR-024): a `SendRetry` (the provider
+    asked for it, or could not be reached; the wait is already decided by `send_message`:
+    its `retry_after` or a capped backoff with jitter) is always retried, and the message
+    itself becomes `expired` once past its `expires_at`. The database errors of `RETRYABLE`
+    (the message is still `pending`, or `sending`, which the retry leaves `unknown`: never
+    resent) keep a bounded count; the outbound sweep queues again a `pending` message left
+    with no job."""
 
     def get_retry_decision(self, *, exception: BaseException, job: Job) -> RetryDecision | None:
-        from autobot.runtime.outbound import MAX_SEND_ATTEMPTS, OUTBOUND_RETRY_WAITS_S, SendRetry
+        from autobot.runtime.outbound import DB_ERROR_RETRIES, SendRetry, backoff_s
 
-        if job.attempts >= MAX_SEND_ATTEMPTS:
-            return None
         if isinstance(exception, SendRetry):
-            after_s = exception.after_s
-        elif isinstance(exception, RETRYABLE):
-            after_s = None
+            wait = exception.after_s if exception.after_s is not None else backoff_s(job.attempts)
+        elif isinstance(exception, RETRYABLE) and job.attempts < DB_ERROR_RETRIES:
+            wait = backoff_s(job.attempts)
         else:
             return None
-        if after_s is not None:
-            wait = after_s
+        return RetryDecision(retry_in={"seconds": math.ceil(wait)})
+
+
+class NotificationRetryStrategy(BaseRetryStrategy):
+    """`send_notification` also retries by time (ADR-024): a `SendRetry` (no slot of the
+    notify bot's rate limiter, a 429, or no connection) is always retried, after the wait
+    `send_notification` already decided (else a capped backoff with jitter), and the notice
+    itself becomes `expired` after `NOTICE_TTL`. Database errors keep a bounded count."""
+
+    def get_retry_decision(self, *, exception: BaseException, job: Job) -> RetryDecision | None:
+        from autobot.runtime.outbound import DB_ERROR_RETRIES, SendRetry, backoff_s
+
+        if isinstance(exception, SendRetry) and exception.after_s is not None:
+            wait = exception.after_s
+        elif isinstance(exception, SendRetry) or (
+            isinstance(exception, RETRYABLE) and job.attempts < DB_ERROR_RETRIES
+        ):
+            wait = backoff_s(job.attempts)
         else:
-            wait = OUTBOUND_RETRY_WAITS_S[min(job.attempts, len(OUTBOUND_RETRY_WAITS_S) - 1)]
+            return None
         return RetryDecision(retry_in={"seconds": math.ceil(wait)})
 
 
@@ -166,17 +209,16 @@ def send_message(tenant_id: str, outbound_id: str) -> None:
         close_old_connections()
 
 
-@app.task(queue=OUTBOUND, name=SEND_NOTIFICATION, retry=SendRetryStrategy(), pass_context=True)
+@app.task(
+    queue=OUTBOUND, name=SEND_NOTIFICATION, retry=NotificationRetryStrategy(), pass_context=True
+)
 def send_notification(context: JobContext, tenant_id: str, notification_id: str) -> None:
     from autobot.runtime import notifications
-    from autobot.runtime.outbound import MAX_SEND_ATTEMPTS
 
     close_old_connections()
     try:
         notifications.send_notification(
-            UUID(tenant_id),
-            UUID(notification_id),
-            last_attempt=context.job.attempts >= MAX_SEND_ATTEMPTS - 1,
+            UUID(tenant_id), UUID(notification_id), attempts=context.job.attempts
         )
     finally:
         close_old_connections()
@@ -206,7 +248,7 @@ def run_periodic(tenant_id: str, name: str, scheduled_at: int) -> None:
         close_old_connections()
 
 
-@app.periodic(cron="*/5 * * * *", periodic_id=RETRY_STALLED_JOBS)
+@app.periodic(cron="* * * * *", periodic_id=RETRY_STALLED_JOBS)
 @app.task(
     queue=PERIODIC, name=RETRY_STALLED_JOBS, queueing_lock=RETRY_STALLED_JOBS, pass_context=True
 )
@@ -271,8 +313,9 @@ _register_pack_periodics()
 
 def is_last_attempt(context: JobContext) -> bool:
     """`job.attempts` counts the runs that already failed: with 3 retries, the fourth run
-    is the last one."""
-    return context.job.attempts >= INBOUND_RETRIES
+    is the last one (with `inbound_ext`'s single retry, the second)."""
+    retries = INBOUND_EXT_RETRIES if context.job.queue == INBOUND_EXT else INBOUND_RETRIES
+    return context.job.attempts >= retries
 
 
 @app.periodic(cron="*/5 * * * *", periodic_id="ops_check")
@@ -296,6 +339,20 @@ def retention_cleanup(timestamp: int) -> None:
     close_old_connections()
     try:
         cleanup()
+    finally:
+        close_old_connections()
+
+
+# Ambiguous sends (ADR-026): resent once if still unknown after the wait for a delivery
+# status, when a duplicate is harmless; also expires stale held owner notices.
+@app.periodic(cron="*/5 * * * *", periodic_id=RECONCILE_UNKNOWN)
+@app.task(queue=PERIODIC, name=RECONCILE_UNKNOWN, queueing_lock=RECONCILE_UNKNOWN)
+def reconcile_unknown(timestamp: int) -> None:
+    from autobot.runtime import reconcile
+
+    close_old_connections()
+    try:
+        reconcile.reconcile_all(timezone.now())
     finally:
         close_old_connections()
 

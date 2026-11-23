@@ -296,3 +296,32 @@ test("colors a mismatched image tag as a warning", async () => {
     card.getByText("Imagen old1234567 distinta de la desplegada abc123def456"),
   ).toBeInTheDocument();
 });
+
+test("shows how long the oldest ready and running jobs of each queue have waited", async () => {
+  renderWith({
+    queues: [
+      {
+        queue_name: "outbound",
+        pending: 4,
+        oldest: "2026-11-04T09:50:00Z",
+        age_s: 420,
+        running: 1,
+        running_age_s: 45,
+      },
+      {
+        queue_name: "ops",
+        pending: 0,
+        oldest: null,
+        age_s: null,
+        running: 0,
+        running_age_s: null,
+      },
+    ],
+  });
+  expect(
+    await screen.findByText(/el más antiguo espera 7 min/),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(/1 en curso \(el más antiguo, 45 s\)/),
+  ).toBeInTheDocument();
+});

@@ -33,7 +33,7 @@ Anota hora y SHA sin copiar payloads ni ids de clientes.
 4. Últimos logs. En la VPS, como `deploy`:
 
     ```bash
-    deploy/scripts/compose.sh logs --tail=100 web web-panel worker-inbound worker-outbound db
+    deploy/scripts/compose.sh logs --tail=100 web web-panel worker-inbound worker-calendar worker-periodic worker-outbound db
     ```
 
 5. Espacio en disco y base de datos. En la VPS, como `deploy`:
@@ -57,6 +57,7 @@ Anota hora y SHA sin copiar payloads ni ids de clientes.
 
 2. Si el disco está lleno, libera espacio según [mantenimiento](../procedimientos/mantenimiento.md) antes de reiniciar nada.
 3. Si la base de datos está caída, no fuerces reenvíos: arréglala primero y deja que los reintentos normales de la cola actúen.
+4. Si el síntoma es que los mensajes entran pero no salen y hay una alerta `provider_outage`, Meta o Telegram están caídos: ver [caída de un proveedor](envios-unknown.md#caida-de-un-proveedor). Las respuestas caducan a los 30 minutos y el contacto recibe una disculpa; no hay que reenviar nada a mano.
 
 ## Verificación
 

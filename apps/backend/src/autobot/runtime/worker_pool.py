@@ -8,6 +8,7 @@ default: 4 connections, `min_size` = `max_size`) is created outside Django's own
 `--concurrency 2` jobs), so the worker's share of the connection budget is known.
 """
 
+import sys
 from typing import Any
 
 from django.conf import settings
@@ -26,6 +27,12 @@ def bounded_worker_connector() -> PsycopgConnector:
 
 
 def configure(app: App) -> None:
+    # Only `manage.py procrastinate worker` preloads the registry; other commands and
+    # the web process stay lazy (the web process warms up in `config/wsgi.py`).
+    if sys.argv[1:3] == ["procrastinate", "worker"]:
+        from autobot.tenancy.registry import warm_up_in_background
+
+        warm_up_in_background()
     connector: Any = app.connector
     if isinstance(connector, DjangoConnector):
         connector.get_worker_connector = bounded_worker_connector  # type: ignore[method-assign]

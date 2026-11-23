@@ -201,14 +201,23 @@ class TelegramAdapter:
             )
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as e:
             log.warning("Telegram send not connected: %s", type(e).__name__)
-            return RetryLater()
+            return RetryLater(kind="network")
         except httpx.HTTPError as e:  # never str(e): it may carry the URL with the token
             log.warning("Telegram send ambiguous: %s", type(e).__name__)
-            return Ambiguous(type(e).__name__)
+            return Ambiguous(type(e).__name__, transport=True)
         outcome = classify(response)
         if not isinstance(outcome, Sent):
             log.warning("Telegram send %s: %s", type(outcome).__name__, _describe(response))
         return outcome
+
+    def probe(self, channel: Channel, secrets: TelegramSecrets) -> bool:
+        """`getMe`: sends nothing."""
+        try:
+            response = self.client.post(_url(secrets, "getMe"), json={})
+        except httpx.HTTPError as e:
+            log.warning("Telegram probe failed: %s", type(e).__name__)
+            return False
+        return response.status_code < 500
 
 
 class TelegramApiError(Exception):
@@ -256,11 +265,11 @@ def classify(response: httpx.Response) -> SendOutcome:
     if status == 429:
         parameters = data.get("parameters")
         after = parameters.get("retry_after") if isinstance(parameters, dict) else None
-        return RetryLater(_seconds(after))
+        return RetryLater(_seconds(after), "rate")
     if status >= 500:
         # The request may have reached Telegram and been acted on despite the error
         # answer: never retried blindly, only left `unknown`.
-        return Ambiguous(reason)
+        return Ambiguous(reason, transport=True)
     if 400 <= status < 500:
         return Rejected(reason, "other")
     return Ambiguous(reason)

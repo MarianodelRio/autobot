@@ -150,8 +150,14 @@ def reset_channel_limits(monkeypatch: pytest.MonkeyPatch) -> None:
     from autobot.channels.demo import invites, selector
     from autobot.channels.ratelimit import WindowLimiter
     from autobot.owner import inbox
+    from autobot.runtime import notifications
+    from autobot.runtime.ratelimit import SlotLimiter
 
     monkeypatch.setattr(views, "limiter", WindowLimiter())
+    # The notify bot's limiter is real in test_notice_rate_limit.py; elsewhere it never waits.
+    monkeypatch.setattr(
+        notifications, "LIMITER", SlotLimiter(rate_per_s=1_000_000, key_interval_s=0)
+    )
     monkeypatch.setattr(selector, "refusals", WindowLimiter(limit=3, window_s=3600))
     monkeypatch.setattr(
         selector, "event_limiter", WindowLimiter(limit=selector.EVENTS_PER_MINUTE, window_s=60)
@@ -228,3 +234,25 @@ def _whatsapp_fixtures_never_age(monkeypatch: pytest.MonkeyPatch) -> None:
     from autobot.channels.whatsapp import adapter
 
     monkeypatch.setattr(adapter, "MAX_AGE", timedelta(days=365 * 100))
+
+
+@pytest.fixture(autouse=True)
+def reset_calendar_breaker() -> Iterator[None]:
+    """The Calendar circuit breaker is process-wide: a test that makes Google fail must
+    not leave it open for the next one."""
+    from integrations.google_calendar import BREAKER
+
+    BREAKER.reset()
+    yield
+    BREAKER.reset()
+
+
+@pytest.fixture(autouse=True)
+def reset_provider_breaker() -> Iterator[None]:
+    """The outbound provider breaker is process-wide: a test that makes Meta fail must not
+    leave it open for the next one."""
+    from autobot.runtime.outbound import BREAKER
+
+    BREAKER.reset()
+    yield
+    BREAKER.reset()

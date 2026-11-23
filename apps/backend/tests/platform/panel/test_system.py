@@ -77,7 +77,7 @@ def test_system_endpoint(
             "UPDATE procrastinate_events SET at=%s WHERE job_id=%s AND type='deferred'",
             [NOW - timedelta(minutes=3), job],
         )
-        for _ in range(2):  # worker-inbound and worker-outbound
+        for _ in range(4):  # the four workers
             db.execute(
                 "INSERT INTO procrastinate_workers(last_heartbeat) VALUES (%s)",
                 [NOW - timedelta(seconds=61)],
@@ -101,16 +101,18 @@ def test_system_endpoint(
             "pending": 1,
             "oldest": (NOW - timedelta(minutes=3)).isoformat().replace("+00:00", "Z"),
             "age_s": 180,
+            "running": 0,
+            "running_age_s": None,
         }
     ]
     assert [row["sha"] for row in data["deploys"]] == ["new", "old"]
     assert data["release"] == "abc123"
     assert seen == [("http://logs.test/health", {"timeout": 5})]
-    # One worker alive and the other dead is still not green.
+    # Three workers alive and one dead is still not green.
     with connections["owner"].cursor() as db:
         db.execute(
             "UPDATE procrastinate_workers SET last_heartbeat=%s"
-            " WHERE id = (SELECT min(id) FROM procrastinate_workers)",
+            " WHERE id != (SELECT min(id) FROM procrastinate_workers)",
             [NOW - timedelta(seconds=59)],
         )
     with patch("autobot.panel.services.system.timezone.now", return_value=NOW):
@@ -306,6 +308,13 @@ def test_flow_ok_idle_and_critical(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert delayed.state == "critical"
     assert "2 min" in (delayed.reason or "")
+    # So is one on the Calendar queue: a Google outage must show.
+    delayed_ext = system.flow(
+        NOW,
+        queues=[{"queue_name": "inbound_ext", "pending": 1, "oldest": None, "age_s": 200}],
+    )
+    assert delayed_ext.state == "critical"
+    assert "2 min" in (delayed_ext.reason or "")
 
 
 def test_bot_integration_off_unknown_and_critical(

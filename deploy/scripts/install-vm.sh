@@ -306,6 +306,7 @@ ci_key_installed() {
 check_base() {
   [[ -f $base_marker && -d $srv/.git ]] || return 1
   systemctl is-active --quiet docker || return 1
+  systemctl is-active --quiet systemd-timesyncd || return 1
   systemctl is-enabled --quiet autobot-containers.timer || return 1
   systemctl is-enabled --quiet autobot-prune.timer || return 1
   systemctl is-enabled --quiet autobot-backup.timer || return 1
@@ -416,8 +417,12 @@ do_env() {
     printf '{}\n' | install -m 0600 -o deploy -g deploy /dev/stdin "$srv/var/google_sa.json"
     warn 'var/google_sa.json es un marcador vacío: Calendar no funcionará hasta subir el real'
   fi
-  # Generates the internal secrets that are missing (never an external one).
-  as_deploy "$srv/deploy/scripts/ensure-env.sh"
+  # Generates the internal secrets that are missing (never an external one). The
+  # encryption key only on a first install (no deploy yet, ADR-022); on a server that
+  # already ran, a missing key aborts instead of being replaced.
+  local first_install=''
+  [[ -s $srv/var/.deployed-sha ]] || first_install=' --first-install'
+  as_deploy "$srv/deploy/scripts/ensure-env.sh$first_install"
 }
 
 # --- step: deploy ----------------------------------------------------------------------
@@ -464,7 +469,7 @@ assert r["status"] == "ok" and r["tenants"]["unreadable"] == 0' <<<"$response" 2
     failed=1
   fi
   local service
-  for service in worker-inbound worker-outbound; do
+  for service in worker-inbound worker-calendar worker-periodic worker-outbound; do
     if [[ -n $(docker ps -q --filter "label=com.docker.compose.project=autobot" \
       --filter "label=com.docker.compose.service=$service" --filter status=running) ]]; then
       say "  [ok]    $service en marcha"
@@ -477,6 +482,13 @@ assert r["status"] == "ok" and r["tenants"]["unreadable"] == 0' <<<"$response" 2
     say "  [ok]    HTTPS en $host responde (certificado válido)"
   else
     say "  [aviso] HTTPS en ${host:-?} no responde todavía: normal si el DNS aún no apunta aquí"
+  fi
+  # The clock (TOTP, webhook timestamps, restic locks, retention cutoffs): NTP must be on
+  # and synchronized. A fresh VM may need a minute after bootstrap, so it is a warning.
+  if [[ $(timedatectl show -p NTPSynchronized --value 2>/dev/null) == yes ]]; then
+    say '  [ok]    reloj sincronizado por NTP'
+  else
+    say '  [aviso] el reloj aún no está sincronizado (timedatectl show -p NTPSynchronized); repite en unos minutos'
   fi
   local timer
   for timer in autobot-containers autobot-prune autobot-backup; do
@@ -661,11 +673,11 @@ summary() {
     pending "Credenciales externas sin rellenar en $srv/.env: ${missing[*]}" \
       'Healthchecks.io (HEALTHCHECKS_PING_URL y el de backup), Sentry, el chat de avisos y los tokens de Telegram.' \
       'Edítalo como deploy y relanza el último despliegue: deploy/scripts/deploy.sh $(cat var/.deployed-sha)' \
-      '(o `docker compose` vía deploy/scripts/compose.sh up -d --no-deps web worker-inbound worker-outbound).'
+      '(o `docker compose` vía deploy/scripts/compose.sh up -d --no-deps web worker-inbound worker-calendar worker-periodic worker-outbound).'
   fi
   if [[ -f $srv/var/google_sa.json && $(tr -d '[:space:]' <"$srv/var/google_sa.json") == '{}' ]]; then
     pending 'Google: var/google_sa.json es un marcador vacío. Sustitúyelo por la cuenta de servicio real (0600, dueño deploy)' \
-      'y comparte cada calendario con su correo; luego recrea web y worker-inbound.'
+      'y comparte cada calendario con su correo; luego recrea web, worker-inbound, worker-calendar y worker-periodic.'
   fi
   if [[ -f $srv/var/.deployed-sha ]]; then
     pending 'Panel: crea el usuario del panel (interactivo; contraseña y TOTP):' \

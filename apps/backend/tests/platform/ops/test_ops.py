@@ -20,11 +20,11 @@ from django.utils import timezone
 from autobot.ops import check, health, state, system
 from autobot.ops.models import OpsAlert, SystemSample
 from autobot.runtime.jobs import app
-from autobot.runtime.models import Contact, OutboundMessage
+from autobot.runtime.models import Contact, Notification, OutboundMessage
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
 from core.pack import Periodic
-from tests.helpers.integration import wa_tenant
+from tests.helpers.integration import demo_tenant, tg_tenant, wa_tenant
 
 pytestmark = [
     pytest.mark.django_db(transaction=True, databases=["default", "owner"]),
@@ -71,10 +71,12 @@ def kinds(alerts: list[tuple[Any, ...]]) -> set[str]:
     [
         ("failed", 0, True),
         ("failed", 25 * 60, False),  # an old failure must not alert forever
-        ("unknown", 11, True),
-        ("unknown", 10, False),
+        ("unknown", 11, False),  # reconcile_unknown still has its turn (ADR-026)
+        ("unknown", 20, False),
+        ("unknown", 21, True),
         ("unknown", 25 * 60, False),  # same 24 h cutoff as a failed message
         ("sent", 60, False),
+        ("expired", 60, False),  # a lapsed message is not a failure (ADR-024)
     ],
 )
 def test_outbound_row(
@@ -158,6 +160,40 @@ def test_billable_row(tenants: Any, alerts: Any, count: int) -> None:
     assert ("billing" in kinds(alerts)) == (count > 1)
 
 
+def test_provider_outage_is_one_alert_that_resolves_itself(
+    tenants: Any, alerts: Any, settings: Any, monkeypatch: Any
+) -> None:
+    """The breaker's signal becomes one `provider_outage` finding (not one per message),
+    and it disappears when the breaker closes or the signal goes stale."""
+    tenants(wa_tenant())
+    state.record_provider("whatsapp", is_open=True)
+    state.record_provider("telegram", is_open=True)
+    findings = [f for f in check.collect() if f.kind == "provider_outage"]
+    assert len(findings) == 1 and findings[0].tenant_id is None
+    assert "telegram, whatsapp" in findings[0].text
+
+    state.record_provider("telegram", is_open=False)
+    state.record_provider("whatsapp", is_open=False)
+    assert not [f for f in check.collect() if f.kind == "provider_outage"]
+
+    state.record_provider("whatsapp", is_open=True)
+    later = timezone.now() + state.PROVIDER_STALE_AFTER + timedelta(seconds=1)
+    assert state.providers_down(later) == []  # a worker that died with it open
+
+
+def test_provider_outage_alert_is_raised_once_and_auto_resolved(settings: Any) -> None:
+    settings.OPS_TELEGRAM_CHAT_ID = ""
+    settings.NOTIFY_BOT_TOKEN = ""
+    finding = check.Finding("provider_outage", None, "🟠 Proveedor de mensajería caído (whatsapp)")
+    check.sync_alerts([finding])
+    check.sync_alerts([finding])
+    (row,) = OpsAlert.objects.using("owner").filter(kind="provider_outage")
+    assert row.resolved_at is None
+    check.sync_alerts([])
+    row.refresh_from_db(using="owner")
+    assert row.resolved_by == "auto"
+
+
 def test_disk_row(tenants: Any, alerts: Any, monkeypatch: Any) -> None:
     tenants()
     monkeypatch.setattr(
@@ -165,6 +201,37 @@ def test_disk_row(tenants: Any, alerts: Any, monkeypatch: Any) -> None:
     )
     check.run()
     assert "disk" in kinds(alerts)
+
+
+def test_disk_warning_starts_above_80_percent(tenants: Any, alerts: Any, monkeypatch: Any) -> None:
+    tenants()
+    monkeypatch.setattr(
+        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 81, "total": 100})()
+    )
+    check.run()
+    assert "disk" in kinds(alerts)
+    alerts.clear()
+    monkeypatch.setattr(
+        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 80, "total": 100})()
+    )
+    check.run()
+    assert "disk" not in kinds(alerts)
+
+
+def test_the_fullest_measured_path_counts(
+    tenants: Any, alerts: Any, monkeypatch: Any, settings: Any, tmp_path: Path
+) -> None:
+    """`/` and the ops state dir (the bind mount of /srv/autobot/var/state/ops)."""
+    tenants()
+    settings.OPS_STATE_DIR = tmp_path
+    usage = {"/": 10, str(tmp_path): 96}
+    monkeypatch.setattr(
+        shutil,
+        "disk_usage",
+        lambda path: type("Disk", (), {"used": usage[str(path)], "total": 100})(),
+    )
+    check.run()
+    assert "disk_critical" in kinds(alerts)
 
 
 def test_disk_critical_row(tenants: Any, alerts: Any, monkeypatch: Any) -> None:
@@ -269,6 +336,47 @@ def test_heartbeat_only_after_success(
     assert len(seen) == 1
 
 
+def test_a_failing_tenant_does_not_abort_the_check_nor_the_heartbeat(
+    tenants: Any, alerts: Any, settings: Any, monkeypatch: Any
+) -> None:
+    tenants(wa_tenant(), tg_tenant())
+    settings.HEALTHCHECKS_PING_URL = "https://heartbeat.invalid/private"
+    seen: list[Any] = []
+
+    def ping(*args: Any, **kwargs: Any) -> httpx.Response:
+        seen.append(args)
+        return httpx.Response(200)
+
+    monkeypatch.setattr(httpx, "get", ping)
+    broken = get_registry().by_slug["wa"]
+    checked: list[str] = []
+    real_read = state.read
+
+    def read(tenant_id: Any, channel: str) -> dict[str, Any]:
+        if tenant_id == broken.id:
+            raise RuntimeError("boom with +34600000000")
+        checked.append(channel)
+        return real_read(tenant_id, channel)
+
+    monkeypatch.setattr(state, "read", read)
+    check.run()
+    failed = [a for a in alerts if a[0] == "check_failed"]
+    assert [a[1] for a in failed] == [broken.id]
+    assert checked  # the other tenant was still checked
+    assert len(seen) == 1  # and the heartbeat was sent
+
+
+def test_a_failed_tenant_check_keeps_its_open_alerts(tenants: Any, alerts: Any) -> None:
+    tenants(wa_tenant())
+    tenant = get_registry().by_slug["wa"]
+    stale = OpsAlert.objects.using("owner").create(
+        kind="errors:main", tenant_id=tenant.id, severity="critical", text="x", auto_resolves=True
+    )
+    check.sync_alerts([check.Finding(check.CHECK_FAILED, tenant.id, "x")])
+    stale.refresh_from_db(using="owner")
+    assert stale.resolved_at is None
+
+
 def test_run_saves_a_system_sample_and_purges_old_ones(tenants: Any, alerts: Any) -> None:
     tenants()
     old = SystemSample.objects.using("owner").create(
@@ -303,11 +411,12 @@ def test_command_success_and_failure(tenants: Any, monkeypatch: Any) -> None:
         call_command("tenant_health", "wa", stdout=StringIO())
 
 
+@pytest.mark.parametrize("queue", ["inbound", "inbound_ext"])
 @pytest.mark.parametrize(
     ("age", "future", "expected"), [(3, False, True), (2, False, False), (3, True, False)]
 )
 def test_inbound_immediate_and_future_jobs(
-    tenants: Any, alerts: Any, monkeypatch: Any, age: int, future: bool, expected: bool
+    tenants: Any, alerts: Any, monkeypatch: Any, age: int, future: bool, expected: bool, queue: str
 ) -> None:
     tenants()
     now = timezone.now()
@@ -315,8 +424,8 @@ def test_inbound_immediate_and_future_jobs(
     with connections["owner"].cursor() as cursor:
         cursor.execute(
             """INSERT INTO procrastinate_jobs(task_name, queue_name, status, args, scheduled_at)
-            VALUES ('test', 'inbound', 'todo', '{}', %s) RETURNING id""",
-            [now + timedelta(hours=1) if future else None],
+            VALUES ('test', %s, 'todo', '{}', %s) RETURNING id""",
+            [queue, now + timedelta(hours=1) if future else None],
         )
         (job_id,) = cursor.fetchone()
         cursor.execute(
@@ -338,9 +447,34 @@ def test_unknown_legacy_first_observation(tenants: Any, alerts: Any, monkeypatch
     check.run()
     assert "outbound_failed" not in kinds(alerts)
     assert OutboundMessage.objects.using("owner").get(id=row.id).unknown_at == now
-    monkeypatch.setattr(timezone, "now", lambda: now + timedelta(minutes=11))
+    monkeypatch.setattr(timezone, "now", lambda: now + timedelta(minutes=21))
     check.run()
     assert "outbound_failed" in kinds(alerts)
+
+
+def held_notice(slug: str = "wa") -> None:
+    tenant = get_registry().by_slug[slug]
+    with tenant_tx(tenant.id):
+        Notification.objects.create(
+            tenant_id=tenant.id, idem_key="held", kind="booking", text="x", status="held"
+        )
+
+
+def test_held_notices_raise_owner_unlinked_not_notification_failed(
+    tenants: Any, alerts: Any
+) -> None:
+    tenants(wa_tenant())
+    held_notice()
+    check.run()
+    assert "owner_unlinked" in kinds(alerts)
+    assert "notification_failed" not in kinds(alerts)
+
+
+def test_owner_unlinked_ignores_demo_tenants(tenants: Any, alerts: Any) -> None:
+    tenants(demo_tenant())
+    held_notice("demo-toy")
+    check.run()
+    assert "owner_unlinked" not in kinds(alerts)
 
 
 @pytest.mark.parametrize("bot", ["demo_tg", "demo_wa", "notify"])
@@ -381,7 +515,7 @@ def test_collect_never_calls_send_ops_alert(tenants: Any, settings: Any, monkeyp
     tenants(wa_tenant())
     monkeypatch.setattr(check, "door", lambda channel: None)
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
-    monkeypatch.setattr(system, "disk", lambda: 10.0)  # not the host's real disk
+    monkeypatch.setattr(system, "disk", lambda *_: 10.0)  # not the host's real disk
 
     def boom(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("collect() must not send alerts")
@@ -457,7 +591,9 @@ def test_calendar_denial_is_detected_even_after_healthy_daily_check(
     service.events.return_value.list.return_value.execute.side_effect = HttpError(
         httplib2.Response({"status": "403"}), b'{"error":{"message":"private"}}'
     )
-    monkeypatch.setattr("integrations.google_calendar.client.service", lambda path: service)
+    monkeypatch.setattr(
+        "integrations.google_calendar.client.thread_service", lambda path: (service, None)
+    )
     health.daily(tenant.id, lambda: [])
     ctx = build_context(tenant, Channel.MAIN, contact=None, state={}, event_id=None)
     # The pack may catch this exception and return a normal recovery response.
@@ -521,6 +657,67 @@ def test_container_findings_are_platform_wide_and_only_checked_off_local(
     settings.IS_LOCAL = False
     check.run()
     assert ("container_down:caddy", None) in [(a[0], a[1]) for a in alerts]
+
+
+def _write_prune_status(state_dir: Path, **fields: Any) -> None:
+    (state_dir / "backup-prune.json").write_text(json.dumps(fields))
+
+
+def test_backup_prune_overdue_raises_and_resolves(
+    tenants: Any, alerts: Any, settings: Any, tmp_path: Path
+) -> None:
+    tenants()
+    settings.OPS_STATE_DIR = tmp_path
+    settings.IS_LOCAL = False
+    now = timezone.now()
+    _write_containers_snapshot(tmp_path)
+    _write_prune_status(
+        tmp_path,
+        last_prune_at=(now - timedelta(days=11)).isoformat(),
+        oldest_snapshot_at=(now - timedelta(days=100)).isoformat(),
+    )
+    check.run()
+    assert "backup_prune_overdue" in kinds(alerts)
+
+    alerts.clear()
+    _write_prune_status(tmp_path, last_prune_at=(now - timedelta(days=2)).isoformat())
+    check.run()
+    assert "backup_prune_overdue" not in kinds(alerts)
+
+
+def test_backup_prune_never_done_falls_back_to_the_oldest_snapshot(
+    tenants: Any, alerts: Any, settings: Any, tmp_path: Path
+) -> None:
+    tenants()
+    settings.OPS_STATE_DIR = tmp_path
+    settings.IS_LOCAL = False
+    now = timezone.now()
+    _write_containers_snapshot(tmp_path)
+    _write_prune_status(
+        tmp_path, last_prune_at=None, oldest_snapshot_at=(now - timedelta(days=3)).isoformat()
+    )
+    check.run()
+    assert "backup_prune_overdue" not in kinds(alerts)  # a young repository
+    _write_prune_status(
+        tmp_path, last_prune_at=None, oldest_snapshot_at=(now - timedelta(days=30)).isoformat()
+    )
+    check.run()
+    assert "backup_prune_overdue" in kinds(alerts)
+
+
+def test_backup_prune_without_a_state_file_or_in_local_does_not_alert(
+    tenants: Any, alerts: Any, settings: Any, tmp_path: Path
+) -> None:
+    tenants()
+    settings.OPS_STATE_DIR = tmp_path
+    settings.IS_LOCAL = False
+    _write_containers_snapshot(tmp_path)
+    check.run()
+    assert "backup_prune_overdue" not in kinds(alerts)
+    _write_prune_status(tmp_path, last_prune_at="2020-01-01T00:00:00+00:00")
+    settings.IS_LOCAL = True
+    check.run()
+    assert "backup_prune_overdue" not in kinds(alerts)
 
 
 def test_sync_alerts_resolves_a_container_finding_once_the_service_is_back(

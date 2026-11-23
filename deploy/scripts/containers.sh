@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run from the host timer as deploy; writes a safelisted container snapshot that
-# web, worker-inbound and worker-outbound mount read-only (:ro). No container ever
+# web, web-panel and the four workers mount read-only (:ro). No container ever
 # touches docker.sock: this script runs on the host, not inside a container.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

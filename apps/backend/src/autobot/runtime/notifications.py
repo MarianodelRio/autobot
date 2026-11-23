@@ -2,7 +2,9 @@
 
 import hashlib
 import logging
+import random
 import secrets as random_secrets
+from datetime import timedelta
 from uuid import UUID, uuid4
 
 from django.conf import settings
@@ -18,8 +20,11 @@ from autobot.ops.logging import bind, contextual
 from autobot.ops.models import OpsAlert
 from autobot.owner import links
 from autobot.runtime.cache import record_auth_outcome
+from autobot.runtime.jobs import OUTBOUND, SEND_NOTIFICATION
 from autobot.runtime.models import Notification
-from autobot.runtime.outbound import SendRetry
+from autobot.runtime.outbound import SendRetry, backoff_s
+from autobot.runtime.queue import enqueue
+from autobot.runtime.ratelimit import SlotLimiter
 from autobot.runtime.summary import OWNER_SUMMARY_KIND
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.schema import TelegramSecrets
@@ -30,6 +35,12 @@ from core.serialization import Outbound
 
 log = logging.getLogger(__name__)
 COOLDOWN_S = 30 * 60
+# An owner notice older than this is stale (a booking notice two hours late no longer
+# helps): it becomes `expired`, with no apology.
+NOTICE_TTL = timedelta(hours=2)
+# The notify bot's limits at Telegram: ~30 messages/s per bot, ~1/s per chat. We stay
+# under: 25/s overall and one per owner chat per second. Per process: see runtime/ratelimit.py.
+LIMITER = SlotLimiter(rate_per_s=25.0, key_interval_s=1.0)
 # Alerts that only a person resolves from the panel; every other kind self-resolves
 # once ops/check.py stops finding it.
 MANUAL_KINDS = frozenset({"deploy_aborted", "deploy_rollback"})
@@ -57,9 +68,14 @@ def deliver(reply: Outbound, chat_id: str, reference: UUID) -> SendOutcome | Non
 
 
 @contextual
-def send_notification(
-    tenant_id: UUID, notification_id: UUID, *, last_attempt: bool = False
-) -> None:
+def send_notification(tenant_id: UUID, notification_id: UUID, *, attempts: int = 0) -> None:
+    """Deliver one owner notice, never twice. It retries by time (ADR-024), not by count:
+    a 429 or a refusal to connect is retried (the provider's `retry_after`, else a capped
+    backoff with jitter), and a notice older than `NOTICE_TTL` is `expired`, not sent. A
+    5xx or a timeout is ambiguous: the notice stays `failed`, never resent blindly.
+
+    Before calling Telegram, `LIMITER` must grant a slot (global rate and one per owner
+    chat); without one the notice stays `pending` and the job is deferred."""
     tenant = get_registry().by_id.get(tenant_id)
     if tenant is None:
         log.error("notification of unknown tenant %s", tenant_id)
@@ -77,6 +93,11 @@ def send_notification(
             return
         if row.status != Notification.Status.PENDING:
             return
+        if timezone.now() >= row.created_at + NOTICE_TTL:
+            row.status = Notification.Status.EXPIRED
+            row.save(update_fields=["status"])
+            log.warning("notification %s expired without being sent", row.id)
+            return
         owner = tenant.document.owner
         # owner.notify only gates per-event notices; the summary has its own toggle and a
         # contact's request for a person is always delivered
@@ -88,15 +109,32 @@ def send_notification(
             else False
         )
         chat = links.owner_chat(tenant_id) if allowed else None
+        if allowed and chat is None and bot_secrets() is not None:
+            # The owner has not linked a chat (yet): keep the notice; `release_held` queues
+            # it when they do (ADR-026).
+            row.status = Notification.Status.HELD
+            row.save(update_fields=["status"])
+            log.info("notification %s held: the owner has no chat linked", notification_id)
+            return
+        if chat is None or bot_secrets() is None:
+            row.status = Notification.Status.FAILED
+            row.save(update_fields=["status"])
+            log.info("notification %s only logged: recipient or bot unconfigured", notification_id)
+            return
+    # No transaction while waiting for a slot or while Telegram answers.
+    wait = LIMITER.acquire(str(chat))
+    if wait is not None:
+        raise SendRetry(wait + random.uniform(0.0, 1.0))  # noqa: S311 (spreads the retries)
+    with tenant_tx(tenant_id):
+        row = Notification.objects.select_for_update().get(id=notification_id)
+        if row.status != Notification.Status.PENDING:
+            return
         # Claim durably before network I/O. A crash or ambiguous result stays failed:
         # notification has no unknown state, and must never be resent blindly.
         row.status = Notification.Status.FAILED
         row.save(update_fields=["status"])
-    if chat is None or bot_secrets() is None:
-        log.info("notification %s only logged: recipient or bot unconfigured", notification_id)
-        return
     outcome = deliver(Text(row.text), str(chat), row.id)
-    retry = isinstance(outcome, RetryLater) and not last_attempt
+    retry = isinstance(outcome, RetryLater)
     with tenant_tx(tenant_id):
         if isinstance(outcome, Sent):
             Notification.objects.filter(id=row.id).update(
@@ -104,11 +142,41 @@ def send_notification(
             )
         elif retry:
             Notification.objects.filter(id=row.id).update(status=Notification.Status.PENDING)
-    if retry:
-        assert isinstance(outcome, RetryLater)
-        raise SendRetry(outcome.after_s)
+    if isinstance(outcome, RetryLater):
+        wait_s = outcome.after_s if outcome.after_s is not None else backoff_s(attempts)
+        remaining = (row.created_at + NOTICE_TTL - timezone.now()).total_seconds()
+        raise SendRetry(min(wait_s, max(remaining, 1.0)))
     if not isinstance(outcome, Sent):
         log.warning("notification %s failed (%s)", row.id, type(outcome).__name__)
+
+
+def release_held(tenant_id: UUID) -> int:
+    """The owner just linked a chat: queue the notices held for it that are still younger
+    than `NOTICE_TTL` and expire the older ones. Returns how many were queued. Idempotent:
+    only `held` rows change, and each gets one job."""
+    now = timezone.now()
+    queued = 0
+    with tenant_tx(tenant_id):
+        rows = list(
+            Notification.objects.select_for_update()
+            .filter(status=Notification.Status.HELD)
+            .order_by("created_at")[:500]
+        )
+        for row in rows:
+            if now >= row.created_at + NOTICE_TTL:
+                row.status = Notification.Status.EXPIRED
+                row.save(update_fields=["status"])
+                continue
+            row.status = Notification.Status.PENDING
+            row.save(update_fields=["status"])
+            enqueue(
+                SEND_NOTIFICATION,
+                {"tenant_id": str(tenant_id), "notification_id": str(row.id)},
+                queue=OUTBOUND,
+                lock=f"owner:{tenant_id}",
+            )
+            queued += 1
+    return queued
 
 
 def _severity(text: str) -> str:

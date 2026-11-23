@@ -310,13 +310,13 @@ def test_a_send_cut_while_sending_ends_unknown_and_frees_the_contact(
     assert meta.bodies()[sent_before:] == ["¿Cómo te llamas?"]
 
 
-def test_retry_stalled_jobs_runs_every_five_minutes() -> None:
+def test_retry_stalled_jobs_runs_every_minute() -> None:
     (task,) = [
         t
         for t in app.periodic_registry.periodic_tasks.values()
         if t.task.name == "retry_stalled_jobs"
     ]
-    assert task.cron == "*/5 * * * *" and task.task.queue == PERIODIC
+    assert task.cron == "* * * * *" and task.task.queue == PERIODIC
 
 
 def test_an_unexpected_pack_error_gives_the_recovery_text(

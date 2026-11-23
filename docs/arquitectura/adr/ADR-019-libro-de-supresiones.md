@@ -2,6 +2,8 @@
 
 **Estado:** aceptada
 
+**Actualización (ADR-025):** la exportación del libro fuera del servidor ya no es un paso manual: `backup.sh` la sube cada hora como snapshot propio y `restore.sh` reaplica el último. La exportación manual queda como copia opcional.
+
 ## Contexto
 
 `contact_forget` y `tenant_purge` borran datos de la base de datos viva, pero los backups

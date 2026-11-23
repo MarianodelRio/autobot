@@ -5,7 +5,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import Case, IntegerField, OuterRef, Subquery, Value, When
+from django.db.models import Case, Count, IntegerField, OuterRef, Subquery, Value, When
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router, Schema
@@ -16,8 +16,9 @@ from autobot.ops.audit import record
 from autobot.ops.models import OpsAlert
 from autobot.ops.runbooks import runbook_url
 from autobot.panel.errors import ApiError
-from autobot.panel.routers.audit import page
-from autobot.runtime.models import OutboundMessage
+from autobot.panel.services.pagination import page
+from autobot.panel.stepup import require_recent_reauth
+from autobot.runtime.models import Notification, OutboundMessage
 from autobot.runtime.notifications import resolve_alert
 from autobot.tenancy.models import Tenant
 
@@ -76,6 +77,12 @@ class JobOut(Schema):
     retry_reason: str | None
 
 
+class HeldNoticesOut(Schema):
+    tenant_id: UUID
+    tenant: str
+    count: int
+
+
 class IncidentsOut(Schema):
     alerts: list[AlertOut]
     outbound: list[OutboundIncidentOut]
@@ -85,6 +92,8 @@ class IncidentsOut(Schema):
     alerts_total: int
     outbound_total: int
     jobs_total: int
+    # Owner notices kept because the owner has no chat linked, per business.
+    held_notices: list[HeldNoticesOut]
 
 
 class AlertsPage(Schema):
@@ -199,7 +208,18 @@ def incidents(
             )
         )
     slugs = tenant_slugs()
+    held = (
+        Notification.objects.using("owner")
+        .filter(status=Notification.Status.HELD)
+        .values("tenant_id")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:50]
+    )
     return dict(
+        held_notices=[
+            dict(tenant_id=h["tenant_id"], tenant=slugs.get(h["tenant_id"], "—"), count=h["count"])
+            for h in held
+        ],
         alerts=[alert_row(a, slugs) for a in alerts],
         outbound=sends,
         jobs=[
@@ -234,6 +254,77 @@ def resend(request: HttpRequest, id: UUID, payload: Confirmation | None = None) 
         raise ApiError("bad_request", "Confirme el riesgo de duplicado.", 400)
     get_object_or_404(OutboundMessage.objects.using("owner"), pk=id)
     return result(actions.resend(id, actor=request.user.username))
+
+
+class BulkFilter(Schema):
+    tenant_id: UUID | None = None
+    statuses: list[str] = list(actions.BULK_STATUSES)
+    since: datetime | None = None
+    until: datetime | None = None
+
+
+class BulkPreviewOut(Schema):
+    total: int
+    will_resend: int
+    cap: int
+
+
+class BulkResendIn(BulkFilter):
+    # Explicit selection; when given, the filters are ignored.
+    ids: list[UUID] | None = None
+    confirm_duplicate_risk: Any = False
+
+
+class BulkResendOut(Schema):
+    message: str
+    selected: int
+    resent: int
+    skipped: int
+    over_cap: int
+
+
+def _bulk_queryset(f: BulkFilter) -> Any:
+    bad = [x for x in f.statuses if x not in actions.BULK_STATUSES]
+    if bad or not f.statuses:
+        raise ApiError("bad_request", "Estado no válido para reenviar.", 400)
+    return actions.bulk_queryset(
+        tenant_id=f.tenant_id, statuses=f.statuses, since=f.since, until=f.until
+    )
+
+
+@router.post("/outbound/resend-bulk/preview", response=BulkPreviewOut)
+def resend_bulk_preview(request: HttpRequest, payload: BulkFilter) -> dict[str, int]:
+    total = _bulk_queryset(payload).count()
+    return {"total": total, "will_resend": min(total, actions.BULK_CAP), "cap": actions.BULK_CAP}
+
+
+@router.post("/outbound/resend-bulk", response=BulkResendOut)
+@require_recent_reauth()
+def resend_bulk(request: HttpRequest, payload: BulkResendIn) -> dict[str, Any]:
+    """Resend after an incident: the selected messages or those matching a filter, at most
+    `BULK_CAP` per action (oldest first; run it again for the rest). Needs a recent TOTP."""
+    if payload.confirm_duplicate_risk is not True:
+        raise ApiError("bad_request", "Confirme el riesgo de duplicado.", 400)
+    if payload.ids is not None:
+        ids = list(dict.fromkeys(payload.ids))
+        if len(ids) > actions.BULK_CAP:
+            raise ApiError("bad_request", f"Máximo {actions.BULK_CAP} mensajes por acción.", 400)
+        over_cap = 0
+    else:
+        qs = _bulk_queryset(payload)
+        total = qs.count()
+        ids = list(qs.order_by("created_at", "id").values_list("id", flat=True)[: actions.BULK_CAP])
+        over_cap = max(total - len(ids), 0)
+    if not ids:
+        raise ApiError("bad_request", "Ningún mensaje coincide.", 400)
+    result = actions.resend_many(ids, over_cap=over_cap, actor=request.user.username)
+    return {
+        "message": f"{result.resent} mensajes reenviados, {result.skipped} omitidos.",
+        "selected": result.selected,
+        "resent": result.resent,
+        "skipped": result.skipped,
+        "over_cap": result.over_cap,
+    }
 
 
 @router.post("/jobs/{id}/retry", response=MessageOut)

@@ -29,7 +29,7 @@ def test_create_list_and_revoke(authed_client: Any) -> None:
     assert all(c not in body["code"] for c in "0O1IL")  # no ambiguous characters
 
     listed = get(authed_client, "demo/invites").json()
-    assert [i["id"] for i in listed["items"]] == [body["id"]] and listed["total"] == 1
+    assert [i["id"] for i in listed["items"]] == [body["id"]] and listed["next_cursor"] is None
 
     revoked = post(authed_client, f"demo/invites/{body['id']}/revoke")
     assert revoked.status_code == 200, revoked.content
@@ -88,9 +88,12 @@ def test_note_is_capped_at_200(authed_client: Any) -> None:
 def test_list_is_paginated_with_grants_counted_in_one_query(authed_client: Any) -> None:
     for _ in range(3):
         post(authed_client, "demo/invites", {"expires_in_days": None})
-    page = get(authed_client, "demo/invites?limit=2&offset=0").json()
-    rest = get(authed_client, "demo/invites?limit=2&offset=2").json()
-    assert (len(page["items"]), len(rest["items"]), page["total"]) == (2, 1, 3)
+    page = get(authed_client, "demo/invites?limit=2").json()
+    rest = get(authed_client, f"demo/invites?limit=2&cursor={page['next_cursor']}").json()
+    assert (len(page["items"]), len(rest["items"]), rest["next_cursor"]) == (2, 1, None)
+    ids = [i["id"] for i in page["items"] + rest["items"]]
+    assert len(set(ids)) == 3
+    assert get(authed_client, "demo/invites?cursor=garbage").status_code == 400
     assert get(authed_client, "demo/invites?limit=0").status_code == 422
 
 

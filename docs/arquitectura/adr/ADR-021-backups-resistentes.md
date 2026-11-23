@@ -2,6 +2,8 @@
 
 **Estado:** aceptada
 
+**Actualización (ADR-025):** la purga sigue siendo manual, pero deja un testigo (`autobot-prune`) y `ops_check` abre `backup_prune_overdue` si pasan más de 10 días.
+
 ## Contexto
 
 El temporizador de backup del servidor usaba una sola credencial S3 para subir snapshots y

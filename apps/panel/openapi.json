@@ -510,6 +510,189 @@
         "title": "AuditPage",
         "type": "object"
       },
+      "BulkFilter": {
+        "properties": {
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "statuses": {
+            "default": [
+              "failed",
+              "unknown",
+              "expired"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Statuses",
+            "type": "array"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "title": "BulkFilter",
+        "type": "object"
+      },
+      "BulkPreviewOut": {
+        "properties": {
+          "cap": {
+            "title": "Cap",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "will_resend": {
+            "title": "Will Resend",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "will_resend",
+          "cap"
+        ],
+        "title": "BulkPreviewOut",
+        "type": "object"
+      },
+      "BulkResendIn": {
+        "properties": {
+          "confirm_duplicate_risk": {
+            "default": false,
+            "title": "Confirm Duplicate Risk"
+          },
+          "ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ids"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "statuses": {
+            "default": [
+              "failed",
+              "unknown",
+              "expired"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Statuses",
+            "type": "array"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "title": "BulkResendIn",
+        "type": "object"
+      },
+      "BulkResendOut": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "over_cap": {
+            "title": "Over Cap",
+            "type": "integer"
+          },
+          "resent": {
+            "title": "Resent",
+            "type": "integer"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message",
+          "selected",
+          "resent",
+          "skipped",
+          "over_cap"
+        ],
+        "title": "BulkResendOut",
+        "type": "object"
+      },
       "ChecklistItemOut": {
         "properties": {
           "blocking": {
@@ -1241,14 +1424,21 @@
             "title": "Items",
             "type": "array"
           },
-          "total": {
-            "title": "Total",
-            "type": "integer"
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
           }
         },
         "required": [
           "items",
-          "total"
+          "next_cursor"
         ],
         "title": "DemoInvitePage",
         "type": "object"
@@ -1473,6 +1663,30 @@
         "title": "HealthIssueOut",
         "type": "object"
       },
+      "HeldNoticesOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "tenant": {
+            "title": "Tenant",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "tenant",
+          "count"
+        ],
+        "title": "HeldNoticesOut",
+        "type": "object"
+      },
       "IncidentsOut": {
         "properties": {
           "alerts": {
@@ -1485,6 +1699,13 @@
           "alerts_total": {
             "title": "Alerts Total",
             "type": "integer"
+          },
+          "held_notices": {
+            "items": {
+              "$ref": "#/components/schemas/HeldNoticesOut"
+            },
+            "title": "Held Notices",
+            "type": "array"
           },
           "jobs": {
             "items": {
@@ -1515,7 +1736,8 @@
           "jobs",
           "alerts_total",
           "outbound_total",
-          "jobs_total"
+          "jobs_total",
+          "held_notices"
         ],
         "title": "IncidentsOut",
         "type": "object"
@@ -2018,6 +2240,34 @@
           "sent_at"
         ],
         "title": "NotificationOut",
+        "type": "object"
+      },
+      "NotificationPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "NotificationPage",
         "type": "object"
       },
       "OpenAlert": {
@@ -4476,24 +4726,23 @@
         "parameters": [
           {
             "in": "query",
-            "name": "limit",
+            "name": "cursor",
             "required": false,
             "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
             }
           },
           {
             "in": "query",
-            "name": "offset",
+            "name": "limit",
             "required": false,
             "schema": {
-              "default": 0,
-              "minimum": 0,
-              "title": "Offset",
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
               "type": "integer"
             }
           }
@@ -4887,6 +5136,81 @@
         "summary": "Logs",
         "tags": [
           "logs"
+        ]
+      }
+    },
+    "/outbound/resend-bulk": {
+      "post": {
+        "description": "Resend after an incident: the selected messages or those matching a filter, at most\n`BULK_CAP` per action (oldest first; run it again for the rest). Needs a recent TOTP.",
+        "operationId": "autobot_panel_routers_incidents_resend_bulk",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkResendIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkResendOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Resend Bulk",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/outbound/resend-bulk/preview": {
+      "post": {
+        "operationId": "autobot_panel_routers_incidents_resend_bulk_preview",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkFilter"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkPreviewOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Resend Bulk Preview",
+        "tags": [
+          "incidents"
         ]
       }
     },
@@ -5726,6 +6050,28 @@
               "title": "Slug",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -5733,11 +6079,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/NotificationOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/NotificationPage"
                 }
               }
             },

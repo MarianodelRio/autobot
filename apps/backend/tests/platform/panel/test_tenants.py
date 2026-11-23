@@ -197,7 +197,8 @@ def test_notifications_are_isolated_per_tenant(authed_client: Any, tenants: Any)
         text="Cita de B, no debe verse en A",
     )
     body = get(authed_client, "tenants/a/notifications").json()
-    assert [n["text"] for n in body] == ["Nueva cita"]
+    assert [n["text"] for n in body["items"]] == ["Nueva cita"]
+    assert body["next_cursor"] is None
     event = AuditEvent.objects.using("owner").get(action="tenant.notifications.view")
     assert event.tenant_id == tenant_id("a")
     assert event.actor == "operator"

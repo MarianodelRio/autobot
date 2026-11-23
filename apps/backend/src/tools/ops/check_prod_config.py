@@ -92,7 +92,16 @@ def check_compose_services(services: dict[str, Any]) -> None:
     assert not services["web-panel"].get("ports")
     assert services["web-panel"]["read_only"]
     assert services["web-panel"]["user"] == "10001"
-    for name in ("web", "web-panel", "worker-inbound", "worker-outbound", "panel", "victorialogs"):
+    for name in (
+        "web",
+        "web-panel",
+        "worker-inbound",
+        "worker-calendar",
+        "worker-periodic",
+        "worker-outbound",
+        "panel",
+        "victorialogs",
+    ):
         assert services[name]["cap_drop"] == ["ALL"], name
         assert "no-new-privileges:true" in services[name]["security_opt"], name
     networks = {name: set(service.get("networks", {})) for name, service in services.items()}
@@ -111,11 +120,14 @@ def check_compose_services(services: dict[str, Any]) -> None:
     assert services["panel"]["ports"][0]["host_ip"] == "127.0.0.1"
     assert services["panel"]["read_only"]
     assert services["panel"]["user"] == "10001"
-    for worker in ("worker-inbound", "worker-outbound"):
+    for worker in ("worker-inbound", "worker-calendar", "worker-periodic", "worker-outbound"):
         assert services[worker]["read_only"]
         assert not services[worker]["environment"].get("DB_OWNER_URL")
         assert not services[worker]["environment"].get("DB_READONLY_URL")
         assert not services[worker]["environment"].get("FP_OWNER_PASSWORD")
+    # The retention periods promised in docs/cumplimiento only hold if the nightly cleanup
+    # runs: production has it on unless the host .env says otherwise.
+    assert services["worker-periodic"]["environment"].get("RETENTION_CLEANUP_ENABLED") == "true"
     assert not services["db"]["environment"].get("DJANGO_SECRET_KEY")
     assert not services["caddy"]["environment"].get("DB_APP_URL")
 

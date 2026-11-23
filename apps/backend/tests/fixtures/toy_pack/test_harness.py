@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from core.actions import Action, ContactRef, NotifyOwner, SendProactive, UpdateContact
-from core.conversation import OPT_OUT_TEXT, RECOVERY_TEXT, RESTART_TEXT
+from core.conversation import DEGRADED_TEXT, OPT_OUT_TEXT, RESTART_TEXT
 from core.errors import TransientError
 from core.limits import LimitError
 from core.messages import IncomingMessage
@@ -116,10 +116,11 @@ def test_unsupported_message(chat: Conversation) -> None:
     chat.unsupported().expect(text_contains="Solo entiendo texto y botones", buttons=MENU)
 
 
-def test_transient_error_gives_the_recovery_text(chat: Conversation) -> None:
+def test_transient_error_gives_the_degraded_text_and_keeps_the_state(chat: Conversation) -> None:
     chat.send("hola")
-    chat.press("fail").expect(text=RECOVERY_TEXT)
-    assert chat.state == {}
+    before = chat.state
+    chat.press("fail").expect(text=DEGRADED_TEXT)
+    assert chat.state == before
 
 
 def test_replay_reprocesses_with_the_same_idempotency_keys(chat: Conversation) -> None:
@@ -245,7 +246,7 @@ def test_replay_undoes_contact_changes() -> None:
     assert len(chat.turns) == 1
 
 
-def test_retries_before_the_recovery_text() -> None:
+def test_retries_before_the_degraded_text() -> None:
     calls = 0
 
     def flaky(ctx: PackContext, msg: IncomingMessage) -> PackResult:
@@ -261,7 +262,7 @@ def test_retries_before_the_recovery_text() -> None:
     chat.send("hola").expect(text="ok")
     assert calls == 3
     calls = -10  # fails on the 3 attempts of the next message
-    chat.send("hola").expect(text=RECOVERY_TEXT)
+    chat.send("hola").expect(text=DEGRADED_TEXT)
     assert calls == -7
 
 
