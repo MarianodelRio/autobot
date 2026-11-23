@@ -243,6 +243,8 @@ plataforma persiste de forma idempotente:
 - **Confirmación de cita manual** (`manual_confirmations_enabled`): citas manuales creadas
   desde `manual_confirmations_since`. El barrido las marca como `Estado: pendiente`. Solo
   funciona en canales con teléfono de destino.
+  Una cita que empieza en menos de 30 minutos no recibe aviso ni marca `pendiente`: el aviso
+  nacería caducado (`not_after`), y no se deja una cita pendiente sin avisar a nadie.
 
 El envío real requiere canal activo, plantillas aprobadas y consentimiento. Las plantillas de
 WhatsApp las crea el operador en el WhatsApp Manager de cada negocio y las aprueba Meta

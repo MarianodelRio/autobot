@@ -1,6 +1,8 @@
 """Which failures a job retries: provider/transient and database connection or
 concurrency errors; never a bug (DataError, IntegrityError, ProgrammingError)."""
 
+from datetime import UTC, datetime
+
 import psycopg
 import pytest
 from django import db
@@ -97,3 +99,40 @@ def test_the_last_attempt_follows_the_queue() -> None:
 
     assert [is_last_attempt(context(n, INBOUND)) for n in range(4)] == [False] * 3 + [True]
     assert [is_last_attempt(context(n, INBOUND_EXT)) for n in range(2)] == [False, True]
+
+
+def test_inbound_ext_waits_about_a_minute_on_database_errors() -> None:
+    """A 5-10 s blip does not exhaust the retries of `inbound_ext`; other errors keep the
+    single retry."""
+    strategy = ProcessEventRetry()
+    for error in (db.OperationalError("lost"), psycopg.OperationalError("lost")):
+        waits = []
+        now = datetime.now(UTC)
+        for n in range(5):
+            decision = strategy.get_retry_decision(exception=error, job=job(n, INBOUND_EXT))
+            waits.append(
+                decision and decision.retry_at and round((decision.retry_at - now).total_seconds())
+            )
+        assert waits == [5, 15, 40, None, None]
+    # `inbound` is unchanged and a TransientError in `inbound_ext` keeps its one retry.
+    assert strategy.get_retry_decision(exception=db.OperationalError("x"), job=job(2, INBOUND))
+    assert (
+        strategy.get_retry_decision(exception=db.OperationalError("x"), job=job(3, INBOUND)) is None
+    )
+    transient = TransientError("x")
+    assert strategy.get_retry_decision(exception=transient, job=job(0, INBOUND_EXT)) is not None
+    assert strategy.get_retry_decision(exception=transient, job=job(1, INBOUND_EXT)) is None
+    # A bug is never retried.
+    assert strategy.get_retry_decision(exception=ValueError("x"), job=job(0, INBOUND_EXT)) is None
+
+
+def test_the_housekeeping_tasks_have_a_high_priority() -> None:
+    """They share worker-periodic with slow `run_periodic` jobs. The periodic deferrer
+    defers with `task.configure(...)`, which falls back to the task's own priority."""
+    from autobot.runtime.jobs import HOUSEKEEPING_PRIORITY, app
+
+    for name in ("retry_stalled_jobs", "ops_check"):
+        task = app.tasks[name]
+        assert task.priority == HOUSEKEEPING_PRIORITY > 0
+        assert task.configure().job.priority == HOUSEKEEPING_PRIORITY
+    assert app.tasks["run_periodic"].priority == 0

@@ -72,7 +72,7 @@ def test_skips_without_failing_while_a_deploy_holds_the_lock(tmp_path: Path) -> 
         holder.wait()
 
 
-def test_removes_pre_migrate_dump_older_than_a_week(tmp_path: Path) -> None:
+def test_removes_pre_migrate_dump_older_than_two_days(tmp_path: Path) -> None:
     """A8: the dump is a plaintext copy of every client's data, kept outside the
     restic backup on purpose; it must not linger once rolling back to the deploy
     that made it is no longer plausible."""
@@ -81,7 +81,7 @@ def test_removes_pre_migrate_dump_older_than_a_week(tmp_path: Path) -> None:
     backups.mkdir(parents=True)
     old_dump = backups / "pre-migrate.dump"
     old_dump.write_text("DUMPDATA")
-    old_time = time.time() - 8 * 24 * 3600
+    old_time = time.time() - 3 * 24 * 3600
     os.utime(old_dump, (old_time, old_time))
     result = invoke(script, binaries)
     assert result.returncode == 0, result.stderr
@@ -97,3 +97,15 @@ def test_keeps_a_recent_pre_migrate_dump(tmp_path: Path) -> None:
     result = invoke(script, binaries)
     assert result.returncode == 0, result.stderr
     assert recent_dump.exists()
+
+
+def test_removes_a_stale_temporary_pre_migrate_dump(tmp_path: Path) -> None:
+    """A deploy that died mid-dump leaves a plaintext, half-written file behind."""
+    script, binaries = setup(tmp_path)
+    backups = tmp_path / "var" / "backups"
+    backups.mkdir(parents=True)
+    stale = backups / "pre-migrate.dump.tmp"
+    stale.write_text("HALF")
+    result = invoke(script, binaries)
+    assert result.returncode == 0, result.stderr
+    assert not stale.exists()

@@ -10,6 +10,7 @@ import random
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from django.db.models import Q
 from django.utils import timezone
 
 from autobot.channels.adapters import Endpoint, endpoint
@@ -73,6 +74,9 @@ APOLOGY_EVERY = timedelta(hours=6)  # at most one apology per contact in this ti
 # moment and lasts `APOLOGY_TTL`: both always end inside the window, with an hour to spare.
 assert timedelta(hours=23) >= REPLY_TTL + APOLOGY_TTL
 APOLOGY_PREFIX = "apology:"
+# `last_error` of a message the provider refused for its credentials (`_record`): once the
+# token is fixed, a proactive one is revived like an expired one.
+AUTH_FAILURE_PREFIX = "auth:"
 
 
 # ── Ambiguous sends (ADR-026) ──────────────────────────────────────
@@ -138,7 +142,8 @@ def create_proactive(
 ) -> OutboundMessage | None:
     """A proactive message with the pack's idempotency key; None if that key was already
     used (a sweep seeing the same appointment again, or a retried event) and the message is
-    still on its way or done. A message of that key that `expired` is revived (and returned,
+    still on its way or done. A message of that key that `expired`, or that failed with an
+    `auth:` rejection (a revoked token, since fixed), is revived (and returned,
     to be queued again) while the new window is still open: after an outage, the sweep that
     offers the reminder again makes it go out."""
     now = timezone.now()
@@ -152,25 +157,33 @@ def create_proactive(
         payload=dump_outbound(message),
         inbound_event=event,
         expires_at=expires_at,
+        not_after=not_after,
     )
     OutboundMessage.objects.bulk_create([row], ignore_conflicts=True)
     if OutboundMessage.objects.filter(id=row.id).exists():
         return row
     if expires_at <= now:
         return None
-    revived = OutboundMessage.objects.filter(
-        tenant_id=tenant_id,
-        idem_key=idem_key,
-        kind=OutboundMessage.Kind.PROACTIVE,
-        status=Status.EXPIRED,
-        payload__isnull=False,
-    ).update(
-        status=Status.PENDING,
-        expires_at=expires_at,
-        attempts=0,
-        last_error="",
-        unknown_at=None,
-        payload=dump_outbound(message),
+    revived = (
+        OutboundMessage.objects.filter(
+            tenant_id=tenant_id,
+            idem_key=idem_key,
+            kind=OutboundMessage.Kind.PROACTIVE,
+            payload__isnull=False,
+        )
+        .filter(
+            Q(status=Status.EXPIRED)
+            | Q(status=Status.FAILED, last_error__startswith=AUTH_FAILURE_PREFIX)
+        )
+        .update(
+            status=Status.PENDING,
+            expires_at=expires_at,
+            not_after=not_after,
+            attempts=0,
+            last_error="",
+            unknown_at=None,
+            payload=dump_outbound(message),
+        )
     )
     if not revived:
         return None
@@ -301,7 +314,10 @@ def send_message(tenant_id: UUID, outbound_id: UUID) -> None:
             message.save(update_fields=["status", "attempts"])
 
     if breaker_open:
-        raise SendRetry(_wait_for_provider(provider, ep, message.kind))
+        wait = _wait_for_provider(provider, ep, message.kind)
+        if message.expires_at is not None:  # never past the expiry, like `_record`
+            wait = min(wait, max((message.expires_at - timezone.now()).total_seconds(), 1.0))
+        raise SendRetry(wait)
 
     # No transaction while the provider answers.
     if ep.secrets is None:

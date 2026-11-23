@@ -280,10 +280,12 @@ class CalendarClient:
                 self._breaker.record(ok=ok, duration_s=_monotonic() - started)
 
             try:
+                # `self.api` builds `_http` (thread-local, reused across messages): it must
+                # exist before the timeout is applied, or the first attempt would keep the
+                # one a previous message left on this thread.
+                api = self.api
                 self._apply_timeout(timeout)
-                request = getattr(self.api.events(), operation)(
-                    calendarId=self._calendar_id, **kwargs
-                )
+                request = getattr(api.events(), operation)(calendarId=self._calendar_id, **kwargs)
                 result = request.execute(num_retries=0)
                 judge(True)
                 self._observe("ok")

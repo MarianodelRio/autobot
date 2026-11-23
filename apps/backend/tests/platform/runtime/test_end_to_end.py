@@ -277,6 +277,56 @@ def test_a_stalled_ops_check_colliding_with_a_queued_one_is_failed_not_stuck() -
     assert statuses[queued_id] == "succeeded"
 
 
+def test_a_job_that_keeps_killing_its_worker_is_failed_and_its_event_answered(
+    tenants: Any, meta: Meta
+) -> None:
+    """A poisonous message (OOM...) kills the worker each time: after STALLED_MAX_ATTEMPTS
+    retries retry_stalled_jobs fails the job instead of looping every minute, and the event
+    does not stay `pending`: it is `failed` and the contact gets the recovery text."""
+    from autobot.runtime.jobs import STALLED_MAX_ATTEMPTS
+
+    tenants(wa_tenant())
+    assert post_wa(wa_text("hola")) == 200
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO procrastinate_workers (last_heartbeat) VALUES (now() - interval '1 hour')"
+            " RETURNING id"
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET status = 'doing', worker_id = %s, attempts = %s"
+            " WHERE task_name = 'process_event' RETURNING id",
+            [row[0], STALLED_MAX_ATTEMPTS],
+        )
+        (stalled_id,) = cursor.fetchone() or (None,)
+    defer_retry_stalled_jobs()
+    run_worker()
+    with connections["owner"].cursor() as cursor:
+        cursor.execute("SELECT status FROM procrastinate_jobs WHERE id = %s", [stalled_id])
+        assert cursor.fetchone() == ("failed",)
+    (event,) = events()
+    assert event.status == "failed" and "worker died" in event.error
+    assert [b.split("\n")[0] for b in meta.bodies()] == [RECOVERY_TEXT]
+
+
+def test_the_stall_cap_leaves_room_for_the_ordinary_retries() -> None:
+    """`job.attempts` also counts ordinary retries: a job that used them all and then lost
+    its worker once still gets retried, not abandoned at its first stall. Sends are exempt
+    (their `SendRetry` attempts pile up by design)."""
+    from autobot.runtime.jobs import (
+        INBOUND_EXT_DB_WAITS_S,
+        INBOUND_RETRIES,
+        SEND_MESSAGE,
+        SEND_NOTIFICATION,
+        STALLED_CAP_EXEMPT,
+        STALLED_MAX_ATTEMPTS,
+    )
+
+    assert max(INBOUND_RETRIES, len(INBOUND_EXT_DB_WAITS_S)) + 1 < STALLED_MAX_ATTEMPTS
+    assert {SEND_MESSAGE, SEND_NOTIFICATION} <= STALLED_CAP_EXEMPT
+
+
 def test_a_send_cut_while_sending_ends_unknown_and_frees_the_contact(
     tenants: Any, meta: Meta
 ) -> None:

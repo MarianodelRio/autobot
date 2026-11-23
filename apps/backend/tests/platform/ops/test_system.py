@@ -1,7 +1,7 @@
 """Pure readers of host metrics and operational state files, against a fake /proc."""
 
 import json
-import shutil
+import os
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from autobot.ops import system
+from tests.helpers.disk import statvfs_for
 
 
 def test_cpu_percent_computes_delta_between_two_reads(
@@ -66,17 +67,49 @@ def test_uptime_missing_file_is_none(tmp_path: Path) -> None:
 
 
 def test_disk_used_percent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(os, "statvfs", statvfs_for(42))
+    assert system.disk("/") == pytest.approx(42.0)
+
+
+def test_disk_ignores_root_reserved_blocks(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 1000 blocks, 50 free in total but only 10 usable by a non-root process (ext4
+    # reserves 5 %): shutil.disk_usage would say 95 %, the real answer is 99 %.
     monkeypatch.setattr(
-        shutil, "disk_usage", lambda _: SimpleNamespace(total=100, used=42, free=58)
+        os,
+        "statvfs",
+        lambda _: SimpleNamespace(f_blocks=1000, f_bfree=50, f_bavail=10, f_files=0, f_favail=0),
     )
-    assert system.disk("/") == 42.0
+    assert system.disk("/") == pytest.approx(99.0)
+
+
+def test_inodes_used_percent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(os, "statvfs", statvfs_for(1, inodes_pct=90))
+    assert system.inodes("/") == pytest.approx(90.0)
+
+
+def test_inodes_without_a_table_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        os, "statvfs", lambda _: SimpleNamespace(f_blocks=10, f_bavail=5, f_files=0, f_favail=0)
+    )
+    assert system.inodes("/") is None
+
+
+def test_swap_used_percent(tmp_path: Path) -> None:
+    (tmp_path / "meminfo").write_text("SwapTotal:  1000 kB\nSwapFree:   250 kB\n")
+    assert system.swap(root=tmp_path) == 75.0
+
+
+def test_swap_without_swap_is_zero_and_missing_file_none(tmp_path: Path) -> None:
+    assert system.swap(root=tmp_path) is None
+    (tmp_path / "meminfo").write_text("SwapTotal:  0 kB\nSwapFree:   0 kB\n")
+    assert system.swap(root=tmp_path) == 0.0
 
 
 def test_disk_missing_path_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(_: str) -> Any:
         raise OSError("no such path")
 
-    monkeypatch.setattr(shutil, "disk_usage", boom)
+    monkeypatch.setattr(os, "statvfs", boom)
     assert system.disk("/missing") is None
 
 

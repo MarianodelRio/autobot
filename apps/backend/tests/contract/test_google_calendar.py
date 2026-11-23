@@ -489,6 +489,30 @@ def test_the_attempt_timeout_is_the_smaller_of_the_default_and_what_is_left(
     http.close.assert_called_once()
 
 
+def test_the_first_attempt_does_not_inherit_the_timeout_of_a_previous_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The thread-local `Http` is reused: a message that ran with a spent budget left a
+    short timeout on it, and the next message's first attempt must reset it."""
+    import integrations.google_calendar.client as client_module
+
+    http = MagicMock()
+    http.timeout = 0.4  # left by a previous message on this thread
+    api = MagicMock()
+    api.events.return_value.list.return_value.execute.return_value = {"items": []}
+    seen: list[float] = []
+
+    def execute(**_: object) -> dict[str, list[object]]:
+        seen.append(http.timeout)
+        return {"items": []}
+
+    api.events.return_value.list.return_value.execute.side_effect = execute
+    monkeypatch.setattr(client_module, "thread_service", lambda _file: (api, http))
+    cal = CalendarClient("c", credentials_file="creds.json")  # builds `api` lazily
+    cal.check_access()
+    assert seen == [TIMEOUT_S]
+
+
 # ── circuit breaker in the client ─────────────────────────────────────────
 
 

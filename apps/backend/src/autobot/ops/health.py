@@ -1,6 +1,9 @@
 """Daily pack/channel health, and the operator's on-demand health command."""
 
 import hashlib
+import logging
+import socket
+import ssl
 import time
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
@@ -28,7 +31,12 @@ from autobot.tenancy.schema import (
     WhatsAppSecrets,
 )
 
+log = logging.getLogger(__name__)
+
 DAY_S = 86400
+TLS_WARNING_DAYS = 14
+TLS_CRITICAL_DAYS = 3
+TLS_TIMEOUT_S = 5.0
 RETRY_FAILED_S = 15 * 60  # a one-off failure is rechecked sooner than a success
 SPREAD_WINDOW_S = 2 * 3600  # the per-tenant offset of the daily check, up to this
 CHANNEL_CHECK_TIMEOUT_S = 5
@@ -373,6 +381,49 @@ class HealthBudget:
 
     def now(self) -> float:
         return self._clock()
+
+
+def _cert_not_after(host: str, port: int, timeout: float) -> datetime:
+    """The `notAfter` of the certificate `host:port` serves, validated like a browser
+    would (chain and name): an expired or wrong one raises `ssl.SSLCertVerificationError`."""
+    context = ssl.create_default_context()
+    with (
+        socket.create_connection((host, port), timeout=timeout) as raw,
+        context.wrap_socket(raw, server_hostname=host) as tls,
+    ):
+        cert = tls.getpeercert()
+    if not cert or "notAfter" not in cert:
+        raise ValueError("no certificate")
+    return datetime.fromtimestamp(ssl.cert_time_to_seconds(str(cert["notAfter"])), UTC)
+
+
+def tls_health(
+    host: str, port: int = 443, *, now: datetime | None = None, timeout: float = TLS_TIMEOUT_S
+) -> list[Issue]:
+    """Days left of the public certificate (Caddy renews it ~30 days before expiry, so
+    under 14 means the renewal is failing). A network error is not an issue of its own
+    (the container and proxy alerts cover an unreachable proxy) and never raises: it is
+    only logged. Call it outside any transaction."""
+    now = now or timezone.now()
+    try:
+        not_after = _cert_not_after(host, port, timeout)
+    except ssl.SSLCertVerificationError:
+        return [Issue("tls_invalid", "El certificado público no es válido o ha caducado.", "🔴")]
+    except (OSError, ssl.SSLError, ValueError) as exc:
+        log.warning("tls check of %s skipped: %s", host, type(exc).__name__)
+        return []
+    days = (not_after - now).total_seconds() / DAY_S
+    if days < TLS_CRITICAL_DAYS:
+        return [
+            Issue(
+                "tls_expiring_critical",
+                f"El certificado público caduca en {max(days, 0):.0f} días.",
+                "🔴",
+            )
+        ]
+    if days < TLS_WARNING_DAYS:
+        return [Issue("tls_expiring", f"El certificado público caduca en {days:.0f} días.", "🟠")]
+    return []
 
 
 def daily(

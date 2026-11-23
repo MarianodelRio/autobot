@@ -255,6 +255,76 @@ def test_not_enough_free_space_fails_before_dumping(tmp_path: Path) -> None:
     assert "backup --tag" not in (tmp_path / "restic.log").read_text()
 
 
+def test_the_deploy_lock_is_taken_shared_and_a_held_one_fails_visibly(tmp_path: Path) -> None:
+    """A snapshot must not mix a new schema with the old .deployed-sha: a running deploy
+    holds the lock exclusively, so the backup waits, then fails with ok=false."""
+    import fcntl
+
+    script, binaries, config = setup(tmp_path)
+    var = tmp_path / "var"
+    (var / "state" / "ops").mkdir(parents=True)
+    (var / "state" / "ops" / "backup.json").write_text(
+        '{"finished_at":"2026-01-01T00:00:00Z","ok":true,"dump_bytes":123456}\n'
+    )
+    with open(var / ".deploy.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        result = invoke(script, binaries, config, AUTOBOT_BACKUP_DEPLOY_LOCK_WAIT="1")
+    assert result.returncode == 1
+    assert "deployment" in result.stderr
+    assert "backup --tag" not in (tmp_path / "restic.log").read_text()
+    docker_log = tmp_path / "restic.log.docker"
+    assert not docker_log.exists() or "pg_dump" not in docker_log.read_text()
+    status = backup_status(tmp_path)
+    assert status["ok"] is False
+    assert status["dump_bytes"] == 123456  # the free-space reference survives a failure
+
+
+def test_another_backup_holding_the_shared_lock_does_not_block(tmp_path: Path) -> None:
+    import fcntl
+
+    script, binaries, config = setup(tmp_path)
+    with open(tmp_path / "var" / ".deploy.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_SH)  # e.g. prune.sh or another backup
+        result = invoke(script, binaries, config, AUTOBOT_BACKUP_DEPLOY_LOCK_WAIT="1")
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_sha_is_staged_under_the_lock_and_travels_with_the_dump(tmp_path: Path) -> None:
+    script, binaries, config = setup(tmp_path)
+    staged_copy = tmp_path / "staged-sha"
+    # The fake restic copies the staged SHA when it is asked to back it up.
+    restic = binaries / "restic"
+    restic.write_text(
+        restic.read_text()
+        + 'if [[ $1 == backup ]]; then for arg in "$@"; do'
+        + f' [[ $arg != */deployed-sha ]] || cp "$arg" {staged_copy}; done; fi\n'
+    )
+    result = invoke(script, binaries, config)
+    assert result.returncode == 0, result.stderr
+    assert staged_copy.read_text().strip() == "a" * 40
+    backup_line = next(
+        line
+        for line in (tmp_path / "restic.log").read_text().splitlines()
+        if line.startswith("backup --tag autobot ")
+    )
+    assert "var/backups/deployed-sha" in backup_line
+    assert "var/.deployed-sha" in backup_line
+    assert not (tmp_path / "var" / "backups" / "deployed-sha").exists()
+
+
+def test_a_failure_keeps_the_last_good_dump_size_for_the_free_space_check(tmp_path: Path) -> None:
+    script, binaries, config = setup(tmp_path)
+    (tmp_path / "var" / "state" / "ops").mkdir(parents=True)
+    (tmp_path / "var" / "state" / "ops" / "backup.json").write_text(
+        '{"finished_at":"2026-01-01T00:00:00Z","ok":true,"dump_bytes":777}\n'
+    )
+    result = invoke(script, binaries, config, RESTIC_UNINITIALIZED="1")
+    assert result.returncode == 1
+    status = backup_status(tmp_path)
+    assert status["ok"] is False
+    assert status["dump_bytes"] == 777
+
+
 def test_restic_check_runs_once_a_week_and_failure_fails_the_backup(tmp_path: Path) -> None:
     script, binaries, config = setup(tmp_path)
     first = invoke(script, binaries, config)

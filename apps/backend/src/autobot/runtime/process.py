@@ -205,6 +205,51 @@ def process_event(
         )
 
 
+def abandon_event(tenant_id: UUID, event_id: UUID, error: str) -> None:
+    """The job of a `pending` event will not run again (it kept killing its worker): mark
+    it `failed`, with the recovery text for the contact when it can be built, through the
+    same tx2 as a deterministic failure. If that cannot be done, the event is at least
+    marked `failed`, so nothing leaves it `pending` and the sweep does not queue it again.
+    Does nothing if the event is no longer `pending`."""
+    tenant = get_registry().by_id.get(tenant_id)
+    if tenant is None:
+        return
+    now = timezone.now()
+    try:
+        if tenant.pack is None:
+            raise LookupError("tenant without a pack")
+        with tenant_tx(tenant.id):
+            event = InboundEvent.objects.filter(id=event_id).first()
+            if event is None or event.status != Status.PENDING:
+                return
+            ep = endpoint(tenant, event.channel)
+            item = parse_stored(ep.adapter, _payload(event), ep.channel)
+            if not isinstance(item, InboundItem):
+                raise ValueError("not a message")
+            contact = _upsert_contact(tenant, event.channel, item, now)
+            conversation, _ = Conversation.objects.get_or_create(
+                tenant_id=tenant.id, contact=contact
+            )
+        _persist(
+            tenant,
+            event_id,
+            contact,
+            conversation,
+            {},
+            recovery_result(),
+            [],
+            error,
+            keep_conversation=False,
+            now=now,
+        )
+    except Exception:
+        log.exception("event %s: recovery text not created, marked failed", event_id)
+        with tenant_tx(tenant.id):
+            InboundEvent.objects.filter(id=event_id, status=Status.PENDING).update(
+                status=Status.FAILED, error=error, processed_at=now
+            )
+
+
 def _persist(
     tenant: LoadedTenant,
     event_id: UUID,

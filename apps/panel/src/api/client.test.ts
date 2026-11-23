@@ -209,3 +209,75 @@ describe("reauth_required", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("resent requests still pass through the other middlewares", () => {
+  afterEach(() => {
+    clearCookies();
+    setReauthPrompt(null);
+    setUnauthorizedHandler(() => {});
+    vi.unstubAllGlobals();
+  });
+
+  function csrfFailure() {
+    return new Response(JSON.stringify({ detail: "CSRF check Failed" }), {
+      status: 403,
+    });
+  }
+
+  test("a 401 on the CSRF resend triggers the unauthorized handler", async () => {
+    setCookie("autobot_panel_csrftoken=stale");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const request = input instanceof Request ? input : new Request(input);
+        if (request.url.endsWith("/auth/csrf")) {
+          setCookie("autobot_panel_csrftoken=fresh");
+          return new Response("{}", { status: 200 });
+        }
+        return request.headers.get("X-CSRFToken") === "fresh"
+          ? new Response(JSON.stringify({ detail: "no" }), { status: 401 })
+          : csrfFailure();
+      }),
+    );
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    await api.POST("/data/query");
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  test("a reauth_required on the CSRF resend prompts and resends with the fresh token", async () => {
+    setCookie("autobot_panel_csrftoken=stale");
+    const sent: (string | null)[] = [];
+    let reauthenticated = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const request = input instanceof Request ? input : new Request(input);
+        if (request.url.endsWith("/auth/csrf")) {
+          setCookie("autobot_panel_csrftoken=fresh");
+          return new Response("{}", { status: 200 });
+        }
+        const token = request.headers.get("X-CSRFToken");
+        sent.push(token);
+        if (token !== "fresh") return csrfFailure();
+        return reauthenticated
+          ? new Response(JSON.stringify({ ok: true }), { status: 200 })
+          : new Response(
+              JSON.stringify({
+                code: "reauth_required",
+                message: "Confirma",
+                details: [],
+              }),
+              { status: 403 },
+            );
+      }),
+    );
+    setReauthPrompt((settle) => {
+      reauthenticated = true;
+      settle(true);
+    });
+    const { data } = await api.POST("/auth/logout");
+    expect(data).toEqual({ ok: true });
+    expect(sent).toEqual(["stale", "fresh", "fresh"]);
+  });
+});

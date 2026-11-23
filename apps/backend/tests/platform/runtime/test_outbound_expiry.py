@@ -352,6 +352,58 @@ def test_an_expired_reminder_is_revived_while_the_appointment_is_ahead(
     assert again is None
 
 
+def test_a_reminder_that_failed_on_auth_is_revived_but_other_failures_are_not(
+    tenants: Any, clock: Clock, meta: Meta
+) -> None:
+    """A revoked token fails the reminder; once it is fixed the sweep offers it again and
+    it goes out. A recipient failure stays failed, and so does an auth failure when the
+    window of the appointment is closed."""
+    tenants(wa_tenant())
+    contact = Contact.objects.using("owner").get(id=reply_to().contact_id)
+    start = clock.now + timedelta(days=3)
+    not_after = start - timedelta(minutes=30)
+    row = make_proactive(contact, "reminder:auth", not_after=not_after)
+    OutboundMessage.objects.using("owner").filter(id=row.id).update(
+        status="failed", last_error="auth: token revoked"
+    )
+    revived = make_proactive(contact, "reminder:auth", not_after=not_after)
+    assert revived.id == row.id
+    back = reload(row)
+    assert (back.status, back.attempts, back.last_error) == ("pending", 0, "")
+    try_send(back)
+    assert reload(row).status == "sent"
+
+    other = make_proactive(contact, "reminder:gone", not_after=not_after)
+    OutboundMessage.objects.using("owner").filter(id=other.id).update(
+        status="failed", last_error="recipient: not on WhatsApp"
+    )
+    with tenant_tx(tenant().id):
+        again = create_proactive(
+            tenant().id,
+            contact,
+            ProactiveMessage(toy.TEMPLATE_THANKS, ["Rojo"], ["thanks_yes"]),
+            "reminder:gone",
+            None,
+            not_after=not_after,
+        )
+    assert again is None and reload(other).status == "failed"
+
+    closed = make_proactive(contact, "reminder:late", not_after=not_after)
+    OutboundMessage.objects.using("owner").filter(id=closed.id).update(
+        status="failed", last_error="auth: token revoked"
+    )
+    with tenant_tx(tenant().id):
+        late = create_proactive(
+            tenant().id,
+            contact,
+            ProactiveMessage(toy.TEMPLATE_THANKS, ["Rojo"], ["thanks_yes"]),
+            "reminder:late",
+            None,
+            not_after=clock.now - timedelta(minutes=1),
+        )
+    assert late is None and reload(closed).status == "failed"
+
+
 def test_an_expired_reminder_is_not_revived_once_the_appointment_is_too_close(
     tenants: Any, clock: Clock
 ) -> None:
@@ -553,6 +605,21 @@ def test_an_open_breaker_defers_without_calling_and_a_probe_closes_it(
     assert not breaker.is_open("whatsapp") and state.providers_down(clock.now) == []
     send_message(tenant().id, message.id)
     assert reload(message).status == "sent"
+
+
+def test_the_breaker_wait_never_goes_past_the_expiry(
+    tenants: Any, clock: Clock, meta: Meta, fake_breaker: Any
+) -> None:
+    breaker, _ = fake_breaker
+    tenants(wa_tenant())
+    message = reply_to()
+    OutboundMessage.objects.using("owner").filter(id=message.id).update(
+        expires_at=clock.now + timedelta(seconds=3)
+    )
+    _open_breaker(breaker)
+    with pytest.raises(SendRetry) as raised:
+        send_message(tenant().id, message.id)
+    assert raised.value.after_s is not None and raised.value.after_s <= 3.0
 
 
 def _open_breaker(breaker: ProviderBreaker) -> None:

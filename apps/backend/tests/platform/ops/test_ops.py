@@ -1,7 +1,7 @@
 """Every operation row uses PostgreSQL, simulated services and safe alert identities."""
 
 import json
-import shutil
+import os
 from dataclasses import replace
 from datetime import timedelta
 from io import StringIO
@@ -24,6 +24,7 @@ from autobot.runtime.models import Contact, Notification, OutboundMessage
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
 from core.pack import Periodic
+from tests.helpers.disk import fake_disk, statvfs_for
 from tests.helpers.integration import demo_tenant, tg_tenant, wa_tenant
 
 pytestmark = [
@@ -40,9 +41,7 @@ def alerts(monkeypatch: pytest.MonkeyPatch, settings: Any) -> list[tuple[Any, ..
     settings.NOTIFY_BOT_TOKEN = ""
     monkeypatch.setattr(check, "send_ops_alert", lambda *args: found.append(args))
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
-    monkeypatch.setattr(
-        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 1, "total": 100})()
-    )
+    fake_disk(monkeypatch, 1)
     return found
 
 
@@ -196,24 +195,18 @@ def test_provider_outage_alert_is_raised_once_and_auto_resolved(settings: Any) -
 
 def test_disk_row(tenants: Any, alerts: Any, monkeypatch: Any) -> None:
     tenants()
-    monkeypatch.setattr(
-        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 86, "total": 100})()
-    )
+    fake_disk(monkeypatch, 86)
     check.run()
     assert "disk" in kinds(alerts)
 
 
 def test_disk_warning_starts_above_80_percent(tenants: Any, alerts: Any, monkeypatch: Any) -> None:
     tenants()
-    monkeypatch.setattr(
-        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 81, "total": 100})()
-    )
+    fake_disk(monkeypatch, 81)
     check.run()
     assert "disk" in kinds(alerts)
     alerts.clear()
-    monkeypatch.setattr(
-        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 80, "total": 100})()
-    )
+    fake_disk(monkeypatch, 80)
     check.run()
     assert "disk" not in kinds(alerts)
 
@@ -225,20 +218,14 @@ def test_the_fullest_measured_path_counts(
     tenants()
     settings.OPS_STATE_DIR = tmp_path
     usage = {"/": 10, str(tmp_path): 96}
-    monkeypatch.setattr(
-        shutil,
-        "disk_usage",
-        lambda path: type("Disk", (), {"used": usage[str(path)], "total": 100})(),
-    )
+    monkeypatch.setattr(os, "statvfs", lambda path: statvfs_for(usage[str(path)])(path))
     check.run()
     assert "disk_critical" in kinds(alerts)
 
 
 def test_disk_critical_row(tenants: Any, alerts: Any, monkeypatch: Any) -> None:
     tenants()
-    monkeypatch.setattr(
-        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 96, "total": 100})()
-    )
+    fake_disk(monkeypatch, 96)
     check.run()
     assert "disk_critical" in kinds(alerts)
     assert "disk" not in kinds(alerts)
@@ -516,6 +503,8 @@ def test_collect_never_calls_send_ops_alert(tenants: Any, settings: Any, monkeyp
     monkeypatch.setattr(check, "door", lambda channel: None)
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
     monkeypatch.setattr(system, "disk", lambda *_: 10.0)  # not the host's real disk
+    for host_metric in ("inodes", "memory", "load", "swap"):
+        monkeypatch.setattr(system, host_metric, lambda *_: 10.0)
 
     def boom(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("collect() must not send alerts")

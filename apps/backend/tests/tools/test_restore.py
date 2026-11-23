@@ -155,6 +155,21 @@ def test_workers_start_when_explicitly_requested(tmp_path: Path) -> None:
     assert "up -d worker-inbound worker-calendar worker-periodic worker-outbound" in log
 
 
+def test_the_sha_staged_with_the_dump_wins_over_the_one_in_the_same_snapshot(
+    tmp_path: Path,
+) -> None:
+    """backup.sh reads the SHA under the deploy lock, before the dump; var/.deployed-sha
+    in the snapshot may belong to a deploy that finished during the upload."""
+    script, binaries = setup(tmp_path)
+    (tmp_path / ".git").mkdir()
+    staged = "d" * 40
+    (tmp_path / "snapshot" / "var" / ".deployed-sha").write_text("e" * 40 + "\n")
+    (tmp_path / "snapshot" / "var" / "backups" / "deployed-sha").write_text(staged + "\n")
+    result = invoke(script, binaries, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert f"git checkout --quiet --detach {staged}" in (tmp_path / "docker.log").read_text()
+
+
 def test_checks_out_the_snapshot_sha(tmp_path: Path) -> None:
     """T1: the restored data must match the code that produced it."""
     script, binaries = setup(tmp_path)

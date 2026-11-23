@@ -159,12 +159,12 @@ def test_audit_actions(authed_client: Any) -> None:
 
 
 def spawn(message: OutboundMessage, n: int, status: str, **fields: Any) -> list[OutboundMessage]:
+    fields.setdefault("kind", "reply")
     return [
         OutboundMessage.objects.using("owner").create(
             tenant=message.tenant,
             contact=message.contact,
             channel="main",
-            kind="reply",
             idem_key=f"bulk:{status}:{i}:{fields.get('last_error', '')}",
             payload=message.payload,
             status=status,
@@ -196,7 +196,7 @@ def test_bulk_resend_filters_preview_and_audit(
     reauthed_client: Any, message: OutboundMessage
 ) -> None:
     failed = spawn(message, 2, "failed")
-    expired = spawn(message, 1, "expired")
+    expired = spawn(message, 1, "expired", kind="proactive")
     spawn(message, 1, "sent")
     recent = spawn(message, 1, "unknown")[0]
     recent.unknown_at = timezone.now()
@@ -229,6 +229,8 @@ def test_bulk_resend_filters_preview_and_audit(
         assert row.status == "pending" and row.expires_at is not None
         assert row.expires_at > timezone.now()
     assert bulk_jobs() == 4
+    (start,) = AuditEvent.objects.using("owner").filter(action="outbound.resend_bulk_start")
+    assert "5 mensajes" in start.summary and not start.target_id
     (event,) = AuditEvent.objects.using("owner").filter(action="outbound.resend_bulk")
     assert "4 reenviados" in event.summary and not event.target_id
     assert str(message.id) not in event.summary
@@ -277,3 +279,58 @@ def test_incidents_lists_held_notices(authed_client: Any, message: OutboundMessa
     assert data["held_notices"] == [
         {"tenant_id": str(message.tenant_id), "tenant": message.tenant.slug, "count": 1}
     ]
+
+
+@pytest.mark.usefixtures("clean_jobs")
+def test_bulk_resend_keeps_the_packs_deadline_and_drops_late_replies(
+    reauthed_client: Any, message: OutboundMessage
+) -> None:
+    now = timezone.now()
+    useful = spawn(
+        message, 1, "expired", kind="proactive", not_after=now + timedelta(hours=2), last_error="a"
+    )[0]
+    obsolete = spawn(
+        message, 1, "expired", kind="proactive", not_after=now - timedelta(hours=1), last_error="b"
+    )[0]
+    (late_reply,) = spawn(message, 1, "expired", last_error="c")
+    # Rows from before `not_after` was stored: a short `expires_at` implies the deadline.
+    legacy = spawn(
+        message, 1, "expired", kind="proactive", expires_at=now - timedelta(hours=1), last_error="d"
+    )[0]
+    OutboundMessage.objects.using("owner").filter(pk=legacy.pk).update(
+        created_at=now - timedelta(hours=5)
+    )
+    body = {"statuses": ["expired"]}
+    preview = post(reauthed_client, "outbound/resend-bulk/preview", body).json()
+    assert preview["total"] == 2  # the obsolete reminder and the late reply are not offered
+    response = post(
+        reauthed_client,
+        "outbound/resend-bulk",
+        {"ids": [str(m.id) for m in (useful, obsolete, late_reply, legacy)]}
+        | {"confirm_duplicate_risk": True},
+    ).json()
+    assert (response["resent"], response["skipped"]) == (1, 3)
+    useful.refresh_from_db(using="owner")
+    assert useful.status == "pending"
+    assert now < useful.expires_at <= now + timedelta(hours=2, seconds=5)  # type: ignore[operator]
+    for row in (obsolete, late_reply, legacy):
+        row.refresh_from_db(using="owner")
+        assert row.status == "expired"
+
+
+def test_bulk_resend_validates_its_input(reauthed_client: Any, message: OutboundMessage) -> None:
+    ok = {"confirm_duplicate_risk": True}
+    naive = post(reauthed_client, "outbound/resend-bulk/preview", {"since": "2026-01-01T00:00:00"})
+    assert naive.status_code == 400
+    reversed_ = post(
+        reauthed_client,
+        "outbound/resend-bulk",
+        ok | {"since": "2026-02-01T00:00:00Z", "until": "2026-01-01T00:00:00Z"},
+    )
+    assert reversed_.status_code == 400
+    too_long = post(
+        reauthed_client,
+        "outbound/resend-bulk",
+        ok | {"ids": ["00000000-0000-0000-0000-000000000001"] * 501},
+    )
+    assert too_long.status_code in (400, 422)

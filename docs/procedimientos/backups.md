@@ -39,6 +39,19 @@ borra objetos con una credencial que no debía. **Object Lock** en modo cumplimi
 protección, pero bloquea también la purga legítima hasta que expire la retención (el espacio
 se libera con retraso): úsalo solo si la retención es menor que la ventana diaria de restic.
 
+## Backup y despliegue no se pisan
+
+`backup.sh` toma el candado de despliegue (`var/.deploy.lock`) en modo compartido
+(`flock -s`, como `prune.sh`) antes de leer `var/.deployed-sha` y volcar, y lo suelta cuando
+el volcado está verificado. Así una copia nunca mezcla un esquema nuevo con el SHA viejo
+(`restore.sh` levantaría código antiguo sobre una base migrada). El SHA se guarda aparte
+como `var/backups/deployed-sha`, junto al volcado al que corresponde, y `restore.sh` lo
+prefiere al `var/.deployed-sha` del mismo snapshot (que puede haber cambiado mientras se
+subía). Si un despliegue retiene el candado más de `AUTOBOT_BACKUP_DEPLOY_LOCK_WAIT`
+(300 s), la copia falla a la vista (`ok:false` en `backup.json`, sin latido) y la siguiente
+horaria lo reintenta. Un fallo conserva en `backup.json` el tamaño del último volcado
+bueno, que es la referencia del chequeo de espacio libre.
+
 ## El libro de supresiones viaja en el backup
 
 Cada backup horario exporta el libro de supresiones (ADR-019: ids y HMAC, sin datos
@@ -92,6 +105,15 @@ Los snapshots anteriores al ADR-021 siguen llevando el `.env` completo hasta que
 
 `var/google_sa.json` sí va en el snapshot: solo da acceso a los calendarios compartidos con
 esa cuenta de servicio y se puede revocar y reemitir desde Google.
+
+## RPO y RTO
+
+- **RPO (cuántos datos se pueden perder): 1 hora.** El timer de backup es horario; el peor
+  caso es una caída justo antes de la siguiente copia. Las supresiones del libro RGPD se
+  reaplican al restaurar (ADR-025).
+- **RTO (cuánto se tarda en volver): no medido.** Es el tiempo de una VPS nueva con
+  `install-vm.sh` más una restauración (`restaurar.md`); la cifra real sale del simulacro
+  contra el bucket de verdad (checklist de lanzamiento) y debe anotarse aquí cuando exista.
 
 ## Configurar un servidor nuevo
 

@@ -12,6 +12,8 @@ the sources is covered here or listed in `NO_RUNBOOK`.
 
 DOCS_URL_PREFIX = "/docs/"
 
+_RESOURCES = "incidencias/recursos-copias-y-certificado.md"
+
 # Exact kinds.
 RUNBOOKS: dict[str, str] = {
     "inbound_delay": "incidencias/cola-y-latido.md",
@@ -38,6 +40,16 @@ RUNBOOKS: dict[str, str] = {
     "backup_prune_overdue": "procedimientos/backups.md#caducar-snapshots",
     "disk": "procedimientos/mantenimiento.md#disco-lleno",
     "disk_critical": "procedimientos/mantenimiento.md#disco-lleno",
+    "inodes": f"{_RESOURCES}#inodos-agotados",
+    "inodes_critical": f"{_RESOURCES}#inodos-agotados",
+    "memory_high": f"{_RESOURCES}#memoria-swap-o-carga-altas",
+    "swap_high": f"{_RESOURCES}#memoria-swap-o-carga-altas",
+    "load_high": f"{_RESOURCES}#memoria-swap-o-carga-altas",
+    "backup_stale": f"{_RESOURCES}#backup-atrasado-o-fallido",
+    "tls_expiring": f"{_RESOURCES}#certificado-a-punto-de-caducar",
+    "tls_expiring_critical": f"{_RESOURCES}#certificado-a-punto-de-caducar",
+    "tls_invalid": f"{_RESOURCES}#certificado-a-punto-de-caducar",
+    "queue_lag_unknown": "incidencias/cola-y-latido.md",
 }
 
 # Kinds with a variable suffix (`calendar:<channel>`, `container_down:<service>`...),

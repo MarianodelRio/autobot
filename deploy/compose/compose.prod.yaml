@@ -51,7 +51,7 @@ x-app: &app
   security_opt:
     - no-new-privileges:true
   tmpfs:
-    - /tmp:noexec,nosuid
+    - /tmp:noexec,nosuid,size=64m  # gunicorn heartbeat files and Python temp files only
   volumes:
     - ../../var/google_sa.json:/run/secrets/google_sa.json:ro
     - ../../var/state/ops:/run/ops:ro
@@ -102,11 +102,21 @@ services:
     restart: unless-stopped
     logging: *logging
     mem_limit: 128m
+    memswap_limit: 128m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 256
     networks: [edge]
     depends_on:
       web:
         condition: service_healthy
+    # Caddy's admin API (localhost:2019 inside the container, the one `caddy reload` of
+    # deploy.sh already uses): answers while the process is alive and its config is loaded.
+    # busybox wget is in the image; no request leaves the container.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # The public side: webhooks and /health only, reached through caddy (ADR-005). Like
   # the workers it runs with fp_app alone: a bug or a compromise here never holds
@@ -123,6 +133,7 @@ services:
     # CMD in apps/backend/Dockerfile: one source of truth.
     stop_grace_period: 60s
     mem_limit: 640m
+    memswap_limit: 640m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 256
     ports:
       - "127.0.0.1:${AUTOBOT_WEB_HOST_PORT:-8000}:8000"
@@ -145,6 +156,7 @@ services:
       SERVICE_NAME: web-panel
     stop_grace_period: 60s
     mem_limit: 512m
+    memswap_limit: 512m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 256
     networks: [panel, data, logs]
     healthcheck:
@@ -174,6 +186,7 @@ services:
       WORKER_DB_POOL_MAX: "8"
       PYTHON_CPU_COUNT: "4"
     mem_limit: 384m
+    memswap_limit: 384m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 128
     networks: [egress, data, logs]
 
@@ -188,6 +201,7 @@ services:
       WORKER_DB_POOL_MAX: "10"
       PYTHON_CPU_COUNT: "6"
     mem_limit: 384m
+    memswap_limit: 384m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 128
     networks: [egress, data, logs]
 
@@ -202,6 +216,7 @@ services:
       WORKER_DB_POOL_MAX: "6"
       PYTHON_CPU_COUNT: "4"
     mem_limit: 384m
+    memswap_limit: 384m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 128
     networks: [egress, data, logs]
 
@@ -216,6 +231,7 @@ services:
       WORKER_DB_POOL_MAX: "10"
       PYTHON_CPU_COUNT: "6"
     mem_limit: 384m
+    memswap_limit: 384m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 128
     networks: [egress, data, logs]
 
@@ -233,10 +249,11 @@ services:
     security_opt:
       - no-new-privileges:true
     tmpfs:
-      - /tmp:noexec,nosuid
+      - /tmp:noexec,nosuid,size=16m
     restart: unless-stopped
     logging: *logging
     mem_limit: 64m
+    memswap_limit: 64m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 128
     networks: [panel]
     depends_on:
@@ -307,6 +324,7 @@ services:
     # + db 2560 + victorialogs 320 = 5760 MB, leaving ~2.2 GB of the 8 GB for the kernel,
     # the page cache and the swap cushion.
     mem_limit: 2560m
+    memswap_limit: 2560m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 200
     restart: unless-stopped
     logging: *logging
@@ -326,7 +344,8 @@ services:
     security_opt:
       - no-new-privileges:true
     tmpfs:
-      - /tmp:noexec,nosuid
+      - /tmp:noexec,nosuid,size=16m
     mem_limit: 320m
+    memswap_limit: 320m  # = mem_limit: no swap, so a leak is OOM-killed and restarted, not a slow swap storm
     pids_limit: 256
     networks: [logs]

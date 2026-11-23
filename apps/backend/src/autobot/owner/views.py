@@ -39,9 +39,10 @@ def telegram_notify(request: HttpRequest) -> HttpResponse:
     if body is None:
         return HttpResponse(status=400)
     try:
-        for item in TELEGRAM.parse(body, None):
-            if isinstance(item, InboundItem):
-                store_owner_event(item)
+        with webhooks.webhook_db_limits():
+            for item in TELEGRAM.parse(body, None):
+                if isinstance(item, InboundItem):
+                    store_owner_event(item)
     except (DatabaseError, ProcrastinateException) as e:
         return webhooks.storage_failure(e, "Owner bot update")
     return HttpResponse(status=200)

@@ -118,7 +118,12 @@ for key in sys.argv[1].split(","):
   exit 1
 fi
 export SHA
-SHA=$(cat "$stage/var/.deployed-sha")
+# backup.sh stages the SHA it read under the deploy lock, next to the dump it matches
+# (var/.deployed-sha in the same snapshot may have moved on while the upload ran);
+# snapshots from before that only have the latter.
+sha_file=$stage/var/backups/deployed-sha
+[[ -s $sha_file ]] || sha_file=$stage/var/.deployed-sha
+SHA=$(cat "$sha_file")
 if [[ ! $SHA =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Snapshot has no valid deployed SHA' >&2
   exit 1

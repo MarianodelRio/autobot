@@ -51,8 +51,8 @@ clientes):
    `docker image prune --all --force --filter 'until=24h'`). Conserva las que usa algún
    contenedor y las de las últimas 24 h; un rollback más allá vuelve a descargar la
    imagen. Si espera por el candado, es que hay un despliegue en curso.
-3. **Volcados locales:** `var/backups/pre-migrate.dump` (lo borra `prune.sh` a los 7
-   días) y cualquier volcado manual que dejaras (`ls -la var/backups`). Contienen datos de
+3. **Volcados locales:** `var/backups/pre-migrate.dump` (lo borra `prune.sh` a las 48 h,
+   junto con cualquier `pre-migrate.dump.tmp`) y cualquier volcado manual que dejaras (`ls -la var/backups`). Contienen datos de
    clientes en claro: bórralos con `rm` en cuanto no hagan falta. `autobot.dump` es
    temporal y lo borra el propio `backup.sh`; si sobrevive, el último backup falló.
 4. **Logs de VictoriaLogs:** guarda 31 días con tope de 5 GiB y descarta el día más antiguo

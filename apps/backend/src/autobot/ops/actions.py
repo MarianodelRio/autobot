@@ -2,7 +2,7 @@
 panel and by the `outbound_resolve`/`job_retry` commands; previously inline in admin.py."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from django.db import transaction
@@ -52,6 +52,26 @@ def can_mark_sent(message: OutboundMessage) -> tuple[bool, str]:
     return True, ""
 
 
+def effective_not_after(message: OutboundMessage) -> datetime | None:
+    """The pack's deadline for a proactive message. Rows from before `not_after` was stored
+    infer it: an `expires_at` shorter than the 24 h window can only come from `not_after`."""
+    if message.kind != "proactive":
+        return None
+    if message.not_after is not None:
+        return message.not_after
+    if (
+        message.expires_at is not None
+        and message.expires_at < message.created_at + PROACTIVE_TTL - timedelta(minutes=1)
+    ):
+        return message.expires_at
+    return None
+
+
+def _past_not_after(message: OutboundMessage) -> bool:
+    limit = effective_not_after(message)
+    return limit is not None and limit <= timezone.now()
+
+
 def can_resend(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, str]:
     ok, reason = can_mark_sent(message)
     if not ok:
@@ -73,12 +93,18 @@ def can_bulk_resend(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[boo
         ok, reason = can_mark_sent(message)
         if not ok:
             return ok, reason
+    if message.status == "expired" and message.kind == "reply":
+        # ADR-024: a late reply is never delivered (its buttons may be stale); the
+        # contact already got an apology instead.
+        return False, "Una respuesta caducada no se reenvía (ADR-024)."
     if message.contact.unreachable:
         return False, "El contacto está marcado como inalcanzable."
     return _deliverable(message, db_tenant=db_tenant)
 
 
 def _deliverable(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, str]:
+    if _past_not_after(message):
+        return False, "El mensaje ya no es útil: pasó su fecha límite (p. ej. la cita)."
     if message.payload is None:
         return False, "El contenido del mensaje ya no está disponible."
     tenant = get_registry().by_id.get(message.tenant_id)
@@ -133,9 +159,13 @@ def _requeue(message: OutboundMessage) -> None:
     once) and the platform never adds its own resend on top (`ambiguous_resends`)."""
     message.status = "pending"
     message.unknown_at = None
-    message.expires_at = timezone.now() + (
-        PROACTIVE_TTL if message.kind == "proactive" else REPLY_TTL
-    )
+    now = timezone.now()
+    message.expires_at = now + (PROACTIVE_TTL if message.kind == "proactive" else REPLY_TTL)
+    limit = effective_not_after(message)
+    if limit is not None:
+        if limit <= now:
+            raise ValueError("not_after has passed")  # callers check `_deliverable` first
+        message.expires_at = min(message.expires_at, limit)
     message.ambiguous_resends = max(message.ambiguous_resends, MAX_AMBIGUOUS_RESENDS)
     message.save(
         using=OWNER, update_fields=["status", "unknown_at", "expires_at", "ambiguous_resends"]
@@ -167,6 +197,10 @@ def bulk_queryset(
         qs = qs.filter(created_at__gte=since)
     if until is not None:
         qs = qs.filter(created_at__lt=until)
+    # What `can_bulk_resend` always refuses, left out so the preview and the cap are exact:
+    # late replies (ADR-024) and messages past the pack's deadline.
+    now = timezone.now()
+    qs = qs.exclude(status="expired", kind="reply").exclude(not_after__lte=now)
     return qs
 
 
@@ -182,6 +216,14 @@ def resend_many(ids: list[UUID], *, over_cap: int = 0, actor: str) -> BulkResult
     """Resend each message in its own short transaction (a failure of one never undoes the
     others), then one audit entry with counts only."""
     resent = 0
+    # Written before the loop: if the worker dies midway, the requeued messages (some may be
+    # `unknown`, with a duplicate risk) still have an audit trail. Counts only.
+    audit.record(
+        actor=actor,
+        action="outbound.resend_bulk_start",
+        summary=f"Operador inicia reenvío en bloque de {len(ids)} mensajes.",
+        target_type="outbound_message",
+    )
     for outbound_id in ids:
         with transaction.atomic(using=OWNER):
             message = (

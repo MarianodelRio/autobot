@@ -26,7 +26,9 @@ from autobot.runtime.models import Channel, InboundEvent, OutboundMessage
 from autobot.runtime.summary import month_to_date
 from autobot.tenancy.registry import get_registry
 
-EXPECTED_WORKERS = 4  # worker-inbound, -calendar, -periodic and -outbound (compose)
+# Compose services that run a `procrastinate worker` (one process each).
+WORKER_SERVICES = ("worker-inbound", "worker-calendar", "worker-periodic", "worker-outbound")
+EXPECTED_WORKERS = len(WORKER_SERVICES)
 
 INBOUND_QUEUES = (INBOUND, INBOUND_EXT)
 
@@ -282,14 +284,19 @@ def build_system() -> SystemOut:
         .values("taken_at", "cpu_pct", "mem_used_pct", "load1", "disk_used_pct", "db_bytes")
     )
     database = database_info()
-    # The four workers: green only while all beat, so one dead worker is not hidden
-    # by the others.
-    worker = (
+    # The four workers. procrastinate registers one `procrastinate_workers` row per worker
+    # process, with only an id and a heartbeat (no name, no queues), so the rows cannot be
+    # attributed to a service: the count is necessary but not sufficient (a container that
+    # restarted leaves its old row for up to 60 s, which could stand in for another dead
+    # one). The container snapshot, when fresh, names each service: every `worker-*` must
+    # also be running.
+    container_state = build_containers(now)
+    beating = (
         ProcrastinateWorker.objects.using("owner")
         .filter(last_heartbeat__gt=now - timedelta(seconds=60))
         .count()
-        >= EXPECTED_WORKERS
     )
+    worker = beating >= EXPECTED_WORKERS and _worker_containers_running(container_state)
     logs_ok = False
     if settings.VICTORIALOGS_URL:
         try:
@@ -326,8 +333,17 @@ def build_system() -> SystemOut:
         tls={"days_left": tls_days_left()},
         flow=flow(now, queues),
         integrations=integrations(),
-        containers=build_containers(now),
+        containers=container_state,
     )
+
+
+def _worker_containers_running(state: ContainersOut) -> bool:
+    """False if a fresh container snapshot shows a worker service that is not running;
+    without a usable snapshot the heartbeat count alone decides."""
+    if not state.available or state.stale:
+        return True
+    status = {row.service: row.status for row in state.items}
+    return all(status.get(service) == "running" for service in WORKER_SERVICES)
 
 
 def build_containers(now: datetime) -> ContainersOut:

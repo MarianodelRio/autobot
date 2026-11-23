@@ -73,6 +73,11 @@ const reauthMiddleware: Middleware = {
     if (!isApiErrorBody(body) || body.code !== "reauth_required")
       return undefined;
     if (!(await requestReauth())) return undefined;
+    // The copy was taken before `csrfMiddleware` set the header (and the token may have
+    // been renewed by its own resend since): use the current one.
+    const token = readCookie("autobot_panel_csrftoken");
+    if (token && UNSAFE_METHODS.has(copy.method))
+      copy.headers.set("X-CSRFToken", token);
     return globalThis.fetch(copy);
   },
 };
@@ -104,7 +109,12 @@ export const api = createClient<paths>({
   // module loads need the lookup to happen per request instead.
   fetch: (...args) => globalThis.fetch(...args),
 });
-api.use(csrfMiddleware, reauthMiddleware, unauthorizedMiddleware);
+// openapi-fetch runs `onRequest` in registration order and `onResponse` in the reverse
+// order, each seeing the previous one's response. A middleware that resends the request
+// returns a response only the middlewares registered BEFORE it still see, so the ones
+// that can resend come last (csrf's resend then goes through reauth) and the one that
+// must see every final response comes first (unauthorized).
+api.use(unauthorizedMiddleware, reauthMiddleware, csrfMiddleware);
 
 function isApiErrorBody(
   value: unknown,

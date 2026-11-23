@@ -273,6 +273,59 @@ def test_database_errors_are_503(tenants: Any, monkeypatch: pytest.MonkeyPatch) 
     assert post_wa(fixture("whatsapp/text.json")) == 503
 
 
+def test_the_store_runs_with_short_db_limits_that_are_undone(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The role's 60 s timeout equals gunicorn's: while a webhook stores its event the
+    session has 5 s / 2 s, and afterwards the connection is as it was."""
+    from django.db import connections
+
+    def show() -> tuple[str, str]:
+        with connections["default"].cursor() as cursor:
+            cursor.execute("SHOW statement_timeout")
+            statement = cursor.fetchone()[0]
+            cursor.execute("SHOW lock_timeout")
+            return statement, cursor.fetchone()[0]
+
+    tenants(wa_tenant())
+    before = show()
+    seen: list[tuple[str, str]] = []
+    monkeypatch.setattr(views, "store", lambda *a, **k: seen.append(show()))
+    assert post_wa(fixture("whatsapp/text.json")) == 200
+    assert seen == [("5s", "2s")]
+    assert show() == before
+
+
+def test_a_failure_resetting_the_limits_drops_the_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Never reuse a connection that may still carry the short limits."""
+    from types import SimpleNamespace
+
+    closed: list[bool] = []
+
+    class Cursor:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __enter__(self) -> Cursor:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, sql: str, params: object = None) -> None:
+            self.calls += 1
+            if sql.startswith("RESET"):
+                raise OperationalError("gone")
+
+    fake = SimpleNamespace(cursor=Cursor, in_atomic_block=False, close=lambda: closed.append(True))
+    monkeypatch.setattr(views, "connections", {"default": fake})
+    with views.webhook_db_limits():
+        pass
+    assert closed == [True]
+
+
 # ── /health and the Admin ─────────────────────────────────────────────────
 
 

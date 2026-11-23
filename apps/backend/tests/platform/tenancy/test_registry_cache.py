@@ -141,6 +141,73 @@ def test_concurrent_reload_loads_once_and_nobody_waits(
     assert state.loads == 2
 
 
+class FakeConnections:
+    """Counts the closes the refresher thread asks for; no database involved."""
+
+    def __init__(self) -> None:
+        self.closed = 0
+
+    def __getitem__(self, alias: str) -> Any:
+        return SimpleNamespace(
+            close_if_unusable_or_obsolete=lambda: None, close_if_health_check_failed=lambda: None
+        )
+
+    def close_all(self) -> None:
+        self.closed += 1
+
+
+def test_one_persistent_refresher_keeps_its_connection_unless_a_check_fails(
+    state: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeConnections()
+    monkeypatch.setattr(registry, "connections", fake)
+    registry.get_registry()
+    state.revision = 2
+    state.now += 2
+    registry.get_registry()
+    registry.wait_for_refresh()
+    first_thread = registry._refresher
+    assert first_thread is not None and first_thread.is_alive()
+    state.revision = 3
+    state.now += 2
+    registry.get_registry()
+    registry.wait_for_refresh()
+    assert registry.get_registry().tenants[0].version == 3
+    assert registry._refresher is first_thread  # not a new thread per window
+    assert [t.name for t in threading.enumerate()].count("registry-refresh") == 1
+    assert fake.closed == 0  # nothing reconnected
+
+    def broken(alias: str = "default") -> Any:
+        raise OperationalError("down")
+
+    monkeypatch.setattr(registry, "sources_from_database", broken)
+    state.revision = 4
+    state.now += 2
+    registry.get_registry()
+    registry.wait_for_refresh()
+    assert fake.closed == 1  # closed because the check failed
+    assert registry.get_registry().tenants[0].version == 3  # previous snapshot kept
+    assert registry._refresher is first_thread and first_thread.is_alive()
+
+
+def test_a_forked_process_starts_its_own_refresher(state: Any) -> None:
+    registry.get_registry()
+    state.revision = 2
+    state.now += 2
+    registry.get_registry()
+    registry.wait_for_refresh()
+    parent = registry._refresher
+    assert parent is not None
+    registry._after_fork_in_child()  # what os.register_at_fork runs in the child
+    assert registry._refresher is None
+    state.revision = 3
+    state.now += 2
+    registry.get_registry()
+    registry.wait_for_refresh()
+    assert registry._refresher is not None and registry._refresher is not parent
+    assert registry.get_registry().tenants[0].version == 3
+
+
 def test_force_rebuilds_synchronously(state: Any) -> None:
     first = registry.get_registry()
     state.revision = 2
@@ -223,3 +290,26 @@ def test_redaction_never_loads_registry(state: Any, monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(registry, "get_registry", fail)
     monkeypatch.setattr(registry, "sources_from_database", fail)
     assert redact("safe message") == "safe message"
+
+
+def test_a_broken_kept_connection_does_not_skip_the_reload(
+    state: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refresher keeps its connection between rounds; if checking it fails (the
+    database restarted, the socket died), it is dropped and the reload still runs."""
+    from django.db import connections
+
+    first = registry.get_registry()
+
+    def broken(self: object) -> None:
+        raise OperationalError("server closed the connection unexpectedly")
+
+    # On the class: Django connections are per thread, and the refresher has its own.
+    monkeypatch.setattr(type(connections["default"]), "close_if_unusable_or_obsolete", broken)
+    state.revision = 2
+    state.now += 2
+    registry.get_registry()
+    registry.wait_for_refresh()
+    second = registry.get_registry()
+    assert second is not first
+    assert second.tenants[0].version == 2

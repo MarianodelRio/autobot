@@ -60,7 +60,7 @@ Las comprobaciones de canal, plantillas y pack de cada negocio (`ops/health.py`,
 
 Los contenedores no tocan `docker.sock`. Un temporizador del host (`deploy/systemd/autobot-containers.timer`, cada minuto) ejecuta `deploy/scripts/containers.sh`, que escribe una instantánea acotada en `var/state/ops/`, montada en solo lectura en `web` y los workers. `ops/containers.py` (`assess`) la evalúa: servicios esperados (`caddy`, `web`, `web-panel`, `worker-inbound`, `worker-calendar`, `worker-periodic`, `worker-outbound`, `panel`, `db`, `victorialogs`), reinicios, OOM, salud, imagen desplegada frente a `RELEASE_SHA` y, si la instantánea tiene más de 3 minutos, `containers_stale`. Durante un despliegue o una restauración se silencian los hallazgos. `victorialogs` nunca es crítico.
 
-La máquina se lee de `/proc` dentro del contenedor (`ops/system.py`: CPU, memoria, carga, disco), sin agente externo. El estado de backups y despliegues sale de ficheros de estado del mismo directorio. Todo ello alimenta la pantalla Sistema (`panel/services/system.py`).
+La máquina se lee de `/proc` dentro del contenedor (`ops/system.py`: CPU, memoria, swap, carga; disco e inodos con `statvfs`, contando solo lo que un proceso sin privilegios puede aún usar, porque ext4 reserva bloques para root y PostgreSQL no es root), sin agente externo. El estado de backups y despliegues sale de ficheros de estado del mismo directorio. Todo ello alimenta la pantalla Sistema (`panel/services/system.py`).
 
 ## Logs
 
@@ -82,6 +82,8 @@ Dos rutas sin autenticación, sin llamadas externas y sin nombres de negocio:
 ## Healthchecks
 
 `ops_check` pide `HEALTHCHECKS_PING_URL` al terminar, y **solo** si no ha fallado ninguna comprobación global ni de base de datos (sin `finally`): un `ops_check` caído deja de dar latido y es Healthchecks, desde fuera, quien avisa de que el worker o la cola no corren, algo que ninguna alerta interna puede detectar. El backup tiene su propio latido (`HEALTHCHECKS_BACKUP_PING_URL`, en `deploy/scripts/backup.sh`). Qué hacer cuando salta: [Cola y latido](../incidencias/cola-y-latido.md).
+
+**Vigilar el propio canal de avisos.** Un latido verde no demuestra que las alertas lleguen: con el token del bot revocado o un `OPS_TELEGRAM_CHAT_ID` erróneo, `ops_check` termina bien y nadie se entera de nada. Por eso, si hay una alerta crítica abierta cuyo `last_delivery` es `failed` o `unconfigured` desde hace más de 15 minutos (`ALERT_CHANNEL_GRACE`), `ops_check` envía `HEALTHCHECKS_PING_URL` + `/fail` en lugar del ping de éxito y healthchecks.io avisa por su canal (correo o SMS). El enfriamiento de 30 minutos no borra ese estado: un envío fallido sigue marcado `failed` hasta que uno llegue. Si no hay ninguna alerta crítica abierta, el fallo del canal no se ve hasta que la haya.
 
 **Configurar el monitor externo.** En healthchecks.io (o equivalente) crea un check con periodo de 5 minutos (el de `ops_check`) y gracia de 10, con aviso por un canal distinto del bot de avisos (correo o SMS: si cae la VPS, el bot de avisos cae con ella), y copia su URL en `HEALTHCHECKS_PING_URL` del `.env`. El ping no lleva datos: es un GET a esa URL. Para cubrir además que el proxy público contesta, añade un monitor HTTP externo (UptimeRobot o similar) contra `https://<dominio>/health`. Un fallo del ping solo se registra en el log; no rompe `ops_check`.
 

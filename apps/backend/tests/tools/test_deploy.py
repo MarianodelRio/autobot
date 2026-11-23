@@ -47,6 +47,7 @@ def setup(tmp_path: Path, *, previous: bool = True) -> tuple[Path, Path]:
         "fi\n"
         "[[ $* != *migrate* || ${MIGRATE_FAIL:-} != 1 ]] || exit 1\n"
         "[[ $* != *pull* || ${PULL_FAIL:-} != 1 ]] || exit 1\n"
+        "[[ $* != *pg_restore* || ${RESTORE_LIST_FAIL:-} != 1 ]] || exit 1\n"
         "if [[ $* == *pg_dump* ]]; then\n"
         "  [[ ${DUMP_FAIL:-} != 1 ]] || exit 1\n"
         "  printf 'DUMPDATA'\n"
@@ -278,8 +279,9 @@ def test_one_off_commands_run_in_web_panel_and_the_alert_in_web(tmp_path: Path) 
     result = invoke(script, binaries)
     assert result.returncode == 0, result.stderr
     log = (tmp_path / "docker.log").read_text()
-    for command in ("migrate --noinput", "apply_grants", "tenant_config validate", "seed_demos"):
+    for command in ("apply_grants", "tenant_config validate", "seed_demos"):
         assert f"run --rm web-panel python manage.py {command}" in log
+    assert "web-panel python manage.py migrate --noinput" in log
     assert "run --rm web python manage.py shell" in log
     assert "run --rm web python manage.py migrate" not in log
 
@@ -291,7 +293,7 @@ def test_a_checkout_without_web_panel_uses_web_for_everything(tmp_path: Path) ->
     assert result.returncode == 0, result.stderr
     log = (tmp_path / "docker.log").read_text()
     assert "web-panel" not in log
-    assert "run --rm web python manage.py migrate --noinput" in log
+    assert "web python manage.py migrate --noinput" in log
     assert "-d web worker-inbound worker-outbound panel" in log
 
 
@@ -402,6 +404,101 @@ def test_a_failed_dump_aborts_before_migrating(tmp_path: Path) -> None:
     assert "migrate --noinput" not in log.replace("migrate --check --noinput", "")
     assert deploy_results(tmp_path) == ["aborted"]
     assert not (tmp_path / "var" / "backups" / "pre-migrate.dump").exists()
+
+
+def test_a_failed_dump_leaves_no_temporary_file(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, PENDING_MIGRATIONS="1", DUMP_FAIL="1")
+    assert result.returncode == 1
+    assert not (tmp_path / "var" / "backups" / "pre-migrate.dump.tmp").exists()
+
+
+def test_a_stale_temporary_dump_is_removed_before_a_new_one_is_written(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    backups = tmp_path / "var" / "backups"
+    backups.mkdir(parents=True)
+    (backups / "pre-migrate.dump.tmp").write_text("STALE-HALF-DUMP")
+    result = invoke(script, binaries, PENDING_MIGRATIONS="1")
+    assert result.returncode == 0, result.stderr
+    assert (backups / "pre-migrate.dump").read_text() == "DUMPDATA"
+    assert not (backups / "pre-migrate.dump.tmp").exists()
+
+
+def test_a_dump_that_fails_pg_restore_list_aborts_and_is_not_kept(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries, PENDING_MIGRATIONS="1", RESTORE_LIST_FAIL="1")
+    assert result.returncode == 1
+    assert "pg_restore --list" in result.stderr
+    assert deploy_results(tmp_path) == ["aborted"]
+    backups = tmp_path / "var" / "backups"
+    assert not (backups / "pre-migrate.dump").exists()
+    assert not (backups / "pre-migrate.dump.tmp").exists()
+    log = (tmp_path / "docker.log").read_text()
+    assert "migrate --noinput" not in log.replace("migrate --check --noinput", "")
+
+
+def test_not_enough_free_disk_aborts_before_dumping(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    result = invoke(
+        script, binaries, PENDING_MIGRATIONS="1", AUTOBOT_BACKUP_MIN_FREE_BYTES=str(1 << 60)
+    )
+    assert result.returncode == 1
+    assert "Not enough free disk space" in result.stderr
+    assert "pg_dump" not in (tmp_path / "docker.log").read_text()
+    assert deploy_results(tmp_path) == ["aborted"]
+
+
+def test_migrate_runs_with_a_lock_timeout(tmp_path: Path) -> None:
+    """A migration waiting for a lock held by live traffic must fail, not block writes."""
+    script, binaries = setup(tmp_path)
+    result = invoke(script, binaries)
+    assert result.returncode == 0, result.stderr
+    migrate = [
+        line
+        for line in (tmp_path / "docker.log").read_text().splitlines()
+        if "migrate --noinput" in line and "--check" not in line
+    ]
+    assert len(migrate) == 1
+    assert "-e PGOPTIONS=-c lock_timeout=5s" in migrate[0]
+    custom = invoke(script, binaries, sha=THIRD, AUTOBOT_MIGRATE_LOCK_TIMEOUT="2s")
+    assert custom.returncode == 0, custom.stderr
+    assert "lock_timeout=2s" in (tmp_path / "docker.log").read_text()
+
+
+def test_output_goes_to_a_log_file_that_survives_a_closed_connection(tmp_path: Path) -> None:
+    """Over SSH, a dropped connection closes stdout/stderr: the next echo would raise
+    SIGPIPE and kill the script half-way. It must finish, record the result and log."""
+    script, binaries = setup(tmp_path)
+    env = invoke_env(script, binaries, sha=NEW, PENDING_MIGRATIONS="1", MIGRATE_FAIL="1")
+    process = subprocess.Popen(
+        ["bash", str(script), NEW],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert process.stdout is not None and process.stderr is not None
+    process.stdout.close()  # the reader is gone before the first line is printed
+    process.stderr.close()
+    assert process.wait(timeout=60) == 1  # the abort ran to its exit 1, not 141 (SIGPIPE)
+    assert deploy_results(tmp_path) == ["aborted"]
+    log = (tmp_path / "var" / "deploy.log").read_text()
+    assert "Pending migrations" in log
+    assert "Deployment failed before switching images" in log
+
+
+def test_a_successful_deploy_with_a_closed_connection_is_still_recorded(tmp_path: Path) -> None:
+    script, binaries = setup(tmp_path)
+    env = invoke_env(script, binaries, sha=NEW)
+    process = subprocess.Popen(
+        ["bash", str(script), NEW], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    assert process.stdout is not None and process.stderr is not None
+    process.stdout.close()
+    process.stderr.close()
+    assert process.wait(timeout=60) == 0
+    assert deploy_results(tmp_path) == ["deployed"]
+    assert (tmp_path / "var" / ".deployed-sha").read_text().strip() == NEW
+    assert f"Deployed {NEW}" in (tmp_path / "var" / "deploy.log").read_text()
 
 
 def test_migration_failure_never_switches_web(tmp_path: Path) -> None:

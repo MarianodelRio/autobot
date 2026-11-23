@@ -69,6 +69,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+      # Crash recovery after an unclean stop can take longer than 10 x 5 s; failures
+      # during this period do not count towards `retries`.
+      start_period: 60s
 
   victorialogs:
     image: victoriametrics/victoria-logs:v1.53.0

@@ -81,6 +81,7 @@ case $phase in
     systemctl is-enabled --quiet autobot-backup.timer &&
     systemctl is-enabled --quiet autobot-containers.timer &&
     systemctl is-enabled --quiet autobot-prune.timer &&
+    systemctl is-enabled --quiet autobot-watchdog.timer &&
     systemctl is-enabled --quiet autobot-docker-firewall.service &&
     cmp -s <(unattended_conf_text) "$unattended_conf" &&
     cmp -s /srv/autobot/deploy/scripts/docker-user-firewall.sh "$firewall_bin" &&
@@ -95,6 +96,8 @@ case $phase in
     cmp -s /srv/autobot/deploy/systemd/autobot-containers.service /etc/systemd/system/autobot-containers.service &&
     cmp -s /srv/autobot/deploy/systemd/autobot-prune.timer /etc/systemd/system/autobot-prune.timer &&
     cmp -s /srv/autobot/deploy/systemd/autobot-prune.service /etc/systemd/system/autobot-prune.service &&
+    cmp -s /srv/autobot/deploy/systemd/autobot-watchdog.timer /etc/systemd/system/autobot-watchdog.timer &&
+    cmp -s /srv/autobot/deploy/systemd/autobot-watchdog.service /etc/systemd/system/autobot-watchdog.service &&
     [[ $(stat -c '%u:%g:%a' /srv/autobot/var/state/caddy-data) == "$(id -u deploy):$(id -g deploy):700" ]] &&
     [[ $(stat -c '%u:%g:%a' /srv/autobot/var/state/caddy-config) == "$(id -u deploy):$(id -g deploy):700" ]] &&
     [[ $(stat -c '%u:%g:%a' /srv/autobot/var/state/ops) == "$(id -u deploy):$(id -g deploy):700" ]]; then
@@ -202,6 +205,8 @@ EOF
   install -m 0644 /srv/autobot/deploy/systemd/autobot-containers.timer /etc/systemd/system/
   install -m 0644 /srv/autobot/deploy/systemd/autobot-prune.service /etc/systemd/system/
   install -m 0644 /srv/autobot/deploy/systemd/autobot-prune.timer /etc/systemd/system/
+  install -m 0644 /srv/autobot/deploy/systemd/autobot-watchdog.service /etc/systemd/system/
+  install -m 0644 /srv/autobot/deploy/systemd/autobot-watchdog.timer /etc/systemd/system/
   # Root runs this one, so it is a root-owned copy, never the checkout's own (deploy's).
   install -m 0755 -o root -g root /srv/autobot/deploy/scripts/docker-user-firewall.sh "$firewall_bin"
   install -m 0644 /srv/autobot/deploy/systemd/autobot-docker-firewall.service /etc/systemd/system/
@@ -214,6 +219,9 @@ EOF
   systemctl enable --now autobot-containers.timer
   # only removes images no container references; safe to start right away too.
   systemctl enable --now autobot-prune.timer
+  # Needs only bash, curl, df and docker (no database, no Django); without the ops bot
+  # in .env it just says so and exits, so it is safe to start before the first deploy.
+  systemctl enable --now autobot-watchdog.timer
   # Rejects, before UFW even sees them, connections to any published Docker port that is not
   # 80/443 (see docker-user-firewall.sh).
   systemctl enable --now autobot-docker-firewall.service

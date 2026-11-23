@@ -102,8 +102,24 @@ DATABASE_ROUTERS = ["autobot.db.router.AuthDatabaseRouter"]
 CONN_MAX_AGE = int(os.environ.get("DB_CONN_MAX_AGE", "60"))
 
 
+# libpq options for every alias (also the worker's procrastinate pool, which takes its
+# parameters from `connections[alias].get_connection_params()`): without them a
+# half-dead network leaves every query hanging until gunicorn's 60 s timeout.
+DB_CONNECT_OPTIONS: dict[str, Any] = {
+    "connect_timeout": int(os.environ.get("DB_CONNECT_TIMEOUT", "5")),
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+}
+
+
 def _database(url: str, conn_max_age: int = CONN_MAX_AGE) -> dict[str, Any]:
-    return dict(dj_database_url.parse(url, conn_max_age=conn_max_age, conn_health_checks=True))
+    config: dict[str, Any] = dict(
+        dj_database_url.parse(url, conn_max_age=conn_max_age, conn_health_checks=True)
+    )
+    config["OPTIONS"] = {**(config.get("OPTIONS") or {}), **DB_CONNECT_OPTIONS}
+    return config
 
 
 def _reject_example_db_url(name: str, url: str) -> None:

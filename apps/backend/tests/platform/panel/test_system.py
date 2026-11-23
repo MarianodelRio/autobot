@@ -404,3 +404,46 @@ def test_calendar_integration_unchecked_tenants_are_not_critical(
     assert (ok.state, ok.detail) == ("ok", "2 de 2 accesibles")
     cache.delete(f"health:{a_id}")
     cache.delete(f"health:{b_id}")
+
+
+def _containers(**status: str) -> Any:
+    from autobot.panel.services.system import ContainerOut, ContainersOut
+
+    items = [
+        ContainerOut(
+            service=service,
+            name=service,
+            status=state,
+            health="none",
+            restart_count=0,
+            oom_killed=False,
+            started_at=None,
+            image_tag=None,
+            image_matches=None,
+            level="ok",
+            reason=None,
+        )
+        for service, state in status.items()
+    ]
+    return ContainersOut(
+        available=True, generated_at=None, stale=False, maintenance=None, items=items
+    )
+
+
+def test_a_stopped_worker_container_is_not_masked_by_the_heartbeat_count() -> None:
+    from autobot.panel.services.system import WORKER_SERVICES, _worker_containers_running
+
+    every = {service.replace("-", "_"): "running" for service in WORKER_SERVICES}
+
+    def state(**override: str) -> Any:
+        merged = {**every, **override}
+        return _containers(**{name.replace("_", "-"): value for name, value in merged.items()})
+
+    assert _worker_containers_running(state())
+    assert not _worker_containers_running(state(worker_outbound="exited"))
+    assert not _worker_containers_running(_containers(**{"worker-inbound": "running"}))
+    # Without a usable snapshot the heartbeat count alone decides.
+    stale = state(worker_outbound="exited").model_copy(update={"stale": True})
+    assert _worker_containers_running(stale)
+    unavailable = state().model_copy(update={"available": False, "items": []})
+    assert _worker_containers_running(unavailable)

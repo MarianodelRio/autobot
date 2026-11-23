@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 from django.core.management import call_command
@@ -283,6 +284,63 @@ def test_old_finished_procrastinate_jobs_are_purged(tenants: Any, settings: Sett
         (old_events,) = cursor.fetchone()
     assert remaining == {recent_id}
     assert old_events == 0  # cascaded
+
+
+def test_a_failing_tenant_does_not_stop_the_purge_of_the_others(
+    tenants: Any, settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    """GDPR: one tenant's error must not leave the later ones unpurged. The run still
+    purges the platform tables and ends with an error, so the job is visible as failed."""
+    from types import SimpleNamespace
+
+    settings.RETENTION_CLEANUP_ENABLED = True
+    first, second, third = (SimpleNamespace(id=uuid4(), is_demo=False) for _ in range(3))
+    purged: list[Any] = []
+
+    def fake(tenant: Any, now: datetime, cutoff: datetime) -> None:
+        if tenant is first:
+            raise RuntimeError("boom")
+        purged.append(tenant)
+
+    registry = SimpleNamespace(tenants=[first, second, third])
+    with (
+        patch.object(retention, "get_registry", return_value=registry),
+        patch.object(retention, "_cleanup_tenant", side_effect=fake),
+        pytest.raises(retention.RetentionError) as raised,
+    ):
+        retention.cleanup(now=NOW)
+    assert purged == [second, third]
+    assert str(first.id) in str(raised.value) and str(second.id) not in str(raised.value)
+    assert "retention failed for tenant" in caplog.text
+
+
+def test_the_jobs_cleanup_deletes_in_batches_and_always_ends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(retention, "JOBS_BATCH_SIZE", 2)
+    with connection.cursor() as cursor:
+        for _ in range(5):
+            cursor.execute(
+                "INSERT INTO procrastinate_jobs (queue_name, task_name, status)"
+                " VALUES ('periodic', 'batch_probe', 'failed') RETURNING id"
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            cursor.execute(
+                "INSERT INTO procrastinate_events (job_id, type, at)"
+                " VALUES (%s, 'failed', now() - interval '40 days')",
+                [row[0]],
+            )
+    monkeypatch.setattr(retention, "JOBS_MAX_BATCHES", 2)  # 4 of 5: bounded, leaves one
+    retention.cleanup_jobs()
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM procrastinate_jobs WHERE task_name = 'batch_probe'")
+        assert cursor.fetchone() == (1,)
+    monkeypatch.setattr(retention, "JOBS_MAX_BATCHES", 500)
+    retention.cleanup_jobs()
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM procrastinate_jobs WHERE task_name = 'batch_probe'")
+        assert cursor.fetchone() == (0,)
 
 
 def test_the_jobs_cleanup_is_its_own_periodic_task() -> None:

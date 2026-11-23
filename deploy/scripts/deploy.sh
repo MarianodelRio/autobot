@@ -7,10 +7,30 @@ set -euo pipefail
 # to detach the process with systemd-run, so this is the one thing that can be
 # done locally to keep a deploy from being abandoned half-done by a dropped link.
 trap '' HUP
+# The same over SSH for a closed pipe: once the connection is gone, the next `echo` to
+# it would raise SIGPIPE and kill the script after the database was migrated but before
+# the images were switched (or half-way through a rollback), with no alert and no line in
+# deploys.jsonl. Ignored dispositions are inherited, so docker and tee ignore it too.
+trap '' PIPE
 
 # shellcheck source=./lib.sh
 source "$(dirname "$0")/lib.sh"
 mkdir -p var/state/ops
+# Everything this script (and every command it runs) prints goes through tee into
+# var/deploy.log, which survives a dropped connection; CI still sees it live. With
+# SIGPIPE ignored, a write to the closed SSH pipe fails with EPIPE, and
+# `--output-error=warn` makes tee keep writing the file instead of exiting at the first
+# failed write (its default for a pipe). Stdout and stderr each get their own tee so they
+# stay separate streams for the caller. The log is rotated once at the start, never while
+# writing.
+if [[ -f var/deploy.log && $(stat -c '%s' var/deploy.log 2>/dev/null || echo 0) -gt 1048576 ]]; then
+  mv -f var/deploy.log var/deploy.log.1
+fi
+exec > >(exec tee -a --output-error=warn var/deploy.log) \
+  2> >(exec tee -a --output-error=warn var/deploy.log >&2)
+printf '=== deploy %s started %s ===\n' "${1:-?}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# A leftover half-written dump (a crash, a full disk) never outlives the run that made it.
+trap 'rm -f var/backups/pre-migrate.dump.tmp' EXIT
 # ssh-deploy.sh takes this lock itself, before its `git checkout`, and tells us so
 # with AUTOBOT_DEPLOY_LOCK_HELD=1 (fd 9 is inherited and still holds it).
 if [[ ${AUTOBOT_DEPLOY_LOCK_HELD:-} != 1 ]]; then
@@ -256,15 +276,40 @@ abort() {
 if ! "${compose[@]}" run --rm "$owner_svc" python manage.py migrate --check --noinput >/dev/null 2>&1; then
   echo 'Pending migrations: dumping the database before applying them' >&2
   mkdir -p var/backups
-  # It holds every client's data: owner-only, like the other backups (umask 077).
-  if (umask 077 && "${compose[@]}" exec -T db pg_dump -U postgres -d autobot -Fc \
-    >var/backups/pre-migrate.dump.tmp); then
-    mv var/backups/pre-migrate.dump.tmp var/backups/pre-migrate.dump || abort
-  else
+  pre_dump=var/backups/pre-migrate.dump
+  rm -f "$pre_dump.tmp"
+  # Same rule as backup.sh: a full disk must fail here, loudly, not leave a truncated
+  # dump that looks like a safety net. The dump is compressed, so the database's size is
+  # an upper bound; unknown (psql failed) falls back to the minimum.
+  db_bytes=$("${compose[@]}" exec -T db psql -U postgres -d autobot -Atc \
+    "select pg_database_size('autobot')" 2>/dev/null | tr -d '[:space:]') || db_bytes=
+  [[ $db_bytes =~ ^[0-9]+$ ]] || db_bytes=0
+  required=${AUTOBOT_BACKUP_MIN_FREE_BYTES:-536870912}
+  ((db_bytes > required)) && required=$db_bytes
+  free_bytes=$(df --output=avail -B1 var/backups | tail -n 1 | tr -d ' ')
+  if [[ ! $free_bytes =~ ^[0-9]+$ ]] || ((free_bytes < required)); then
+    echo "Not enough free disk space for the pre-migration dump (${free_bytes:-?} bytes free, $required needed)" >&2
     abort
   fi
+  # It holds every client's data: owner-only, like the other backups (umask 077).
+  if ! (umask 077 && "${compose[@]}" exec -T db pg_dump -U postgres -d autobot -Fc \
+    >"$pre_dump.tmp"); then
+    abort
+  fi
+  # A truncated dump is worse than none: pg_restore --list reads the table of contents a
+  # cut-off custom-format dump lacks (the same check backup.sh makes).
+  if [[ ! -s $pre_dump.tmp ]] || ! "${compose[@]}" exec -T db pg_restore --list <"$pre_dump.tmp" >/dev/null; then
+    echo 'The pre-migration dump failed pg_restore --list' >&2
+    abort
+  fi
+  mv "$pre_dump.tmp" "$pre_dump" || abort
 fi
-"${compose[@]}" run --rm "$owner_svc" python manage.py migrate --noinput || abort
+# lock_timeout: a migration that has to wait for a lock held by live traffic would
+# otherwise queue behind it and, with every new query queueing behind the migration, stall
+# all writes. After the timeout it fails instead, which aborts the deploy cleanly and
+# leaves the schema as it was (a migration runs in its own transaction); retry later.
+"${compose[@]}" run --rm -e PGOPTIONS="-c lock_timeout=${AUTOBOT_MIGRATE_LOCK_TIMEOUT:-5s}" \
+  "$owner_svc" python manage.py migrate --noinput || abort
 "${compose[@]}" run --rm "$owner_svc" python manage.py apply_grants || abort
 "${compose[@]}" run --rm "$owner_svc" python manage.py tenant_config validate --all || abort
 "${compose[@]}" run --rm "$owner_svc" python manage.py seed_demos || abort

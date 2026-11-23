@@ -24,7 +24,7 @@ from typing import Any
 from uuid import UUID
 
 import psycopg
-from django.db import DatabaseError, connections, transaction
+from django.db import DatabaseError, InterfaceError, OperationalError, connections, transaction
 
 from autobot.ops.audit import record
 from autobot.panel.errors import ApiError
@@ -242,6 +242,18 @@ def _error(exc: Exception) -> ApiError:
     return ApiError("bad_request", str(exc).strip()[:500] or "Consulta no válida.", 400)
 
 
+def _unavailable(exc: Exception) -> bool:
+    """A failure of the database itself (connection lost or refused, server shutting
+    down), not of the query. A timeout or a cancel (`QueryCanceled`, also an
+    OperationalError) is the query's fault and stays a 400."""
+    cause = exc.__cause__ or exc
+    if isinstance(cause, psycopg.errors.QueryCanceled):
+        return False
+    return isinstance(exc, (OperationalError, InterfaceError)) or isinstance(
+        cause, (psycopg.OperationalError, psycopg.InterfaceError)
+    )
+
+
 def run(sql: str, *, tenant_id: UUID | None, actor: str) -> QueryResult:
     sql = _clean(sql)
     if not _slots.acquire(blocking=False):
@@ -318,6 +330,10 @@ def _run(sql: str, *, tenant_id: UUID | None, actor: str) -> QueryResult:
             transaction.set_rollback(True, using="readonly")
     except (DatabaseError, psycopg.Error, ValueError) as exc:
         # DataError, a NUL byte, an invalid cast...: always the caller's fault, never a 500.
+        if _unavailable(exc):
+            raise ApiError(
+                "unavailable", "La base de datos no está disponible: inténtalo de nuevo.", 503
+            ) from None
         raise _error(exc) from None
     finally:
         if watchdog is not None:

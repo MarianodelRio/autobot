@@ -10,6 +10,7 @@ from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router, Schema
 from procrastinate.contrib.django.models import ProcrastinateEvent, ProcrastinateJob
+from pydantic import Field
 
 from autobot.ops import actions
 from autobot.ops.audit import record
@@ -271,7 +272,7 @@ class BulkPreviewOut(Schema):
 
 class BulkResendIn(BulkFilter):
     # Explicit selection; when given, the filters are ignored.
-    ids: list[UUID] | None = None
+    ids: list[UUID] | None = Field(default=None, max_length=actions.BULK_CAP)
     confirm_duplicate_risk: Any = False
 
 
@@ -287,6 +288,11 @@ def _bulk_queryset(f: BulkFilter) -> Any:
     bad = [x for x in f.statuses if x not in actions.BULK_STATUSES]
     if bad or not f.statuses:
         raise ApiError("bad_request", "Estado no válido para reenviar.", 400)
+    for bound in (f.since, f.until):
+        if bound is not None and bound.utcoffset() is None:
+            raise ApiError("bad_request", "Las fechas deben incluir zona horaria.", 400)
+    if f.since is not None and f.until is not None and f.since >= f.until:
+        raise ApiError("bad_request", "«Desde» debe ser anterior a «hasta».", 400)
     return actions.bulk_queryset(
         tenant_id=f.tenant_id, statuses=f.statuses, since=f.since, until=f.until
     )

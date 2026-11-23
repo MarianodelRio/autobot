@@ -1,7 +1,7 @@
 """Pure readers of host metrics and operational state files; no Django."""
 
 import json
-import shutil
+import os
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -86,14 +86,53 @@ def uptime_s(root: Path = PROC) -> float | None:
         return None
 
 
-def disk(path: str = "/") -> float | None:
+def swap(root: Path = PROC) -> float | None:
+    """Percent of swap in use; 0.0 on a host without swap."""
+    text = _read(root / "meminfo")
+    if text is None:
+        return None
+    values: dict[str, int] = {}
+    for line in text.splitlines():
+        key, _, rest = line.partition(":")
+        if key in ("SwapTotal", "SwapFree"):
+            try:
+                values[key] = int(rest.split()[0])
+            except IndexError, ValueError:
+                return None
+    total = values.get("SwapTotal")
+    free = values.get("SwapFree")
+    if total is None or free is None:
+        return None
+    if total <= 0:
+        return 0.0
+    return max(0.0, min(100.0, (1 - free / total) * 100))
+
+
+def _statvfs(path: str) -> os.statvfs_result | None:
     try:
-        usage = shutil.disk_usage(path)
+        return os.statvfs(path)
     except OSError:
         return None
-    if usage.total <= 0:
+
+
+def disk(path: str = "/") -> float | None:
+    """Percent of the filesystem a non-root process can no longer use. `shutil.disk_usage`
+    (used / total) ignores ext4's root-reserved blocks, so PostgreSQL (not root) hits
+    ENOSPC while it still reads below the critical threshold: `f_bavail` is what is left
+    for it."""
+    stat = _statvfs(path)
+    if stat is None or stat.f_blocks <= 0:
         return None
-    return max(0.0, min(100.0, usage.used / usage.total * 100))
+    return max(0.0, min(100.0, (1 - stat.f_bavail / stat.f_blocks) * 100))
+
+
+def inodes(path: str = "/") -> float | None:
+    """Percent of inodes in use (as seen by a non-root process); `None` on filesystems
+    without a fixed inode table (`f_files` is 0 there)."""
+    stat = _statvfs(path)
+    if stat is None or stat.f_files <= 0:
+        return None
+    return max(0.0, min(100.0, (1 - stat.f_favail / stat.f_files) * 100))
 
 
 def read_backup_status(state_dir: Path) -> dict[str, Any] | None:
@@ -119,7 +158,7 @@ def read_prune_status(state_dir: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def _parse_time(value: Any) -> datetime | None:
+def parse_time(value: Any) -> datetime | None:
     if not isinstance(value, str):
         return None
     try:
@@ -134,7 +173,7 @@ def prune_overdue(status: dict[str, Any] | None, now: datetime, limit: timedelta
     than `limit`. No file, or no snapshot at all, is not an alert: nothing to prune yet."""
     if status is None:
         return False
-    reference = _parse_time(status.get("last_prune_at")) or _parse_time(
+    reference = parse_time(status.get("last_prune_at")) or parse_time(
         status.get("oldest_snapshot_at")
     )
     return reference is not None and now - reference > limit

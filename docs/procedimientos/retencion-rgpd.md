@@ -71,7 +71,16 @@ pierde también esa supresión: el operador debe decirlo a quien lo pide.
 Las tablas de la cola (`procrastinate_jobs`/`procrastinate_events`) solo guardan ids y
 nombres de tarea, nunca datos personales. Un periódico propio (`jobs_cleanup`, 03:30
 UTC) borra los trabajos terminados de más de 30 días y **no** depende de
-`RETENTION_CLEANUP_ENABLED`, que solo gobierna los datos de clientes.
+`RETENTION_CLEANUP_ENABLED`, que solo gobierna los datos de clientes. Borra por lotes
+(2000 trabajos por sentencia, como mucho 500 lotes por pasada) para no superar el
+`statement_timeout` de `fp_app` y avanzar siempre, aunque haya mucha acumulación.
+
+La purga nocturna aísla a cada negocio: si falla en uno (se registra con `log.exception`,
+solo con su id), sigue con los demás y con las tablas de plataforma, y al final el trabajo
+`retention_cleanup` termina con `RetentionError` (queda `failed` en la cola, con los ids de
+los negocios afectados). Así un negocio con problemas no deja sin purgar a los siguientes,
+y el fallo es visible en Incidencias → Trabajos fallidos; la purga de esa noche se reintenta
+al día siguiente.
 
 ## Exportar, olvidar y purgar
 

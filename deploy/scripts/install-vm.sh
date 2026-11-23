@@ -309,6 +309,7 @@ check_base() {
   systemctl is-active --quiet systemd-timesyncd || return 1
   systemctl is-enabled --quiet autobot-containers.timer || return 1
   systemctl is-enabled --quiet autobot-prune.timer || return 1
+  systemctl is-enabled --quiet autobot-watchdog.timer || return 1
   systemctl is-enabled --quiet autobot-backup.timer || return 1
   ci_key_installed
 }
@@ -491,7 +492,7 @@ assert r["status"] == "ok" and r["tenants"]["unreadable"] == 0' <<<"$response" 2
     say '  [aviso] el reloj aún no está sincronizado (timedatectl show -p NTPSynchronized); repite en unos minutos'
   fi
   local timer
-  for timer in autobot-containers autobot-prune autobot-backup; do
+  for timer in autobot-containers autobot-prune autobot-watchdog autobot-backup; do
     if systemctl is-enabled --quiet "$timer.timer"; then
       say "  [ok]    $timer.timer activado"
     else

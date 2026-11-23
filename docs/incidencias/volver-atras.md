@@ -56,7 +56,7 @@ Un SHA nuevo rompe `/health` o el flujo tras desplegar, o llega `deploy_rollback
     ```
 
     La imagen de ese SHA tiene que seguir en GHCR (o en disco, si `prune.sh` aún no la quitó).
-4. No reviertas migraciones: deben ser compatibles hacia atrás (expandir y contraer). `abort` y la reversión automática restauran la imagen anterior, nunca el esquema. Si una migración ya aplicada hay que deshacerla a mano, `deploy.sh` deja un volcado previo en `var/backups/pre-migrate.dump` (se sobrescribe en cada despliegue con migraciones pendientes).
+4. No reviertas migraciones: deben ser compatibles hacia atrás (expandir y contraer). `abort` y la reversión automática restauran la imagen anterior, nunca el esquema. Si una migración ya aplicada hay que deshacerla a mano, `deploy.sh` deja un volcado previo en `var/backups/pre-migrate.dump` (se sobrescribe en cada despliegue con migraciones pendientes y `prune.sh` lo borra a las 48 horas: si lo necesitas, cópialo antes).
 5. Si la causa fue una configuración de negocio, no hace falta un SHA nuevo: la configuración está versionada en PostgreSQL y no vuelve atrás con la imagen. Publica una versión anterior importando un documento exportado (ver [negocio o canal](negocio-o-canal.md)):
 
     ```bash

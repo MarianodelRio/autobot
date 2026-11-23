@@ -486,3 +486,16 @@ def test_a_failed_demo_notice_is_retried_and_never_duplicated(
     drain()
     notices = [t for t in providers.texts(USER) if t.startswith("Demo · ")]
     assert len(notices) == 1
+
+
+def test_a_database_failure_storing_a_demo_update_is_503(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from django.db import OperationalError
+
+    def down(*args: object) -> bool:
+        raise OperationalError("connection refused")
+
+    tenants(demo("wa"))
+    monkeypatch.setattr("autobot.channels.demo.views.store_event", down)
+    assert say(USER, "hola") == 503

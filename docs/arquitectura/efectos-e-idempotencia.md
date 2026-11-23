@@ -27,6 +27,7 @@ stateDiagram-v2
     sending --> unknown: corte (reintento o barrida)
     pending --> expired: pasado expires_at, sin enviar
     expired --> pending: recordatorio revivido por el barrido
+    failed --> pending: recordatorio con rechazo auth, revivido por el barrido
     pending --> failed: payload caducado
     unknown --> sent: estado de entrega, o mark_sent
     unknown --> failed: estado de entrega failed
@@ -93,7 +94,7 @@ El procedimiento para el operador está en [envíos unknown](../incidencias/envi
 - Lo ambiguo no cambia: `unknown`, nunca reenviado a ciegas.
 - Con el **cortacircuitos del proveedor** abierto, el mensaje se aplaza sin llamar a Meta o Telegram (ver [cola y workers](cola-y-workers.md#cortacircuitos-del-proveedor)).
 
-Pasado `expires_at`, el siguiente run lo marca `expired` en lugar de enviarlo. Si era una **respuesta**, no se entrega (sus botones pueden estar obsoletos): se crea **una** disculpa (`APOLOGY_TEXT`, `core/conversation.py`), como mucho una por contacto cada 6 horas, idempotente por `apology:<id del mensaje caducado>`, que caduca a las 6 horas y no genera otra disculpa. Si era un **recordatorio**, queda `expired` sin disculpa; cuando el barrido del pack vuelve a ofrecer esa misma clave `reminder:*` y la cita sigue por delante, `create_proactive` lo revive (`pending`, `expires_at` nuevo, intentos a cero). Un `failed` (rechazo del proveedor), un `sent` o un `unknown` no se reviven.
+Pasado `expires_at`, el siguiente run lo marca `expired` en lugar de enviarlo. Si era una **respuesta**, no se entrega (sus botones pueden estar obsoletos): se crea **una** disculpa (`APOLOGY_TEXT`, `core/conversation.py`), como mucho una por contacto cada 6 horas, idempotente por `apology:<id del mensaje caducado>`, que caduca a las 6 horas y no genera otra disculpa. Si era un **recordatorio**, queda `expired` sin disculpa; cuando el barrido del pack vuelve a ofrecer esa misma clave `reminder:*` y la cita sigue por delante, `create_proactive` lo revive (`pending`, `expires_at` nuevo, intentos a cero). Un `failed` por rechazo de credenciales (`last_error` que empieza por `auth:`, un token revocado) también se revive igual, con la misma comprobación de `not_after`: tras arreglar el token, el barrido vuelve a ofrecer el recordatorio y sale. Un `failed` por otro motivo (`recipient`, `other`), un `sent` o un `unknown` no se reviven. Mientras el cortacircuitos está abierto, la espera de un mensaje nunca pasa de su `expires_at` (como en `RetryLater`).
 
 Las respuestas de un contacto salen en orden con el candado `out:<h>`; los envíos proactivos usan `outp:<h>`, así que un recordatorio atascado no bloquea una respuesta (y entre ambos tipos no hay orden). Un `resend` manual (`ops/actions.py`) da al mensaje un `expires_at` nuevo.
 

@@ -25,6 +25,7 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `DB_OWNER_URL` | URL de conexión del alias `owner` (`fp_owner`) | sí | `postgres://fp_owner:fp_owner@localhost:5433/autobot` | `ensure-env.sh` en el servidor (en prod, se rechaza si contiene `localhost`) |
 | `DB_READONLY_URL` | URL de conexión del alias `readonly` (`fp_readonly`) | sí | `postgres://fp_readonly:fp_readonly@localhost:5433/autobot` | `ensure-env.sh` en el servidor (en prod, se rechaza si contiene `localhost`) |
 | `DB_CONN_MAX_AGE` | Segundos que Django reutiliza una conexión a la BD (`default` y `owner`; `readonly` siempre 0) | no | `0` en los cuatro workers (local y prod); `web` usa el valor por defecto (gunicorn acota los hilos, así que las conexiones persistentes también están acotadas) | por defecto `60` |
+| `DB_CONNECT_TIMEOUT` | Segundos máximos para abrir una conexión a la BD (`connect_timeout` de libpq, en todos los alias y en el pool del worker). Además se activan siempre los keepalives TCP (30 s de inactividad, sondeo cada 10 s, 3 fallos) para que una red medio muerta no cuelgue las consultas hasta el timeout de gunicorn | no | sin definir | por defecto `5` |
 | `WORKER_DB_POOL_MIN` / `WORKER_DB_POOL_MAX` | Tamaño mínimo y máximo del pool psycopg propio de `procrastinate worker` (LISTEN, búsqueda, latido y cierre de los trabajos de `--concurrency`) | no | el compose fija `WORKER_DB_POOL_MAX` por worker: 8 (`worker-inbound`), 10 (`worker-calendar`), 6 (`worker-periodic`) y 10 (`worker-outbound`) | por defecto `1` y `6` |
 | `PYTHON_CPU_COUNT` | De Python, no de Autobot: fija cuántas CPU cree tener el proceso; el compose de producción lo pone en los workers para que el pool de hilos por defecto de asyncio (`min(32, CPU + 4)`), que ejecuta los trabajos síncronos, no limite su concurrencia (ADR-023) | no | sin definir | `compose.prod.yaml`: 4, 6, 4 y 6 |
 | `SECRETS_ENCRYPTION_KEY` | Claves Fernet (separadas por comas) para cifrar secretos de canal; la primera cifra, todas descifran | sí | clave de ejemplo en `.env.example` | `ensure-env.sh --first-install`, solo en la primera instalación; después, si falta, el despliegue aborta (ADR-022). En prod, `settings.py` y `ensure-env.sh` rechazan la clave de ejemplo |
@@ -92,7 +93,12 @@ No las lee Django: solo cambian el comportamiento del script en sí (pruebas loc
 | `AUTOBOT_INSTALL_LIB_ONLY` | `install-vm.sh` | Si es `1`, el script solo define sus funciones y se detiene antes de leer argumentos; lo usan los tests (`apps/backend/tests/tools/test_install_vm.py`) | sin definir |
 | `AUTOBOT_LIB_FUNCTIONS_ONLY` | `lib.sh` | Si es `1`, `lib.sh` solo define sus funciones (`compose_in`, `ensure_state_dirs`), sin comprobar el usuario ni cambiar de directorio; lo usan `localprod.sh` y `restore-test.sh` | sin definir |
 | `AUTOBOT_RESTORE_SKIP_BOOTSTRAP_CHECK` | `restore.sh` | Omite la comprobación del marcador de bootstrap; solo para ensayos en una máquina que no es una VM (`restore-test.sh`, `localprod.sh`) | `false` |
-| `AUTOBOT_BACKUP_MIN_FREE_BYTES` | `backup.sh` | Espacio libre mínimo exigido antes de volcar la base de datos (si el último volcado ×2 es mayor, se usa eso) | `536870912` (512 MiB) |
+| `AUTOBOT_BACKUP_MIN_FREE_BYTES` | `backup.sh`, `deploy.sh` | Espacio libre mínimo exigido antes de volcar la base de datos (en `backup.sh`, si el último volcado ×2 es mayor, se usa eso; en `deploy.sh`, el tamaño de la base si es mayor) | `536870912` (512 MiB) |
+| `AUTOBOT_BACKUP_DEPLOY_LOCK_WAIT` | `backup.sh` | Segundos que espera el candado de despliegue (compartido) antes de fallar visiblemente | `300` |
+| `AUTOBOT_MIGRATE_LOCK_TIMEOUT` | `deploy.sh` | `lock_timeout` de PostgreSQL para `migrate` (`PGOPTIONS`) | `5s` |
+| `AUTOBOT_WATCHDOG_DISK_PCT` | `watchdog.sh` | Porcentaje de disco usado a partir del cual avisa | `90` |
+| `AUTOBOT_WATCHDOG_STALE_MIN` | `watchdog.sh` | Minutos sin actualizarse `containers.json` para avisar | `15` |
+| `AUTOBOT_WATCHDOG_REPEAT_SECS` | `watchdog.sh` | Segundos mínimos entre dos avisos de la misma condición | `3600` |
 | `AUTOBOT_RESTIC_CHECK_SUBSET` | `backup.sh` | Porción de datos que lee la verificación semanal de `restic check` | `5%` |
 
 `var/.restic-repo-id` (no es variable de entorno, sino un fichero en el servidor) guarda

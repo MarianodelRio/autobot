@@ -1,6 +1,5 @@
 """`tenant_silent`, the daily Meta/Telegram channel checks and the external heartbeat."""
 
-import shutil
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid7
@@ -15,6 +14,7 @@ from autobot.runtime.models import InboundEvent
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.schema import WhatsAppChannel, WhatsAppSecrets
 from autobot.tenancy.tx import tenant_tx
+from tests.helpers.disk import fake_disk
 from tests.helpers.integration import demo_tenant, tg_tenant, wa_tenant
 
 pytestmark = [
@@ -31,9 +31,7 @@ def alerts(monkeypatch: pytest.MonkeyPatch, settings: Any) -> list[tuple[Any, ..
     settings.NOTIFY_BOT_TOKEN = ""
     monkeypatch.setattr(check, "send_ops_alert", lambda *args: found.append(args))
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
-    monkeypatch.setattr(
-        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 1, "total": 100})()
-    )
+    fake_disk(monkeypatch, 1)
     return found
 
 

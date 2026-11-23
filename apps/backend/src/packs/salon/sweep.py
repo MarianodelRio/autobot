@@ -55,7 +55,9 @@ def run(ctx: PackContext) -> list[Action]:
             and cfg.manual_confirmations_since is not None
             and event.created >= cfg.manual_confirmations_since
         ):
-            actions.append(_confirmation(ctx, event, target, params))
+            confirmation = _confirmation(ctx, event, target, params, now)
+            if confirmation is not None:
+                actions.append(confirmation)
     return actions
 
 
@@ -98,9 +100,13 @@ def _reminder(
 
 
 def _confirmation(
-    ctx: PackContext, event: CalEvent, target: ContactRef, params: list[str]
-) -> SendProactive:
-    """Ask the client of a manual booking to confirm or cancel it, and mark it pending."""
+    ctx: PackContext, event: CalEvent, target: ContactRef, params: list[str], now: datetime
+) -> SendProactive | None:
+    """Ask the client of a manual booking to confirm or cancel it, and mark it pending.
+    None (and no marker) if the notice would be born expired: an appointment starting in
+    less than `NOTICE_LEAD` must not be left "pendiente" with nobody told."""
+    if _not_after(event) <= now:
+        return None
     if parse_status(event.description) is None:
         try:
             booking.calendar(ctx).patch_description(event.gcal_id, {"Estado": "pendiente"})

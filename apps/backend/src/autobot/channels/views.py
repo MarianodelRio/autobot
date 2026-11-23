@@ -14,10 +14,11 @@ always accepted, whatever was counted before.
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
-from django.db import DataError
+from django.db import DataError, connections
 from django.db import Error as DatabaseError
 from django.http import HttpRequest, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -74,6 +75,43 @@ def json_object(request: HttpRequest) -> dict[str, Any] | None:
     except ValueError, RecursionError:
         return None
     return body if isinstance(body, dict) else None
+
+
+# fp_app's role-level statement_timeout (60 s) equals gunicorn's `--timeout`, so a stuck
+# query would be killed together with its worker. A webhook only inserts one row and
+# queues a job: if that takes longer than this the answer is 503 and the provider retries.
+WEBHOOK_STATEMENT_TIMEOUT = "5s"
+WEBHOOK_LOCK_TIMEOUT = "2s"
+
+
+@contextmanager
+def webhook_db_limits() -> Iterator[None]:
+    """Short `statement_timeout` and `lock_timeout` for the web request that stores an
+    update, so a slow or locked database fails fast (a `DatabaseError`, answered 503)
+    instead of holding one of the few gunicorn threads for 60 s.
+
+    Session-level, undone on exit: `tenant_tx` is a durable atomic block, so the limits
+    cannot be `SET LOCAL` inside it. It only runs on the web request path (`receive` and
+    the owner bot's webhook); workers and `telegram_poll` never enter it, so they keep
+    the role's timeout. If the reset fails the connection is dropped, never reused with
+    the short limits."""
+    connection = connections["default"]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('statement_timeout', %s, false),"
+            " set_config('lock_timeout', %s, false)",
+            [WEBHOOK_STATEMENT_TIMEOUT, WEBHOOK_LOCK_TIMEOUT],
+        )
+    try:
+        yield
+    finally:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("RESET statement_timeout")
+                cursor.execute("RESET lock_timeout")
+        except DatabaseError:
+            if not connection.in_atomic_block:
+                connection.close()
 
 
 def storage_failure(error: Exception, what: str) -> HttpResponse:
@@ -178,7 +216,8 @@ def receive(
     if body is None:
         return HttpResponse(status=400)
     try:
-        handle(body)
+        with webhook_db_limits():
+            handle(body)
     except (DatabaseError, ProcrastinateException) as e:  # the provider retries
         return storage_failure(e, f"Webhook of {who}")
     return HttpResponse(status=200)

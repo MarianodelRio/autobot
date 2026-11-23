@@ -1,15 +1,17 @@
 """Five-minute worker checks; external calls happen after tenant transactions."""
 
 import logging
+import os
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from statistics import median
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
 from django.conf import settings
 from django.core.cache import cache
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -27,7 +29,12 @@ from autobot.runtime.models import (
     Notification,
     OutboundMessage,
 )
-from autobot.runtime.notifications import bot_secrets, resolve_alert, send_ops_alert
+from autobot.runtime.notifications import (
+    UNDELIVERED,
+    bot_secrets,
+    resolve_alert,
+    send_ops_alert,
+)
 from autobot.runtime.outbound import RECONCILE_WAIT
 from autobot.runtime.periodic import channels_for
 from autobot.runtime.sweeps import SweepResult, sweep_tenant
@@ -37,6 +44,20 @@ from autobot.tenancy.tx import tenant_tx
 SAMPLE_RETENTION = timedelta(days=62)
 DISK_WARNING_PCT = 80
 DISK_CRITICAL_PCT = 95
+# Inodes: ext4 fixes their number at format time; running out gives ENOSPC with free bytes.
+INODES_WARNING_PCT = 80
+INODES_CRITICAL_PCT = 95
+# Sustained pressure: the reading of this run and the previous sample (taken by the run
+# before, so at most SAMPLE_MAX_AGE old) must both be above the threshold.
+MEMORY_HIGH_PCT = 90
+LOAD_PER_CPU = 2.0
+SWAP_HIGH_PCT = 50
+SAMPLE_MAX_AGE = timedelta(minutes=15)
+# backup.sh runs hourly and writes backup.json on exit, successful or not.
+BACKUP_STALE = timedelta(hours=3)
+# An open critical alert whose Telegram delivery failed this long means the alert channel
+# is broken: the success heartbeat is withheld so healthchecks.io warns from outside.
+ALERT_CHANNEL_GRACE = timedelta(minutes=15)
 # The operator prunes the backup repository by hand (ADR-021); ops_check alerts when the
 # last prune (a marker snapshot, read by backup.sh into backup-prune.json) is older.
 PRUNE_OVERDUE = timedelta(days=10)
@@ -225,11 +246,15 @@ def _check_tenant(
             )
         # Notices held because the owner never linked a chat are not failures (they go out
         # when they link), but a real business whose owner hears nothing needs a nudge.
+        # `reconcile.expire_held` turns them into `expired` after NOTICE_TTL, so those of
+        # the last 24 h count too, or the alert would resolve itself with nothing fixed.
         if (
             not tenant.is_demo
             and tenant.document.status == "active"
+            and links.owner_chat(tenant.id) is None
             and Notification.objects.filter(
-                status=Notification.Status.HELD, created_at__gte=day_ago
+                status__in=(Notification.Status.HELD, Notification.Status.EXPIRED),
+                created_at__gte=day_ago,
             ).exists()
         ):
             pending.append(
@@ -345,10 +370,17 @@ class OutageScope:
     google_down: bool
     affected: int
     calendar_tenants: int
+    # Tenants whose pack calls Calendar: a Google outage does not explain the errors of
+    # the others (e.g. bus), which keep their own alert.
+    calendar_ids: frozenset[UUID] = frozenset()
 
-    def explains(self, kind: str) -> bool:
+    def explains(self, kind: str, tenant_id: UUID | None = None) -> bool:
         return kind in self.provider_kinds or (
-            self.google and (_google_signal(kind) or kind.startswith("errors:"))
+            self.google
+            and (
+                _google_signal(kind)
+                or (kind.startswith("errors:") and tenant_id in self.calendar_ids)
+            )
         )
 
 
@@ -359,14 +391,15 @@ def outage_scope(
         PROVIDER_HEALTH_KINDS[p]
         for p in {*state.providers_down(now), *state.providers_recovering(now, OUTAGE_GRACE)}
     )
-    calendar_tenants = sum(
-        1
+    calendar_ids = frozenset(
+        t.id
         for t in tenants
         if t.pack is not None
         and t.pack.needs_calendar
         and not t.is_degraded
         and t.document.status != "offboarded"
     )
+    calendar_tenants = len(calendar_ids)
     affected = len({f.tenant_id for f in findings if f.tenant_id and _google_signal(f.kind)})
     google_down = affected >= GOOGLE_OUTAGE_MIN and affected >= (
         GOOGLE_OUTAGE_RATIO * calendar_tenants
@@ -379,7 +412,12 @@ def outage_scope(
         ).exists()
     )
     return OutageScope(
-        provider_kinds, google_down or recovering, google_down, affected, calendar_tenants
+        provider_kinds,
+        google_down or recovering,
+        google_down,
+        affected,
+        calendar_tenants,
+        calendar_ids,
     )
 
 
@@ -391,7 +429,9 @@ def _suppress_outages(
     the per-tenant findings that the Meta, Telegram or Google outage explains."""
     scope = outage_scope(findings, tenants, now)
     out = [
-        replace(f, suppressed=True) if f.tenant_id is not None and scope.explains(f.kind) else f
+        replace(f, suppressed=True)
+        if f.tenant_id is not None and scope.explains(f.kind, f.tenant_id)
+        else f
         for f in findings
     ]
     if scope.google_down:
@@ -407,12 +447,126 @@ def _suppress_outages(
     return out
 
 
+def _pressure_findings(now: datetime) -> list[Finding]:
+    """Sustained memory or load and swap in use. Memory and load need this run's reading
+    and the previous sample (stored by `take_sample`) above the threshold, so a spike
+    does not alert; swap in use is already a sustained condition."""
+    out: list[Finding] = []
+    previous = SystemSample.objects.order_by("-taken_at").first()
+    if previous is not None and now - previous.taken_at > SAMPLE_MAX_AGE:
+        previous = None  # the check was not running: no evidence of "sustained"
+    mem = system.memory()
+    if (
+        mem is not None
+        and mem > MEMORY_HIGH_PCT
+        and previous is not None
+        and (previous.mem_used_pct or 0) > MEMORY_HIGH_PCT
+    ):
+        out.append(
+            Finding("memory_high", None, "🟠 Memoria por encima del 90 % de forma sostenida.")
+        )
+    load_limit = LOAD_PER_CPU * (os.cpu_count() or 1)
+    current_load = system.load()
+    if (
+        current_load is not None
+        and current_load > load_limit
+        and previous is not None
+        and (previous.load1 or 0) > load_limit
+    ):
+        out.append(
+            Finding(
+                "load_high",
+                None,
+                f"🟠 Carga del sistema por encima de {LOAD_PER_CPU:g} por CPU de forma sostenida.",
+            )
+        )
+    swap = system.swap()
+    if swap is not None and swap > SWAP_HIGH_PCT:
+        out.append(Finding("swap_high", None, "🟠 Swap en uso por encima del 50 %."))
+    return out
+
+
+def _backup_findings(now: datetime) -> list[Finding]:
+    """`backup.json` is written by `backup.sh` on every exit (hourly). No file at all is a
+    server that has not backed up yet, not an alert."""
+    status = system.read_backup_status(settings.OPS_STATE_DIR)
+    if status is None:
+        return []
+    finished = system.parse_time(status.get("finished_at"))
+    if status.get("ok") is False:
+        return [
+            Finding(
+                "backup_stale",
+                None,
+                "🟠 El último backup terminó con error (`journalctl -u autobot-backup`).",
+            )
+        ]
+    if finished is None or now - finished > BACKUP_STALE:
+        return [
+            Finding(
+                "backup_stale",
+                None,
+                "🟠 Hace más de 3 horas que no termina un backup (el timer es horario).",
+            )
+        ]
+    return []
+
+
+def _tls_findings() -> list[Finding]:
+    """Days left of the public certificate, checked about once a day (and every 15 min
+    while it is a problem). No network call inside a transaction: none is open here."""
+    host = urlsplit(settings.PUBLIC_URL).hostname
+    if not host or host == "localhost" or host.endswith((".local", ".ngrok-free.app")):
+        return []
+    issues = health.daily("tls", lambda: health.tls_health(host))
+    return [Finding(issue.code, None, f"{issue.severity} {issue.message}") for issue in issues]
+
+
+def _alert_channel_broken(now: datetime) -> bool:
+    """An open critical alert that has not reached the operator for ALERT_CHANNEL_GRACE:
+    the Telegram alert channel itself is down (revoked token, wrong chat id)."""
+    return OpsAlert.objects.filter(
+        resolved_at__isnull=True,
+        severity="critical",
+        last_delivery__in=UNDELIVERED,
+        first_seen_at__lt=now - ALERT_CHANNEL_GRACE,
+    ).exists()
+
+
+def _heartbeat(*, fail: bool) -> None:
+    url = settings.HEALTHCHECKS_PING_URL
+    if fail:
+        parts = urlsplit(url)
+        url = parts._replace(path=parts.path.rstrip("/") + "/fail").geturl()
+    try:
+        response = httpx.get(url, timeout=10)
+        if not response.is_success:
+            log.warning("healthchecks heartbeat rejected (HTTP %s)", response.status_code)
+    except httpx.HTTPError:
+        log.warning("healthchecks heartbeat unavailable")
+
+
 def collect() -> list[Finding]:
     findings: list[Finding] = []
     now = timezone.now()
     # Query the platform tables as fp_app: no customer data and no owner bypass.
+    lags: list[queues.QueueLag] = []
     with connection.cursor() as cursor:
-        lags = queues.queue_lags(cursor, now)
+        try:
+            with transaction.atomic():  # a savepoint: a failed query must not poison the rest
+                lags = queues.queue_lags(cursor, now)
+        except DatabaseError:
+            # Typically the statement timeout under a huge backlog: the very moment the
+            # lag matters. Say so instead of aborting the whole check (and its heartbeat).
+            log.exception("queue lag query failed")
+            findings.append(
+                Finding(
+                    "queue_lag_unknown",
+                    None,
+                    "🟠 No se pudo medir el atraso de las colas (consulta fallida o"
+                    " demasiado lenta): puede haber una cola muy acumulada.",
+                )
+            )
         cursor.execute(
             """SELECT EXISTS(SELECT 1 FROM procrastinate_events e
             JOIN procrastinate_jobs j ON j.id = e.job_id
@@ -544,16 +698,25 @@ def collect() -> list[Finding]:
     # and the backups' local temp under /srv/autobot/var, which backup.sh needs free for the
     # dump); /run/ops is the bind mount of /srv/autobot/var/state/ops, so it is measured too
     # in case `/srv` is a separate volume: the fullest one counts.
-    disk_readings = [
-        used
-        for used in (system.disk("/"), system.disk(str(settings.OPS_STATE_DIR)))
-        if used is not None
-    ]
+    disk_paths = ("/", str(settings.OPS_STATE_DIR))
+    disk_readings = [used for used in map(system.disk, disk_paths) if used is not None]
     disk_used_pct = max(disk_readings, default=None)
     if disk_used_pct is not None and disk_used_pct > DISK_CRITICAL_PCT:
         findings.append(Finding("disk_critical", None, "🔴 Disco por encima del 95 %."))
     elif disk_used_pct is not None and disk_used_pct > DISK_WARNING_PCT:
         findings.append(Finding("disk", None, "🟠 Disco por encima del 80 %."))
+    inode_readings = [used for used in map(system.inodes, disk_paths) if used is not None]
+    inodes_used_pct = max(inode_readings, default=None)
+    if inodes_used_pct is not None and inodes_used_pct > INODES_CRITICAL_PCT:
+        findings.append(
+            Finding("inodes_critical", None, "🔴 Inodos del disco por encima del 95 %.")
+        )
+    elif inodes_used_pct is not None and inodes_used_pct > INODES_WARNING_PCT:
+        findings.append(Finding("inodes", None, "🟠 Inodos del disco por encima del 80 %."))
+    findings.extend(_pressure_findings(now))
+    if not settings.IS_LOCAL:
+        findings.extend(_backup_findings(now))
+        findings.extend(_tls_findings())
     if not settings.IS_LOCAL and system.prune_overdue(
         system.read_prune_status(settings.OPS_STATE_DIR), now, PRUNE_OVERDUE
     ):
@@ -599,7 +762,9 @@ def sync_alerts(findings: list[Finding]) -> None:
         # Explained by an outage with its own alert, even if its finding has just gone
         # (the tenants recover together): resolved without a message of its own.
         if key in quiet or (
-            key not in seen and alert.tenant_id is not None and scope.explains(alert.kind)
+            key not in seen
+            and alert.tenant_id is not None
+            and scope.explains(alert.kind, alert.tenant_id)
         ):
             resolve_alert(alert, by="outage", notify=False)
         elif key not in seen:
@@ -625,9 +790,7 @@ def run() -> None:
     take_sample()
     # No finally: a failed DB/global check must prevent a success heartbeat.
     if settings.HEALTHCHECKS_PING_URL:
-        try:
-            response = httpx.get(settings.HEALTHCHECKS_PING_URL, timeout=10)
-            if not response.is_success:
-                log.warning("healthchecks heartbeat rejected (HTTP %s)", response.status_code)
-        except httpx.HTTPError:
-            log.warning("healthchecks heartbeat unavailable")
+        broken = _alert_channel_broken(timezone.now())
+        if broken:
+            log.error("alert channel broken: critical alert undelivered, sending /fail ping")
+        _heartbeat(fail=broken)

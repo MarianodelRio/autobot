@@ -65,6 +65,29 @@ def test_manual_confirmation_cutoff_and_status(salon: Conversation) -> None:
     assert salon.run_periodic("calendar_sweep") == actions
 
 
+def test_no_confirmation_nor_pending_marker_when_the_notice_would_be_born_expired(
+    salon: Conversation,
+) -> None:
+    """A manual booking starting in under 30 minutes: its notice would expire at birth, so
+    it is neither emitted nor is the event marked "pendiente" with nobody told."""
+    salon.config = configuration(
+        manual_confirmations_enabled=True,
+        manual_confirmations_since=salon.clock.now() - timedelta(hours=2),
+    )
+    if salon.channel == "telegram":
+        return  # manual confirmations are phone-only (WhatsApp)
+    now = salon.clock.now()
+    soon = upcoming(salon, manual=True, gcal_id="soon")
+    salon.calendar.add(
+        replace(soon, start=now + timedelta(minutes=20), end=now + timedelta(minutes=50))
+    )
+    upcoming(salon, manual=True, gcal_id="later")
+    salon.run_periodic("calendar_sweep")
+    assert [a.idem_key for a in salon.proactive] == ["confirm:later"]
+    assert "Estado:" not in salon.calendar.events["soon"].description
+    assert "Estado: pendiente" in salon.calendar.events["later"].description
+
+
 def test_a_failed_patch_skips_that_appointment_not_the_whole_sweep(
     salon: Conversation,
 ) -> None:

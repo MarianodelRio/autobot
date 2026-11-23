@@ -194,6 +194,10 @@ def _cooldown_key(kind: str, tenant_id: UUID | None) -> str:
     return f"ops:{_alert_digest(kind, tenant_id).hex()}"
 
 
+# `OpsAlert.last_delivery` values of an alert that never reached the operator.
+UNDELIVERED = ("failed", "unconfigured")
+
+
 def send_ops_alert(
     kind: str, tenant_id: UUID | None, text: str, *, informational: bool = False
 ) -> bool:
@@ -248,7 +252,11 @@ def send_ops_alert(
                 alert = existing
             send = cache.add(key, True, timeout=COOLDOWN_S)
         if not send:
-            OpsAlert.objects.filter(id=alert.id).update(last_delivery="cooldown")
+            # A delivery that failed (or had nowhere to go) stays visible while the
+            # cooldown lasts: ops_check withholds its heartbeat on it.
+            OpsAlert.objects.filter(id=alert.id).exclude(last_delivery__in=UNDELIVERED).update(
+                last_delivery="cooldown"
+            )
             return False
     if not settings.OPS_TELEGRAM_CHAT_ID or bot_secrets() is None:
         log.warning("ops alert %s only logged: recipient or bot unconfigured", kind)

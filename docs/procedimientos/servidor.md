@@ -157,6 +157,17 @@ necesitan `sudo`, como `admin`.
 - Memoria de la VPS objetivo (4 vCPU, 8 GB): los `mem_limit` de `compose.prod.yaml` suman
   5,6 GB (`db` 2,5 GB con `shared_buffers=1GB`); ver
   [capacidad y crecimiento](../arquitectura/capacidad-y-crecimiento.md#servidor-y-proveedor).
+  Cada contenedor lleva `memswap_limit` igual a su `mem_limit` (sin swap: una fuga muere por
+  OOM y se reinicia, en vez de hundir la VPS en swap) y cada `/tmp` en `tmpfs` tiene
+  `size=` (64 MB en `web`, `web-panel` y workers; 16 MB en `panel` y `victorialogs`).
+- Healthchecks de Docker: `db` (con `start_period: 60s` para la recuperación tras un
+  apagado sucio), `web`, `web-panel`, `panel` y `caddy` (API de administración en
+  `127.0.0.1:2019`). Los workers no tienen: `procrastinate healthchecks` solo comprueba la
+  conexión y la tabla de la base (no que el worker procese) y arrancaría un proceso Django
+  completo cada intervalo; `deploy.sh` ya vigila que no se reinicien y el latido externo de
+  `ops_check` cubre uno colgado.
+- Vigilante del host: `autobot-watchdog.timer` (disco, `db`, instantánea del host) avisa a
+  Telegram sin depender de la base ([despliegue.md](despliegue.md#vigilante-del-host-watchdogsh)).
 - Los secretos de canal están cifrados en la BD con `SECRETS_ENCRYPTION_KEY`; configúrala
   en `.env` antes del primer despliegue y conserva su copia con los backups
   ([rotar-secretos.md](rotar-secretos.md)).

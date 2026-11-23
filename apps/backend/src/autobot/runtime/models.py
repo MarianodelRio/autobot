@@ -151,6 +151,9 @@ class OutboundMessage(TenantScoped):
     # Until when it may still be sent (ADR-024); NULL on rows from before it existed, which
     # never expire. Past it, the message is left `expired` instead of delivered.
     expires_at = models.DateTimeField(null=True, blank=True)
+    # The pack's `SendProactive.not_after`, kept so a person's resend of an `expired`
+    # reminder never outlives its usefulness; NULL on replies and on older rows.
+    not_after = models.DateTimeField(null=True, blank=True)
     attempts = models.IntegerField(default=0, db_default=0)
     # Times `reconcile_unknown` resent it after an ambiguous send (ADR-026): at most 1. A
     # person's resend also sets it, so a decision of theirs is never doubled by the platform.

@@ -551,3 +551,13 @@ def test_a_nul_in_an_owner_update_is_stored_clean(tenants: Any, providers: Provi
     tenants(wa_tenant())
     assert post(say(OWNER_CHAT, "ho\x00la")) == 200
     assert "\\u0000" not in json.dumps(OwnerEvent.objects.get().payload)
+
+
+def test_a_database_failure_storing_an_owner_update_is_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    from django.db import OperationalError
+
+    def down(*args: object) -> bool:
+        raise OperationalError("connection refused")
+
+    monkeypatch.setattr("autobot.owner.views.store_owner_event", down)
+    assert post(say(OWNER_CHAT, "hola")) == 503

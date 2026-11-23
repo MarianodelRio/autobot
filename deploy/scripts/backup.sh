@@ -40,13 +40,23 @@ ledger_file=var/backups/privacy-ledger.jsonl
 ledger_tmp=var/backups/.privacy-ledger.tmp
 ledger_ok=true
 dump_bytes=0
+# The size of the last good dump stays in backup.json when this run fails before
+# producing one: it is the reference for the free-space check of the next run.
+last_dump_bytes=$(python3 -c 'import json,sys
+try:
+    print(int(json.load(open(sys.argv[1]))["dump_bytes"]))
+except Exception:
+    print(0)' var/state/ops/backup.json 2>/dev/null) || last_dump_bytes=0
+[[ $last_dump_bytes =~ ^[0-9]+$ ]] || last_dump_bytes=0
+deployed_sha_stage=var/backups/deployed-sha
 
 # Runs on every exit, success or failure: records the outcome for the panel and
 # never leaves the plaintext dump on disk once restic has it.
 write_status() {
   local code=$? ok=false status_tmp
   [[ $code -eq 0 ]] && ok=true
-  rm -f "$dump_tmp" var/backups/autobot.dump "$env_stage" "$ledger_file" "$ledger_tmp"
+  rm -f "$dump_tmp" var/backups/autobot.dump "$env_stage" "$ledger_file" "$ledger_tmp" "$deployed_sha_stage"
+  ((dump_bytes > 0)) || dump_bytes=$last_dump_bytes
   status_tmp=$(mktemp var/state/ops/.backup.json.XXXXXXXX)
   printf '{"finished_at":"%s","ok":%s,"dump_bytes":%s}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ok" "$dump_bytes" >"$status_tmp"
@@ -85,11 +95,6 @@ fi
 # the size of the last successful dump (or AUTOBOT_BACKUP_MIN_FREE_BYTES, 512 MiB by
 # default, if that is bigger or unknown), so a full disk fails here, loudly, instead
 # of leaving a truncated dump for restic to upload.
-last_dump_bytes=$(python3 -c 'import json,sys
-try:
-    print(int(json.load(open(sys.argv[1]))["dump_bytes"]))
-except Exception:
-    print(0)' var/state/ops/backup.json 2>/dev/null) || last_dump_bytes=0
 min_free=${AUTOBOT_BACKUP_MIN_FREE_BYTES:-536870912}
 required=$((last_dump_bytes * 2))
 ((required > min_free)) || required=$min_free
@@ -98,6 +103,22 @@ if [[ ! $free_bytes =~ ^[0-9]+$ ]] || ((free_bytes < required)); then
   echo "Not enough free disk space for the dump (${free_bytes:-?} bytes free, $required needed)" >&2
   exit 1
 fi
+
+# A deploy changes the schema and var/.deployed-sha in two separate steps; a snapshot
+# taken in between would pair a new schema with the old SHA, and restore.sh would then
+# bring up old code on a migrated database. Hold deploy.sh's lock in shared mode (like
+# prune.sh: it only ever blocks against a deploy's exclusive one, never another backup)
+# from before the SHA is read until the dump is verified, and keep that SHA as its own
+# staged file, which restore.sh prefers: the upload below runs without the lock, and
+# var/.deployed-sha may move on while it does. If a deploy outlasts the wait, the run fails
+# visibly (ok=false in backup.json, no ping) and the next hourly one takes its turn.
+exec 8>var/.deploy.lock
+if ! flock -s -w "${AUTOBOT_BACKUP_DEPLOY_LOCK_WAIT:-300}" 8; then
+  echo 'A deployment held its lock for too long; backup skipped (it fails visibly, the next run retries)' >&2
+  exit 1
+fi
+cp var/.deployed-sha "$deployed_sha_stage"
+test -s "$deployed_sha_stage"
 
 "${compose[@]}" exec -T db \
   pg_dump -U postgres -d autobot -Fc >"$dump_tmp"
@@ -112,6 +133,7 @@ if ! "${compose[@]}" exec -T db pg_restore --list <"$dump_tmp" >/dev/null; then
 fi
 mv "$dump_tmp" var/backups/autobot.dump
 dump_bytes=$(stat -c '%s' var/backups/autobot.dump)
+flock -u 8  # the dump and the SHA that matches it are staged; a deploy may proceed now
 
 # The Fernet key (SECRETS_ENCRYPTION_KEY, which decrypts every tenant_secret row of the
 # dump) must not travel in the same snapshot as the data it protects (ADR-021): the
@@ -126,7 +148,7 @@ if grep -qE 'SECRETS_ENCRYPTION_KEY' "$env_stage"; then
   exit 1
 fi
 test -s "$env_stage"
-backup_paths=("$env_stage" var/backups/autobot.dump var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile)
+backup_paths=("$env_stage" var/backups/autobot.dump "$deployed_sha_stage" var/.deployed-sha var/google_sa.json deploy/caddy/Caddyfile)
 # Caddy's own state (its ACME account and certificates: losing them means
 # reissuing from scratch) and the deploy log. Optional: missing on a target that
 # was bootstrapped but never deployed to yet, which must not fail the backup.

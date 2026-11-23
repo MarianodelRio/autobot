@@ -17,6 +17,7 @@ Messages never contain secret values.
 
 import json
 import logging
+import os
 import threading
 import time
 from collections.abc import Iterable, Iterator, Mapping
@@ -434,8 +435,30 @@ _registry: Registry | None = None
 _revision: int | None = None
 _checked_at = 0.0
 _registry_lock = threading.Lock()  # held while checking the revision and rebuilding
-_refreshing = threading.Lock()  # held by the single background rebuild in flight
-_refresh_thread: threading.Thread | None = None
+# The background refresher: ONE persistent daemon thread per process, started lazily. It
+# sleeps on `_refresh_wanted` and keeps its own Django connection between checks (so the
+# web does not connect/authenticate/close every 2 s window); it closes it only when a
+# check failed or the connection is unusable/obsolete. `_refresh_state` (under
+# `_refresh_cv`) is "idle", "queued" (requested, not started) or "running".
+_refresh_cv = threading.Condition()
+_refresh_state = "idle"
+_refresher: threading.Thread | None = None
+_refresher_pid = 0
+_last_reload_ok = True
+
+
+def _after_fork_in_child() -> None:
+    """A forked process (gunicorn with `--preload`, a worker) has none of the parent's
+    threads, and may have inherited a lock held by one: start over with fresh primitives,
+    keeping the loaded snapshot."""
+    global _registry_lock, _refresh_cv, _refresh_state, _refresher, _refresher_pid
+    _registry_lock = threading.Lock()
+    _refresh_cv = threading.Condition()
+    _refresh_state = "idle"
+    _refresher, _refresher_pid = None, 0
+
+
+os.register_at_fork(after_in_child=_after_fork_in_child)
 
 
 def reset_registry() -> None:
@@ -447,10 +470,9 @@ def reset_registry() -> None:
 
 
 def wait_for_refresh(timeout: float | None = 30) -> None:
-    """Wait for the background rebuild in flight, if any (tests, shutdown)."""
-    thread = _refresh_thread
-    if thread is not None and thread is not threading.current_thread():
-        thread.join(timeout)
+    """Wait for the background rebuild queued or in flight, if any (tests, shutdown)."""
+    with _refresh_cv:
+        _refresh_cv.wait_for(lambda: _refresh_state == "idle", timeout)
 
 
 def warm_up() -> None:
@@ -504,10 +526,12 @@ def _reload_locked(now: float) -> Registry:
 
     The new snapshot is published only once complete; if the rebuild fails the
     previous one stays (the first load propagates the error)."""
-    global _registry, _revision, _checked_at
+    global _registry, _revision, _checked_at, _last_reload_ok
+    _last_reload_ok = False
     try:
         if _registry is not None and _read_revision() == _revision:
             _checked_at = now
+            _last_reload_ok = True
             return _registry
         from packs.registry import PACKS
 
@@ -526,44 +550,81 @@ def _reload_locked(now: float) -> Registry:
         log.exception("Configuration rebuild failed; keeping the loaded registry")
         return _registry
     _registry, _revision, _checked_at = registry, revision, now
+    _last_reload_ok = True
     return registry
 
 
-def _background_refresh() -> None:
-    try:
-        with _registry_lock:
-            _reload_locked(time.monotonic())
-    finally:
-        connections.close_all()
-        _refreshing.release()
+def _is_queued() -> bool:
+    return _refresh_state == "queued"
+
+
+def _refresher_loop(cv: threading.Condition) -> None:
+    """The refresher thread: one check/rebuild per request, on its own connection."""
+    global _refresh_state
+    connection = connections["default"]
+    while True:
+        with cv:
+            cv.wait_for(_is_queued)
+            _refresh_state = "running"
+        try:
+            connection.close_if_unusable_or_obsolete()
+            connection.close_if_health_check_failed()
+        except Exception:
+            # The kept connection is broken (or cannot even be checked): drop it and
+            # still try the reload, which opens a fresh one, rather than skip this round.
+            connections.close_all()
+        try:
+            with _registry_lock:
+                _reload_locked(time.monotonic())
+                ok = _last_reload_ok
+        except Exception:
+            log.exception("Registry refresher failed")
+            ok = False
+        if not ok:
+            connections.close_all()  # never keep a connection that just failed
+        with cv:
+            _refresh_state = "idle"
+            cv.notify_all()
+
+
+def _request_refresh() -> None:
+    """Ask the refresher for one check, unless one is queued or running."""
+    global _refresher, _refresher_pid, _refresh_state
+    with _refresh_cv:
+        if _refresh_state != "idle":
+            return
+        if _refresher is None or _refresher_pid != os.getpid() or not _refresher.is_alive():
+            thread = threading.Thread(
+                target=_refresher_loop, args=(_refresh_cv,), name="registry-refresh", daemon=True
+            )
+            try:
+                thread.start()  # cannot start a thread: serve the old snapshot
+            except RuntimeError:
+                return
+            _refresher, _refresher_pid = thread, os.getpid()
+        _refresh_state = "queued"
+        _refresh_cv.notify_all()
 
 
 def _cached_registry(*, force: bool = False) -> Registry:
     """Stale-while-revalidate. Within 2 s of the last check the loaded snapshot is
-    returned. After that, the first caller starts ONE background thread that checks
-    the revision and rebuilds if it changed; everyone keeps using the previous
-    snapshot until the new one is swapped in, so no request or job waits for a
+    returned. After that, the first caller wakes the process's single refresher thread,
+    which checks the revision and rebuilds if it changed; everyone keeps using the
+    previous snapshot until the new one is swapped in, so no request or job waits for a
     rebuild (3.8 s at 300 tenants, 40 s at 3,000).
 
     Synchronous (blocking) paths: the very first load, and `force`, which skips the
     window and re-checks the revision now. Callers that need fresh config right after
     a write (just-created tenant not found, panel services) use `force`: with several
     gunicorn workers this process's own cache may be behind the write."""
-    global _checked_at, _refresh_thread
+    global _checked_at
     now = time.monotonic()
     current = _registry
     if not force and current is not None and now - _checked_at < 2:
         return current
     if not force and current is not None:
-        if _refreshing.acquire(blocking=False):
-            _checked_at = now  # one check per window, whatever the rebuild takes
-            _refresh_thread = threading.Thread(
-                target=_background_refresh, name="registry-refresh", daemon=True
-            )
-            try:
-                _refresh_thread.start()
-            except RuntimeError:  # cannot start a thread: serve the old snapshot
-                _refreshing.release()
+        _checked_at = now  # one check per window, whatever the rebuild takes
+        _request_refresh()
         return current
     with _registry_lock:
         now = time.monotonic()

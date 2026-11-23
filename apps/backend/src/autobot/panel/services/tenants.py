@@ -522,6 +522,9 @@ def tenant_owner_invite(slug: str, actor: str) -> OwnerInviteOut:
 # The whole export is built in memory and sent as one JSON response: past this many
 # rows it is the `tenant_data_export` command's job (it writes a private file).
 MAX_EXPORT_ROWS = 50_000
+# ... and past this many bytes of JSON (inbound events carry payloads of up to 256 KB, and
+# `web-panel` has a 512 MB memory limit; Python objects weigh several times their JSON).
+MAX_EXPORT_BYTES = 25 * 1024 * 1024
 
 
 class ExportOut(Schema):
@@ -559,7 +562,15 @@ def tenant_export(slug: str, *, actor: str) -> ExportOut:
                 f"Hay más de {MAX_EXPORT_ROWS} filas: usa el comando tenant_data_export.",
                 413,
             )
-        data = privacy.export_data(db_tenant)
+        try:
+            data = privacy.export_data(db_tenant, max_bytes=MAX_EXPORT_BYTES)
+        except privacy.ExportTooLarge:
+            raise ApiError(
+                "too_large",
+                f"La exportación supera {MAX_EXPORT_BYTES // (1024 * 1024)} MB: "
+                "usa el comando tenant_data_export.",
+                413,
+            ) from None
     # Audited before the data leaves: if the audit fails, nothing is returned.
     record_tenant(actor, "tenant.export", tenant, "Exportación de datos del negocio")
     return ExportOut(**data)

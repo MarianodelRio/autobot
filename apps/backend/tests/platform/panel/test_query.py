@@ -3,11 +3,12 @@ guards and behaviour of `panel.services.query.run`."""
 
 import threading
 import time
+from types import SimpleNamespace
 from typing import Any
 
 import psycopg
 import pytest
-from django.db import connections, transaction
+from django.db import OperationalError, connections, transaction
 
 from autobot.ops.models import AuditEvent
 from autobot.panel.errors import ApiError
@@ -109,6 +110,22 @@ def test_sensitive_table_is_permission_denied() -> None:
 def test_statement_timeout_cuts_a_slow_query() -> None:
     with pytest.raises(ApiError):
         query.run("SELECT pg_sleep(11)", tenant_id=None, actor="operator")
+
+
+def test_a_database_outage_is_503_but_a_timeout_stays_400(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        raise OperationalError("connection to server at 10.0.0.5 refused")
+
+    monkeypatch.setattr(query, "transaction", SimpleNamespace(atomic=refuse))
+    with pytest.raises(ApiError) as excinfo:
+        query.run("SELECT 1", tenant_id=None, actor="operator")
+    assert excinfo.value.status == 503
+    assert excinfo.value.code == "unavailable"
+    assert "10.0.0.5" not in excinfo.value.message  # no driver text
+    monkeypatch.undo()
+    with pytest.raises(ApiError) as excinfo:
+        query.run("SELECT pg_sleep(11)", tenant_id=None, actor="operator")
+    assert excinfo.value.status == 400
 
 
 def test_truncated_to_1000_rows() -> None:

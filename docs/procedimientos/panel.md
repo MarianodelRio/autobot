@@ -71,7 +71,7 @@ este cliente. Cada consulta de una conversación desde Contactos queda auditada,
 desde ahí también se puede «Exportar datos» (descarga un JSON) u «Olvidar contacto»
 (borrado irreversible, con confirmación) de ese contacto; «Exportar datos del
 negocio» (`POST`, pues audita), en el menú «⋯» de la ficha, hace lo mismo a nivel de
-negocio, con un tope de 50 000 filas (más allá, el comando `tenant_data_export`) (ver
+negocio, con un tope de 50 000 filas y de 25 MB de JSON (más allá responde 413 y hay que usar el comando `tenant_data_export`, que escribe un fichero privado) (ver
 `docs/procedimientos/retencion-rgpd.md`). El panel pide confirmación para pausar o
 reactivar.
 
@@ -170,7 +170,9 @@ filtro de comodidad, no una frontera de seguridad (una consulta puede cambiarlo 
 `set_config`). Límites: 2 consultas a la vez por proceso (la tercera recibe 429
 «consola ocupada»), 10 000 caracteres por celda y 5 MB por resultado (se marca como
 truncado), una sola sentencia (un `;` final o dentro de un literal/comentario vale) y
-cualquier dato rechazado por PostgreSQL (p. ej. un NUL) responde 400.
+cualquier dato rechazado por PostgreSQL (p. ej. un NUL) o una consulta que excede el
+tiempo responde 400. Si falla la propia base de datos (conexión perdida o rechazada) la
+respuesta es 503 con un mensaje genérico, sin el texto del driver.
 
 ## Sistema
 
@@ -179,7 +181,11 @@ tráfico, trabajos de entrada retrasados más de 2 min o fallos en la última ho
 recibidos, respondidos y fallos de esa hora) y Estado (los servicios `worker`, `db`
 y VictoriaLogs, y las integraciones: bot de avisos, demo Telegram,
 demo WhatsApp —apagada si no hay puerta configurada— y Calendar —«N de M
-accesibles», solo cuenta clientes con `calendar_sweep`—). `web` ya no está en esta
+accesibles», solo cuenta clientes con `calendar_sweep`—). `worker` está en verde solo
+si laten al menos 4 workers (procrastinate registra una fila por proceso, sin nombre, así
+que no se pueden atribuir a un servicio) **y** el estado de contenedores, si está
+fresco, muestra los cuatro `worker-*` en `running`: así un worker caído no queda tapado
+por la fila vieja de otro reiniciado. `web` ya no está en esta
 tarjeta: lo cubre la de Contenedores.
 
 Debajo, la tarjeta Contenedores: una fila por contenedor de producción (`caddy`,

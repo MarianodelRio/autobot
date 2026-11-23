@@ -124,6 +124,25 @@ def test_tenant_export_is_post_only_and_capped(
     assert response.json()["code"] == "too_large"
 
 
+def test_tenant_export_is_capped_in_bytes(
+    authed_client: Any, tenants: Any, monkeypatch: Any
+) -> None:
+    from autobot.panel.services import tenants as tenant_service
+
+    tenants(wa_tenant("a"))
+    Contact.objects.using("owner").create(
+        tenant_id=tenant_id("a"), channel="main", external_id="34600111222", display_name="Ana"
+    )
+    assert post(authed_client, "tenants/a/export").status_code == 200
+    monkeypatch.setattr(tenant_service, "MAX_EXPORT_BYTES", 10)
+    response = post(authed_client, "tenants/a/export")
+    assert response.status_code == 413
+    assert response.json()["code"] == "too_large"
+    assert "tenant_data_export" in response.json()["message"]
+    # Nothing leaves, so nothing is audited as exported.
+    assert AuditEvent.objects.using("owner").filter(action="tenant.export").count() == 1
+
+
 def test_contact_list_and_search_are_audited_without_the_term(
     authed_client: Any, tenants: Any
 ) -> None:

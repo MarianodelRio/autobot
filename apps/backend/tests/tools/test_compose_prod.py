@@ -153,3 +153,33 @@ def test_local_compose_runs_the_same_four_workers() -> None:
     for name in WORKERS:
         assert LOCAL["services"][name]["entrypoint"] == ["python", "/dev-worker.py"]
         assert LOCAL["services"][name]["environment"]["SERVICE_NAME"] == name
+
+
+def test_no_container_can_use_swap_beyond_its_memory_limit() -> None:
+    """memswap_limit == mem_limit: a leaking process is OOM-killed and restarted instead
+    of swapping the whole VPS to a crawl."""
+    for name, service in PROD["services"].items():
+        assert service["memswap_limit"] == service["mem_limit"], name
+
+
+def test_every_tmpfs_has_a_size_cap() -> None:
+    """A tmpfs without size= defaults to half the host's RAM."""
+    found = 0
+    for name, service in PROD["services"].items():
+        for mount in service.get("tmpfs", []):
+            found += 1
+            assert "size=" in mount, (name, mount)
+    assert found >= 3
+    assert "size=" in PROD["x-app"]["tmpfs"][0]
+
+
+def test_the_db_healthcheck_has_a_start_period() -> None:
+    """Crash recovery after an unclean stop must not count as failed health checks."""
+    assert BASE["services"]["db"]["healthcheck"]["start_period"] == "60s"
+
+
+def test_caddy_has_a_healthcheck_that_needs_no_published_port() -> None:
+    check = PROD["services"]["caddy"]["healthcheck"]
+    assert check["test"][0] == "CMD"
+    assert "127.0.0.1:2019" in " ".join(check["test"])
+    assert check["start_period"]

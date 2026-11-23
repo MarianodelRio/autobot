@@ -186,7 +186,36 @@ def demo_events(tenant_id: UUID, event_ids: set[UUID] | None = None) -> QuerySet
     return DemoEvent.objects.using("owner").filter(query)
 
 
-def export_data(tenant: Tenant, contact: Contact | None = None) -> dict[str, Any]:
+class ExportTooLarge(Exception):
+    """The export would exceed the byte cap given to `export_data`."""
+
+
+class _Budget:
+    """Bytes of JSON still allowed in one export; `None` is unlimited."""
+
+    def __init__(self, limit: int | None) -> None:
+        self.left = limit
+
+    def rows(self, query: QuerySet[Any]) -> list[dict[str, Any]]:
+        """The rows of `query`, read in chunks and measured as they come, so a huge export
+        stops at the cap instead of filling memory first."""
+        if self.left is None:
+            return list(query.values())
+        rows: list[dict[str, Any]] = []
+        for row in query.values().iterator(chunk_size=200):
+            self.left -= len(json.dumps(row, default=str, ensure_ascii=False).encode())
+            if self.left < 0:
+                raise ExportTooLarge
+            rows.append(row)
+        return rows
+
+
+def export_data(
+    tenant: Tenant, contact: Contact | None = None, *, max_bytes: int | None = None
+) -> dict[str, Any]:
+    """Everything stored about a tenant (or one contact), as JSON-able rows. With
+    `max_bytes`, raises `ExportTooLarge` as soon as the rows' JSON would exceed it."""
+    budget = _Budget(max_bytes)
     result: dict[str, Any] = {"tenant": tenant.slug, "data": {}}
     for model in MODELS:
         query: QuerySet[Any] = model.objects.using("owner").filter(tenant_id=tenant.id)
@@ -203,14 +232,14 @@ def export_data(tenant: Tenant, contact: Contact | None = None) -> dict[str, Any
                 )
             else:
                 query = query.none()
-        result["data"][model._meta.db_table] = list(query.values())
+        result["data"][model._meta.db_table] = budget.rows(query)
     result["data"]["demo_event"] = (
-        list(demo_events(tenant.id, contact_events(contact) if contact else None).values())
+        budget.rows(demo_events(tenant.id, contact_events(contact) if contact else None))
         if contact is None or contact.channel in DEMO_CHANNELS
         else []
     )
     if contact is not None and contact.channel in DEMO_CHANNELS:
-        result["data"]["demo_access_grant"] = list(_grants(contact).values())
+        result["data"]["demo_access_grant"] = budget.rows(_grants(contact))
     return result
 
 

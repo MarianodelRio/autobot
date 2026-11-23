@@ -1,7 +1,6 @@
 """A provider-wide outage is one alert, not one per tenant; the daily health checks are
 spread and bounded per run."""
 
-import shutil
 from dataclasses import replace
 from datetime import timedelta
 from typing import Any
@@ -13,6 +12,7 @@ from django.utils import timezone
 from autobot.ops import check, health, state
 from autobot.ops.models import OpsAlert
 from autobot.tenancy.registry import LoadedTenant, get_registry
+from tests.helpers.disk import fake_disk
 from tests.helpers.integration import wa_tenant
 
 pytestmark = [
@@ -29,9 +29,7 @@ def fleet(tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Any) -> list[
     settings.DEMO_TELEGRAM_TOKEN = ""
     settings.NOTIFY_BOT_TOKEN = ""
     settings.OPS_TELEGRAM_CHAT_ID = ""
-    monkeypatch.setattr(
-        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 1, "total": 100})()
-    )
+    fake_disk(monkeypatch, 1)
     tenants(*(wa_tenant(f"t{i}") for i in range(N)))
     fleet = list(get_registry().tenants)
     for tenant in fleet:

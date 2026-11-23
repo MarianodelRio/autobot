@@ -11,8 +11,10 @@ numbers, user ids or personal data; every job is idempotent.
 
 import logging
 import math
+from typing import Any
 from uuid import UUID
 
+from asgiref.sync import sync_to_async
 from django.db import InterfaceError as DjangoInterfaceError
 from django.db import OperationalError as DjangoOperationalError
 from django.db import close_old_connections
@@ -44,6 +46,15 @@ PERIODIC = "periodic"  # run_periodic, retention_cleanup
 OPS = "ops"  # ops_check: listened to by worker-periodic only
 QUEUES = (INBOUND, INBOUND_EXT, OUTBOUND, PERIODIC, OPS)
 
+# Priority of the housekeeping tasks that share a worker with slow ones (`run_periodic`
+# may hold a slot for minutes): they go first among the ready jobs of their queue.
+HOUSEKEEPING_PRIORITY = 100
+# A stalled job (its worker died) is not retried once it has this many attempts: one that
+# keeps killing its worker (OOM on a poisonous payload) would otherwise loop every minute.
+# `job.attempts` also counts the ordinary retries (up to `INBOUND_RETRIES`, or the
+# `inbound_ext` database backoff), so the cap leaves room for them plus a few stalls.
+STALLED_MAX_ATTEMPTS = 6
+
 # Job names: a job is deferred by name, so modules that defer it do not import its task.
 PROCESS_EVENT = "process_event"  # (tenant_id, event_id), lock conv:<h>
 APPLY_STATUS = "apply_status"  # (tenant_id, event_id), no lock
@@ -57,6 +68,11 @@ DISPATCH_OWNER_SUMMARIES = "dispatch_owner_summaries"  # (timestamp): hourly, pl
 SEND_OWNER_SUMMARY = "send_owner_summary"  # (tenant_id, year, month), queueing_lock summary:<t>
 RECONCILE_UNKNOWN = "reconcile_unknown"  # (timestamp): every 5 minutes, platform-wide
 HANDLE_OWNER_EVENT = "handle_owner_event"  # (event_id) of owner_event, lock ownerchat:<h>
+
+# Sends are exempt: their retries (`SendRetry` while a provider is down) pile up attempts
+# by design, and a retried send never repeats the call (`sending` turns `unknown`, a
+# notification is at-most-once), so it cannot keep killing its worker.
+STALLED_CAP_EXEMPT = frozenset({SEND_MESSAGE, SEND_NOTIFICATION})
 
 
 # What a job retries: a `TransientError` (a provider that may answer later) and the
@@ -97,13 +113,27 @@ def process_event_queue(pack: Pack | None) -> str:
     return INBOUND_EXT if pack is not None and pack.needs_calendar else INBOUND
 
 
+# A database blip (restart, failover, a saturated pool) lasts seconds to a minute: an
+# `inbound_ext` job that hit one waits 5, 15 and 40 s (about a minute in all) before
+# giving up, instead of leaving the message to the sweep (more than 5 minutes). Those
+# waits hold no slot: the job is `todo` again, not running.
+DB_ERRORS: tuple[type[Exception], ...] = tuple(e for e in RETRYABLE if e is not TransientError)
+INBOUND_EXT_DB_WAITS_S = (5, 15, 40)
+
+
 class ProcessEventRetry(BaseRetryStrategy):
     """`process_event` retries by the queue it runs in (`INBOUND_RETRY`,
-    `INBOUND_EXT_RETRY`)."""
+    `INBOUND_EXT_RETRY`). In `inbound_ext`, a database error has its own, longer
+    backoff (`INBOUND_EXT_DB_WAITS_S`); any other error keeps the single retry."""
 
     def get_retry_decision(self, *, exception: BaseException, job: Job) -> RetryDecision | None:
-        strategy = INBOUND_EXT_RETRY if job.queue == INBOUND_EXT else INBOUND_RETRY
-        return strategy.get_retry_decision(exception=exception, job=job)
+        if job.queue != INBOUND_EXT:
+            return INBOUND_RETRY.get_retry_decision(exception=exception, job=job)
+        if isinstance(exception, DB_ERRORS):
+            if job.attempts < len(INBOUND_EXT_DB_WAITS_S):
+                return RetryDecision(retry_in={"seconds": INBOUND_EXT_DB_WAITS_S[job.attempts]})
+            return None
+        return INBOUND_EXT_RETRY.get_retry_decision(exception=exception, job=job)
 
 
 @app.task(queue=INBOUND, name=PROCESS_EVENT, pass_context=True, retry=ProcessEventRetry())
@@ -250,7 +280,11 @@ def run_periodic(tenant_id: str, name: str, scheduled_at: int) -> None:
 
 @app.periodic(cron="* * * * *", periodic_id=RETRY_STALLED_JOBS)
 @app.task(
-    queue=PERIODIC, name=RETRY_STALLED_JOBS, queueing_lock=RETRY_STALLED_JOBS, pass_context=True
+    queue=PERIODIC,
+    name=RETRY_STALLED_JOBS,
+    queueing_lock=RETRY_STALLED_JOBS,
+    pass_context=True,
+    priority=HOUSEKEEPING_PRIORITY,
 )
 @async_contextual
 async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
@@ -262,9 +296,16 @@ async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
     A stalled job with a `queueing_lock` can collide with another job already queued
     under the same lock (e.g. the next `ops_check` tick): `retry_job` then fails and the
     stalled job would keep its `lock` forever. When that happens, it is marked `failed`
-    instead, which releases the lock without retrying it."""
+    instead, which releases the lock without retrying it.
+
+    A job already retried `STALLED_MAX_ATTEMPTS` times is not retried again: it is
+    `failed` and, if it is a `process_event`, its event gets the recovery text and
+    `failed` (see `process.abandon_event`) instead of staying `pending`."""
     manager = context.app.job_manager
     for job in await manager.get_stalled_jobs():
+        if job.attempts >= STALLED_MAX_ATTEMPTS and job.task_name not in STALLED_CAP_EXEMPT:
+            await _give_up_stalled(manager, job)
+            continue
         log.warning("retrying stalled job %s (%s)", job.id, job.task_name)
         try:
             await manager.retry_job(job)
@@ -274,6 +315,38 @@ async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
                 await manager.finish_job(job, status=Status.FAILED, delete_job=False)
             except Exception as e2:
                 log.error("stalled job %s not failed either: %s", job.id, type(e2).__name__)
+
+
+async def _give_up_stalled(manager: Any, job: Job) -> None:
+    log.error(
+        "stalled job %s (%s) failed %s times: not retried again",
+        job.id,
+        job.task_name,
+        job.attempts,
+    )
+    if job.task_name == PROCESS_EVENT:
+        try:
+            await sync_to_async(_abandon_event)(job.task_kwargs)
+        except Exception as e:
+            log.error("stalled job %s: its event was not failed: %s", job.id, type(e).__name__)
+    try:
+        await manager.finish_job(job, status=Status.FAILED, delete_job=False)
+    except Exception as e:
+        log.error("stalled job %s not failed: %s", job.id, type(e).__name__)
+
+
+def _abandon_event(task_kwargs: dict[str, Any]) -> None:
+    from autobot.runtime import process
+
+    close_old_connections()
+    try:
+        process.abandon_event(
+            UUID(task_kwargs["tenant_id"]),
+            UUID(task_kwargs["event_id"]),
+            "worker died repeatedly while processing it",
+        )
+    finally:
+        close_old_connections()
 
 
 def cron_for(every_min: int) -> str:
@@ -319,7 +392,13 @@ def is_last_attempt(context: JobContext) -> bool:
 
 
 @app.periodic(cron="*/5 * * * *", periodic_id="ops_check")
-@app.task(queue=OPS, name="ops_check", queueing_lock="ops_check", lock="ops_check")
+@app.task(
+    queue=OPS,
+    name="ops_check",
+    queueing_lock="ops_check",
+    lock="ops_check",
+    priority=HOUSEKEEPING_PRIORITY,
+)
 @contextual
 def ops_check(timestamp: int) -> None:
     from autobot.ops.check import run

@@ -22,6 +22,10 @@ flock -s -w "${AUTOBOT_PRUNE_LOCK_WAIT:-60}" 9 || {
 docker image prune --all --force --filter 'until=24h'
 
 # var/backups/pre-migrate.dump holds every client's data in the clear and is
-# never included in the restic backup on purpose; it must not outlive the window
-# where rolling back to the deploy that made it is still plausible.
-find var/backups/pre-migrate.dump -maxdepth 0 -mtime +7 -delete 2>/dev/null || true
+# never included in the restic backup on purpose (GDPR: the hourly encrypted backup is the
+# copy that is meant to exist). It only has to outlive the window where a bad migration is
+# noticed, so it is kept 48 h, not longer. A half-written .tmp (a deploy that died mid-dump)
+# is never useful: this script holds the deploy lock (shared, above), so no deploy is
+# writing one right now and any .tmp left over is stale.
+find var/backups/pre-migrate.dump -maxdepth 0 -mmin +2880 -delete 2>/dev/null || true
+rm -f var/backups/pre-migrate.dump.tmp

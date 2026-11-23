@@ -144,9 +144,17 @@ no lo mata (ignora `SIGHUP`).
    **abort**.
 7. **Volcado previo a migrar:** si `migrate --check` dice que hay migraciones pendientes,
    `pg_dump -Fc` a `var/backups/pre-migrate.dump` (0600, solo en el servidor; no entra en
-   restic; `prune.sh` lo borra a los 7 días). Por eso las migraciones solo pueden
+   restic; `prune.sh` lo borra a las 48 h). Antes de volcar comprueba el espacio libre
+   (como `backup.sh`: el tamaño de la base o 512 MiB, el mayor) y escribe en
+   `pre-migrate.dump.tmp`; solo si `pg_restore --list` lee el índice del volcado lo renombra.
+   Un fallo (o cualquier salida del script) borra el `.tmp` y va a **abort**. Es una copia
+   en claro de todos los clientes: por RGPD solo vive el tiempo en que aún se notaría una
+   migración mala; el backup cifrado horario es la copia que debe existir. Por eso las migraciones solo pueden
    **expandir** el esquema (`CLAUDE.md`; ver [../desarrollo/migraciones-y-rls.md](../desarrollo/migraciones-y-rls.md)).
-8. **Esquema y datos:** `migrate`, `apply_grants` (permisos de `fp_app`, `fp_readonly`),
+8. **Esquema y datos:** `migrate` (con `PGOPTIONS='-c lock_timeout=5s'`, ajustable con
+   `AUTOBOT_MIGRATE_LOCK_TIMEOUT`: una migración que tendría que esperar un candado de
+   tráfico vivo falla en vez de bloquear todas las escrituras, y el despliegue va a
+   **abort**; se reintenta en un momento más tranquilo), `apply_grants` (permisos de `fp_app`, `fp_readonly`),
    `tenant_config validate --all` (todas las configuraciones válidas) y `seed_demos`.
    Todo con `docker compose run --rm web-panel`, el servicio con la conexión `owner`
    ([ADR-020](../arquitectura/adr/ADR-020-api-del-panel-aparte.md)): el `web` público no la tiene.
@@ -243,15 +251,37 @@ Instalados por `bootstrap-server.sh`; los servicios se ejecutan como `deploy` en
 |---|---|---|
 | `autobot-backup.timer` | cada hora (con hasta 5 min de retraso aleatorio); el servicio tiene un límite de 2 h | `backup.sh`: volcado a restic. Detalle en [restaurar.md](restaurar.md) |
 | `autobot-containers.timer` | cada minuto | `containers.sh`: instantánea de contenedores para el panel |
-| `autobot-prune.timer` | a diario (hasta 30 min de retraso aleatorio) | `prune.sh`: borra imágenes Docker sin usar de más de 24 h y `pre-migrate.dump` de más de 7 días; espera al candado de despliegue |
+| `autobot-prune.timer` | a diario (hasta 30 min de retraso aleatorio) | `prune.sh`: borra imágenes Docker sin usar de más de 24 h, `pre-migrate.dump` de más de 48 h y cualquier `pre-migrate.dump.tmp`; espera al candado de despliegue |
+| `autobot-watchdog.timer` | cada 5 min | `watchdog.sh`: vigilante del host, independiente de la base y de Django; ver la sección siguiente |
 
 Estado: `systemctl list-timers 'autobot-*'`; `systemctl is-enabled autobot-prune.timer`.
+
+### Vigilante del host (`watchdog.sh`)
+
+Lo único que avisa aunque la base de datos, Django o el panel estén caídos: usa solo
+`bash`, `curl`, `df` y `docker`, y escribe directamente a Telegram con el bot de avisos
+(`NOTIFY_BOT_TOKEN` y `OPS_TELEGRAM_CHAT_ID` de `.env`, los mismos que las alertas de ops;
+el token viaja por stdin a `curl`, nunca en argumentos ni en la salida). Avisa si:
+
+| Condición | Umbral |
+|---|---|
+| Disco | más del 90 % usado según el espacio disponible para `deploy` (`AUTOBOT_WATCHDOG_DISK_PCT`) |
+| Base de datos | el contenedor `db` no está `running` y `healthy` |
+| Instantánea del host | `var/state/ops/containers.json` (la escribe `containers.sh` cada minuto) sin actualizarse más de 15 min (`AUTOBOT_WATCHDOG_STALE_MIN`): fallan los timers, Docker o el disco |
+
+Cada condición avisa **una vez por hora** (`AUTOBOT_WATCHDOG_REPEAT_SECS`; estado en
+`var/state/watchdog/`) y una vez más al recuperarse. Durante un despliegue o una
+restauración se omiten las dos últimas (el disco se vigila siempre). Si falta el bot en
+`.env`, lo dice por el diario y no hace nada: `journalctl -u autobot-watchdog.service`.
+Nada en disco registra la última pasada de `ops_check` (su latido va directo a
+Healthchecks), así que un worker colgado lo sigue detectando el check externo
+(`HEALTHCHECKS_PING_URL`).
 
 ## 8. Dónde están los logs
 
 | Qué | Dónde |
 |---|---|
-| Salida de `deploy.sh` | El log del job `Deploy` en GitHub Actions |
+| Salida de `deploy.sh` | El log del job `Deploy` en GitHub Actions y `var/deploy.log` en el servidor (se conserva aunque la conexión SSH se corte; rota a `deploy.log.1` pasado 1 MiB) |
 | Historial de despliegues | `var/state/ops/deploys.jsonl` y el panel (Sistema) |
 | Logs técnicos de `web` y workers | Panel, Logs, pestaña Técnicos (VictoriaLogs, 31 días, máx. 5 GiB) |
 | Logs de un contenedor, incluido el acceso de Caddy | `deploy/scripts/compose.sh logs --tail=100 <servicio>` (json-file, 5 ficheros de 20 MB por contenedor) |
@@ -263,6 +293,7 @@ Estado: `systemctl list-timers 'autobot-*'`; `systemctl is-enabled autobot-prune
 | Fichero | Para qué |
 |---|---|
 | `deploy/scripts/deploy.sh` | Despliega un SHA en la VPS (sección 4) |
+| `deploy/scripts/watchdog.sh` | Vigilante del host con aviso directo a Telegram (sección 7) |
 | `deploy/scripts/ssh-deploy.sh` | Orden forzada de la clave de CI: solo permite `deploy.sh <sha>` |
 | `deploy/scripts/ensure-env.sh` | Genera y valida `.env` antes de cada despliegue o restauración |
 | `deploy/scripts/lib.sh` | Compartido por los scripts de producción: no root, raíz del repo, proyecto compose, `SHA` por defecto y el array `compose`; con `AUTOBOT_LIB_FUNCTIONS_ONLY=1`, solo funciones (`compose_in`, `ensure_state_dirs`) para los simulacros |

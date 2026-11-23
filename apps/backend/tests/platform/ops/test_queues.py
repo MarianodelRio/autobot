@@ -1,6 +1,5 @@
 """Queue lag: age of the oldest ready and running job per queue, and `queue_lag:<queue>`."""
 
-import shutil
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -10,6 +9,7 @@ from django.utils import timezone
 
 from autobot.ops import check, health, queues
 from autobot.ops.runbooks import runbook_path
+from tests.helpers.disk import fake_disk
 from tests.helpers.integration import wa_tenant
 
 pytestmark = [
@@ -26,9 +26,7 @@ def alerts(monkeypatch: pytest.MonkeyPatch, settings: Any) -> list[tuple[Any, ..
     settings.NOTIFY_BOT_TOKEN = ""
     monkeypatch.setattr(check, "send_ops_alert", lambda *args: found.append(args))
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
-    monkeypatch.setattr(
-        shutil, "disk_usage", lambda _: type("Disk", (), {"used": 1, "total": 100})()
-    )
+    fake_disk(monkeypatch, 1)
     return found
 
 
