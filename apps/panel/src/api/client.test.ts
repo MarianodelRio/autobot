@@ -241,7 +241,7 @@ describe("resent requests still pass through the other middlewares", () => {
     );
     const handler = vi.fn();
     setUnauthorizedHandler(handler);
-    await api.POST("/data/query");
+    await api.POST("/auth/logout");
     expect(handler).toHaveBeenCalledOnce();
   });
 
