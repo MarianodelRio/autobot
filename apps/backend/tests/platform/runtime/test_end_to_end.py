@@ -44,6 +44,7 @@ pytestmark = [
 ]
 
 MENU_BODY = "¡Hola! ¿Qué quieres hacer?"
+NOTICE = "_🤖 Asistente automático de Wa_"
 NOTICE = r"^Soy el asistente automático.*?dejar de recibir avisos\.\n*"
 
 
@@ -143,9 +144,8 @@ def test_webhook_queue_worker_send(tenants: Any, meta: Meta) -> None:
     run_worker()
     (sent,) = meta.sent
     assert sent["to"] == "34600000001"
-    # The first-contact notice is the start of that first message.
-    assert sent["interactive"]["body"]["text"].startswith("Soy el asistente automático")
-    assert sent["interactive"]["body"]["text"].endswith(MENU_BODY)
+    # The first-contact privacy line goes below the reply, in the same message.
+    assert sent["interactive"]["body"]["text"] == f"{MENU_BODY}\n\n{NOTICE}"
     (event,) = events()
     (message,) = OutboundMessage.objects.using("owner").all()
     assert (event.status, message.status, message.provider_message_id) == (
@@ -447,7 +447,8 @@ def test_a_degraded_tenant_does_not_affect_another(tenants: Any, meta: Meta) -> 
     )
     assert response.status_code == 200
     run_worker()
-    assert sorted(meta.bodies()) == sorted([MENU_BODY, process.UNAVAILABLE_TEXT])
+    # The degraded tenant gets no privacy line: it cannot answer anything yet.
+    assert sorted(meta.bodies()) == sorted([f"{MENU_BODY}\n\n{NOTICE}", process.UNAVAILABLE_TEXT])
 
 
 def test_database_down_gives_503(tenants: Any) -> None:

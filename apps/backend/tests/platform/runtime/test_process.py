@@ -258,9 +258,9 @@ def test_an_unexpected_pack_error_gives_the_recovery_text(
     tenants(wa_tenant())
     event = receive(wa_text("hola"))
     assert (event.status, event.error) == ("failed", "KeyError")
-    # The first-contact notice goes first (and is merged into the same text).
-    assert bodies(event)[0].startswith("Soy el asistente automático")
-    assert bodies(event)[0].endswith(RECOVERY_TEXT)
+    # No privacy line below an error text: the contact gets it with the next reply.
+    assert bodies(event) == [RECOVERY_TEXT]
+    assert contact().notice_sent_at is None
 
 
 def test_a_reply_that_cannot_be_planned_gives_the_recovery_text_not_silence(
@@ -575,9 +575,11 @@ def test_a_phone_that_opted_out_on_its_bsuid_contact_gets_no_proactive(
     tenants: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The same person: a contact made from the phone (manual booking) and the BSUID
-    contact they write from, where they said `baja`."""
+    contact they write from, the one marked `opt_out`."""
 
     def notice(ctx: PackContext, msg: IncomingMessage) -> PackResult:
+        if msg.text != "uno":
+            return PackResult(replies=[Text("ok")])
         action = SendProactive(
             to=ContactRef(phone="+34600000001"),
             template=toy.TEMPLATE_THANKS,
@@ -592,7 +594,8 @@ def test_a_phone_that_opted_out_on_its_bsuid_contact_gets_no_proactive(
     Contact.objects.using("owner").create(
         tenant_id=tenant().id, channel="main", external_id="34600000001", phone_e164="+34600000001"
     )
-    receive(wa_text("baja"))  # on the BSUID contact, which has the same phone
+    receive(wa_text("hola"))  # creates the BSUID contact, which has the same phone
+    Contact.objects.using("owner").exclude(external_id="34600000001").update(opt_out=True)
     receive(wa_text("uno"))
     assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
 

@@ -172,6 +172,7 @@ class Conversation:
         self.attempts = attempts
         self.contact = sample_contact(channel)
         self.informed = not notice  # `notice=False`: a contact that was already informed
+        self._failed = False
         self.state: dict[str, Any] = {}
         self.state_version: int | None = None
         self.last_inbound_at: datetime | None = None
@@ -269,14 +270,16 @@ class Conversation:
         )
         state = effective.state
         idem = IdemKeys(event_id)
+        self._failed = False  # set by `_handle` when it answers with the degraded text
         if is_menu_command(message):
             state = {}
             result = self._handle(state, menu_message(now), idem)
         else:
             result = self._handle(state, message, idem)
         outgoing = [*effective.notices, *result.replies]
-        # The privacy line: below the pack's menu, and below the very first reply.
-        if result.menu or not self.informed:
+        # The privacy line: below the pack's menu, and below the very first reply; never
+        # below an error text (as `process_event`).
+        if (result.menu or not self.informed) and not self._failed:
             outgoing = with_notice(outgoing, first_contact_notice(self.tenant))
             self.informed = True
 
@@ -312,6 +315,7 @@ class Conversation:
                 # propagates, so a bug fails the test.
                 if attempt == self.attempts:
                     break
+        self._failed = True
         return degraded_result()
 
     def _context(

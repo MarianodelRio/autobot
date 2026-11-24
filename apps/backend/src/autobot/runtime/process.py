@@ -145,9 +145,10 @@ def process_event(
         )
 
     # The first-layer privacy line, below the pack's menu every time it is shown, and
-    # below the first reply a contact ever gets whatever it is.
+    # below the first reply a contact ever gets whatever it is; never below an error text
+    # (the contact stays uninformed and gets it with the next reply).
     intro: str | None = None
-    wanted = result.menu or not informed
+    wanted = (result.menu or not informed) and not error
     if wanted and not over_limit and tenant.pack is not None and not tenant.is_degraded:
         intro = (
             demo_first_contact_notice()

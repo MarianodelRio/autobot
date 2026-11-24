@@ -214,7 +214,11 @@ def test_pick_a_business_then_talk_to_it(tenants: Any, providers: Providers) -> 
     press(USER, "fp_select:wa")
     sent = wa_sent(providers, USER)
     assert sent[-2]["text"]["body"] == "Demo · Wa. Escribe /negocio para cambiar."
-    assert sent[-1]["interactive"]["body"]["text"].endswith("¿Qué quieres hacer?")
+    # The demo's privacy line goes below the business' first reply.
+    assert (
+        sent[-1]["interactive"]["body"]["text"]
+        == "¡Hola! ¿Qué quieres hacer?\n\n_🤖 Demo de Autobot_"
+    )
     assert wa_buttons(providers, USER) == ["greet", "color", "fail"]
     synthetic = InboundEvent.objects.using("owner").get(provider_event_id__startswith="select:")
     assert synthetic.channel == "demo_wa" and synthetic.status == "done"

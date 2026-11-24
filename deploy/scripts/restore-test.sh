@@ -116,7 +116,9 @@ fi
 docker tag autobot:restore-test "ghcr.io/example-owner/autobot:$sha"
 source_compose() { compose_in "$source_dir" "$source_project" "$@"; }
 (
-  source_compose up -d db >/dev/null
+  # --wait: until its healthcheck passes; `migrate` right after `up -d` can find the
+  # server not yet accepting connections (a flaky "Connection refused" in CI).
+  source_compose up -d --wait --wait-timeout 120 db >/dev/null
   source_compose run --rm web-panel \
     python manage.py migrate --noinput >/dev/null
   source_compose run --rm web-panel \
