@@ -2,6 +2,8 @@
 
 **Estado:** vigente
 
+**Actualización (ADR-029):** en el chat de operación (`OPS_TELEGRAM_CHAT_ID`), el mismo bot ofrece además un menú de operador de solo consulta y un resumen diario.
+
 ## Contexto
 
 El bot de Telegram de avisos (`NOTIFY_BOT_TOKEN`) solo enviaba: citas creadas,

@@ -68,6 +68,7 @@ DISPATCH_OWNER_SUMMARIES = "dispatch_owner_summaries"  # (timestamp): hourly, pl
 SEND_OWNER_SUMMARY = "send_owner_summary"  # (tenant_id, year, month), queueing_lock summary:<t>
 RECONCILE_UNKNOWN = "reconcile_unknown"  # (timestamp): every 5 minutes, platform-wide
 HANDLE_OWNER_EVENT = "handle_owner_event"  # (event_id) of owner_event, lock ownerchat:<h>
+OPS_DAILY_SUMMARY = "ops_daily_summary"  # (timestamp): hourly, sends once a day from 09:00
 
 # Sends are exempt: their retries (`SendRetry` while a provider is down) pile up attempts
 # by design, and a retried send never repeats the call (`sending` turns `unknown`, a
@@ -461,6 +462,20 @@ def dispatch_owner_summaries(timestamp: int) -> None:
     close_old_connections()
     try:
         summary.dispatch_owner_summaries(timezone.now())
+    finally:
+        close_old_connections()
+
+
+# Hourly: ops_daily_summary itself sends only once a day, on the first run past 09:00
+# Madrid time (ADR-029); a later run recovers a send if the worker was down at nine.
+@app.periodic(cron="5 * * * *", periodic_id=OPS_DAILY_SUMMARY)
+@app.task(queue=PERIODIC, name=OPS_DAILY_SUMMARY, queueing_lock=OPS_DAILY_SUMMARY)
+def ops_daily_summary(timestamp: int) -> None:
+    from autobot.ops import daily
+
+    close_old_connections()
+    try:
+        daily.send_daily_summary(timezone.now())
     finally:
         close_old_connections()
 

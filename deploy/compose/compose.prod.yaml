@@ -34,8 +34,8 @@ x-app-env: &app-env
   RELEASE_SHA: ${SHA:?Set the published image SHA}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   # On by default in production (approved by the person, 2026-11-23): the retention periods
-  # of docs/cumplimiento/registro-de-actividades.md only hold if it runs. `false` in the
-  # host .env switches it off; check_prod_config.py and the launch checklist watch it.
+  # of docs/procedimientos/retencion-rgpd.md only hold if it runs. `false` in the host .env
+  # switches it off; check_prod_config.py watches it.
   RETENTION_CLEANUP_ENABLED: ${RETENTION_CLEANUP_ENABLED:-true}
   OPS_STATE_DIR: /run/ops
 

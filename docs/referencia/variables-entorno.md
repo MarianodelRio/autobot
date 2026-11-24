@@ -49,7 +49,7 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `NOTIFY_BOT_WEBHOOK_SECRET` | Secreto del webhook del bot de avisos | no (local no lo necesita) | vacío | `ensure-env.sh` en el servidor |
 | `OWNER_SUPPORT_EMAIL` | Email de soporte que ofrece el menú del dueño (opción "Contacto") | no | vacío | la persona |
 | `PLATFORM_PRIVACY_URL` | Política de privacidad de la plataforma (`https://…`); la cita la línea de privacidad del bot de demo. Sin ella, la línea omite el enlace | no | vacío | la persona |
-| `OPS_TELEGRAM_CHAT_ID` | Chat de Telegram donde el bot de avisos manda alertas de operación | no | vacío | la persona |
+| `OPS_TELEGRAM_CHAT_ID` | Chat de Telegram donde el bot de avisos manda las alertas de operación y el resumen diario; solo en él responde el menú de operador ([ADR-029](../arquitectura/adr/ADR-029-menu-de-operador.md)) | no | vacío | la persona |
 | `SENTRY_DSN` | DSN del proyecto de Sentry; vacío desactiva la integración | no | vacío | la persona |
 | `HEALTHCHECKS_PING_URL` | URL de latido del check "worker" de healthchecks.io | no | vacío | la persona |
 | `RELEASE_SHA` | SHA desplegado, expuesto a la app para los logs | sí (prod) | vacío | lo fija el compose de producción (= `SHA`); no va en `.env` |

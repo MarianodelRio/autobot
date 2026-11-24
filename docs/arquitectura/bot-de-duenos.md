@@ -2,7 +2,7 @@
 
 El bot de dueños es un bot de Telegram de la plataforma (el «bot de avisos», `NOTIFY_BOT_TOKEN`) con dos funciones: avisar al dueño de un negocio de lo que pasa (una cita nueva, el resumen del mes) y atenderle cuando escribe, con un pequeño menú. Lee esta página para saber cómo se vincula un chat a un negocio, qué responde el bot y cómo se generan y entregan los avisos y resúmenes. La decisión está en [ADR-007](adr/ADR-007-bot-de-duenos.md).
 
-El mismo bot envía las alertas de operación al chat del operador (`OPS_TELEGRAM_CHAT_ID`): ver [Observabilidad](observabilidad.md#avisos-al-operador).
+El mismo bot envía las alertas de operación al chat del operador (`OPS_TELEGRAM_CHAT_ID`, ver [Observabilidad](observabilidad.md#avisos-al-operador)) y, en ese chat, ofrece un menú de operador de solo consulta y un resumen diario ([Menú de operador](#menu-de-operador)).
 
 ## Vinculación de un chat
 
@@ -51,6 +51,22 @@ Los logs solo llevan el id del evento, nunca el chat ni el código.
 | `owner:reconnect` | Mi enlace | Un enlace nuevo por negocio del chat para conectar otro dispositivo; avisa si sustituirá al chat conectado. |
 
 Con tres opciones o menos van como botones; de cuatro a diez, como lista (`menu_reply`, límites de [Packs](packs.md#limites-comunes-de-los-canales)). Un chat con varios negocios (solo demos) ve un bloque por negocio. Un negocio real solo responde si está `active` y sin degradar; uno de demo responde incluso en pausa (`_usable`).
+
+## Menú de operador
+
+En el chat de `OPS_TELEGRAM_CHAT_ID`, el bot responde aunque ese chat no esté vinculado a ningún negocio, con las opciones de `OPERATOR_MENU` (`autobot/owner/operator.py`, ids `ops:<nombre>`). Si el chat también es dueño de algún negocio, ve primero las de operador y después las de dueño (`menu.options`). Otro chat nunca las ve. La decisión está en [ADR-029](adr/ADR-029-menu-de-operador.md).
+
+| Id | Título | Respuesta |
+|---|---|---|
+| `ops:status` | 🩺 Estado | «Todo en orden», «Hay avisos» o «Hay problemas»; servicios, disco, memoria, base de datos, último backup, limpieza nocturna, alertas abiertas y negocios con problemas. |
+| `ops:alerts` | 🚨 Alertas | Las alertas abiertas, de la más grave y reciente a la menos, con desde cuándo. |
+| `ops:today` | 📊 Hoy | Recibidos, enviados, fallos y contactos nuevos desde las 00:00 de Madrid, en total y por negocio (las demos, juntas). |
+| `ops:tenants` | 🏪 Clientes | Cada negocio real con su estado, salud y último mensaje, primero los que tienen problemas; las demos, en una línea. |
+| `ops:backups` | 💾 Backups | Último backup, última vez que se caducaron copias y limpieza nocturna. |
+
+Todo es de solo consulta y sin datos personales. `autobot/ops/report.py` lee el estado como datos, cada negocio dentro de su `tenant_tx` porque el bot corre en un worker como `fp_app`, y `autobot/ops/report_text.py` lo redacta. Las listas muestran como mucho 15 elementos. Una respuesta de más de 1.024 caracteres va como texto propio y el menú detrás, con «¿Algo más?».
+
+**Resumen diario.** `ops_daily_summary` corre cada hora en el minuto 5 (`autobot/ops/daily.py`). La primera pasada desde las 09:00 de Madrid manda el Estado y las cifras de ayer, aunque no haya pasado nada. La clave `ops:daily:<fecha>` de la caché evita repetirlo en el mismo día. Si el envío seguro que no salió, lo intenta la hora siguiente; uno ambiguo no se repite.
 
 ## Resúmenes y avisos
 

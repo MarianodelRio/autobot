@@ -91,9 +91,11 @@ Dos rutas sin autenticación, sin llamadas externas y sin nombres de negocio:
 
 Las alertas llegan al chat de Telegram indicado en `OPS_TELEGRAM_CHAT_ID` a través del bot de avisos (el mismo que atiende a los dueños, [Bot de dueños](bot-de-duenos.md)). Cada mensaje empieza por un emoji de gravedad (🔴 crítica, 🟠 aviso, 🟡 atención, 🟢 informativa) que fija `severity`. Si el bot o el chat no están configurados, la alerta solo se registra: la fila `ops_alert` y el panel siguen mostrándola (`last_delivery` queda `unconfigured`). Una alerta informativa (por ejemplo, «desplegado correctamente») salta el enfriamiento y nace ya resuelta.
 
+En ese mismo chat, el operador puede preguntar el estado con un menú de solo consulta (Estado, Alertas, Hoy, Clientes, Backups) y recibe cada día, desde las 09:00 de Madrid, un resumen con el estado y las cifras de ayer ([Bot de dueños](bot-de-duenos.md#menu-de-operador), [ADR-029](adr/ADR-029-menu-de-operador.md)).
+
 ## Dónde está el código
 
-- `apps/backend/src/autobot/ops/`: `check.py`, `health.py`, `status.py`, `state.py`, `containers.py`, `system.py`, `logging.py`, `logship.py`, `views.py`, `models.py`, `audit.py`.
+- `apps/backend/src/autobot/ops/`: `check.py`, `report.py`, `report_text.py`, `daily.py`, `health.py`, `status.py`, `state.py`, `containers.py`, `system.py`, `logging.py`, `logship.py`, `views.py`, `models.py`, `audit.py`.
 - `apps/backend/src/autobot/runtime/notifications.py` (`send_ops_alert`, `resolve_alert`) y `jobs.py` (`ops_check`).
 - `deploy/scripts/containers.sh`, `deploy/systemd/autobot-containers.timer`.
 - `apps/backend/src/config/settings.py` (`LOGGING`, `VICTORIALOGS_URL`, `OPS_*`, `HEALTHCHECKS_PING_URL`, `SENTRY_DSN`).

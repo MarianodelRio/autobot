@@ -47,8 +47,8 @@ El único paquete que importa Django.
 - `tenancy/`: tenants, registro en memoria (`registry.py`), esquema del documento (`schema.py`), `tx.py` (`tenant_tx`), cifrado (`crypto.py`), `store/` (único servicio de escritura de config), biblioteca de datasets, activación y archivo.
 - `runtime/`: el motor: modelos de datos de cliente, entrada (`inbound.py`), `process.py`, envío (`outbound.py`, con el cortacircuitos por proveedor en `breaker.py`), jobs de Procrastinate (`jobs.py`), candados, retención, barridas, resúmenes, avisos y privacidad.
 - `channels/`: webhooks (`views.py`), contrato de adaptador (`base.py`, `adapters.py`), `whatsapp/`, `telegram/`, `demo/` (puertas y selector del bot de demo), límites de tasa y limpieza de payloads.
-- `owner/`: bot de avisos y de dueños: vinculación, menú, textos, bandeja y webhook.
-- `ops/`: observabilidad y operación: `/health`, logs, alertas, auditoría, comprobaciones de workers, contenedores y estado del host.
+- `owner/`: bot de avisos y de dueños: vinculación, menú del dueño y del operador, textos, bandeja y webhook.
+- `ops/`: observabilidad y operación: `/health`, logs, alertas, auditoría, el estado para el operador y su resumen diario, comprobaciones de workers, contenedores y estado del host.
 - `db/`: `router.py` (enrutado a `owner` de las tablas de auth) y `grants.py` (permisos de BD).
 - `panel/`: API del panel: `api.py`, `auth.py`, `routers/` (HTTP) y `services/` (lógica).
 - `management/commands/`: comandos de `manage.py` (`tenant_config`, `apply_grants`, `owner_invite`, `telegram_set_webhook`, `dataset_library`…).

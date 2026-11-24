@@ -15,7 +15,7 @@ Los trabajos se declaran todos en `apps/backend/src/autobot/runtime/jobs.py` (Pr
 | `inbound` | `process_event` (packs sin llamadas externas), `apply_status`, `route_demo_event`, `handle_owner_event` | `conv:<h>`, ninguno, `demo:<h>`, `ownerchat:<h>` |
 | `inbound_ext` | `process_event` de los packs que llaman a Google Calendar (`needs_calendar`, como `salon`) | `conv:<h>` |
 | `outbound` | `send_message`, `send_notification` | `out:<h>` (respuestas), `outp:<h>` (proactivos), `owner:<id del negocio>` |
-| `periodic` | `dispatch_periodic`, `run_periodic`, `retry_stalled_jobs`, `retention_cleanup`, `jobs_cleanup`, `reconcile_unknown`, `dispatch_owner_summaries`, `send_owner_summary` | `queueing_lock` en la mayoría (ver abajo) |
+| `periodic` | `dispatch_periodic`, `run_periodic`, `retry_stalled_jobs`, `retention_cleanup`, `jobs_cleanup`, `reconcile_unknown`, `dispatch_owner_summaries`, `send_owner_summary`, `ops_daily_summary` | `queueing_lock` en la mayoría (ver abajo) |
 | `ops` | `ops_check` | `ops_check` |
 
 Quién los encola y con qué argumentos:
@@ -92,6 +92,7 @@ Procrastinate dispara sus tareas periódicas por cron (UTC) y cada instante prog
 | `reconcile_unknown` | cada 5 min | Reenvía una vez los `unknown` de más de 10 minutos sin evidencia cuya clase admite duplicados, caduca los que pasaron `expires_at` y los avisos `held` viejos ([ADR-026](adr/ADR-026-conciliacion-de-envios-ambiguos.md)). |
 | `jobs_cleanup` | 03:30 | Purga los trabajos terminados de más de 30 días de `procrastinate_jobs`/`procrastinate_events`; no depende de `RETENTION_CLEANUP_ENABLED` porque solo guardan ids. |
 | `dispatch_owner_summaries` | cada hora | Resumen mensual a los dueños; solo actúa en el día 1 de cada negocio pasado el mediodía local (`>=`, para recuperar un envío si el worker estaba caído). |
+| `ops_daily_summary` | cada hora, minuto 5 | Resumen diario al chat de operación; solo envía una vez al día, en la primera pasada desde las 09:00 de Madrid ([ADR-029](adr/ADR-029-menu-de-operador.md)). |
 
 **De los packs.** Cada `Periodic` de un pack (ver [packs](packs.md)) se registra como una tarea `dispatch_periodic` con `periodic_id = <pack>:<nombre>`; `cron_for` convierte su `every_min` a cron (divisor de 60 minutos, divisor de 24 horas, o una vez al día). Al dispararse, `dispatch` (`apps/backend/src/autobot/runtime/periodic.py`) encola un `run_periodic(tenant_id, name, scheduled_at)` por cada negocio activo del pack, con un `queueing_lock` por negocio y nombre y un desfase estable por negocio dentro del periodo (para que no llamen todos a Calendar en el mismo instante). `run_periodic` construye un contexto sin contacto, ejecuta el manejador **sin transacción** y aplica sus acciones en una. Una ejecución con más retraso que `max_delay_min` se descarta y se registra. Solo corre en canales elegibles: un negocio en alta, pausado o degradado no recibe trabajo periódico en su canal principal.
 

@@ -34,3 +34,4 @@ La fecha es la del alta del ADR en git. Si una decisión cambia, el ADR afectado
 | [026](ADR-026-conciliacion-de-envios-ambiguos.md) | Conciliación de envíos ambiguos y recuperación en bloque | vigente | 2026-11-23 | Cambia la regla de `unknown` (ADR-004, ADR-024) |
 | [027](ADR-027-alta-y-configuracion-en-una-pestana.md) | Alta y Configuración en una sola pestaña | vigente | 2026-11-24 | Modifica el ADR-014 |
 | [028](ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md) | Aviso inicial en una línea, sin PERSONA ni BAJA | vigente | 2026-11-24 | |
+| [029](ADR-029-menu-de-operador.md) | Menú de operador en el bot de avisos, solo consulta | vigente | 2026-11-24 | Amplía el ADR-007 |

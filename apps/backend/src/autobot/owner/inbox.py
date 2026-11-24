@@ -17,6 +17,7 @@ from autobot.channels.base import InboundItem, RetryLater, Sent
 from autobot.channels.ratelimit import WindowLimiter
 from autobot.ops.logging import bind, contextual
 from autobot.owner import links, menu, texts
+from autobot.owner.operator import is_operator_chat
 from autobot.runtime.event_flow import finish, finish_and_send, finish_limited
 from autobot.runtime.jobs import HANDLE_OWNER_EVENT, INBOUND
 from autobot.runtime.locks import owner_chat_lock
@@ -56,9 +57,10 @@ def store_owner_event(item: InboundItem) -> bool:
     if chat_limiter.hit(item.external_id):
         log.warning("owner bot events of a chat over the limit dropped")
         return False
-    if not OwnerLink.objects.filter(chat_id=int(item.external_id)).exists() and (
-        stranger_limiter.hit("all")
-    ):
+    known = is_operator_chat(item.external_id) or (
+        OwnerLink.objects.filter(chat_id=int(item.external_id)).exists()
+    )
+    if not known and stranger_limiter.hit("all"):
         log.warning("owner bot events of unlinked chats over the limit dropped")
         return False
     event_id = uuid.uuid7()
@@ -112,17 +114,20 @@ def _process(event: OwnerEvent) -> None:
         body, linked_slug = started
 
     tenants = links.tenants_of_chat(chat_id)
-    if not tenants:
+    operator = is_operator_chat(chat_id)
+    if not tenants and not operator:
         _reply_limited(event, chat_id, texts.not_linked())  # someone insisting: no answer
         return
 
-    chat = menu.OwnerChat(chat_id=chat_id, tenants=tenants)
+    chat = menu.OwnerChat(chat_id=chat_id, tenants=tenants, operator=operator)
     if body is None:
         payload = item.message.payload or ""
-        body = (menu.answer(chat, payload) if payload else None) or texts.greeting(tenants)
+        body = (menu.answer(chat, payload) if payload else None) or texts.greeting(
+            tenants, operator=operator
+        )
 
     slug = linked_slug or (tenants[0].slug if len(tenants) == 1 else None)
-    _finish_and_reply(event, chat_id, menu.menu_reply(chat, body), slug=slug)
+    _finish_and_reply(event, chat_id, menu.menu_replies(chat, body), slug=slug)
 
 
 def _handle_start_code(event: OwnerEvent, chat_id: int, code: str) -> tuple[str, str | None] | None:
@@ -191,13 +196,26 @@ def _send(event: OwnerEvent, chat_id: int, reply: Reply) -> bool:
     return False
 
 
+def _send_all(event: OwnerEvent, chat_id: int, replies: list[Reply]) -> bool:
+    """Send the replies in order; True (retry) only if the first one certainly did not
+    go out. Once one went out, a later failure is logged, never retried: a retry would
+    repeat what was already sent."""
+    first, *rest = replies
+    if _send(event, chat_id, first):
+        return True
+    for reply in rest:
+        if _send(event, chat_id, reply):
+            log.warning("owner bot reply only partly sent: the rest is not retried")
+            break
+    return False
+
+
 def _finish_and_reply(
-    event: OwnerEvent, chat_id: int, body: str | Reply, *, slug: str | None = None
+    event: OwnerEvent, chat_id: int, replies: list[Reply], *, slug: str | None = None
 ) -> None:
     """Mark the event done, then answer: a retry never repeats the answer."""
     if slug:
         bind(tenant=slug)
-    reply = Text(body) if isinstance(body, str) else body
     finish_and_send(
-        OwnerEvent, event.id, lambda: _send(event, chat_id, reply), "owner bot reply not sent"
+        OwnerEvent, event.id, lambda: _send_all(event, chat_id, replies), "owner bot reply not sent"
     )

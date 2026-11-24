@@ -7,9 +7,12 @@ from django.conf import settings
 from autobot.tenancy.registry import LoadedTenant
 
 PACK_FAILED = "⚠️ Ahora no puedo leer tu agenda; prueba en unos minutos."
+MORE = "¿Algo más?"  # the menu below an answer sent as a text of its own
 
 
-def greeting(tenants: list[LoadedTenant]) -> str:
+def greeting(tenants: list[LoadedTenant], *, operator: bool = False) -> str:
+    if operator:
+        return "👋 ¡Hola! Este es tu menú de operador.\n¿Qué quieres mirar?"
     if len(tenants) == 1:
         return f"👋 ¡Hola! Soy el asistente de *{tenants[0].info.name}*.\n¿Qué necesitas?"
     return "👋 ¡Hola! Soy tu asistente de Autobot.\n¿Qué necesitas?"
