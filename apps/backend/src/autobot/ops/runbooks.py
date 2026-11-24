@@ -69,6 +69,12 @@ PREFIX_RUNBOOKS: dict[str, str] = {
 NO_RUNBOOK: frozenset[str] = frozenset({"billing", "billing:demo_wa"})
 
 
+def docs_url(doc_path: str) -> str:
+    """The site URL of a `docs/`-relative page (`referencia/packs/salon.md#textos` ->
+    `/docs/referencia/packs/salon/#textos`)."""
+    return _url(doc_path)
+
+
 def _url(doc_path: str) -> str:
     file, _, anchor = doc_path.partition("#")
     page = file.removesuffix(".md").removesuffix("README").rstrip("/")

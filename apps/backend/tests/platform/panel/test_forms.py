@@ -2,6 +2,9 @@
 config schema; no DB needed, so this runs against `packs.registry.PACKS`
 directly, not the `toy` pack the other panel tests monkeypatch in."""
 
+import re
+import unicodedata
+from pathlib import Path
 from typing import Any
 
 import jsonschema
@@ -229,3 +232,41 @@ def test_unknown_pack_is_not_found() -> None:
     with pytest.raises(ApiError) as excinfo:
         forms.document_schema("nope")
     assert excinfo.value.status == 404
+
+
+DOCS = Path(__file__).resolve().parents[5] / "docs"
+
+
+def _anchor(heading: str) -> str:
+    """The id the documentation site gives a heading (`## El calendario` ->
+    `el-calendario`): lower case, accents dropped, punctuation removed."""
+    text = unicodedata.normalize("NFKD", heading.lower())
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = re.sub(r"[^\w\s-]", "", text)
+    return re.sub(r"\s+", "-", text.strip())
+
+
+@pytest.mark.parametrize("pack", ["salon", "bus"])
+def test_every_section_links_a_docs_page_and_anchor_that_exist(pack: str) -> None:
+    """The panel's «Más información» of each section opens this page: a renamed
+    heading or a moved page would break it without any other test noticing."""
+    for section in (*forms.PLATFORM_SECTIONS, *forms.PACK_SECTIONS[pack]):
+        assert section.docs, section.key
+        page, _, anchor = section.docs.partition("#")
+        path = DOCS / page
+        assert path.is_file(), section.docs
+        if anchor:
+            headings = re.findall(r"^#{1,6}\s+(.+?)\s*$", path.read_text(), re.MULTILINE)
+            assert anchor in {_anchor(h) for h in headings}, section.docs
+    urls = [g["docs"] for g in forms.ui_schema(pack)["groups"]]
+    assert all(url.startswith("/docs/") and ".md" not in url for url in urls)
+
+
+@pytest.mark.parametrize("pack", ["salon", "bus"])
+def test_every_pack_config_field_has_a_help_text(pack: str) -> None:
+    """The panel shows each field's description under it: a new parameter without
+    one would show up unexplained."""
+    schema = forms.document_schema(pack)
+    config = schema["properties"]["config"]
+    missing = [name for name, field in config["properties"].items() if not field.get("description")]
+    assert not missing, f"config fields without a description: {missing}"

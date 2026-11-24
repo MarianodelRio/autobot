@@ -104,7 +104,12 @@ class HolidaysConfig(BaseModel):
 
 class SalonConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    business_name: str = Field(min_length=1, max_length=60, title="Nombre del negocio")
+    business_name: str = Field(
+        min_length=1,
+        max_length=60,
+        title="Nombre del negocio",
+        description="El nombre que ven los clientes en el menú del bot.",
+    )
     contact_phone: str = Field(
         min_length=1,
         max_length=30,
@@ -122,20 +127,58 @@ class SalonConfig(BaseModel):
         title="Servicios",
         description="Hasta 9; la clave es el id interno.",
     )
-    opening_hours: dict[Weekday, list[TimeRange]] = Field(min_length=1, title="Horario de apertura")
-    slot_step_min: int = Field(default=30, gt=0, strict=True, title="Paso de los huecos (min)")
-    min_notice_min: int = Field(default=0, ge=0, strict=True, title="Antelación mínima (min)")
+    opening_hours: dict[Weekday, list[TimeRange]] = Field(
+        min_length=1,
+        title="Horario de apertura",
+        description="Franjas de cada día de la semana; un día sin franjas está cerrado.",
+    )
+    slot_step_min: int = Field(
+        default=30,
+        gt=0,
+        strict=True,
+        title="Paso de los huecos (min)",
+        description="Cada cuántos minutos empieza una hora ofrecida (30: 10:00, 10:30…).",
+    )
+    min_notice_min: int = Field(
+        default=0,
+        ge=0,
+        strict=True,
+        title="Antelación mínima (min)",
+        description="Con cuánta antelación como mínimo se puede reservar; 0, sin límite.",
+    )
     booking_window_days: int = Field(
-        default=21, ge=1, le=90, strict=True, title="Ventana de reserva (días)"
+        default=21,
+        ge=1,
+        le=90,
+        strict=True,
+        title="Ventana de reserva (días)",
+        description="Cuántos días hacia delante se puede reservar (de 1 a 90).",
     )
     max_active_bookings: int = Field(
-        default=5, ge=1, strict=True, title="Citas activas máximas por cliente"
+        default=5,
+        ge=1,
+        strict=True,
+        title="Citas activas máximas por cliente",
+        description="Citas futuras que puede tener a la vez un cliente; al llegar, no puede"
+        " pedir otra.",
     )
-    reminders_enabled: bool = Field(default=False, title="Recordatorios activados")
+    reminders_enabled: bool = Field(
+        default=False,
+        title="Recordatorios activados",
+        description="Envía a cada cliente un recordatorio antes de su cita.",
+    )
     reminder_window_hours: tuple[int, int] = Field(
-        default=(23, 25), title="Ventana de recordatorio (horas antes)"
+        default=(23, 25),
+        title="Ventana de recordatorio (horas antes)",
+        description="Entre cuántas horas antes de la cita se envía el recordatorio"
+        " (mínimo y máximo).",
     )
-    manual_confirmations_enabled: bool = Field(default=False, title="Confirmación manual activada")
+    manual_confirmations_enabled: bool = Field(
+        default=False,
+        title="Confirmación manual activada",
+        description="Avisa a los clientes de las citas que el negocio crea a mano en su"
+        " calendario.",
+    )
     manual_confirmations_since: datetime | None = Field(
         default=None,
         title="Confirmación manual desde",
@@ -146,14 +189,23 @@ class SalonConfig(BaseModel):
         title="Festivos",
         description="Calendario de festivos: esos días no se puede reservar.",
     )
-    special_event: SpecialEvent = Field(default=SpecialEvent(), title="Evento especial")
+    special_event: SpecialEvent = Field(
+        default=SpecialEvent(),
+        title="Evento especial",
+        description="Activo, añade «Cita <nombre>» al menú con sus propios días y franjas.",
+    )
     info_text: str = Field(
         default="",
         max_length=4096,
         title="Texto informativo",
         description="Se muestra al pedir información general del negocio.",
     )
-    texts: SalonTexts = Field(default=SalonTexts(), title="Textos del bot")
+    texts: SalonTexts = Field(
+        default=SalonTexts(),
+        title="Textos del bot",
+        description="Las frases que dice el bot; cada una trae un texto de serie que se puede"
+        " cambiar.",
+    )
 
     @field_validator("business_name", "contact_phone", "calendar_id")
     @classmethod

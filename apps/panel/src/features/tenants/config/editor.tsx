@@ -2,6 +2,7 @@
 import Form from "@rjsf/shadcn";
 import { createSchemaUtils, type RJSFSchema } from "@rjsf/utils";
 import { useQuery } from "@tanstack/react-query";
+import { CircleHelp } from "lucide-react";
 import {
   type ComponentProps,
   type ReactNode,
@@ -172,6 +173,8 @@ interface Group {
   description?: string;
   fields: string[];
   summary?: string[];
+  /** The site URL (`/docs/...`) with the long explanation of the section. */
+  docs?: string | null;
 }
 /** A section as shown: the backend's group with only the fields this tenant's
  * document really has, plus its steps. */
@@ -631,9 +634,23 @@ function ConfigSections({
                   </span>
                 </AccordionTrigger>
                 <AccordionContent className="space-y-4">
-                  {section.description && (
+                  {(section.description || section.docs) && (
                     <p className="text-muted-foreground">
                       {section.description}
+                      {section.docs && (
+                        <>
+                          {" "}
+                          <a
+                            href={section.docs}
+                            target="_blank"
+                            rel="noopener"
+                            className="inline-flex items-center gap-1 whitespace-nowrap underline underline-offset-2 hover:text-foreground"
+                          >
+                            <CircleHelp className="size-3.5" aria-hidden />
+                            Más información
+                          </a>
+                        </>
+                      )}
                     </p>
                   )}
                   {visible.length > 0 && (

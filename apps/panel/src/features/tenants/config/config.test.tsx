@@ -71,6 +71,7 @@ const schema = {
         description: "Cómo se llama el negocio.",
         fields: ["name"],
         summary: ["name"],
+        docs: "/docs/procedimientos/alta-baja-negocio/#alta",
       },
       { key: "prices", label: "Precios", fields: ["config.price"] },
     ],
@@ -121,6 +122,12 @@ test("sections start closed, with their summary, and open on click", async () =>
   expect(screen.queryByLabelText("Nombre")).toBeNull();
   await user.click(business);
   expect(screen.getByText("Cómo se llama el negocio.")).toBeInTheDocument();
+  const more = screen.getByRole("link", { name: "Más información" });
+  expect(more).toHaveAttribute(
+    "href",
+    "/docs/procedimientos/alta-baja-negocio/#alta",
+  );
+  expect(more).toHaveAttribute("target", "_blank");
   expect(screen.getByLabelText("Nombre")).toHaveValue("Original");
 });
 test("editor synchronizes YAML, shows diff and applies 422 errors", async () => {

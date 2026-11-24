@@ -62,11 +62,12 @@ sin registrar hace fallar «Salud del canal», que sí bloquea; el dueño no blo
 que no pertenece a ninguna sección se muestra también arriba.
 
 **Secciones.** Debajo, secciones plegables (se pueden abrir varias). Cerrada, cada una
-muestra un punto de estado según sus pasos de alta (rojo si un paso bloqueante no está
-listo, ámbar si uno dio error, verde si todos están bien), su nombre, un resumen de una
+muestra un punto de estado según sus pasos de alta (rojo si una comprobación dio error,
+ámbar si falta un paso obligatorio, verde si todos están bien), su nombre, un resumen de una
 línea con los valores clave y, si procede, «modificado» (cambios sin guardar) o «con
-errores» (el último guardado falló en algún campo suyo). Abierta: una explicación breve,
-sus campos, «Comprobaciones del alta» (sus pasos, cada uno con su estado, por qué importa,
+errores» (el último guardado falló en algún campo suyo). Abierta: una explicación breve
+con «Más información» (abre en otra pestaña la página de esta documentación que lo
+explica a fondo), sus campos (cada parámetro con una línea de ayuda debajo), «Comprobaciones del alta» (sus pasos, cada uno con su estado, por qué importa,
 qué hacer y valores con copiar) y sus extras. Al cargar se abren solas las secciones con un
 paso bloqueante pendiente (en `onboarding`) y la de `?section=` (p. ej. `?section=canal`).
 

@@ -33,14 +33,22 @@ class OfficeHours(BaseModel):
 
 class BusConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    business_name: str = Field(min_length=1, title="Nombre del negocio")
+    business_name: str = Field(
+        min_length=1,
+        title="Nombre del negocio",
+        description="El nombre de la empresa en los mensajes del bot.",
+    )
     contact_phone: str = Field(
         min_length=1,
         max_length=30,
         title="Teléfono de contacto",
         description="Para los mensajes del bot.",
     )
-    office_hours: list[OfficeHours] = Field(default=[], title="Horario de oficina")
+    office_hours: list[OfficeHours] = Field(
+        default=[],
+        title="Horario de oficina",
+        description="Cuándo atiende la oficina; un día solo puede estar en un bloque.",
+    )
     links: dict[Literal["web", "compra_online", "bonos", "pdf_horarios"], HttpUrl] = Field(
         default={}, title="Enlaces", description="Web, compra online, bonos y PDF de horarios."
     )

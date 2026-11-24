@@ -7,6 +7,7 @@ from typing import Any, cast
 import yaml
 from ninja import Schema
 
+from autobot.ops.runbooks import docs_url
 from autobot.panel.errors import ApiError
 from autobot.tenancy import dataset_library
 from autobot.tenancy.registry import source_from_dir
@@ -76,6 +77,9 @@ class Section:
     description: str
     fields: tuple[str, ...]
     summary: tuple[str, ...] = ()
+    # The `docs/`-relative page (and `#anchor`) with the long explanation: the panel
+    # links it as «Más información». `test_forms.py` checks the page and anchor exist.
+    docs: str = ""
 
 
 PLATFORM_SECTIONS: tuple[Section, ...] = (
@@ -86,6 +90,7 @@ PLATFORM_SECTIONS: tuple[Section, ...] = (
         " da a sus clientes.",
         ("name", "timezone", "config.business_name", "config.contact_phone", "demo"),
         summary=("name", "timezone"),
+        docs="procedimientos/alta-baja-negocio.md#alta",
     ),
     Section(
         "channel",
@@ -94,6 +99,7 @@ PLATFORM_SECTIONS: tuple[Section, ...] = (
         " las credenciales, el enlace público y el QR.",
         ("channel",),
         summary=("channel.type", "channel.display_phone", "channel.bot_username"),
+        docs="procedimientos/alta-baja-negocio.md#alta",
     ),
     Section(
         "people",
@@ -101,6 +107,7 @@ PLATFORM_SECTIONS: tuple[Section, ...] = (
         "El dueño recibe avisos y resúmenes en su propio chat. Los testers son los únicos"
         " que pueden escribir al bot mientras el negocio está en alta.",
         ("owner", "testers"),
+        docs="arquitectura/bot-de-duenos.md",
     ),
     Section(
         "legal",
@@ -110,6 +117,7 @@ PLATFORM_SECTIONS: tuple[Section, ...] = (
         " activar.",
         ("privacy", "support"),
         summary=("privacy.policy_url", "support.human_contact"),
+        docs="cumplimiento/informacion-al-interesado.md",
     ),
 )
 # The pack's own sections, after the platform's. A `config` field no section lists
@@ -122,6 +130,7 @@ PACK_SECTIONS: dict[str, tuple[Section, ...]] = {
             "Qué se puede reservar, cuándo abre el negocio y qué días cierra.",
             ("config.services", "config.opening_hours", "config.holidays", "config.info_text"),
             summary=("config.services",),
+            docs="referencia/packs/salon.md#servicios",
         ),
         Section(
             "bookings",
@@ -139,6 +148,7 @@ PACK_SECTIONS: dict[str, tuple[Section, ...]] = {
                 "config.manual_confirmations_since",
             ),
             summary=("config.booking_window_days", "config.reminders_enabled"),
+            docs="referencia/packs/salon.md#configuracion",
         ),
         Section(
             "calendar",
@@ -147,12 +157,14 @@ PACK_SECTIONS: dict[str, tuple[Section, ...]] = {
             " con la cuenta de servicio de la plataforma.",
             ("config.calendar_id",),
             summary=("config.calendar_id",),
+            docs="referencia/packs/salon.md#el-calendario",
         ),
         Section(
             "special_event",
             "Evento especial",
             "Un periodo con condiciones propias (por ejemplo, una campaña o unas fiestas).",
             ("config.special_event",),
+            docs="referencia/packs/salon.md#evento-especial",
         ),
         Section(
             "texts",
@@ -160,6 +172,7 @@ PACK_SECTIONS: dict[str, tuple[Section, ...]] = {
             "Las frases que el bot usa en cada situación. Solo hace falta tocarlas para"
             " personalizar el tono.",
             ("config.texts",),
+            docs="referencia/packs/salon.md#textos",
         ),
     ),
     "bus": (
@@ -169,6 +182,7 @@ PACK_SECTIONS: dict[str, tuple[Section, ...]] = {
             "El horario de atención de la oficina y los enlaces a la web, la compra online,"
             " los bonos y los horarios en PDF.",
             ("config.office_hours", "config.links"),
+            docs="referencia/packs/bus.md#configuracion",
         ),
         Section(
             "datasets",
@@ -181,6 +195,7 @@ PACK_SECTIONS: dict[str, tuple[Section, ...]] = {
                 "config.schedule_disclaimer",
             ),
             summary=("config.start_menu_towns",),
+            docs="referencia/packs/bus.md#dataset-de-horarios",
         ),
     ),
 }
@@ -347,6 +362,7 @@ def ui_schema(pack_name: str) -> dict[str, Any]:
                 "description": s.description,
                 "fields": list(s.fields),
                 "summary": list(s.summary),
+                "docs": docs_url(s.docs) if s.docs else None,
             }
             for s in sections
         ],
