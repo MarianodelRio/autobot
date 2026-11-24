@@ -43,7 +43,7 @@ def test_posadas_cordoba_un_lunes_tiene_la_linea_directa_y_la_normal() -> None:
     assert "posadas-cordoba-directo" in lineas
 
     chat = Conversation(pack, config=config, data=datos, channel="telegram", now=LUNES)
-    chat.send("hola").expect(buttons=["🚌 Ver horarios", "ℹ️ Contacto"])
+    chat.send("hola").expect(buttons=["🚌 Ver horarios", "ℹ️ Información"])
     chat.press("menu_horarios").expect(list_includes="Posadas")
     chat.press("loc:posadas")
     chat.press("loc:cordoba")

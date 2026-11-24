@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from core.actions import Action, ContactRef, NotifyOwner, SendProactive, UpdateContact
-from core.conversation import DEGRADED_TEXT, OPT_OUT_TEXT, RESTART_TEXT
+from core.conversation import DEGRADED_TEXT, RESTART_TEXT
 from core.errors import TransientError
 from core.limits import LimitError
 from core.messages import IncomingMessage
@@ -80,11 +80,11 @@ def test_global_menu_resets_the_state(chat: Conversation, command: str) -> None:
     assert chat.state == {}
 
 
-def test_opt_out_and_opt_in(chat: Conversation) -> None:
-    chat.send("hola")  # the first-contact notice goes with the first message
-    chat.send("baja").expect(text=OPT_OUT_TEXT)
-    assert chat.contact.opt_out
-    chat.send("alta").expect(text_contains="volverás")
+@pytest.mark.parametrize("word", ["baja", "alta", "persona"])
+def test_retired_command_words_are_plain_text(chat: Conversation, word: str) -> None:
+    chat.send("hola")
+    chat.press("greet")
+    chat.send(word).expect(text_contains=f"¡Encantado, *{word}*!")
     assert not chat.contact.opt_out
 
 

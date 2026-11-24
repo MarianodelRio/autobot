@@ -91,7 +91,7 @@ Firmas: `[REPRESENTANTE DEL RESPONSABLE]` y `[TITULAR]`.
 | Interesados | Clientes finales del Responsable que escriben al bot; en su caso, el dueño y las personas autorizadas del Responsable (avisos) |
 | Categorías de datos | Identificador de contacto (teléfono, BSUID de WhatsApp o id de Telegram), nombre de perfil, nombre dado en la reserva, mensajes y texto libre, estado de la conversación, reservas (servicio, fecha y hora; nombre y teléfono en el evento de Calendar), avisos al dueño, métricas sin identificadores |
 | Categorías especiales | No previstas (ver cláusula 7.2) |
-| Naturaleza y finalidad | Recepción y respuesta automatizada de mensajes; gestión de citas; recordatorios de servicio y avisos al dueño; atención de bajas (`baja`); operación y seguridad del Servicio |
+| Naturaleza y finalidad | Recepción y respuesta automatizada de mensajes; gestión de citas; recordatorios de servicio y avisos al dueño; atención de bajas; operación y seguridad del Servicio |
 | Duración | La del Servicio |
 | Plazos de conservación por defecto | Contactos: 12 meses de inactividad (con `opt_out`, solo el identificador como supresión mínima); mensajes entrantes: contenido vaciado a 30 días y fila a 90; mensajes salientes: contenido a 30 días y fila a 12 meses; avisos y métricas: 12 meses; logs: 31 días; cola: 30 días; copias de seguridad: diaria 7, semanal 4, mensual 6. Instrucción del Responsable distinta: `[ ]` |
 | Limpieza | Automática nocturna; el Encargado confirma que está activa antes de tratar datos reales |

@@ -199,7 +199,7 @@ def test_event_disabled_mid_conversation(salon: Conversation) -> None:
 
 def test_contact_information(salon: Conversation) -> None:
     salon.config = configuration(info_text="Estamos en la plaza. " * 100)
-    salon.send("hola").expect(list_includes="Contacto")
+    salon.send("hola").expect(list_includes="Información")
     salon.press("menu_info").expect(text_contains="Estamos en la plaza.")
 
 

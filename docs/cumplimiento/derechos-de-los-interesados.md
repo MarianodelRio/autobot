@@ -17,7 +17,7 @@ Procedimiento operativo para atender los derechos de las personas (acceso, recti
 ## Plazos
 
 - **Un mes** desde la recepción de la solicitud (art. 12.3 RGPD), prorrogable dos meses más en casos complejos informando dentro del primer mes. El plazo es del **negocio**: la plataforma debe ejecutar en un máximo de `[10]` días hábiles tras la orden del negocio para dejar margen (compromiso del contrato, cláusula 7.8).
-- La baja de recordatorios (`baja`) es inmediata: la hace el propio bot.
+- La baja de recordatorios: el bot ya no tiene orden `baja` ([ADR-028](../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)); hoy no hay forma de marcarla (ni en el bot ni en el panel) y hay que decidirla antes de activar recordatorios reales.
 - La baja de un negocio: borrado en un máximo de 30 días desde la baja efectiva ([Alta y baja](../procedimientos/alta-baja-negocio.md#baja)).
 
 ## Verificación de identidad
@@ -42,7 +42,7 @@ Sin pedir más datos de los necesarios (la AEPD advierte de no exigir documentac
 | Acceso y portabilidad | Exportación JSON del contacto (conversación, mensajes, eventos, avisos) | Panel: «Exportar datos» en la conversación del contacto; o `contact_export` en local. Evento `contact.export` |
 | Rectificación | Corregir el nombre u otro dato | Panel (ficha del contacto) o instrucción al negocio; si el dato está en un evento de Calendar, lo corrige el negocio |
 | Supresión | Borra el contacto y sus mensajes, conversación, avisos y eventos asociados | Panel: «Olvidar contacto»; o `contact_forget <slug> <id> --channel main`. Evento `contact.forget`. Irreversible; borra también la marca `opt_out` (avisar a quien lo pide) |
-| Oposición / limitación | Parar los envíos | Marca `opt_out` (la persona escribe `baja`); limitación: marcar y no tratar, o borrar si procede `[criterio del negocio]` |
+| Oposición / limitación | Parar los envíos | Marca `opt_out` (hoy sin forma de ponerla: pendiente, ver ADR-028); limitación: marcar y no tratar, o borrar si procede `[criterio del negocio]` |
 | Todos los datos de un negocio | Exportación completa | Panel: «Exportar datos del negocio»; `tenant_data_export` |
 
 5. **Entregar** la exportación con medidas de seguridad: por el canal verificado o en enlace temporal; custodiar y retirar el fichero según el procedimiento. Nunca por correo sin cifrar.

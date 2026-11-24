@@ -43,16 +43,11 @@ def _channel_complete(channel: Channel | None) -> bool:
 
 
 def _privacy_complete(tenant: LoadedTenant) -> bool:
-    """The first-contact notice cites `privacy.policy_url` and `PERSONA` answers with
-    `support.human_contact`: a real channel must not open without them (RGPD art. 13,
-    Ley 10/2025). Optional in the document so existing tenants keep loading."""
+    """The first-contact notice cites `privacy.policy_url`: a real channel must not open
+    without it (RGPD art. 13). Optional in the document so existing tenants keep
+    loading."""
     document = tenant.document
-    return bool(
-        document.privacy
-        and document.privacy.policy_url
-        and document.support
-        and document.support.human_contact
-    )
+    return bool(document.privacy and document.privacy.policy_url)
 
 
 def _health_issues(tenant: LoadedTenant, refresh: bool) -> tuple[bool, list[health.Issue]]:
@@ -109,7 +104,7 @@ def checklist(slug: str, *, refresh: bool = True) -> Checklist:
         ("templates", "Plantillas de WhatsApp aprobadas", templates_ok, True),
         (
             "privacy",
-            "Privacidad y atención: enlace a la política y contacto para hablar con una persona",
+            "Privacidad: enlace a la política de privacidad",
             privacy_ok,
             True,
         ),

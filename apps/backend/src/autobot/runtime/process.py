@@ -5,7 +5,7 @@ while the pack calls Calendar or the adapter calls the provider:
 
 1. tx1: load the event (done if it is no longer `pending`), upsert the contact and load
    its conversation with the effective state (expiry and version).
-2. No transaction: acknowledge, then the contact limit, a global command or the pack.
+2. No transaction: acknowledge, then the contact limit, the menu command or the pack.
 3. tx2: save the state, create the outbound messages and the actions, mark the event and
    queue the sends; the jobs exist only if it commits.
 
@@ -50,16 +50,14 @@ from autobot.tenancy.schema import PHONE
 from autobot.tenancy.tx import tenant_tx
 from core.actions import Action, NotifyOwner, RecordMetric, SendProactive, UpdateContact
 from core.conversation import (
-    HUMAN_REQUESTED,
     EffectiveState,
-    command_result,
     degraded_result,
     effective_state,
     first_contact_notice,
-    global_command,
+    is_menu_command,
     menu_message,
-    pack_message,
     recovery_result,
+    with_notice,
 )
 from core.errors import TransientError
 from core.limits import plan_sends
@@ -131,40 +129,28 @@ def process_event(
     notices = effective.notices
     error = ""
     keep_conversation = False  # True: the conversation row is left as it was
-    expects_free_text = tenant.pack is not None and (
-        tenant.pack.expects_free_text is not None and tenant.pack.expects_free_text(state)
-    )
-    command = global_command(message, free_text=expects_free_text)
     # A retried event was already counted on its first attempt.
     over_limit = contact_limiter.hit(str(contact.id)) if first_attempt else False
     if over_limit:
         log.warning("contact over its message limit: event %s saved, not answered", event.id)
         result, notices, keep_conversation = PackResult(), [], True
-    elif command is not None and command != "menu":
-        # opt-out/in, "persona" and the "command or name?" question: an RGPD and
-        # customer-service request, always honoured and recorded, even for a degraded
-        # tenant (checked next) that would otherwise only get the generic unavailable
-        # text, with no UpdateContact action to register it.
-        result = command_result(command, message, tenant.info, info)
-        if tenant.pack is None:
-            keep_conversation = True  # tx2 needs a pack to touch conversation.state
     elif tenant.pack is None or tenant.is_degraded:
         # Its conversation is left untouched, to go on once the tenant is fixed.
         result, notices, keep_conversation = PackResult([Text(UNAVAILABLE_TEXT)]), [], True
     else:
-        if command == "menu":
+        if is_menu_command(message):
             state, message = {}, menu_message(message.received_at)
-        else:
-            message = pack_message(message)
         result, error = _run_pack(
             tenant, event, info, state, message, last_attempt=last_attempt, calendars=calendars
         )
 
-    # The first-layer privacy notice, once per contact, before anything else.
-    intro: Reply | None = None
-    if not informed and not over_limit and tenant.pack is not None and not tenant.is_degraded:
+    # The first-layer privacy line, below the pack's menu every time it is shown, and
+    # below the first reply a contact ever gets whatever it is.
+    intro: str | None = None
+    wanted = result.menu or not informed
+    if wanted and not over_limit and tenant.pack is not None and not tenant.is_degraded:
         intro = (
-            demo_first_contact_notice(tenant.document.name)
+            demo_first_contact_notice()
             if event.channel in DEMO_CHANNELS
             else first_contact_notice(tenant.info)
         )
@@ -262,11 +248,12 @@ def _persist(
     *,
     keep_conversation: bool,
     now: Any,
-    intro: Reply | None = None,
+    intro: str | None = None,
 ) -> None:
     """tx2: save the state, the replies, the actions and the event outcome, and queue the
-    sends, all in one transaction. `intro` (the first-contact notice) goes first and
-    marks the contact as informed in the same transaction."""
+    sends, all in one transaction. `intro` (the privacy line) becomes the last line of the
+    replies (`with_notice`); the first time, it marks the contact as informed in the same
+    transaction."""
     with tenant_tx(tenant.id):
         event = InboundEvent.objects.select_for_update().get(id=event_id)
         if event.status != Status.PENDING:
@@ -280,10 +267,11 @@ def _persist(
             conversation.save(
                 update_fields=["state", "state_version", "last_inbound_at", "updated_at"]
             )
-        if intro is not None:
+        if intro is not None and contact.notice_sent_at is None:
             contact.notice_sent_at = now
             contact.save(update_fields=["notice_sent_at"])
-        replies = plan_sends([*([intro] if intro else []), *notices, *result.replies])
+        replies = [*notices, *result.replies]
+        replies = plan_sends(with_notice(replies, intro) if intro else replies)
         messages = create_replies(tenant.id, contact, event, replies)
         messages += apply_actions(
             tenant, event.channel, result.actions, contact=contact, event=event, now=now
@@ -370,10 +358,7 @@ def apply_actions(
                     continue
                 if action.display_name is not None:
                     contact.display_name = action.display_name[:200]
-                if action.opt_out is not None:
-                    contact.opt_out = action.opt_out
-                    contact.opt_out_at = now if action.opt_out else None
-                contact.save(update_fields=["display_name", "opt_out", "opt_out_at"])
+                contact.save(update_fields=["display_name"])
             case SendProactive():
                 target = _proactive_target(tenant, channel, action)
                 if target is None:
@@ -472,7 +457,7 @@ def _notify_owner(
     tenant's owner receives it the same way as a real one. Delivery is
     `send_notification`, which reads `audience`."""
     owner = tenant.document.owner
-    if owner is None or (action.kind != HUMAN_REQUESTED and action.kind not in owner.notify):
+    if owner is None or action.kind not in owner.notify:
         log.info("NotifyOwner %s only logged: the owner does not receive it", action.kind)
         return
     row = Notification(

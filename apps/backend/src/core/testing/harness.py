@@ -18,13 +18,12 @@ from pydantic import BaseModel
 
 from core.actions import Action, NotifyOwner, RecordMetric, SendProactive, UpdateContact
 from core.conversation import (
-    command_result,
     degraded_result,
     effective_state,
     first_contact_notice,
-    global_command,
+    is_menu_command,
     menu_message,
-    pack_message,
+    with_notice,
 )
 from core.errors import TransientError
 from core.idem import IdemKeys
@@ -269,23 +268,19 @@ class Conversation:
             now=now,
         )
         state = effective.state
-        free_text = self.pack.expects_free_text is not None and self.pack.expects_free_text(state)
-        command = global_command(message, free_text=free_text)
         idem = IdemKeys(event_id)
-        if command == "menu":
+        if is_menu_command(message):
             state = {}
             result = self._handle(state, menu_message(now), idem)
-        elif command is not None:
-            result = command_result(command, message, self.tenant, self.contact)
         else:
-            result = self._handle(state, pack_message(message), idem)
-        # The first-contact notice goes before everything else, once per contact.
-        notices = [*effective.notices]
-        if not self.informed:
-            notices.insert(0, first_contact_notice(self.tenant))
+            result = self._handle(state, message, idem)
+        outgoing = [*effective.notices, *result.replies]
+        # The privacy line: below the pack's menu, and below the very first reply.
+        if result.menu or not self.informed:
+            outgoing = with_notice(outgoing, first_contact_notice(self.tenant))
             self.informed = True
 
-        planned = plan_sends([*notices, *result.replies], strict=True)
+        planned = plan_sends(outgoing, strict=True)
         replies = [_through_json(r) for r in planned]
         for r in replies:
             _render(r)
@@ -351,8 +346,6 @@ class Conversation:
                 case UpdateContact():
                     if action.display_name is not None:
                         self.contact = replace(self.contact, display_name=action.display_name)
-                    if action.opt_out is not None:
-                        self.contact = replace(self.contact, opt_out=action.opt_out)
                 case SendProactive():
                     self._check_proactive(action)
                     _render(

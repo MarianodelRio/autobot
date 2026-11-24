@@ -18,8 +18,9 @@ Lista priorizada de lo que debe estar resuelto antes de atender datos de un **pr
 - [ ] **Simulacro real de restauración desde el bucket S3** (no solo `make restore-test`): restaurar el último snapshot en una VPS desechable con la clave de secretos guardada aparte, comprobar los datos y el libro de supresiones, y anotar el RTO medido ([Restaurar](../procedimientos/restaurar.md), [RPO y RTO](../procedimientos/backups.md#rpo-y-rto)).
 - [ ] **Vigilante del host activo** (`autobot-watchdog.timer`): con `NOTIFY_BOT_TOKEN` y `OPS_TELEGRAM_CHAT_ID` en `.env` y un aviso de prueba recibido ([Despliegue](../procedimientos/despliegue.md#vigilante-del-host-watchdogsh)).
 - [ ] Confirmar la ubicación y política de Healthchecks.io, y decidir si se usa Sentry (con su DPA).
-- [x] **Primera capa de información** en el primer mensaje del bot, aviso de asistente automático y comando `PERSONA` ([información](informacion-al-interesado.md)).
-- [ ] Rellenar `privacy.policy_url` y `support.human_contact` en cada negocio (la activación del canal real lo exige; los negocios ya activos deben completarlo).
+- [x] **Primera capa de información** en el primer mensaje del bot: una línea con el aviso de asistente automático y el enlace a la política ([información](informacion-al-interesado.md), [ADR-028](../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
+- [ ] Rellenar `privacy.policy_url` en cada negocio (la activación del canal real lo exige; los negocios ya activos deben completarlo).
+- [ ] Decidir cómo se da de baja un cliente de los recordatorios antes de activarlos en un negocio real (no hay orden `BAJA` desde el [ADR-028](../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
 - [x] Pack `bus`: **aviso de horarios orientativos** (`schedule_disclaimer`, configurable) ([otras normas](otras-normas.md#10-pack-bus)).
 - [ ] Opt-in documentado para recordatorios de WhatsApp y plantillas aprobadas, si se activan (`reminders_enabled`).
 

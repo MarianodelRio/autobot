@@ -189,13 +189,12 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
         SetupStepOut(
             key="privacy",
             section="legal",
-            label="Privacidad y atención",
-            why="El primer mensaje del bot cita el enlace a la política de privacidad y "
-            "«PERSONA» da el contacto para hablar con alguien; sin ellos no se puede activar.",
+            label="Privacidad",
+            why="El primer mensaje del bot cita el enlace a la política de privacidad; sin "
+            "él no se puede activar.",
             state=_state(items["privacy"].ok),
             blocking=items["privacy"].blocking,
-            detail="Rellena «Enlace a la política de privacidad» y «Contacto para hablar con "
-            "una persona» en esta misma sección y guarda.",
+            detail="Rellena «Enlace a la política de privacidad» en esta misma sección y guarda.",
         )
     )
     steps.append(

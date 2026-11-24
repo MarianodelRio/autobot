@@ -43,7 +43,6 @@ class NotifyOwner:
 @dataclass(frozen=True)
 class UpdateContact:
     display_name: str | None = None
-    opt_out: bool | None = None
 
 
 @dataclass(frozen=True)

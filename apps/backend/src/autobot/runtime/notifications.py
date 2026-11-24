@@ -29,7 +29,6 @@ from autobot.runtime.summary import OWNER_SUMMARY_KIND
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.schema import TelegramSecrets
 from autobot.tenancy.tx import tenant_tx
-from core.conversation import HUMAN_REQUESTED
 from core.replies import Text
 from core.serialization import Outbound
 
@@ -99,15 +98,10 @@ def send_notification(tenant_id: UUID, notification_id: UUID, *, attempts: int =
             log.warning("notification %s expired without being sent", row.id)
             return
         owner = tenant.document.owner
-        # owner.notify only gates per-event notices; the summary has its own toggle and a
-        # contact's request for a person is always delivered
+        # owner.notify only gates per-event notices; the summary has its own toggle
         # (owner.summary_monthly), already checked when send_owner_summary created this
         # row.
-        allowed = (
-            row.kind in (OWNER_SUMMARY_KIND, HUMAN_REQUESTED) or row.kind in owner.notify
-            if owner
-            else False
-        )
+        allowed = (row.kind == OWNER_SUMMARY_KIND or row.kind in owner.notify) if owner else False
         chat = links.owner_chat(tenant_id) if allowed else None
         if allowed and chat is None and bot_secrets() is not None:
             # The owner has not linked a chat (yet): keep the notice; `release_held` queues

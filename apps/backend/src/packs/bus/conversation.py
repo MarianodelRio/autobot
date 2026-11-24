@@ -89,6 +89,8 @@ class _Turno:
         self.actions: list[Action] = []
         # True si el mensaje es el id de un botón o fila; False si es texto escrito.
         self.es_boton = False
+        # True si la última respuesta es el menú: la plataforma añade debajo el aviso.
+        self.es_menu = False
 
     def responder(self, *replies: Reply) -> None:
         self.replies.extend(replies)
@@ -178,6 +180,7 @@ def _consultar(t: _Turno, origen: str, destino: str, fecha: date) -> query.Consu
 def to_menu(t: _Turno) -> None:
     t.estado = {}
     t.responder(build_menu(t.cfg))
+    t.es_menu = True
 
 
 def _ir_a_origen(t: _Turno, aviso: str | None = None) -> None:
@@ -763,7 +766,7 @@ def handle(ctx: PackContext, message: IncomingMessage) -> PackResult:
         # cambiar el dataset): se vuelve al menú en vez de fallar.
         t.replies.clear()
         to_menu(t)
-    return PackResult(replies=t.replies, state=t.estado, actions=t.actions)
+    return PackResult(replies=t.replies, state=t.estado, actions=t.actions, menu=t.es_menu)
 
 
 def _despachar(t: _Turno, text: str | None, interactive_id: str | None, value: str) -> None:

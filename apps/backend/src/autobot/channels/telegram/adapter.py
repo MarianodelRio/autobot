@@ -46,6 +46,7 @@ NO_PREVIEW = {"is_disabled": True}  # WhatsApp shows no link preview; Telegram d
 # WhatsApp's *bold*: asterisks at word edges, with no space inside them ("2*3*4" and
 # "a * b * c" stay as they are, as in WhatsApp).
 BOLD = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])")
+ITALIC = re.compile(r"(?<![\w_])_(?=\S)([^_\n]*?\S)_(?![\w_])")
 # What a message carries when it is the person sending something that is not text: the
 # bot answers that it cannot read it. A message with none of these (and no text) is a
 # service message.
@@ -383,8 +384,9 @@ def _fill(text: str, params: list[str]) -> str:
 
 
 def _html(text: str) -> str:
-    """Escape for parse_mode HTML and turn WhatsApp's `*bold*` into `<b>bold</b>`."""
-    return BOLD.sub(r"<b>\1</b>", html.escape(text, quote=False))
+    """Escape for parse_mode HTML and turn WhatsApp's `*bold*` and `_italic_` into
+    `<b>bold</b>` and `<i>italic</i>`."""
+    return ITALIC.sub(r"<i>\1</i>", BOLD.sub(r"<b>\1</b>", html.escape(text, quote=False)))
 
 
 def _describe(response: httpx.Response) -> str:

@@ -85,7 +85,6 @@ class LoadedTenant:
             timezone=ZoneInfo(f.timezone),
             controller_name=f.privacy.controller_name if f.privacy else None,
             policy_url=f.privacy.policy_url if f.privacy else None,
-            human_contact=f.support.human_contact if f.support else None,
         )
 
 

@@ -14,7 +14,7 @@ Estados: **hecho** (existe y se verifica en el repo), **pendiente** (por hacer, 
 | Punto | Detalle | Estado |
 |---|---|---|
 | Aviso legal (art. 10) | La web de la plataforma debe mostrar titular, NIF, domicilio, contacto, registro mercantil si procede | Pendiente (`[TITULAR]`, `[NIF]`, `[DOMICILIO]`); no hay web aún |
-| Recordatorios de servicio | Un recordatorio de una cita ya reservada es comunicación de servicio, no comercial; no requiere consentimiento adicional, pero debe poder pararse (`baja`) | Hecho (diseño: `reminders_enabled` desactivado por defecto; `baja` implementada) |
+| Recordatorios de servicio | Un recordatorio de una cita ya reservada es comunicación de servicio, no comercial; no requiere consentimiento adicional, pero debe poder pararse | Pendiente: `reminders_enabled` desactivado por defecto; la orden `baja` se retiró ([ADR-028](../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)) y hay que decidir cómo se para antes de activarlos |
 | Comunicaciones comerciales (art. 21) | Prohibido enviar publicidad por medios electrónicos sin consentimiento previo y expreso (salvo cliente actual con productos similares y opción de oposición) | Pendiente: el bot no envía promociones; si un negocio las pide, exigir opt-in y registro del consentimiento |
 | Identificar la publicidad (art. 20) | Si hay promociones, que se identifiquen como tales | Pendiente (solo si se ofrecen) |
 | Cookies/rastreo | Si la web de la plataforma usa cookies no técnicas (art. 22.2) | Pendiente de comprobar al publicar la web |
@@ -27,7 +27,7 @@ Estados: **hecho** (existe y se verifica en el repo), **pendiente** (por hacer, 
 | Punto | Detalle | Estado |
 |---|---|---|
 | Plazo de adaptación | Hasta el **28 de diciembre de 2026** | Pendiente: dentro de plazo hoy |
-| Atención humana | Las empresas obligadas deben ofrecer atención por una persona cuando se pida; un bot no puede ser el único canal | Pendiente de abogado: decidir si el bot ofrece una salida a una persona (el pack `salon` ofrece «Contacto» con el teléfono del negocio) |
+| Atención humana | Las empresas obligadas deben ofrecer atención por una persona cuando se pida; un bot no puede ser el único canal | Pendiente de abogado: el bot no tiene orden `PERSONA` ([ADR-028](../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)); la salida a una persona es el teléfono del negocio (`contact_phone`: en `bus`, en «ℹ️ Información»; en `salon`, en el menú) |
 | Alcance | Depende del tamaño y del sector del **negocio** (cliente), no de la plataforma | Pendiente de abogado |
 | Pack `bus` | El transporte es servicio básico en el ámbito de la ley: **revisar con abogado a cada cliente de `bus`** antes del alta | Pendiente de abogado |
 
@@ -51,7 +51,7 @@ Estados: **hecho** (existe y se verifica en el repo), **pendiente** (por hacer, 
 | Ventana de 24 horas | Fuera de la ventana desde el último mensaje del usuario solo se pueden enviar plantillas aprobadas | Hecho en el diseño del canal (ver [canales](../arquitectura/canales.md)); verificar al activar recordatorios |
 | Plantillas | Aprobación previa; categoría adecuada (utilidad frente a marketing) | Pendiente al definir los recordatorios por WhatsApp |
 | Chatbots de IA de propósito general | Prohibidos como servicio principal desde el 15-01-2026 | Hecho: los bots son de propósito concreto (citas, horarios) y sin IA |
-| Mensaje de baja | Permitir dejar de recibir mensajes | Hecho (`baja`) |
+| Mensaje de baja | Permitir dejar de recibir mensajes | Pendiente: la orden `baja` se retiró ([ADR-028](../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)); decidir antes de enviar plantillas |
 | Cuenta y verificación | Cuenta WhatsApp Business, número, verificación del negocio | Pendiente por cliente (decisión 1 de [roles](roles-y-tratamientos.md)); ver [alta de WhatsApp](../procedimientos/alta-whatsapp-meta.md) |
 
 ## 5. Telegram
@@ -108,7 +108,7 @@ Estados: **hecho** (existe y se verifica en el repo), **pendiente** (por hacer, 
 
 ## Dónde está el código
 
-Canales y límites: `apps/backend/src/autobot/channels/`; baja de recordatorios: `apps/backend/src/packs/*/` (`global_command`, `opt_result`); retención: `apps/backend/src/autobot/runtime/retention.py`.
+Canales y límites: `apps/backend/src/autobot/channels/`; supresión de proactivos con `opt_out`: `apps/backend/src/autobot/runtime/process.py`; retención: `apps/backend/src/autobot/runtime/retention.py`.
 
 ## Relacionado
 

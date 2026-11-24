@@ -64,7 +64,7 @@ def test_unknown_payload_type_is_rejected() -> None:
         TEMPLATE,
         ContactRef(phone="+34600000001"),
         NotifyOwner("booking_created", "Nueva cita", "notify:booking_created:x"),
-        UpdateContact(opt_out=True),
+        UpdateContact(display_name="Lucía"),
     ],
     ids=lambda v: type(v).__name__,
 )

@@ -65,11 +65,6 @@ def clean_name(raw: str) -> str:
     return " ".join(re.sub(r"[*_`~\r\n\t]", " ", raw).split())
 
 
-def expects_free_text(state: Mapping[str, Any]) -> bool:
-    """The name step: `alta`/`baja` there are a name, not opt-in/out commands."""
-    return state.get("step") == "BOOK_NAME"
-
-
 class Turn:
     def __init__(self, ctx: PackContext) -> None:
         self.ctx = ctx
@@ -80,7 +75,9 @@ class Turn:
         return PackResult(replies=[reply], state={} if reset else self.state)
 
     def menu(self) -> PackResult:
-        return self.result(ui.menu(self.cfg), reset=True)
+        result = self.result(ui.menu(self.cfg), reset=True)
+        result.menu = True  # the platform adds the privacy line below it
+        return result
 
     def event_mode(self) -> bool:
         return self.state.get("mode") == "event"

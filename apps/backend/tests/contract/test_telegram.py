@@ -18,7 +18,7 @@ from autobot.channels.telegram import TelegramAdapter
 from autobot.channels.telegram.adapter import overflow
 from autobot.channels.testing import check_rendering
 from autobot.tenancy.schema import TelegramSecrets
-from core.conversation import global_command
+from core.conversation import is_menu_command
 from core.proactive import ProactiveMessage, TemplateSpec
 from core.replies import Button, Buttons, List, Row, Section, Text
 from core.testing import Conversation
@@ -78,7 +78,7 @@ def test_text_message() -> None:
 def test_start_is_text_and_the_runtime_reads_it_as_menu() -> None:
     message = only("start.json").message
     assert (message.type, message.text) == ("text", "/start")
-    assert global_command(message) == "menu"
+    assert is_menu_command(message)
 
 
 def test_callback_query_is_a_button() -> None:
@@ -192,6 +192,16 @@ def test_render_text_escapes_html_and_converts_bold() -> None:
         **BASE,
         "text": "Hola <b>Lucía</b> &lt;3 &amp; cía. 2*3*4 = <b>24</b>, a * b * c",
     }
+
+
+def test_render_converts_italic_but_not_snake_case_nor_links() -> None:
+    rendered = ADAPTER.render(
+        Text("_🤖 Asistente automático · Privacidad:_ https://x.example/mi_politica_ snake_case"),
+        None,
+    )
+    assert rendered["text"] == (
+        "<i>🤖 Asistente automático · Privacidad:</i> https://x.example/mi_politica_ snake_case"
+    )
 
 
 @pytest.mark.parametrize(

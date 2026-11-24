@@ -28,7 +28,7 @@ from packs.bus.modelo import Linea
 
 
 def _pie(cfg: BusConfig) -> str:
-    return trunc(f"{cfg.business_name} · Horarios de autobús", MAX_FOOTER)
+    return trunc(cfg.business_name, MAX_FOOTER)
 
 
 def _cabecera(texto: str) -> str:
@@ -51,11 +51,11 @@ def _con_aviso(body: str, aviso: str | None) -> str:
 
 def build_menu(cfg: BusConfig) -> Buttons:
     return buttons_msg(
-        header=_cabecera(f"🚌 {cfg.business_name} · Horarios"),
-        body=f"¿Qué necesitas?\n\n{msg.msg_menu_footer(cfg)}",
+        header=_cabecera(f"🚌 {cfg.business_name}"),
+        body="¿Qué necesitas?",
         buttons=[
             button("menu_horarios", "🚌 Ver horarios"),
-            button("menu_info", "ℹ️ Contacto"),
+            button("menu_info", "ℹ️ Información"),
         ],
         footer=_pie(cfg),
     )

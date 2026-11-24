@@ -85,10 +85,6 @@ def tel_y_horario(cfg: BusConfig) -> str:
 # ── Menú / información ──────────────────────────────────────────────────
 
 
-def msg_menu_footer(cfg: BusConfig) -> str:
-    return f"📞 Para otras consultas, llámanos al {cfg.contact_phone}"
-
-
 def msg_info(cfg: BusConfig) -> str:
     lineas = [
         "ℹ️ Información",

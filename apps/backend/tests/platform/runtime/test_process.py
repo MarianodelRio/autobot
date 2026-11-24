@@ -28,8 +28,6 @@ from autobot.tenancy.tx import tenant_tx
 from core.actions import ContactRef, RecordMetric, SendProactive
 from core.conversation import (
     DEGRADED_TEXT,
-    OPT_IN_TEXT,
-    OPT_OUT_TEXT,
     RECOVERY_TEXT,
     RESTART_TEXT,
 )
@@ -349,19 +347,6 @@ def test_menu_command_resets_and_shows_the_menu(tenants: Any) -> None:
     assert buttons(event) == MENU and conversation().state == {}
 
 
-def test_opt_out_and_opt_in(tenants: Any) -> None:
-    tenants(wa_tenant())
-    receive(wa_text("hola"))
-    receive(wa_press("greet"))
-    event = receive(wa_text("baja"))
-    assert bodies(event) == [OPT_OUT_TEXT]
-    assert contact().opt_out and contact().opt_out_at is not None
-    assert conversation().state == {"step": "ask_name"}  # kept
-    event = receive(wa_text("Alta"))
-    assert bodies(event) == [OPT_IN_TEXT]
-    assert not contact().opt_out and contact().opt_out_at is None
-
-
 def test_contact_limit_saves_and_does_not_answer(tenants: Any) -> None:
     tenants(wa_tenant())
     for _ in range(20):
@@ -396,13 +381,14 @@ def test_a_retry_is_not_counted_twice_for_the_limit(
     assert bodies(InboundEvent.objects.using("owner").get(id=event.id)) == ["ok"]
 
 
-def test_the_restart_text_goes_with_global_commands(tenants: Any) -> None:
+def test_the_restart_text_goes_with_the_menu_command(tenants: Any) -> None:
     tenants(wa_tenant())
     receive(wa_text("hola"))
     receive(wa_press("greet"))
     Conversation.objects.using("owner").update(state_version=0)
-    event = receive(wa_text("baja"))
-    assert bodies(event) == [f"{RESTART_TEXT}\n\n{OPT_OUT_TEXT}"]  # merged by plan_sends
+    event = receive(wa_text("menú"))
+    (body,) = bodies(event)  # merged into the menu's body by plan_sends
+    assert body.startswith(f"{RESTART_TEXT}\n\n") and buttons(event) == MENU
 
 
 def test_no_transaction_is_open_while_the_pack_runs(
@@ -434,17 +420,6 @@ def test_a_pack_mutating_ctx_state_does_not_change_the_saved_state(
     receive(wa_text("set"))
     receive(wa_text("again"))
     assert conversation().state == {"step": 1}
-
-
-def test_opt_out_is_registered_even_on_a_degraded_tenant(tenants: Any) -> None:
-    """A "baja" is an RGPD-protected request: it must always be honoured and recorded,
-    even while the tenant's own config is degraded (and would otherwise only get the
-    generic unavailable text, with no action to register it)."""
-    tenants(wa_tenant(config={"colors": "not a list"}))
-    assert tenant().is_degraded
-    event = receive(wa_text("baja"))
-    assert bodies(event) == [OPT_OUT_TEXT]
-    assert contact().opt_out and contact().opt_out_at is not None
 
 
 def test_a_degraded_tenant_answers_with_the_generic_text(tenants: Any) -> None:

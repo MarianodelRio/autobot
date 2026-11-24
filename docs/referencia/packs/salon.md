@@ -8,7 +8,7 @@ el concepto de pack, en [packs](../../arquitectura/packs.md).
 
 `salon` gestiona reservas sobre Google Calendar. En el menú el cliente puede pedir, mover o
 cancelar citas. Si `special_event.active` está activo aparece la reserva del evento; si
-`info_text` tiene texto aparece «Contacto». La reserva ofrece solo huecos libres, los vuelve
+`info_text` tiene texto aparece «ℹ️ Información». La reserva ofrece solo huecos libres, los vuelve
 a comprobar bajo candado antes de escribir y usa un id de evento determinista, de modo que
 reintentar el mismo mensaje no duplica la cita.
 
@@ -40,7 +40,7 @@ cualquier nivel: un error tipográfico falla al importar.
 | `manual_confirmations_since` | fecha y hora **con zona horaria** | `null` | Solo las citas manuales creadas desde ese instante reciben aviso. Obligatoria si se activa; sin zona horaria se rechaza. |
 | `holidays` | objeto o `null` | `null` | Calendario de festivos, ver [Festivos](#festivos). |
 | `special_event` | objeto | inactivo | Evento especial, ver [Evento especial](#evento-especial). |
-| `info_text` | texto, hasta 4096 caracteres | vacío | Texto de «Contacto»; vacío oculta la opción. |
+| `info_text` | texto, hasta 4096 caracteres | vacío | Texto de «ℹ️ Información» (el contacto del negocio: es la salida a una persona); vacío oculta la opción. |
 | `texts` | objeto | ver [Textos](#textos) | Textos del bot sobrescribibles. |
 
 Las claves de `opening_hours` son `lunes`, `martes`, `miercoles`, `jueves`, `viernes`, `sabado`
@@ -198,10 +198,9 @@ stateDiagram-v2
 - **Nombre.** Entre 2 y 100 caracteres, con al menos una letra, sin `[cfg]`, y se limpia de
   `*`, `_`, `` ` ``, `~` y saltos de línea. Las palabras de escape (`cancelar`, `volver`,
   `atrás`, `salir`, `no`, `nada`, `hola`, `gracias`, `adiós`, `ayuda`, `menú`, `inicio`…)
-  no son nombres y vuelven al menú. En este paso `alta`, `baja`, `stop`, `parar` y `persona` no se toman en
-  silencio ni como nombre ni como orden: el bot pregunta «¿Quieres darte de baja de los avisos
-  o es tu nombre?» con los botones «Darme de baja» y «Es mi nombre» (`Pack.expects_free_text`;
-  ver [Aviso inicial y órdenes de atención](../../arquitectura/packs.md#aviso-inicial-y-ordenes-de-atencion)).
+  no son nombres y vuelven al menú. Cualquier otra palabra, también «Baja» o «Persona», es un
+  nombre: la plataforma ya no tiene esas órdenes
+  ([ADR-028](../../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
 - **Cancelar** pide confirmación («¿Cancelar Corte de pelo del martes 24 de marzo a las
   10:00?»). Una cita ya pasada no se puede cancelar ni mover.
 - **Mover = crear y luego cancelar.** El cliente elige la cita, el servicio, el día y la

@@ -78,13 +78,11 @@ stateDiagram-v2
 
 Desde **cualquier** estado: las palabras `menu`, `inicio`, `hola`, `salir`, `cancelar`,
 `volver` y `atrás` y el botón `menu` vuelven a `MENU`; los botones `otra_consulta` y
-`menu_horarios` llevan a `SEL_ORIGEN`. `alta` y `baja` siguen siendo comandos globales de la
-plataforma en todos los pasos (un pueblo no se llama así; el opt-out debe poder pedirse
-siempre).
+`menu_horarios` llevan a `SEL_ORIGEN`.
 
 | Estado | Qué espera el cliente |
 |---|---|
-| `MENU` | «Ver horarios» o «Contacto» (horario de oficina y enlaces). |
+| `MENU` | Cabecera «🚌 {negocio}», cuerpo «¿Qué necesitas?» y dos botones: «🚌 Ver horarios» o «ℹ️ Información» (teléfono, horario de oficina y enlaces). Debajo, siempre, la plataforma añade la línea del [aviso inicial](../../arquitectura/packs.md#aviso-inicial). |
 | `SEL_ORIGEN` | Elegir uno de los pueblos del menú (`loc:<id>`), escribir uno, o ver los pueblos por línea (`lineas:`, `linea:`). Un pueblo sin hora de paso ofrece consultar otro en su lugar (`usar:<id>`). |
 | `ESCRIBIR_ORIGEN` | Escribir el pueblo de origen. |
 | `SEL_DESTINO` | Lo mismo para el destino, entre los alcanzables desde el origen, y «Cambiar origen». |
@@ -127,9 +125,9 @@ emite la métrica `schedule_query` (ver [Resumen mensual](#resumen-mensual-al-du
   de días con «Esa fecha ya ha pasado».
 - **Logs**: al no reconocer un texto solo se registra el paso y su longitud
   (`[NO_RECONOCIDO] paso=origen longitud=12`); nunca el texto.
-- `alta`, `baja`, `stop`, `parar` y `persona` siguen siendo comandos globales en todos los
-  pasos (un pueblo no se llama así; el opt-out y la atención humana deben poder pedirse
-  siempre). Ver [Aviso inicial y órdenes de atención](../../arquitectura/packs.md#aviso-inicial-y-ordenes-de-atencion).
+- **Sin órdenes de atención**: `persona`, `baja`, `stop` o `alta` se buscan como cualquier
+  pueblo escrito. La atención humana es el teléfono de «ℹ️ Información»
+  ([ADR-028](../../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
 - **Horarios orientativos.** Toda respuesta con horarios termina con `schedule_disclaimer`.
   El dataset no guarda una fecha de actualización, así que el aviso no la incluye.
 

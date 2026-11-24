@@ -1,6 +1,6 @@
-"""Escenarios legales del pack `bus`: aviso inicial, PERSONA, STOP y aviso de horarios
-orientativos (RGPD art. 13, Ley 10/2025). El texto del aviso, de PERSONA y de la baja es
-de la plataforma (`core.conversation`); aquí se comprueban con el pack, en los dos canales."""
+"""Escenarios legales del pack `bus`: aviso inicial (RGPD art. 13), PERSONA y BAJA ya
+retiradas (ADR-028) y aviso de horarios orientativos. El texto del aviso inicial es de la
+plataforma (`core.conversation`); aquí se comprueba con el pack, en los dos canales."""
 
 from __future__ import annotations
 
@@ -21,31 +21,37 @@ def canal(request: pytest.FixtureRequest) -> ChannelType:
 AVISO = "Horarios orientativos; confirma con la compañía."
 
 
-def test_el_aviso_inicial_va_una_sola_vez(canal: ChannelType) -> None:
+LINEA = "_🤖 Asistente automático de Negocio de prueba_"
+
+
+def test_el_aviso_va_debajo_del_menu_cada_vez(canal: ChannelType) -> None:
     chat = charla(canal)
-    primero = chat.send("hola").expect(buttons=MENU)
-    # El aviso y el menú caben en un solo mensaje (`plan_sends` los une).
-    assert len(primero.replies) == 1
-    assert "asistente automático de Negocio de prueba" in primero.replies[0].body
-    assert "asistente automático" not in chat.send("hola").replies[0].body
+    # Una sola burbuja: el menú y, como última línea, el aviso.
+    (menu,) = chat.send("hola").expect(buttons=MENU).replies
+    assert menu.body == f"¿Qué necesitas?\n\n{LINEA}"
+    # Fuera del menú no sale…
+    origen = chat.press("menu_horarios")
+    assert all("Asistente automático" not in r.body for r in origen.replies)
+    # …y al volver al menú, por botón o por palabra, sale otra vez.
+    assert chat.press("menu").replies[-1].body.endswith(LINEA)
+    assert chat.send("hola").replies[-1].body.endswith(LINEA)
 
 
-def test_persona_en_cualquier_paso(canal: ChannelType) -> None:
+def test_el_aviso_no_sale_en_los_resultados(canal: ChannelType) -> None:
     chat = charla(canal)
     hasta_dias(chat)
-    paso = chat.state["step"]
-    chat.send("persona").expect(text_contains="contacta directamente con Negocio de prueba")
-    assert chat.state["step"] == paso
-    assert [n.kind for n in chat.notifications] == ["human_requested"]
+    assert "Asistente automático" not in cuerpo(chat.press("dia:2026-09-24"))
 
 
-def test_stop_y_baja(canal: ChannelType) -> None:
+@pytest.mark.parametrize("palabra", ["persona", "baja", "stop", "alta"])
+def test_persona_y_baja_ya_no_son_ordenes(canal: ChannelType, palabra: str) -> None:
+    """ADR-028: se buscan como cualquier pueblo escrito, sin aviso al dueño."""
     chat = charla(canal)
     chat.send("hola")
-    chat.send("STOP").expect(text_contains="borren tus datos")
-    assert chat.contact.opt_out
-    chat.send("alta")
-    assert not chat.contact.opt_out
+    chat.press("menu_horarios")
+    chat.send(palabra).expect(text_contains="No conozco ese pueblo")
+    assert chat.state["step"] == "SEL_ORIGEN"
+    assert chat.notifications == [] and not chat.contact.opt_out
 
 
 def test_el_resultado_lleva_el_aviso_de_horarios_orientativos(canal: ChannelType) -> None:

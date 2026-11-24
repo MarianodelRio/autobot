@@ -111,12 +111,11 @@ PLATFORM_SECTIONS: tuple[Section, ...] = (
     ),
     Section(
         "legal",
-        "Privacidad y atención",
-        "Lo que el bot dice en su primer mensaje sobre los datos personales y a quién"
-        " acudir para hablar con una persona (al escribir PERSONA). Es obligatorio para"
-        " activar.",
-        ("privacy", "support"),
-        summary=("privacy.policy_url", "support.human_contact"),
+        "Privacidad",
+        "Lo que el bot dice en su primer mensaje sobre los datos personales. El enlace a"
+        " la política es obligatorio para activar.",
+        ("privacy",),
+        summary=("privacy.policy_url",),
         docs="cumplimiento/informacion-al-interesado.md",
     ),
 )

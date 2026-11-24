@@ -169,9 +169,17 @@ def test_menu_within_limits() -> None:
     _assert_button_limits(build_menu())
 
 
-def test_menu_boton_contacto_sin_recorte() -> None:
+def test_menu_cabecera_y_cuerpo_cortos() -> None:
+    interactivo = build_menu()["interactive"]
+    assert interactivo["header"] == {"type": "text", "text": f"🚌 {CONFIG.business_name}"}
+    assert interactivo["body"] == {"text": "¿Qué necesitas?"}
+    # El pie gris es solo el nombre: el bot no da únicamente horarios.
+    assert interactivo["footer"] == {"text": CONFIG.business_name}
+
+
+def test_menu_boton_informacion_sin_recorte() -> None:
     titulos = {b["reply"]["id"]: b["reply"]["title"] for b in _buttons(build_menu())}
-    assert titulos["menu_info"] == "ℹ️ Contacto"
+    assert titulos["menu_info"] == "ℹ️ Información"
     assert len(titulos["menu_info"]) <= MAX_BUTTON_TITLE
 
 

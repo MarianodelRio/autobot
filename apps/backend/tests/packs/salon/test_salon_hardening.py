@@ -129,11 +129,14 @@ def test_markup_and_line_breaks_are_removed_from_the_name(salon: Conversation) -
     assert "\n" not in salon.calendar.created[0].description.split("Nombre:")[1].split("\n")[0]
 
 
-def test_alta_and_baja_still_are_commands_elsewhere(salon: Conversation) -> None:
+def test_alta_and_baja_are_no_commands_any_more(salon: Conversation) -> None:
+    """ADR-028: the pack gets them as any other text (here, not a service)."""
     salon.send("hola")
     salon.press("menu_book")
-    salon.send("baja").expect(text_contains="ya no te enviaré")
-    salon.send("alta").expect(text_contains="volverás a recibir")
+    for word in ("baja", "alta"):
+        turn = salon.send(word)
+        assert not any("ya no te enviaré" in r.body for r in turn.replies)
+    assert not salon.contact.opt_out
 
 
 def test_the_name_step_reacts_to_a_stale_button_with_the_prompt(salon: Conversation) -> None:

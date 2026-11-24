@@ -28,11 +28,10 @@ class TenantInfo:
     slug: str
     name: str
     timezone: ZoneInfo
-    # Legal texts of the first-contact notice and the `persona` command (the tenant
-    # document's `privacy` and `support`); None → generic wording that invents nothing.
+    # Legal text of the first-contact notice (the tenant document's `privacy`); None →
+    # generic wording that invents nothing.
     controller_name: str | None = None
     policy_url: str | None = None
-    human_contact: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +93,9 @@ class PackResult:
     replies: list[Reply] = field(default_factory=list)
     state: dict[str, Any] | None = None  # None = unchanged; {} = reset
     actions: list[Action] = field(default_factory=list)
+    # True when the last reply is the pack's main menu: the platform adds the privacy
+    # line below it (`core.conversation.with_notice`), every time, not only the first.
+    menu: bool = False
 
 
 @dataclass(frozen=True)
@@ -139,10 +141,6 @@ class Pack:
     """Directory containing the initial demo document and optional datasets."""
     template_blank: tuple[str, ...] = ()
     """Config fields cleared when the template initializes a new business."""
-    expects_free_text: Callable[[Mapping[str, Any]], bool] | None = None
-    """Given the effective conversation state, True when the current step waits for free
-    text (e.g. a name): the platform then does not read `alta`/`baja` as opt-in/out
-    commands there, and passes the text to the pack. `menu` always keeps working."""
     test_calendar: Callable[[], object] | None = None
     """When `needs_calendar`: builds an in-memory double for `manage.py chat`.
     Never used outside that dev tool; the real calendar is wired by the worker."""

@@ -23,7 +23,6 @@ def packs(monkeypatch: pytest.MonkeyPatch) -> None:
 
 LEGAL: dict[str, Any] = {
     "privacy": {"policy_url": "https://example.invalid/privacidad"},
-    "support": {"human_contact": "Tel. 600 000 000"},
 }
 
 
@@ -138,7 +137,7 @@ def test_activation_rechecks_state_after_provider_call(monkeypatch: pytest.Monke
     assert error.value.code == "invalid_status"
 
 
-def test_privacy_and_support_are_required_to_activate(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_privacy_policy_is_required_to_activate(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
     doc = tg_tenant()
     create(doc, TG_SECRETS)
@@ -146,9 +145,13 @@ def test_privacy_and_support_are_required_to_activate(monkeypatch: pytest.Monkey
     assert activation.checklist("tg").blocking == ["privacy"]
     with pytest.raises(store.StoreError):
         store.change_status("tg", action="activate", actor="user", confirm_slug="tg")
-    # One of the two is not enough.
-    legal = {"privacy": LEGAL["privacy"]}
-    other = tg_tenant("tg2", **legal)
+    # The controller alone is not enough: the notice links the policy.
+    other = tg_tenant("tg2", privacy={"controller_name": "Tg S.L."})
     create(other, TG_SECRETS)
     inbound(other)
     assert activation.checklist("tg2").blocking == ["privacy"]
+    # With the policy link (and no `support` any more, ADR-028) nothing blocks.
+    ready = tg_tenant("tg3", **LEGAL)
+    create(ready, TG_SECRETS)
+    inbound(ready)
+    assert activation.checklist("tg3").blocking == []

@@ -193,20 +193,22 @@ def test_invalid_config_degrades_only_that_tenant(tmp_path: Path) -> None:
     assert registry.by_public_id[("whatsapp", a.document.channel.public_id)] is a  # still routed
 
 
-def test_privacy_and_support_reach_the_tenant_info(tmp_path: Path) -> None:
+def test_privacy_reaches_the_tenant_info(tmp_path: Path) -> None:
     doc = tenant_document(
-        "legal",
-        privacy={"controller_name": "Lola S.L.", "policy_url": "https://lola.example/p"},
-        support={"human_contact": "Tel. 600 000 000"},
+        "legal", privacy={"controller_name": "Lola S.L.", "policy_url": "https://lola.example/p"}
     )
     info = load(tmp_path, doc).tenants[0].info
-    assert (info.controller_name, info.policy_url, info.human_contact) == (
-        "Lola S.L.",
-        "https://lola.example/p",
-        "Tel. 600 000 000",
-    )
+    assert (info.controller_name, info.policy_url) == ("Lola S.L.", "https://lola.example/p")
     bare = load(tmp_path, tenant_document("bare")).tenants[0].info  # an existing tenant
-    assert (bare.controller_name, bare.policy_url, bare.human_contact) == (None, None, None)
+    assert (bare.controller_name, bare.policy_url) == (None, None)
+
+
+def test_a_retired_support_block_is_dropped_on_load(tmp_path: Path) -> None:
+    """ADR-028: versions saved before keep `support`; they still load, without it."""
+    doc = tenant_document("old", support={"human_contact": "Tel. 600 000 000"})
+    (tenant,) = load(tmp_path, doc).tenants
+    assert not tenant.is_degraded
+    assert "support" not in tenant.document.model_dump()
 
 
 def test_failing_load_data_degrades_only_that_tenant(tmp_path: Path) -> None:
@@ -236,7 +238,6 @@ def test_failing_load_data_degrades_only_that_tenant(tmp_path: Path) -> None:
         ({"privacy": {"policy_url": "http://plain.example/p"}}, "https://"),
         ({"privacy": {"policy_url": "https://a b"}}, "https://"),
         ({"privacy": {"unknown": 1}}, "unknown"),
-        ({"support": {"human_contact": ""}}, "human_contact"),
     ],
 )
 def test_invalid_common_part_is_reported_and_others_load(

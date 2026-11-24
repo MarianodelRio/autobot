@@ -65,7 +65,7 @@ Los tests con BD usan `test_<nombre>`, que crea `init-roles.sh` junto con los ro
 
 Cada pack debe tener su escenario de conversación, y cada cambio de su flujo lo actualiza (`CLAUDE.md`). El arnés está en `apps/backend/src/core/testing/harness.py` (`Conversation`). Reproduce cada turno como `process_event`, pero sin base de datos ni red:
 
-1. Estado efectivo y comandos globales (`menu`, `alta`, `baja`).
+1. Estado efectivo y la orden `menu`.
 2. El pack (`handle_message`).
 3. `plan_sends` en modo estricto, que **falla el test** si una respuesta excede los límites comunes.
 4. Las acciones que devuelve el pack.

@@ -6,7 +6,7 @@ Textos modelo para cumplir el deber de información de los arts. 13 y 14 RGPD **
     Los textos son modelos. Antes de publicarlos, un abogado debe revisar las bases jurídicas, los plazos y las menciones a transferencias. Los marcadores `[...]` los rellena el negocio o el titular; no se inventan datos.
 
 !!! note "Estado técnico"
-    El bot muestra la primera capa en el primer mensaje de cada contacto (y otra vez tras un olvido): asistente automático, responsable (`privacy.controller_name`), enlace a la segunda capa (`privacy.policy_url`) y los comandos `PERSONA` y `BAJA`/`STOP`. La activación del canal real exige `privacy.policy_url` y `support.human_contact`. Texto exacto y diseño: [Packs](../arquitectura/packs.md).
+    El bot muestra la primera capa como una sola línea en cursiva debajo del menú, cada vez que lo muestra, y debajo del primer mensaje de cada contacto (y otra vez tras un olvido): asistente automático, negocio y enlace a la segunda capa (`privacy.policy_url`; sin él, el responsable `privacy.controller_name` solo si no es el propio negocio). No hay comandos `PERSONA` ni `BAJA` ([ADR-028](../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)): la atención humana es el teléfono de «ℹ️ Información» y la baja de recordatorios está por decidir. La activación del canal real exige `privacy.policy_url`. Texto exacto y diseño: [Packs](../arquitectura/packs.md#aviso-inicial). Los textos de abajo son los modelos completos para el abogado, más largos que lo que hoy muestra el bot.
 
 ## Quién informa a quién
 
@@ -29,7 +29,7 @@ teléfono (o tu identificador de Telegram), tu nombre y tus mensajes.
 Responsable: [NEGOCIO] ([EMAIL DE PRIVACIDAD DEL NEGOCIO]).
 Uso: gestionar tus citas y enviarte recordatorios de ellas.
 Conservación: hasta 12 meses sin actividad.
-Escribe BAJA para no recibir recordatorios. Más información y tus
+[CÓMO DEJAR DE RECIBIR RECORDATORIOS: por decidir]. Más información y tus
 derechos: [URL DE LA POLÍTICA]. Por favor, no escribas datos de salud.
 ```
 
@@ -80,7 +80,7 @@ POLÍTICA DE PRIVACIDAD DEL ASISTENTE DE MENSAJERÍA DE [NEGOCIO]
    - Gestionar tus reservas y consultas: ejecución del contrato o de las
      medidas que nos pides (art. 6.1.b RGPD).
    - Enviarte recordatorios de tus citas: es parte del servicio contratado
-     (art. 6.1.b). Puedes pedir que dejemos de enviarlos escribiendo BAJA.
+     (art. 6.1.b). Puedes pedir que dejemos de enviarlos [CÓMO: por decidir].
    - [Promociones: solo con tu consentimiento previo (art. 6.1.a)].
    - Seguridad y evitar abusos: interés legítimo (art. 6.1.f).
 

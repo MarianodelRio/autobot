@@ -25,7 +25,7 @@ Escala: probabilidad y gravedad Baja/Media/Alta. Riesgo residual tras las medida
 | R8 | Transferencia a EE. UU. si cae el DPF | Baja | Media | DPF y SCC; Sentry opcional y sin PII | Bajo | Plan B ([subencargados](subencargados.md)) |
 | R9 | Mensaje enviado a la persona equivocada o repetido | Baja | Media | Idempotencia; no reintento ciego de `unknown` | Bajo | |
 | R10 | Suplantación en la demo o uso por no invitados | Media | Baja | Lista cerrada, códigos de invitación, vaciado de payload de extraños | Bajo | |
-| R11 | Mensajes proactivos sin base o sin baja | Media | Media | `baja` inmediata, recordatorios solo de servicio | Medio | Opt-in documentado ([otras normas](otras-normas.md)) |
+| R11 | Mensajes proactivos sin base o sin baja | Media | Media | Recordatorios solo de servicio y desactivados por defecto; sin orden `baja` desde el [ADR-028](../arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md) | Medio | Opt-in documentado y un medio de baja antes de activar recordatorios ([otras normas](otras-normas.md)) |
 | R12 | Pérdida de disponibilidad o de datos | Baja | Media | Backups diarios, simulacro de restauración, latido externo | Bajo | Elegir proveedor de backups |
 
 ## ¿Hace falta una EIPD?

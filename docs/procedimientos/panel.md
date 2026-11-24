@@ -98,8 +98,7 @@ Secciones de todos los packs:
   desconectarlo. El paso del tester exige un mensaje real de un tester por el canal
   principal y lista los últimos que escribieron sin estarlo, con «Añadir» para sumarlos a
   `testers.main` (solo acepta a quien de verdad escribió).
-- **Privacidad y atención:** `privacy` y `support` (`privacy.policy_url` y
-  `support.human_contact` son obligatorios para activar).
+- **Privacidad:** `privacy` (`privacy.policy_url` es obligatorio para activar).
 
 `salon` añade Servicios y horario (tabla de servicios con id automático y editor de
 apertura por día, abierto/cerrado y tramos con hora), Reservas y recordatorios

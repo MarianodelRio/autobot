@@ -23,7 +23,7 @@ from packs.bus.pack import pack
 from tests.packs.bus.demo import CONFIG, NEGOCIO_TELEFONO, datos_demo
 
 MIERCOLES = "2026-09-23T10:00:00+02:00"  # laborable, dentro de la vigencia
-MENU = ["🚌 Ver horarios", "ℹ️ Contacto"]
+MENU = ["🚌 Ver horarios", "ℹ️ Información"]
 RESULTADO = ["📅 Otro día", "🔄 Ver la vuelta", "🔍 Otra consulta"]
 
 

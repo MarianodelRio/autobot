@@ -18,7 +18,7 @@ Crea `apps/backend/src/packs/<nombre>/` con un `__init__.py` y un `pack.py` que 
 | `state_version` | Versión del estado de conversación. Súbela cuando cambie su forma. |
 | `handle_message` | `Callable[[PackContext, IncomingMessage], PackResult]`: el corazón del pack. |
 
-El resto es opcional y se explica en los pasos siguientes: `periodic`, `health`, `summary`, `templates`, `owner_notices`, `template`, `template_blank`, `needs_calendar`, `load_data`, `dataset_summary`, `conversation_timeout_min` y `expects_free_text`.
+El resto es opcional y se explica en los pasos siguientes: `periodic`, `health`, `summary`, `templates`, `owner_notices`, `template`, `template_blank`, `needs_calendar`, `load_data`, `dataset_summary` y `conversation_timeout_min`.
 
 `handle_message` recibe el contexto (negocio, configuración validada, contacto, estado de la conversación, reloj, claves de idempotencia) y el mensaje entrante. Devuelve un `PackResult` con tres cosas:
 
@@ -33,8 +33,6 @@ Reglas que el pack debe respetar (están en `CLAUDE.md`):
 - **Límites comunes de canal:** botones ≤ 3, filas ≤ 10, textos ≤ 4 096, ids ≤ 64 bytes. El escenario lo comprueba.
 - **Errores:** `TransientError` se reintenta; `PermanentError` no.
 - **Sin transacción abierta** durante llamadas externas, como a Google Calendar. El runtime ya lo respeta; el pack no abre transacciones.
-
-Si el pack espera texto libre en algún paso (un nombre, por ejemplo), declara `expects_free_text`: así la plataforma no interpreta `alta` ni `baja` como comandos de opt-in ahí.
 
 ## 2. Registrarlo
 
@@ -136,7 +134,7 @@ Es tarea de quien añade el pack, y se hace en el mismo commit:
 - [ ] Alta en `packs/registry.py`.
 - [ ] `template/document.yaml` válido, y `template_blank`.
 - [ ] Escenario en `tests/packs/<nombre>/` con los dos canales.
-- [ ] Obligaciones legales: el aviso de primera capa, `PERSONA`, `BAJA`/`STOP` y la pregunta «¿orden o nombre?» las da la plataforma ([Packs](../arquitectura/packs.md#aviso-inicial-y-ordenes-de-atencion)); el pack solo declara `expects_free_text` si espera texto libre y añade su propio descargo si lo necesita (como `schedule_disclaimer` en `bus`).
+- [ ] Obligaciones legales: el aviso de primera capa lo añade la plataforma debajo del menú: el pack devuelve `PackResult(menu=True)` cuando su respuesta es el menú principal ([Packs](../arquitectura/packs.md#aviso-inicial)). El pack muestra el contacto del negocio en su menú o en «ℹ️ Información» (la salida a una persona) y añade su propio descargo si lo necesita (como `schedule_disclaimer` en `bus`).
 - [ ] `make check` en verde (incluye `lint-imports` y `tests/repo/`).
 - [ ] `docs/referencia/packs/<nombre>.md` y entrada en `mkdocs.yml`.
 

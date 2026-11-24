@@ -134,16 +134,6 @@ class Privacy(Strict):
         return value
 
 
-class Support(Strict):
-    human_contact: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=300,
-        title="Contacto para hablar con una persona",
-        description="Teléfono, horario o correo que el bot da al escribir PERSONA.",
-    )
-
-
 class TenantDocument(Strict):
     """The common tenant document; `config` is checked later by the pack."""
 
@@ -163,8 +153,18 @@ class TenantDocument(Strict):
         description="Quién trata los datos de los clientes, tal como lo cuenta el primer"
         " mensaje del bot.",
     )
-    support: Support | None = Field(default=None, title="Atención a la clientela")
     config: dict[str, Any] = Field(default={}, title="Configuración del pack")
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_retired_support(cls, data: Any) -> Any:
+        """`support` (the contact the retired PERSONA command gave, ADR-028) is no
+        longer part of the document. The versions saved before keep it and are
+        immutable, so it is dropped on load instead of rejected; the next save no longer
+        has it."""
+        if isinstance(data, dict) and "support" in data:
+            return {k: v for k, v in data.items() if k != "support"}
+        return data
 
     @field_validator("id")
     @classmethod

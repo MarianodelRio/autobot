@@ -25,7 +25,7 @@ def menu(cfg: SalonConfig) -> List:
     if cfg.special_event.active:
         rows.append(row("menu_book_event", f"🌟 Cita {cfg.special_event.name}"))
     if cfg.info_text:
-        rows.append(row("menu_info", "ℹ️ Contacto"))
+        rows.append(row("menu_info", "ℹ️ Información"))
     return list_msg(
         cfg.texts.welcome + f"\n📞 {cfg.contact_phone}",
         "Ver opciones",
