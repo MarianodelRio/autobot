@@ -139,7 +139,7 @@ def test_a_day_with_totals_busiest_first_and_demos_together() -> None:
         end=NOW,
         tenants=[
             TenantFigures("Lola", False, Figures(received=340, sent=318, failed=2)),
-            TenantFigures("Autocares", False, Figures(received=900, sent=880, new_contacts=37)),
+            TenantFigures("Bus Norte", False, Figures(received=900, sent=880, new_contacts=37)),
             TenantFigures("Quieto", False, Figures()),
             TenantFigures("Demo bus", True, Figures(received=12, sent=11)),
         ],
@@ -149,7 +149,7 @@ def test_a_day_with_totals_busiest_first_and_demos_together() -> None:
         "",
         "Recibidos 1.252 · Enviados 1.209 · Fallos 2 · Contactos nuevos 37",
         "",
-        "Autocares: 900 recibidos · 880 enviados",
+        "Bus Norte: 900 recibidos · 880 enviados",
         "Lola: 340 recibidos · 318 enviados · ⚠️ 2 fallos",
         "Demos: 12 recibidos · 11 enviados",
     ]
@@ -162,7 +162,7 @@ def test_a_day_without_messages() -> None:
 
 def test_tenants_put_problems_first_and_summarise_demos() -> None:
     lines = [
-        tenant("Autocares"),
+        tenant("Bus Norte"),
         tenant("Lola", level="critical", reasons=["Canal principal desactivado"]),
         tenant("Nuevo", status="onboarding", last_activity_at=None),
         tenant("Demo bus", demo=True),
@@ -170,7 +170,7 @@ def test_tenants_put_problems_first_and_summarise_demos() -> None:
     ]
     text = report_text.tenants_text(lines, NOW)
     assert text.startswith("🏪 *Clientes*: 2 activos · 1 en alta · 0 en pausa\n\n")
-    assert text.index("🔴 Lola · activo") < text.index("🟢 Autocares · activo")
+    assert text.index("🔴 Lola · activo") < text.index("🟢 Bus Norte · activo")
     assert "🔴 Lola · activo\n   último mensaje hace 2 h\n   Canal principal desactivado" in text
     assert "🟢 Nuevo · en alta\n   sin mensajes" in text
     assert text.endswith("Demos: 2, 1 con problemas")
