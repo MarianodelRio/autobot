@@ -44,8 +44,9 @@ pytestmark = [
 ]
 
 MENU_BODY = "¡Hola! ¿Qué quieres hacer?"
-NOTICE = "_🤖 Asistente automático de Wa_"
-NOTICE = r"^Soy el asistente automático.*?dejar de recibir avisos\.\n*"
+NOTICE_LINE = "_🤖 Asistente automático de Wa_"
+# What `Meta.bodies()` strips: the privacy line the platform adds below a reply.
+NOTICE = r"\n\n_🤖 Asistente automático[^\n]*$"
 
 
 class Meta:
@@ -67,8 +68,8 @@ class Meta:
         return answer
 
     def bodies(self) -> list[str]:
-        """What went out, without the first-contact notice (it is merged into the body of
-        the contact's first message; `test_first_contact.py` covers it)."""
+        """What went out, without the privacy line below a reply (`test_first_contact.py`
+        covers it)."""
         return [re.sub(NOTICE, "", b, flags=re.S) for b in self._bodies()]
 
     def _bodies(self) -> list[str]:
@@ -145,7 +146,7 @@ def test_webhook_queue_worker_send(tenants: Any, meta: Meta) -> None:
     (sent,) = meta.sent
     assert sent["to"] == "34600000001"
     # The first-contact privacy line goes below the reply, in the same message.
-    assert sent["interactive"]["body"]["text"] == f"{MENU_BODY}\n\n{NOTICE}"
+    assert sent["interactive"]["body"]["text"] == f"{MENU_BODY}\n\n{NOTICE_LINE}"
     (event,) = events()
     (message,) = OutboundMessage.objects.using("owner").all()
     assert (event.status, message.status, message.provider_message_id) == (
@@ -447,8 +448,7 @@ def test_a_degraded_tenant_does_not_affect_another(tenants: Any, meta: Meta) -> 
     )
     assert response.status_code == 200
     run_worker()
-    # The degraded tenant gets no privacy line: it cannot answer anything yet.
-    assert sorted(meta.bodies()) == sorted([f"{MENU_BODY}\n\n{NOTICE}", process.UNAVAILABLE_TEXT])
+    assert sorted(meta.bodies()) == sorted([MENU_BODY, process.UNAVAILABLE_TEXT])
 
 
 def test_database_down_gives_503(tenants: Any) -> None:
