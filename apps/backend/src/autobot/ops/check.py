@@ -289,17 +289,18 @@ def _check_tenant(
                 channel=Channel.DEMO_WA, billable=True, sent_at__gte=start
             ).count()
     for auth_channel in auth_channels:
-        demo = auth_channel in DEMO_CHANNELS
-        out.append(
-            Finding(
-                f"auth:{auth_channel}" if demo else "auth",
-                None if demo else tenant.id,
-                f"🔴 Bot de demo ({DEMO_LABELS.get(Channel(auth_channel), auth_channel)}):"
-                " envío rechazado por autenticación."
-                if demo
-                else "🔴 Envío del canal principal rechazado por autenticación.",
+        if auth_channel in DEMO_CHANNELS:
+            # The platform's demo door: no tenant, so no slug.
+            label = DEMO_LABELS.get(Channel(auth_channel), auth_channel)
+            out.append(
+                Finding(
+                    f"auth:{auth_channel}",
+                    None,
+                    f"🔴 Bot de demo ({label}): envío rechazado por autenticación.",
+                )
             )
-        )
+        else:
+            pending.append(("auth", "🔴 Envío del canal principal rechazado por autenticación."))
     for bound_channel in channels_for(tenant):
         signal = state.read(tenant.id, bound_channel)
         if signal.get("calendar_unavailable") or signal.get("calendar_errors", 0) >= 3:

@@ -104,6 +104,22 @@ def test_auth_row_separates_the_demo_bot(tenants: Any, alerts: Any) -> None:
     assert "auth" not in kinds(alerts)
 
 
+def test_every_tenant_alert_names_its_tenant(
+    tenants: Any, alerts: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The operator reads the alert in Telegram: without the slug there is no way to
+    # tell which business it is about (an `auth` alert once went out without it).
+    tenants(wa_tenant())
+    monkeypatch.setattr(
+        health, "tenant_health", lambda tenant: [health.Issue("templates", "Faltan", "🟠")]
+    )
+    message(status="failed", last_error="auth: HTTP 401")
+    check.run()
+    tenant_alerts = [(kind, text) for kind, tenant_id, text in alerts if tenant_id is not None]
+    assert {"auth", "outbound_failed", "health:templates"} <= {k for k, _ in tenant_alerts}
+    assert all(text.startswith("wa: ") for _, text in tenant_alerts), tenant_alerts
+
+
 @pytest.mark.parametrize("degraded", [True, False])
 def test_unavailable_row(tenants: Any, alerts: Any, degraded: bool) -> None:
     tenants(wa_tenant(config={"colors": 1}) if degraded else wa_tenant(), secrets={})
