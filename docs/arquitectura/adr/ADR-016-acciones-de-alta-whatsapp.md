@@ -1,6 +1,6 @@
 # ADR-016 — Acciones de alta de WhatsApp desde la pestaña «Alta»
 
-**Estado:** vigente
+**Estado:** vigente; desde el [ADR-027](ADR-027-alta-y-configuracion-en-una-pestana.md) estas acciones están en la sección «Canal» de la pestaña «Configuración»
 
 ## Contexto
 

@@ -102,6 +102,16 @@ Vitest con jsdom (`vitest.setup.ts`), Testing Library y `user-event`. Se ejecuta
 
 El backend está en `routers/demo_invites.py` y `services/demo_invites.py`: crear y revocar escriben `audit_event` (`demo_invite.create` y `demo_invite.revoke`) en la misma transacción. La tabla `demo_invite` está en `SENSITIVE_TABLES`, así que la consola SQL no la lee. El canje en el bot lo hace `autobot/channels/demo/invites.py`, no el panel. Cómo se reparten invitaciones al operar, en [Bot de demo (operación)](../procedimientos/demo.md).
 
+## Pestaña Configuración del cliente
+
+Junta el alta y la configuración en secciones desplegables ([ADR-027](../arquitectura/adr/ADR-027-alta-y-configuracion-en-una-pestana.md)). Cómo está hecha:
+
+- **Secciones.** Se declaran en el backend (`services/forms.py`: `PLATFORM_SECTIONS`, `PACK_SECTIONS`, `SHOW_IF`) y llegan en `ui_schema.groups` con rutas con puntos (`config.services`). El frontend (`features/tenants/config/editor.tsx`) no conoce ningún campo: pinta un formulario rjsf por sección, con el sub-esquema que construye `sectionSchema` (`lib/form-draft.ts`), y añade «Otros ajustes» con lo que ninguna sección nombra y «Avanzado» al final.
+- **Pasos del alta.** Cada paso de `GET tenants/{slug}/setup` trae su `section` y se pinta dentro de ella (`setup-steps.tsx`). Un paso cuya sección no existe sale arriba, junto al banner de progreso.
+- **Un solo borrador.** `use-config-draft.ts` guarda el documento entero; cada formulario lee y escribe solo sus rutas (`pickPaths` y `mergePaths`). Hay una única barra de guardado.
+- **Valores por defecto.** rjsf rellena los valores por defecto del esquema al montar un formulario. Por eso el borrador empieza en el documento guardado **ya normalizado** (`getDefaultFormState`), «modificado» se compara contra esa versión (`sameValue`) y al guardar `withoutUntouchedDefaults` quita los valores por defecto que nadie tocó. Si cambias cómo se guarda, mantén las dos cosas: abrir la pestaña nunca es un cambio y el documento no congela los valores por defecto.
+- **Tests.** Las secciones empiezan cerradas: ábrelas en el test (ver `openSection` en `config.test.tsx`) y responde `[]` a `/setup` en el `fetch` simulado. `lib/form-draft.test.ts` cubre los helpers puros.
+
 ## Dónde está el código
 
 - `apps/panel/src/`, `apps/panel/vite.config.ts` y `apps/panel/package.json`.

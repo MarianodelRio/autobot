@@ -28,14 +28,14 @@ sección explica qué hace cada paso y cómo hacerlo por terminal.
 
 1. **Crear el negocio.** Panel: `Clientes → Nuevo cliente`, asistente de cinco pasos
    ([panel.md](panel.md#asistente-de-alta-de-un-cliente)); queda en `onboarding` y abre la
-   pestaña Alta. Por terminal (portátil, BD local): prepara un directorio con
+   pestaña Configuración, con el banner de lo que falta para activarlo. Por terminal (portátil, BD local): prepara un directorio con
    `document.yaml` (UUIDv7 propio, `public_id` aleatorio, `status: onboarding`) y los
    datasets en `datasets/<nombre>/`, e impórtalo en tu BD local con `make tenant-import DIR=<dir>
    [SECRETS=<yaml>]` (valida el conjunto antes de guardar nada).
 2. **Declarar el canal y los secretos.** Los ids van en el documento; los secretos, en un
    YAML privado `slug: {campos...}` que nunca va en el documento ni en git: WhatsApp usa
    `app_secret`, `access_token` y `verify_token`; Telegram, `bot_token` y `webhook_secret`
-   (32 caracteres o más). En el panel: Configuración, Canal, «Cambiar credenciales».
+   (32 caracteres o más). En el panel: Configuración, sección Canal, «Cambiar credenciales».
 3. **Publicar en producción.** Por terminal, desde el portátil:
    `make tenant-push SLUG=<slug> [SECRETS=<yaml>] [HOST=<alias>]` exporta la BD local y la
    importa por SSH en el servidor (`tenant_config import`, que cifra los secretos y valida
@@ -44,19 +44,20 @@ sección explica qué hace cada paso y cómo hacerlo por terminal.
    [horarios-bus.md](horarios-bus.md), o da de alta desde el panel, que la elige en el
    asistente.
 4. **`salon`:** el negocio comparte su calendario con la cuenta de servicio
-   (panel, Configuración, tarjeta «Calendario de Google», muestra el email) y declara su
+   (panel, Configuración, sección «Calendario de Google», muestra el email) y declara su
    `calendar_id`. Las plantillas de WhatsApp deben estar creadas y aprobadas.
-5. **Dueño.** Panel: ficha, Configuración, «Invitar al dueño» (enlace de un solo uso,
+5. **Dueño.** Panel: ficha, Configuración, sección «Dueño y testers», «Invitar al dueño» (enlace de un solo uso,
    mostrado una vez). Por terminal: `make prod-manage CMD="owner_invite <slug>"`.
    `owner.notify` y `owner.summary_monthly` se cambian en la configuración versionada.
    `make prod-manage CMD="owner_unlink <slug>"` desconecta el chat.
-6. **Webhook de Telegram** (si procede): «Registrar webhook» en el panel o
+6. **Webhook de Telegram** (si procede): «Registrar webhook» en la sección Canal o
    `make prod-manage CMD="telegram_set_webhook <slug>"`. Después, «Comprobar ahora» en el
    panel o `make prod-manage CMD="tenant_health <slug>"`. Con `onboarding`, solo se atiende
    a `testers.main`.
 7. **Activar.** Antes: documento válido, ids y secretos completos, salud sin errores
    críticos, plantillas aprobadas y al menos un mensaje real de un tester por `main`. En el
-   panel, la pestaña Alta muestra esas comprobaciones y «Activar» pide escribir el slug.
+   panel, el banner de alta de Configuración lista lo que falta (cada comprobación está en
+   su sección) y «Activar» pide escribir el slug.
 
 ### WhatsApp: checklist del número
 
@@ -75,7 +76,8 @@ operador como administrador; una app y un número por negocio.
   `whatsapp_business_management`).
 - Método de pago en la cuenta de mensajería (sin él Meta no envía mensajes facturables).
 - Ids del canal y los tres secretos cargados en el panel.
-- Pestaña «Alta» del negocio (ADR-016), con «Comprobar» antes y después:
+- Sección «Canal» de la pestaña «Configuración» (ADR-016, ADR-027), con «Comprobar» antes y
+  después (guarda antes: las comprobaciones usan lo guardado):
     - **Webhook de la app** → «Configurar webhook»: configura
       `https://api.<dominio>/webhooks/whatsapp/<public_id>` con el `verify_token` del
       negocio y el campo `messages`. Meta verifica la URL en ese momento: el servidor debe
@@ -89,7 +91,7 @@ operador como administrador; una app y un número por negocio.
     - Si una acción responde «Resultado desconocido», pulsa «Comprobar» antes de repetirla:
       nunca se reintenta sola.
 - Plantillas del pack creadas y aprobadas en WhatsApp Manager (de 1 a 48 h); su estado se
-  consulta en la pestaña «Alta». `bus` no usa plantillas.
+  consulta en la sección «Canal» de «Configuración». `bus` no usa plantillas.
 
 Coste: desde el 1/10/2026 Meta cobra también las respuestas dentro de la ventana de 24 h.
 El resumen mensual al dueño estima el coste con `PRICE_EUR`

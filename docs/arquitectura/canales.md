@@ -26,7 +26,7 @@ Un envío acaba siempre en uno de cuatro resultados: `Sent`, `Rejected` (el prov
 - **Firma.** `X-Hub-Signature-256` es el HMAC-SHA256 del cuerpo crudo con el secreto de la app, comparado con `hmac.compare_digest`. El `GET` de suscripción de Meta se resuelve con `verify_subscription` (token de verificación).
 - **Plantillas.** Un `ProactiveMessage` (aviso que inicia el bot) se envía como mensaje de plantilla con parámetros y botones de respuesta rápida; fuera de la ventana de 24 h solo se pueden enviar plantillas.
 - **Límites de tasa.** `classify` traduce la respuesta de Meta: los errores de límite de tasa, incluso con HTTP 4xx, son `RetryLater` (se reintenta con espera, respetando `Retry-After` acotado); un 5xx con error de Meta también; un 5xx sin cuerpo de Meta (típico de un proxy) es `Ambiguous`. Los códigos concretos están en `RATE_LIMIT_ERRORS` y `RECIPIENT_ERRORS` del adaptador.
-- **Registro.** `whatsapp/registration.py` hace las llamadas de la pestaña «Alta» del panel (webhook de la app, registro del número, suscripción a la WABA, [ADR-016](adr/ADR-016-acciones-de-alta-whatsapp.md)). Nunca se llama en bucle ni desde un trabajo, y una escritura dudosa se informa como `unknown`.
+- **Registro.** `whatsapp/registration.py` hace las llamadas del alta del panel (sección «Canal» de «Configuración») (webhook de la app, registro del número, suscripción a la WABA, [ADR-016](adr/ADR-016-acciones-de-alta-whatsapp.md)). Nunca se llama en bucle ni desde un trabajo, y una escritura dudosa se informa como `unknown`.
 
 ## Telegram
 

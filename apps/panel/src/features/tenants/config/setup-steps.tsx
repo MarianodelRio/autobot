@@ -3,7 +3,6 @@ import { useState } from "react";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { CopyButton } from "@/components/copy-button";
-import { ErrorState } from "@/components/error-state";
 import { QrCode } from "@/components/qr-code";
 import { StatusDot } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
@@ -74,10 +73,12 @@ function StepActionButton({
   slug,
   step,
   action,
+  locked,
 }: {
   slug: string;
   step: SetupStep;
   action: SetupAction;
+  locked: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [pin, setPin] = useState("");
@@ -107,7 +108,12 @@ function StepActionButton({
   if (!action.needs_pin && !action.confirm)
     return (
       <>
-        <Button size="sm" disabled={run.isPending} onClick={() => run.mutate()}>
+        <Button
+          type="button"
+          size="sm"
+          disabled={locked || run.isPending}
+          onClick={() => run.mutate()}
+        >
           {action.label}
         </Button>
         {error}
@@ -117,7 +123,9 @@ function StepActionButton({
   return (
     <>
       <Button
+        type="button"
         size="sm"
+        disabled={locked}
         onClick={() => {
           run.reset();
           setOpen(true);
@@ -167,7 +175,17 @@ function StepActionButton({
   );
 }
 
-function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
+/** One onboarding step inside its Configuración section. `locked` while that section
+ * has unsaved edits: checks and actions run against what is saved. */
+export function StepRow({
+  slug,
+  step,
+  locked = false,
+}: {
+  slug: string;
+  step: SetupStep;
+  locked?: boolean;
+}) {
   const client = useQueryClient();
   const check = useApiMutation({
     fn: () =>
@@ -187,28 +205,36 @@ function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
   });
   return (
     <li className="space-y-1 border-b pb-3 last:border-b-0 last:pb-0">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <StatusDot level={levelOf(STEP_LEVEL, step.state)} />
         <span className="font-medium">{step.label}</span>
         {step.blocking && (
-          <span className="text-xs text-muted-foreground">(bloqueante)</span>
+          <span className="text-xs text-muted-foreground">(obligatorio)</span>
         )}
-        {step.checkable && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={check.isPending}
-            onClick={() => check.mutate()}
-          >
-            Comprobar
-          </Button>
-        )}
-        {step.action && (
-          <StepActionButton slug={slug} step={step} action={step.action} />
-        )}
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          {step.checkable && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={locked || check.isPending}
+              onClick={() => check.mutate()}
+            >
+              Comprobar
+            </Button>
+          )}
+          {step.action && (
+            <StepActionButton
+              slug={slug}
+              step={step}
+              action={step.action}
+              locked={locked}
+            />
+          )}
+        </span>
       </div>
-      <p className="text-sm text-muted-foreground">{step.why}</p>
       <p className="text-sm">{step.detail}</p>
+      <p className="text-xs text-muted-foreground">{step.why}</p>
       {check.isError && (
         <p role="alert" className="text-sm text-status-critical">
           {errorDetail(check.error, "No se pudo comprobar.")}
@@ -232,32 +258,36 @@ function StepCard({ slug, step }: { slug: string; step: SetupStep }) {
   );
 }
 
-function QrCard({ detail }: { detail: Detail }) {
-  if (detail.channel_type === null) return null;
+/** The downloadable QR of the public link (the missing-link warning is shown by
+ * `ChannelSection`, right above it). */
+export function ChannelQr({ detail }: { detail: Detail }) {
+  if (detail.channel_type === null || !detail.public_link) return null;
   return (
-    <li className="space-y-2 border-b pb-3 text-sm last:border-b-0 last:pb-0">
+    <div className="space-y-2 text-sm">
       <span className="font-medium">QR del canal</span>
-      {detail.public_link ? (
-        <QrCode
-          value={detail.public_link}
-          title="QR del canal público"
-          fileName={`canal-${detail.slug}`}
-        />
-      ) : (
-        <div className="flex items-center gap-2">
-          <StatusDot level="warning" />
-          <span className="text-status-warning">
-            {detail.channel_type === "telegram"
-              ? "Falta el usuario del bot (bot_username): sin él no hay enlace ni QR."
-              : "Falta el teléfono público (display_phone): sin él no hay enlace ni QR."}
-          </span>
-        </div>
-      )}
-    </li>
+      <QrCode
+        value={detail.public_link}
+        title="QR del canal público"
+        fileName={`canal-${detail.slug}`}
+      />
+    </div>
   );
 }
 
-function ActivateCard({ slug, steps }: { slug: string; steps: SetupStep[] }) {
+/** The onboarding steps, read from the cache only (never a provider call). */
+export function useSetupSteps(slug: string) {
+  return useQuery({
+    queryKey: qk.tenantSetup(slug),
+    queryFn: () =>
+      unwrap(api.GET("/tenants/{slug}/setup", { params: { path: { slug } } })),
+    staleTime: 0,
+    // Reading the steps never calls a provider, but a refetch on every window focus
+    // would still overwrite results from «Comprobar» that are not cached.
+    refetchOnWindowFocus: false,
+  });
+}
+
+function ActivateButton({ slug, blocked }: { slug: string; blocked: boolean }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const mutation = useApiMutation({
@@ -275,14 +305,10 @@ function ActivateCard({ slug, steps }: { slug: string; steps: SetupStep[] }) {
       setTyped("");
     },
   });
-  const blocked = steps.some((step) => step.blocking && step.state !== "ok");
   return (
-    <li className="space-y-2 pb-1 text-sm">
-      <span className="font-medium">Activar</span>
-      <p className="text-muted-foreground">
-        Completa los pasos bloqueantes y escribe el slug para confirmar.
-      </p>
+    <>
       <Button
+        type="button"
         onClick={() => {
           mutation.reset();
           setOpen(true);
@@ -304,6 +330,11 @@ function ActivateCard({ slug, steps }: { slug: string; steps: SetupStep[] }) {
               Escribe {slug} para confirmar.
             </DialogDescription>
           </DialogHeader>
+          {blocked && (
+            <p className="text-sm text-status-warning">
+              Faltan pasos obligatorios: complétalos antes de activar.
+            </p>
+          )}
           <Label htmlFor="setup-activation-slug">Escribe {slug}</Label>
           <Input
             id="setup-activation-slug"
@@ -323,37 +354,68 @@ function ActivateCard({ slug, steps }: { slug: string; steps: SetupStep[] }) {
           )}
         </DialogContent>
       </Dialog>
-    </li>
+    </>
   );
 }
 
-export function SetupTab({ slug, detail }: { slug: string; detail: Detail }) {
-  const q = useQuery({
-    queryKey: qk.tenantSetup(slug),
-    queryFn: () =>
-      unwrap(api.GET("/tenants/{slug}/setup", { params: { path: { slug } } })),
-    staleTime: 0,
-    // Reading the steps never calls a provider, but a refetch on every window focus
-    // would still overwrite results from «Comprobar» that are not cached.
-    refetchOnWindowFocus: false,
-  });
-  if (q.isPending) return <p>Cargando pasos del alta…</p>;
-  if (q.isError)
-    return (
-      <ErrorState
-        message="No se pudieron cargar los pasos del alta."
-        onRetry={() => void q.refetch()}
-      />
-    );
+/** Top of the Configuración tab while the tenant is in alta: how many mandatory
+ * steps are done, a link to the section of each missing one, and «Activar». */
+export function ActivationBanner({
+  slug,
+  steps,
+  sectionLabel,
+  onGo,
+}: {
+  slug: string;
+  steps: SetupStep[];
+  /** The label of a section key, or undefined if no section has that key. */
+  sectionLabel: (key: string) => string | undefined;
+  onGo: (section: string) => void;
+}) {
+  const mandatory = steps.filter((step) => step.blocking);
+  const missing = mandatory.filter((step) => step.state !== "ok");
   return (
-    <ul className="space-y-3">
-      {q.data.map((step) => (
-        <StepCard key={step.key} slug={slug} step={step} />
-      ))}
-      <QrCard detail={detail} />
-      {detail.status === "onboarding" && (
-        <ActivateCard slug={slug} steps={q.data} />
+    <section
+      aria-label="Progreso del alta"
+      className="space-y-3 rounded-md border bg-card p-4"
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <StatusDot level={missing.length === 0 ? "ok" : "warning"} />
+        <span className="font-medium">
+          Alta: {mandatory.length - missing.length} de {mandatory.length} pasos
+          obligatorios listos
+        </span>
+        <span className="ml-auto">
+          <ActivateButton slug={slug} blocked={missing.length > 0} />
+        </span>
+      </div>
+      {missing.length > 0 ? (
+        <ul className="flex flex-wrap gap-2 text-sm">
+          <li className="text-muted-foreground">Falta:</li>
+          {missing.map((step) => {
+            const label = sectionLabel(step.section);
+            return (
+              <li key={step.key}>
+                {label ? (
+                  <button
+                    type="button"
+                    className="underline underline-offset-2"
+                    onClick={() => onGo(step.section)}
+                  >
+                    {step.label} ({label})
+                  </button>
+                ) : (
+                  step.label
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Todos los pasos obligatorios están listos: ya se puede activar.
+        </p>
       )}
-    </ul>
+    </section>
   );
 }

@@ -100,7 +100,7 @@ Toda escritura del panel y de los comandos de operación deja una fila en `audit
 |---|---|
 | Resumen | `services/overview.py`: estado global, indicadores del mes, alertas ([Observabilidad](observabilidad.md)). |
 | Clientes | `services/tenants.py`: lista, ficha, versiones y vuelta atrás, secretos, exportación. Escribe con `tenancy.store`. |
-| Alta | `services/setup.py` (`tenant_setup`): pasos con estado, «Comprobar» y acciones de WhatsApp. `GET` solo lee la caché; `POST` hace la llamada real, fuera de cualquier transacción y auditada. |
+| Clientes → Configuración | `services/forms.py` (`ui_schema`: secciones `PLATFORM_SECTIONS` y `PACK_SECTIONS`, campos condicionales `SHOW_IF`) y `services/setup.py` (`tenant_setup`): pasos del alta con estado, sección, «Comprobar» y acciones de WhatsApp. `GET` solo lee la caché; `POST` hace la llamada real, fuera de cualquier transacción y auditada ([ADR-027](adr/ADR-027-alta-y-configuracion-en-una-pestana.md)). |
 | Incidencias | `routers/incidents.py`: envíos `unknown`, trabajos fallidos y alertas ([Envíos unknown](../incidencias/envios-unknown.md)). |
 | Logs | `services/logs.py` (consultas acotadas a VictoriaLogs), auditoría y conversaciones. |
 | Datos | `services/catalog.py` y `query.py`: catálogo de tablas y consola SQL. |
@@ -117,6 +117,6 @@ Toda escritura del panel y de los comandos de operación deja una fila en `audit
 
 ## Relacionado
 
-- [ADR-008](adr/ADR-008-panel.md), [ADR-014](adr/ADR-014-pestana-de-alta.md), [ADR-016](adr/ADR-016-acciones-de-alta-whatsapp.md).
+- [ADR-008](adr/ADR-008-panel.md), [ADR-014](adr/ADR-014-pestana-de-alta.md), [ADR-016](adr/ADR-016-acciones-de-alta-whatsapp.md), [ADR-027](adr/ADR-027-alta-y-configuracion-en-una-pestana.md).
 - [Panel (uso)](../procedimientos/panel.md), [Panel (desarrollo)](../desarrollo/panel.md), [API del panel](../referencia/api-panel.md).
 - [Tenants y RLS](tenants-y-rls.md) y [Seguridad y secretos](seguridad-y-secretos.md).

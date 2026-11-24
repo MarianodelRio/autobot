@@ -68,7 +68,7 @@ test("a missing public link warns instead of just hiding the QR", async () => {
   ).toBeInTheDocument();
 });
 
-test("a public link points to the QR in the Alta tab instead of showing it here", async () => {
+test("a public link is shown with a copy affordance (the QR is drawn next to it, by the section)", async () => {
   setup(
     <ChannelSection
       detail={{ ...detail, public_link: "https://t.me/mi_bot" }}
@@ -79,9 +79,7 @@ test("a public link points to the QR in the Alta tab instead of showing it here"
         : secrets,
   );
   await screen.findByText("https://t.me/mi_bot");
-  expect(
-    screen.getByText("El QR está en la pestaña Alta."),
-  ).toBeInTheDocument();
+  expect(screen.queryByText(/pestaña Alta/)).toBeNull();
   expect(
     screen.queryByRole("button", { name: "Descargar SVG" }),
   ).not.toBeInTheDocument();

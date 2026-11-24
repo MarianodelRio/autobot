@@ -57,7 +57,7 @@ Después, según lo que vayas a hacer: [Añadir un pack](desarrollo/anadir-un-pa
 
 | Quiero… | Cómo |
 |---|---|
-| Añadir un cliente | Panel → Nuevo cliente → pestaña Alta ([Alta y baja](procedimientos/alta-baja-negocio.md)) |
+| Añadir un cliente | Panel → Nuevo cliente → pestaña Configuración ([Alta y baja](procedimientos/alta-baja-negocio.md)) |
 | Cambiar horarios, servicios, textos | Ficha del cliente en el panel, sin desplegar |
 | Subir horarios de `bus` | `make bus-subir NOMBRE=x DIR=var/datos/x COMMENT=… PROD=1` ([Horarios de bus](procedimientos/horarios-bus.md)) |
 | Cambiar los horarios de un cliente | Ficha del cliente → Horarios → Aplicar |

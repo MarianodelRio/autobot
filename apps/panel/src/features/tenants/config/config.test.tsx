@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -60,8 +61,45 @@ const schema = {
       },
     },
   },
-  ui_schema: { read_only: [], widgets: {}, groups: [] },
+  ui_schema: {
+    read_only: [],
+    widgets: {},
+    groups: [
+      {
+        key: "business",
+        label: "Negocio",
+        description: "Cómo se llama el negocio.",
+        fields: ["name"],
+        summary: ["name"],
+      },
+      { key: "prices", label: "Precios", fields: ["config.price"] },
+    ],
+  },
 };
+/** `fetch` for the editor: the onboarding steps (none unless given), the pack
+ * schema, and whatever `other` answers for the rest. */
+function routes(
+  other: (req: Request) => Response | Promise<Response>,
+  { packSchema = schema as unknown, steps = [] as unknown[] } = {},
+) {
+  return vi.fn(async (req: Request) =>
+    req.url.includes("/setup")
+      ? json(steps)
+      : req.method === "GET" && req.url.includes("/packs/")
+        ? json(packSchema)
+        : other(req),
+  );
+}
+async function openSection(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+) {
+  const trigger = await screen.findByRole("button", {
+    name: new RegExp(`^${label}`),
+  });
+  if (trigger.getAttribute("aria-expanded") !== "true")
+    await user.click(trigger);
+}
 afterEach(() => vi.unstubAllGlobals());
 test("maps validation paths to field errors", () => {
   expect(
@@ -71,29 +109,48 @@ test("maps validation paths to field errors", () => {
     name: { __errors: ["falta"] },
   });
 });
-test("editor synchronizes YAML, shows diff and applies 422 errors", async () => {
+test("sections start closed, with their summary, and open on click", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (req: Request) =>
-      req.method === "PUT"
-        ? json(
-            {
-              code: "validation_error",
-              message: "No válido",
-              details: ["name: nombre no válido"],
-            },
-            422,
-          )
-        : json(schema),
-    ),
+    routes(() => json(schema)),
+  );
+  provider(<ConfigEditor detail={detail} onDirtyChange={vi.fn()} />);
+  const user = userEvent.setup();
+  const business = await screen.findByRole("button", { name: /^Negocio/ });
+  expect(business).toHaveTextContent("Original");
+  expect(screen.queryByLabelText("Nombre")).toBeNull();
+  await user.click(business);
+  expect(screen.getByText("Cómo se llama el negocio.")).toBeInTheDocument();
+  expect(screen.getByLabelText("Nombre")).toHaveValue("Original");
+});
+test("editor synchronizes YAML, shows diff and applies 422 errors", async () => {
+  let sent: Record<string, unknown> | null = null;
+  vi.stubGlobal(
+    "fetch",
+    routes(async (req) => {
+      sent = (await req.json()) as Record<string, unknown>;
+      return json(
+        {
+          code: "validation_error",
+          message: "No válido",
+          details: ["name: nombre no válido"],
+        },
+        422,
+      );
+    }),
   );
   const changed = vi.fn();
   provider(<ConfigEditor detail={detail} onDirtyChange={changed} />);
   const user = userEvent.setup();
-  const name = await screen.findByLabelText("Nombre");
+  await openSection(user, "Negocio");
+  const name = screen.getByLabelText("Nombre");
   await user.clear(name);
   await user.type(name, "Nuevo");
-  await user.click(screen.getByRole("button", { name: "Editar YAML" }));
+  expect(screen.getByRole("button", { name: /^Negocio/ })).toHaveTextContent(
+    "modificado",
+  );
+  await openSection(user, "Avanzado");
+  await user.click(screen.getByRole("button", { name: "Editar como YAML" }));
   expect(
     (screen.getByLabelText("Documento YAML") as HTMLTextAreaElement).value,
   ).toContain("Nuevo");
@@ -104,37 +161,157 @@ test("editor synchronizes YAML, shows diff and applies 422 errors", async () => 
     screen.getByRole("button", { name: "Volver al formulario" }),
   );
   expect(screen.getByLabelText("Nombre")).toHaveValue("Desde YAML");
-  await user.click(screen.getByRole("button", { name: "Editar YAML" }));
   await user.click(screen.getByRole("button", { name: "Ver cambios" }));
   expect(screen.getByText(/Original/)).toBeInTheDocument();
   await user.keyboard("{Escape}");
   await user.type(screen.getByLabelText("Comentario (opcional)"), "Cambio");
   await user.click(screen.getByRole("button", { name: "Guardar" }));
   expect(await screen.findByText("name: nombre no válido")).toBeInTheDocument();
-  await user.click(
-    screen.getByRole("button", { name: "Volver al formulario" }),
-  );
   expect(screen.getAllByText("nombre no válido").length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: /^Negocio/ })).toHaveTextContent(
+    "con errores",
+  );
+  expect(sent).toMatchObject({
+    document: { name: "Desde YAML", config: { price: 2 } },
+    base_version: 1,
+    comment: "Cambio",
+  });
   expect(changed).toHaveBeenCalledWith(true);
+});
+test("opening the tab is not a change: schema defaults stay out of what is saved", async () => {
+  // rjsf fills `greeting` (absent in the stored document) as soon as a form mounts.
+  const withDefaults = {
+    ...schema,
+    document: {
+      ...schema.document,
+      properties: {
+        ...schema.document.properties,
+        config: {
+          type: "object",
+          properties: {
+            price: { type: "number", title: "Precio" },
+            greeting: { type: "string", title: "Saludo", default: "Hola" },
+          },
+        },
+      },
+    },
+    ui_schema: {
+      ...schema.ui_schema,
+      groups: [
+        ...schema.ui_schema.groups.slice(0, 1),
+        {
+          key: "prices",
+          label: "Precios",
+          fields: ["config.price", "config.greeting"],
+        },
+      ],
+    },
+  };
+  const saved: { document?: unknown } = {};
+  vi.stubGlobal(
+    "fetch",
+    routes(
+      async (req) => {
+        Object.assign(saved, await req.json());
+        return json({ version: 2 });
+      },
+      { packSchema: withDefaults },
+    ),
+  );
+  const changed = vi.fn();
+  provider(<ConfigEditor detail={detail} onDirtyChange={changed} />);
+  const user = userEvent.setup();
+  await openSection(user, "Precios");
+  await openSection(user, "Negocio");
+  expect(screen.getByLabelText("Saludo")).toHaveValue("Hola");
+  expect(changed).not.toHaveBeenCalledWith(true);
+  expect(screen.queryByText("Cambios sin guardar")).toBeNull();
+  await user.type(screen.getByLabelText("Nombre"), "!");
+  await user.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => expect(saved.document).toBeDefined());
+  expect(saved.document).toEqual({ name: "Original!", config: { price: 1 } });
+  await waitFor(() =>
+    expect(screen.queryByText("Cambios sin guardar")).toBeNull(),
+  );
+});
+test("a field that depends on a checkbox only shows while it is on", async () => {
+  const conditional = {
+    document: {
+      type: "object",
+      properties: {
+        name: { type: "string", title: "Nombre" },
+        config: {
+          type: "object",
+          properties: {
+            reminders: {
+              type: "boolean",
+              title: "Recordatorios",
+              default: false,
+            },
+            hours: { type: "number", title: "Horas antes", default: 24 },
+          },
+        },
+      },
+    },
+    ui_schema: {
+      read_only: [],
+      widgets: {},
+      groups: [
+        {
+          key: "bookings",
+          label: "Reservas",
+          fields: ["config.reminders", "config.hours"],
+        },
+      ],
+      show_if: { "config.hours": "config.reminders" },
+    },
+  };
+  vi.stubGlobal(
+    "fetch",
+    routes(() => json({}), { packSchema: conditional }),
+  );
+  provider(<ConfigEditor detail={detail} onDirtyChange={vi.fn()} />);
+  const user = userEvent.setup();
+  await openSection(user, "Reservas");
+  expect(screen.queryByLabelText("Horas antes")).toBeNull();
+  await user.click(screen.getByLabelText("Recordatorios"));
+  expect(await screen.findByLabelText("Horas antes")).toHaveValue(24);
+});
+test("a field no section names shows in «Otros ajustes»", async () => {
+  vi.stubGlobal(
+    "fetch",
+    routes(() => json({}), {
+      packSchema: {
+        ...schema,
+        ui_schema: {
+          ...schema.ui_schema,
+          groups: [schema.ui_schema.groups[0]],
+        },
+      },
+    }),
+  );
+  provider(<ConfigEditor detail={detail} onDirtyChange={vi.fn()} />);
+  const user = userEvent.setup();
+  await openSection(user, "Otros ajustes");
+  expect(screen.getByLabelText("Precio")).toHaveValue(1);
 });
 test("conflict offers differences and reload", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (req: Request) =>
+    routes((req) =>
       req.method === "PUT"
         ? json({ code: "conflict", message: "Conflicto", details: [] }, 409)
-        : req.url.includes("/packs/")
-          ? json(schema)
-          : json({
-              ...detail,
-              document: { name: "Remoto", config: { price: 1 } },
-              version: 2,
-            }),
+        : json({
+            ...detail,
+            document: { name: "Remoto", config: { price: 1 } },
+            version: 2,
+          }),
     ),
   );
   provider(<ConfigEditor detail={detail} onDirtyChange={vi.fn()} />);
   const user = userEvent.setup();
-  const name = await screen.findByLabelText("Nombre");
+  await openSection(user, "Negocio");
+  const name = screen.getByLabelText("Nombre");
   await user.clear(name);
   await user.type(name, "Local");
   await user.type(screen.getByLabelText("Comentario (opcional)"), "Cambio");
@@ -150,7 +327,7 @@ test("conflict offers differences and reload", async () => {
 test("a status change elsewhere (Activar/Pausar) is picked up without clobbering an in-progress edit", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => json(schema)),
+    routes(() => json(schema)),
   );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -160,7 +337,7 @@ test("a status change elsewhere (Activar/Pausar) is picked up without clobbering
       <ConfigEditor detail={detail} onDirtyChange={vi.fn()} />
     </QueryClientProvider>,
   );
-  await screen.findByLabelText("Nombre");
+  await openSection(userEvent.setup(), "Negocio");
   // No unsaved changes: a newer `detail` (status action bumped the version) is
   // followed, so the next save would carry its version, not a stale one.
   rerender(
@@ -221,10 +398,10 @@ test("opening_hours and services use their own editors, timezone a dropdown", as
   };
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => json(salonSchema)),
+    routes(() => json({}), { packSchema: salonSchema }),
   );
   provider(<ConfigEditor detail={salonDetail} onDirtyChange={vi.fn()} />);
-  await screen.findByLabelText("Nombre");
+  await openSection(userEvent.setup(), "Otros ajustes");
   expect(screen.getByText("Lunes")).toBeInTheDocument();
   expect(screen.getAllByText("Cerrado")).toHaveLength(6);
   expect(screen.getByDisplayValue("Corte")).toBeInTheDocument();
@@ -244,24 +421,41 @@ test("demo is hidden from a real client's form, shown for a demo tenant", async 
         config: { type: "object", properties: {} },
       },
     },
-    ui_schema: { read_only: [], widgets: {}, groups: [], hidden: [] },
+    ui_schema: {
+      read_only: [],
+      widgets: {},
+      hidden: [],
+      groups: [{ key: "business", label: "Negocio", fields: ["name", "demo"] }],
+    },
   };
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => json(demoSchema)),
+    routes(() => json({}), { packSchema: demoSchema }),
   );
-  provider(
+  const user = userEvent.setup();
+  const client = provider(
     <ConfigEditor
       detail={{ ...detail, document: { ...detail.document, demo: null } }}
       onDirtyChange={vi.fn()}
     />,
   );
-  await screen.findByLabelText("Nombre");
-  // The field template renders a hidden field's box with Tailwind's `hidden`
-  // class (display:none in a real browser); jsdom has no stylesheet, so this
-  // checks the class rather than visibility.
-  const description = screen.getByLabelText("Descripción");
-  expect(description.closest("div.hidden")).not.toBeNull();
+  await openSection(user, "Negocio");
+  expect(screen.getByLabelText("Nombre")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Descripción")).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Otros ajustes/ })).toBeNull();
+  client.clear();
+  cleanup();
+  provider(
+    <ConfigEditor
+      detail={{
+        ...detail,
+        document: { ...detail.document, demo: { description: "Demo" } },
+      }}
+      onDirtyChange={vi.fn()}
+    />,
+  );
+  await openSection(user, "Negocio");
+  expect(screen.getByLabelText("Descripción")).toHaveValue("Demo");
 });
 test("activation requires unblocked checklist and exact slug", async () => {
   let blocked = true;

@@ -1,6 +1,6 @@
 # ADR-014 — Pestaña «Alta» guiada por pasos
 
-**Estado:** vigente
+**Estado:** vigente salvo la pestaña propia: desde el [ADR-027](ADR-027-alta-y-configuracion-en-una-pestana.md) los pasos del alta están dentro de la pestaña «Configuración», cada uno en su sección
 
 ## Contexto
 

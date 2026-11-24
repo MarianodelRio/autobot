@@ -19,9 +19,9 @@ La fecha es la del alta del ADR en git. Si una decisión cambia, el ADR afectado
 | [011](ADR-011-borrado-total-de-un-cliente.md) | Borrado total de un cliente | vigente | 2026-11-09 | |
 | [012](ADR-012-instalacion-y-traslado.md) | Instalación y traslado del servidor | parcialmente sustituido | 2026-11-15 | ADR-017 (instalación desde el portátil) |
 | [013](ADR-013-biblioteca-de-conjuntos-de-datos.md) | Biblioteca de conjuntos de datos | vigente | 2026-11-17 | Modifica el ADR-009 |
-| [014](ADR-014-pestana-de-alta.md) | Pestaña «Alta» guiada por pasos | vigente | 2026-11-17 | |
+| [014](ADR-014-pestana-de-alta.md) | Pestaña «Alta» guiada por pasos | vigente; la pestaña propia, modificada | 2026-11-17 | ADR-027 (alta dentro de «Configuración») |
 | [015](ADR-015-varios-peluqueros.md) | Varios peluqueros en `salon` | aceptado, pendiente de implementar | 2026-11-17 | |
-| [016](ADR-016-acciones-de-alta-whatsapp.md) | Acciones de alta de WhatsApp desde la pestaña «Alta» | vigente | 2026-11-20 | |
+| [016](ADR-016-acciones-de-alta-whatsapp.md) | Acciones de alta de WhatsApp desde la pestaña «Alta» | vigente | 2026-11-20 | Las acciones están en «Configuración» desde el ADR-027 |
 | [017](ADR-017-instalador-de-la-vm-y-entorno-local.md) | Instalador de la VM desde dentro y un solo comando para local | vigente | 2026-11-20 | Sustituye parte del ADR-012 |
 | [018](ADR-018-documentacion-en-el-panel.md) | Documentación como sitio servido por el panel | vigente | 2026-11-21 | |
 | [019](ADR-019-libro-de-supresiones.md) | Libro de supresiones para no resucitar datos olvidados | vigente | 2026-11-22 | Complementa el ADR-011; ADR-025 (exportación automática) |
@@ -32,3 +32,4 @@ La fecha es la del alta del ADR en git. Si una decisión cambia, el ADR afectado
 | [024](ADR-024-envio-saliente-por-caducidad.md) | Envío saliente por caducidad | vigente | 2026-11-23 | Complementa ADR-004 |
 | [025](ADR-025-libro-de-supresiones-y-purga-vigilados.md) | Libro de supresiones y purga vigilados automáticamente | vigente | 2026-11-23 | Complementa ADR-019 y ADR-021 |
 | [026](ADR-026-conciliacion-de-envios-ambiguos.md) | Conciliación de envíos ambiguos y recuperación en bloque | vigente | 2026-11-23 | Cambia la regla de `unknown` (ADR-004, ADR-024) |
+| [027](ADR-027-alta-y-configuracion-en-una-pestana.md) | Alta y Configuración en una sola pestaña | vigente | 2026-11-24 | Modifica el ADR-014 |

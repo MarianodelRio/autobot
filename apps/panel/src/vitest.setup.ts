@@ -7,6 +7,8 @@ afterEach(() => cleanup());
 // jsdom has no layout engine, so it never implements scrollTo; the router's scroll
 // restoration calls it on every navigation.
 window.scrollTo ??= () => {};
+// ... nor scrollIntoView, used to bring a Configuración section into view.
+Element.prototype.scrollIntoView ??= () => {};
 
 // jsdom has no Blob URL store, so it never implements these; a downloaded
 // export (CSV, JSON) needs them to build its temporary link.
@@ -26,3 +28,11 @@ window.matchMedia ??= (query: string) =>
     removeEventListener: () => {},
     dispatchEvent: () => false,
   }) as unknown as MediaQueryList;
+
+// jsdom has no layout engine, so it never implements ResizeObserver; Radix's
+// checkbox (in the rjsf forms) measures itself with one.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};

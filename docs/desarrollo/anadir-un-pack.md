@@ -65,6 +65,8 @@ Ese mismo modelo sirve en dos sitios, sin código extra:
 
 Los campos con nombre `info_text` o los textos de un submodelo `texts` se dibujan como área de texto. Si un campo necesita un editor propio, hay que añadir un componente en el panel y registrarlo en `CUSTOM_FIELDS`, en `forms.py`; hoy solo lo hace `salon` (horarios y servicios). Empieza sin ello.
 
+La pestaña Configuración agrupa los campos en secciones plegables ([ADR-027](../arquitectura/adr/ADR-027-alta-y-configuracion-en-una-pestana.md)). Las de un pack se declaran en `PACK_SECTIONS` (`forms.py`), con rutas como `config.services`; un campo que dependa de una casilla se añade a `SHOW_IF`. No es obligatorio: los campos de `config` que ninguna sección nombra salen en «Otros ajustes». Si el pack añade pasos de alta, cada `SetupStepOut` indica su `section`.
+
 Si el pack necesita un dato propio que se sube aparte de la configuración (como los horarios de `bus`), declara `load_data` y `dataset_summary`. El flujo está en [ADR-013](../arquitectura/adr/ADR-013-biblioteca-de-conjuntos-de-datos.md).
 
 ## 4. Plantilla y negocio de demo

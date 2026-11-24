@@ -174,4 +174,5 @@ nav:
       - arquitectura/adr/ADR-024-envio-saliente-por-caducidad.md
       - arquitectura/adr/ADR-025-libro-de-supresiones-y-purga-vigilados.md
       - arquitectura/adr/ADR-026-conciliacion-de-envios-ambiguos.md
+      - arquitectura/adr/ADR-027-alta-y-configuracion-en-una-pestana.md
       - arquitectura/adr/plantilla.md

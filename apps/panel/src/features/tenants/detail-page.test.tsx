@@ -32,6 +32,17 @@ function setup(status = "active") {
     );
     let value: unknown;
     if (url.pathname.endsWith("/health-check")) value = [];
+    else if (url.pathname.endsWith("/setup")) value = [];
+    else if (url.pathname.includes("/packs/"))
+      value = {
+        document: {
+          type: "object",
+          properties: { name: { type: "string", title: "Nombre" } },
+        },
+        ui_schema: {
+          groups: [{ key: "business", label: "Negocio", fields: ["name"] }],
+        },
+      };
     else if (url.pathname.endsWith("/secrets"))
       value = {
         channel_type: "telegram",
@@ -97,7 +108,6 @@ function setup(status = "active") {
       value = { forgotten: true };
     else if (url.pathname.endsWith("/tenants/demo/export"))
       value = { tenant: "demo", data: {} };
-    else if (url.pathname.endsWith("/setup")) value = [];
     else value = { ...tenant, status };
     return new Response(JSON.stringify(value), {
       status: 200,
@@ -123,13 +133,16 @@ test.each([
   setup(status);
   expect(await screen.findByRole("button", { name: action })).toBeEnabled();
 });
-test("an onboarding tenant has no header action, only Activar in Alta", async () => {
+test("an onboarding tenant has no header action, only Activar in Configuración", async () => {
   setup("onboarding");
   await screen.findByRole("heading", { name: "Negocio" });
   expect(
     screen.queryByRole("button", { name: "Activar" }),
   ).not.toBeInTheDocument();
-  await userEvent.setup().click(screen.getByRole("tab", { name: "Alta" }));
+  expect(screen.queryByRole("tab", { name: "Alta" })).toBeNull();
+  await userEvent
+    .setup()
+    .click(screen.getByRole("tab", { name: "Configuración" }));
   expect(await screen.findByRole("button", { name: "Activar" })).toBeEnabled();
 });
 test("loads tabs and pairs conversation messages", async () => {

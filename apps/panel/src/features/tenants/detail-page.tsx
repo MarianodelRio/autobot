@@ -25,7 +25,6 @@ import { qk, tenantChanged } from "@/lib/queries";
 import { HEALTH_LEVEL, levelOf } from "@/lib/status-levels";
 import { useApiMutation } from "@/lib/use-api-mutation";
 import { ConfigEditor } from "./config/editor";
-import { SetupTab } from "./config/setup-tab";
 import { StatusAction } from "./config/status-action";
 import { ContactsTab } from "./contacts-tab";
 import { DeleteTenantAction } from "./delete-tenant-action";
@@ -248,7 +247,6 @@ export function TenantDetailPage({
           {(
             [
               ["resumen", "Resumen"],
-              ["alta", "Alta"],
               ["configuracion", "Configuración"],
               ["actividad", "Actividad"],
               ["contactos", "Contactos"],
@@ -262,9 +260,6 @@ export function TenantDetailPage({
         </TabsList>
         <TabsContent value="resumen">
           <Summary detail={d} />
-        </TabsContent>
-        <TabsContent value="alta">
-          <SetupTab slug={slug} detail={d} />
         </TabsContent>
         <TabsContent value="configuracion">
           <ConfigEditor

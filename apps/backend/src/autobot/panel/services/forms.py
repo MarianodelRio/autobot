@@ -64,15 +64,132 @@ def dataset_library_entries(pack_name: str, dataset: str) -> list[LibraryEntryOu
     ]
 
 
-GROUPS: tuple[tuple[str, str, list[str]], ...] = (
-    ("business", "Negocio", ["name", "timezone", "demo"]),
-    ("channel", "Canal", ["channel"]),
-    ("people", "Dueño y testers", ["owner", "testers"]),
-    ("legal", "Privacidad y atención", ["privacy", "support"]),
-    ("config", "Ajustes del pack", ["config"]),
+@dataclass(frozen=True)
+class Section:
+    """One collapsible section of the Configuración tab. `fields` and `summary` are
+    dotted paths into the document (`config.services`); a path the pack does not have
+    is skipped, so the platform sections can name the fields every pack shares. The
+    setup steps say which section they belong to (`SetupStepOut.section`)."""
+
+    key: str
+    label: str
+    description: str
+    fields: tuple[str, ...]
+    summary: tuple[str, ...] = ()
+
+
+PLATFORM_SECTIONS: tuple[Section, ...] = (
+    Section(
+        "business",
+        "Negocio",
+        "Cómo se llama el negocio, en qué zona horaria trabaja y el teléfono que el bot"
+        " da a sus clientes.",
+        ("name", "timezone", "config.business_name", "config.contact_phone", "demo"),
+        summary=("name", "timezone"),
+    ),
+    Section(
+        "channel",
+        "Canal",
+        "Por dónde le escriben los clientes (WhatsApp o Telegram): los ids del proveedor,"
+        " las credenciales, el enlace público y el QR.",
+        ("channel",),
+        summary=("channel.type", "channel.display_phone", "channel.bot_username"),
+    ),
+    Section(
+        "people",
+        "Dueño y testers",
+        "El dueño recibe avisos y resúmenes en su propio chat. Los testers son los únicos"
+        " que pueden escribir al bot mientras el negocio está en alta.",
+        ("owner", "testers"),
+    ),
+    Section(
+        "legal",
+        "Privacidad y atención",
+        "Lo que el bot dice en su primer mensaje sobre los datos personales y a quién"
+        " acudir para hablar con una persona (al escribir PERSONA). Es obligatorio para"
+        " activar.",
+        ("privacy", "support"),
+        summary=("privacy.policy_url", "support.human_contact"),
+    ),
 )
+# The pack's own sections, after the platform's. A `config` field no section lists
+# still shows, in a final «Otros ajustes» section the panel adds on its own.
+PACK_SECTIONS: dict[str, tuple[Section, ...]] = {
+    "salon": (
+        Section(
+            "services",
+            "Servicios y horario",
+            "Qué se puede reservar, cuándo abre el negocio y qué días cierra.",
+            ("config.services", "config.opening_hours", "config.holidays", "config.info_text"),
+            summary=("config.services",),
+        ),
+        Section(
+            "bookings",
+            "Reservas y recordatorios",
+            "Las reglas de las citas: cada cuánto empieza un hueco, con cuánta antelación"
+            " se reserva, cuántas citas puede tener cada cliente y los recordatorios.",
+            (
+                "config.slot_step_min",
+                "config.min_notice_min",
+                "config.booking_window_days",
+                "config.max_active_bookings",
+                "config.reminders_enabled",
+                "config.reminder_window_hours",
+                "config.manual_confirmations_enabled",
+                "config.manual_confirmations_since",
+            ),
+            summary=("config.booking_window_days", "config.reminders_enabled"),
+        ),
+        Section(
+            "calendar",
+            "Calendario de Google",
+            "Las citas se guardan en el calendario del propio negocio, que debe compartirse"
+            " con la cuenta de servicio de la plataforma.",
+            ("config.calendar_id",),
+            summary=("config.calendar_id",),
+        ),
+        Section(
+            "special_event",
+            "Evento especial",
+            "Un periodo con condiciones propias (por ejemplo, una campaña o unas fiestas).",
+            ("config.special_event",),
+        ),
+        Section(
+            "texts",
+            "Textos del bot",
+            "Las frases que el bot usa en cada situación. Solo hace falta tocarlas para"
+            " personalizar el tono.",
+            ("config.texts",),
+        ),
+    ),
+    "bus": (
+        Section(
+            "office",
+            "Oficina y enlaces",
+            "El horario de atención de la oficina y los enlaces a la web, la compra online,"
+            " los bonos y los horarios en PDF.",
+            ("config.office_hours", "config.links"),
+        ),
+        Section(
+            "datasets",
+            "Horarios y búsqueda",
+            "Los horarios que consulta el bot (de la biblioteca), las localidades del menú"
+            " inicial y cómo busca el próximo autobús.",
+            (
+                "config.start_menu_towns",
+                "config.next_day_search_days",
+                "config.schedule_disclaimer",
+            ),
+            summary=("config.start_menu_towns",),
+        ),
+    ),
+}
+# A field shown only while the checkbox it depends on is on.
+SHOW_IF: dict[str, str] = {
+    "config.reminder_window_hours": "config.reminders_enabled",
+    "config.manual_confirmations_since": "config.manual_confirmations_enabled",
+}
 HIDDEN = ("id", "slug", "pack", "status")
-COLLAPSED = ("config.texts", "config.special_event")
 READ_ONLY = ("id", "slug", "pack", "status", "channel.type", "channel.public_id")
 
 
@@ -221,11 +338,21 @@ CUSTOM_FIELDS: dict[str, dict[str, str]] = {
 
 def ui_schema(pack_name: str) -> dict[str, Any]:
     pack = _pack(pack_name)
+    sections = (*PLATFORM_SECTIONS, *PACK_SECTIONS.get(pack_name, ()))
     return {
-        "groups": [{"key": key, "label": label, "fields": fields} for key, label, fields in GROUPS],
+        "groups": [
+            {
+                "key": s.key,
+                "label": s.label,
+                "description": s.description,
+                "fields": list(s.fields),
+                "summary": list(s.summary),
+            }
+            for s in sections
+        ],
+        "show_if": dict(SHOW_IF),
         "read_only": list(READ_ONLY),
         "hidden": list(HIDDEN),
-        "collapsed": list(COLLAPSED),
         "fields": CUSTOM_FIELDS.get(pack_name, {}),
         "widgets": {
             **{field: "textarea" for field in _textarea_fields(pack)},

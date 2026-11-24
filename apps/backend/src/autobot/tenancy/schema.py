@@ -157,7 +157,12 @@ class TenantDocument(Strict):
     testers: Testers = Field(default=Testers(), title="Testers")
     owner: Owner | None = Field(default=None, title="Dueño")
     demo: DemoInfo | None = Field(default=None, title="Demo")
-    privacy: Privacy | None = Field(default=None, title="Privacidad")
+    privacy: Privacy | None = Field(
+        default=None,
+        title="Privacidad",
+        description="Quién trata los datos de los clientes, tal como lo cuenta el primer"
+        " mensaje del bot.",
+    )
     support: Support | None = Field(default=None, title="Atención a la clientela")
     config: dict[str, Any] = Field(default={}, title="Configuración del pack")
 

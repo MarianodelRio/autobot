@@ -37,7 +37,7 @@ Otros negocios funcionan, pero uno no responde en su canal `main`. Alertas posib
 
 ### Webhook sin suscripción
 
-`webhook_unsubscribed`: en WhatsApp, la app ya no está suscrita a la cuenta (Meta la desactiva si el webhook falla muchas veces o alguien la quitó). Repite la suscripción desde la pestaña «Alta» del panel («Comprobar» y después suscribir); es una acción sobre el canal real, necesita aprobación. En Telegram, vuelve a registrar el webhook desde el panel. `webhook_errors`: Telegram no consigue entregar; revisa que `PUBLIC_URL` y el proxy responden y mira [el bot no responde](bot-no-responde.md).
+`webhook_unsubscribed`: en WhatsApp, la app ya no está suscrita a la cuenta (Meta la desactiva si el webhook falla muchas veces o alguien la quitó). Repite la suscripción desde la sección «Canal» de la pestaña «Configuración» del panel («Comprobar» y después «Suscribir app»); es una acción sobre el canal real, necesita aprobación. En Telegram, vuelve a registrar el webhook desde el panel. `webhook_errors`: Telegram no consigue entregar; revisa que `PUBLIC_URL` y el proxy responden y mira [el bot no responde](bot-no-responde.md).
 
 ### Calidad del número
 

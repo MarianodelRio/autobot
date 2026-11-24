@@ -1,5 +1,6 @@
-"""The "Alta" tab (ADR-014): one step-by-step view assembled from the services
-already built, instead of a new hook per pack or channel.
+"""The onboarding steps (ADR-014, ADR-027): assembled from the services already built,
+instead of a new hook per pack or channel. Each step names the Configuración section it
+belongs to, where the panel shows it next to the fields it depends on.
 """
 
 from collections.abc import Collection, Iterable
@@ -11,7 +12,6 @@ from ninja import Schema
 
 from autobot.channels.adapters import endpoint
 from autobot.channels.base import InboundItem, parse_stored
-from autobot.channels.telegram.registration import expected_webhook_url, is_webhook_registered
 from autobot.channels.whatsapp import registration as meta
 from autobot.ops.audit import record_tenant
 from autobot.ops.health import Issue, whatsapp_template_statuses
@@ -52,6 +52,9 @@ class SetupAction(Schema):
 
 class SetupStepOut(Schema):
     key: str
+    # The Configuración section the step shows in (`forms.ui_schema` groups); a key
+    # with no section of that name shows at the top, next to the activation progress.
+    section: str
     label: str
     why: str
     state: str  # "ok" | "pending" | "error" | "n/a"
@@ -124,6 +127,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
     steps = [
         SetupStepOut(
             key="document",
+            section="business",
             label="Documento",
             why="Un documento inválido o degradado no se puede activar.",
             state=_state(items["document"].ok),
@@ -132,6 +136,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
         ),
         SetupStepOut(
             key="channel",
+            section="channel",
             label="Canal",
             why="Sin los ids completos no hay enlace público ni QR.",
             state=_state(items["channel"].ok),
@@ -141,6 +146,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
         ),
         SetupStepOut(
             key="secrets",
+            section="channel",
             label="Secretos",
             why="Sin secretos legibles el canal no puede enviar ni recibir.",
             state=_state(items["secrets"].ok),
@@ -148,29 +154,16 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
             detail=items["secrets"].detail,
         ),
     ]
-    if isinstance(channel, TelegramChannel):
-        expected = expected_webhook_url(f"webhooks/telegram/{channel.public_id}")
-        steps.append(
-            SetupStepOut(
-                key="webhook",
-                label="Webhook de Telegram",
-                why="Sin el webhook registrado, Telegram nunca entrega los mensajes.",
-                state="pending",
-                # Not blocking on its own: activation's source of truth is the
-                # checklist, where an unregistered webhook fails the health item
-                # (`telegram_health(expected_url=...)`, critical).
-                blocking=False,
-                detail="Pulsa «Comprobar» para consultarlo en Telegram. Si falta,"
-                " «Salud del canal» también lo señala y bloquea la activación.",
-                values=[SetupValue(label="URL esperada", value=expected or "—", copiable=True)],
-                checkable=True,
-            )
-        )
+    # Telegram has no step of its own for its webhook: the Canal section shows its
+    # registration status with «Registrar webhook» (`GET/POST .../telegram-webhook`),
+    # and an unregistered webhook already fails «Salud del canal» (critical), which is
+    # what blocks the activation.
     if isinstance(channel, WhatsAppChannel):
         steps.extend(_whatsapp_steps(tenant, channel))
         steps.append(
             SetupStepOut(
                 key="templates",
+                section="channel",
                 label="Plantillas de WhatsApp",
                 why="Sin plantillas aprobadas no se pueden enviar mensajes proactivos.",
                 state=_state(items["templates"].ok),
@@ -183,6 +176,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
     steps.append(
         SetupStepOut(
             key="health",
+            section="channel",
             label="Salud del canal",
             why="Un problema crítico de salud bloquea la activación.",
             state=_state(items["health"].ok),
@@ -194,18 +188,20 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
     steps.append(
         SetupStepOut(
             key="privacy",
+            section="legal",
             label="Privacidad y atención",
             why="El primer mensaje del bot cita el enlace a la política de privacidad y "
             "«PERSONA» da el contacto para hablar con alguien; sin ellos no se puede activar.",
             state=_state(items["privacy"].ok),
             blocking=items["privacy"].blocking,
             detail="Rellena «Enlace a la política de privacidad» y «Contacto para hablar con "
-            "una persona» en la pestaña Configuración, grupo «Privacidad y atención».",
+            "una persona» en esta misma sección y guarda.",
         )
     )
     steps.append(
         SetupStepOut(
             key="tester",
+            section="people",
             label="Mensaje de un tester",
             why="Confirma que el canal principal responde de verdad antes de activar.",
             state=_state(items["tester"].ok),
@@ -217,6 +213,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
     steps.append(
         SetupStepOut(
             key="owner",
+            section="people",
             label="Dueño",
             why="Sin enlazar, el dueño no recibe avisos de citas ni resúmenes.",
             state=_state(items["owner"].ok),
@@ -235,6 +232,7 @@ def tenant_setup(slug: str) -> list[SetupStepOut]:
         steps.append(
             SetupStepOut(
                 key="calendar",
+                section="calendar",
                 label="Calendario",
                 why="Sin permiso de escritura en el calendario del negocio no se pueden"
                 " guardar citas.",
@@ -334,9 +332,9 @@ def tenant_setup_add_tester(slug: str, tester_id: str, *, actor: str) -> SetupSt
         document=doc,
         base_version=tenant.version,
         actor=actor,
-        comment="Tester añadido desde la pestaña Alta",
+        comment="Tester añadido desde Configuración",
     )
-    record_tenant(actor, "tenant.setup_add_tester", tenant, "Tester añadido desde la pestaña Alta")
+    record_tenant(actor, "tenant.setup_add_tester", tenant, "Tester añadido desde Configuración")
     get_registry(force=True)
     for step in tenant_setup(slug):
         if step.key == "tester":
@@ -371,6 +369,7 @@ def _dataset_steps(slug: str, tenant: LoadedTenant) -> list[SetupStepOut]:
         steps.append(
             SetupStepOut(
                 key=f"dataset:{name}",
+                section="datasets",
                 label="Horarios" if name == "timetable" else name,
                 why="Sin datos cargados el negocio no puede responder con ellos.",
                 state=_state(status.version is not None),
@@ -390,18 +389,7 @@ def tenant_setup_check(slug: str, step: str, *, actor: str) -> SetupStepOut:
     if current is None or not current.checkable:
         raise ApiError("bad_request", "Ese paso no se puede comprobar", 400)
 
-    if step == "webhook":
-        registered = is_webhook_registered(slug)
-        state = "ok" if registered else "error" if registered is False else "pending"
-        detail = (
-            "Registrado."
-            if registered
-            else "No está registrado: usa «Registrar webhook» en Configuración."
-            if registered is False
-            else "No se pudo comprobar."
-        )
-        result = current.model_copy(update={"state": state, "detail": detail})
-    elif step == "health":
+    if step == "health":
         result = _check_health(tenant, current)
     elif step == "calendar":
         result = _check_calendar(tenant, current)
@@ -531,6 +519,7 @@ def _whatsapp_steps(tenant: LoadedTenant, channel: WhatsAppChannel) -> list[Setu
         steps.append(
             SetupStepOut(
                 key=key,
+                section="channel",
                 label=label,
                 why=why,
                 state="pending",

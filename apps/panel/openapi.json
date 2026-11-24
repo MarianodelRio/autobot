@@ -2913,6 +2913,10 @@
             "title": "Label",
             "type": "string"
           },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
           "state": {
             "title": "State",
             "type": "string"
@@ -2940,6 +2944,7 @@
         },
         "required": [
           "key",
+          "section",
           "label",
           "why",
           "state",

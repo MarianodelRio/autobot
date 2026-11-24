@@ -1,15 +1,27 @@
 // The installed shadcn theme renders with the panel's existing components and styles.
 import Form from "@rjsf/shadcn";
-import DefaultObjectTemplate from "@rjsf/shadcn/lib/ObjectFieldTemplate/ObjectFieldTemplate.js";
+import { createSchemaUtils, type RJSFSchema } from "@rjsf/utils";
 import { useQuery } from "@tanstack/react-query";
-import { type ComponentProps, type ReactNode, useEffect, useMemo } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { type ApiError, api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { ErrorState } from "@/components/error-state";
 import { JsonDiff } from "@/components/json-diff";
-import { type Status, StatusBadge } from "@/components/status-badge";
+import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,8 +31,16 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  getPath,
+  type Json,
+  pickPaths,
+  sameValue,
+  schemaAt,
+  sectionSchema,
+} from "@/lib/form-draft";
 import { validator } from "@/lib/form-validator";
-import { packSchemaQueryOptions, tenantChanged } from "@/lib/queries";
+import { packSchemaQueryOptions, qk, tenantChanged } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 import { CalendarSection } from "./calendar-section";
 import { ChannelSection } from "./channel-section";
@@ -29,81 +49,18 @@ import { HistorySection } from "./history-section";
 import { OpeningHoursField } from "./opening-hours-field";
 import { OwnerSection } from "./owner-section";
 import { ServicesField } from "./services-field";
+import {
+  ActivationBanner,
+  ChannelQr,
+  StepRow,
+  useSetupSteps,
+} from "./setup-steps";
 import { TimezoneWidget } from "./timezone-widget";
 import { useConfigDraft } from "./use-config-draft";
 
 type Detail = components["schemas"]["TenantDetail"];
+type SetupStep = components["schemas"]["SetupStepOut"];
 type ErrorSchema = NonNullable<ComponentProps<typeof Form>["extraErrors"]>;
-
-interface FormContext {
-  groups?: { key: string; label: string; fields: string[] }[];
-  groupExtras?: Record<string, ReactNode>;
-  collapsed?: string[];
-}
-
-const GroupedObjectTemplate = (
-  props: Parameters<typeof DefaultObjectTemplate>[0],
-) => {
-  const { groups, groupExtras, collapsed } = (props.registry.formContext ??
-    {}) as FormContext;
-  const path = props.fieldPathId.path.join(".");
-  if (collapsed?.includes(path)) {
-    return (
-      <details className="rounded-md border p-3">
-        <summary className="cursor-pointer font-medium">{props.title}</summary>
-        <div className="mt-3 space-y-3">
-          {props.properties.map((field) => (
-            <div key={field.name} className={field.hidden ? "hidden" : ""}>
-              {field.content}
-            </div>
-          ))}
-        </div>
-      </details>
-    );
-  }
-  if (
-    props.fieldPathId.$id !== "root" ||
-    !Array.isArray(groups) ||
-    !DefaultObjectTemplate
-  ) {
-    return <DefaultObjectTemplate {...props} />;
-  }
-  const used = new Set<string>();
-  return (
-    <div className="space-y-6">
-      {groups.map((group) => {
-        const fields = props.properties.filter((property) =>
-          group.fields.includes(property.name),
-        );
-        for (const field of fields) used.add(field.name);
-        const extra = groupExtras?.[group.key];
-        if (fields.length === 0 && !extra) return null;
-        return (
-          <Card key={group.key} id={`section-${group.key}`}>
-            <CardHeader>
-              <CardTitle>{group.label}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {fields.map((field) => (
-                <div key={field.name} className={field.hidden ? "hidden" : ""}>
-                  {field.content}
-                </div>
-              ))}
-              {extra}
-            </CardContent>
-          </Card>
-        );
-      })}
-      {props.properties
-        .filter((property) => !used.has(property.name))
-        .map((field) => (
-          <div key={field.name} className={field.hidden ? "hidden" : ""}>
-            {field.content}
-          </div>
-        ))}
-    </div>
-  );
-};
 
 type Node = { __errors?: string[]; [key: string]: Node | string[] | undefined };
 export function errorsToSchema(details: string[]): ErrorSchema {
@@ -155,17 +112,6 @@ function uiSchema(
   if (value.fields && typeof value.fields === "object")
     for (const [field, name] of Object.entries(value.fields))
       assign(field, "ui:field", name);
-  if (Array.isArray(value.groups)) {
-    const order = value.groups.flatMap((group: unknown) =>
-      typeof group === "object" &&
-      group !== null &&
-      "fields" in group &&
-      Array.isArray(group.fields)
-        ? group.fields
-        : [],
-    );
-    result["ui:order"] = [...order, "*"];
-  }
   return result;
 }
 
@@ -220,6 +166,153 @@ function resolveChannelSchema(
   };
 }
 
+interface Group {
+  key: string;
+  label: string;
+  description?: string;
+  fields: string[];
+  summary?: string[];
+}
+/** A section as shown: the backend's group with only the fields this tenant's
+ * document really has, plus its steps. */
+interface Section extends Group {
+  steps: SetupStep[];
+}
+
+const ADVANCED = "advanced";
+const OTHERS = "others";
+
+/** The groups the backend sent, then «Otros ajustes» with every field no group
+ * names (a pack's new field shows even before it gets a section). Fields this
+ * document lacks are dropped; a section with nothing to show, too. */
+function buildSections(
+  schema: Record<string, unknown>,
+  groups: Group[],
+  hidden: string[],
+  steps: SetupStep[],
+): Section[] {
+  const placed = new Set(groups.flatMap((group) => group.fields));
+  const top = Object.keys((schema.properties ?? {}) as object);
+  const config = schemaAt(schema, "config");
+  const configFields = Object.keys(
+    ((config?.properties ?? {}) as object) || {},
+  ).map((name) => `config.${name}`);
+  const others = [
+    ...top.filter(
+      (name) =>
+        name !== "config" && !hidden.includes(name) && !placed.has(name),
+    ),
+    ...configFields.filter((path) => !placed.has(path)),
+  ];
+  const all: Group[] = [
+    ...groups,
+    ...(others.length > 0
+      ? [
+          {
+            key: OTHERS,
+            label: "Otros ajustes",
+            description: "Ajustes del pack que no tienen una sección propia.",
+            fields: others,
+          },
+        ]
+      : []),
+  ];
+  return all
+    .map((group) => ({
+      ...group,
+      fields: group.fields.filter(
+        (path) => schemaAt(schema, path) !== undefined,
+      ),
+      steps: steps.filter((step) => step.section === group.key),
+    }))
+    .filter((section) => section.fields.length > 0 || section.steps.length > 0);
+}
+
+/** The header dot: red when a step failed its check, amber when a mandatory one is
+ * still missing, green when every step is fine; none without steps. */
+function sectionLevel(steps: SetupStep[]): StatusDotLevel | null {
+  if (steps.length === 0) return null;
+  if (steps.some((step) => step.state === "error")) return "critical";
+  if (steps.some((step) => step.blocking && step.state !== "ok"))
+    return "warning";
+  if (steps.every((step) => step.state === "ok")) return "ok";
+  return "notice";
+}
+
+// Fixed values a summary shows (the channel type) in their usual spelling.
+const VALUE_LABELS: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  telegram: "Telegram",
+};
+
+function titleAt(schema: Record<string, unknown>, path: string): string {
+  const node = schemaAt(schema, path);
+  const title = node?.title;
+  return typeof title === "string" ? title : (path.split(".").pop() ?? path);
+}
+
+/** One line with the section's key values, to read it without opening it. */
+function summaryText(
+  schema: Record<string, unknown>,
+  draft: Json,
+  paths: string[],
+): string {
+  const parts: string[] = [];
+  for (const path of paths) {
+    const value = getPath(draft, path);
+    if (value === undefined || value === null || value === "") continue;
+    if (typeof value === "string") parts.push(VALUE_LABELS[value] ?? value);
+    else if (typeof value === "number")
+      parts.push(`${titleAt(schema, path)}: ${value}`);
+    else if (typeof value === "boolean")
+      parts.push(`${titleAt(schema, path)}: ${value ? "sí" : "no"}`);
+    else if (Array.isArray(value))
+      parts.push(`${titleAt(schema, path)}: ${value.length}`);
+    else if (typeof value === "object")
+      parts.push(`${titleAt(schema, path)}: ${Object.keys(value).length}`);
+  }
+  return parts.join(" · ");
+}
+
+function errorPaths(errors: string[]): string[] {
+  return errors
+    .map((error) => error.slice(0, Math.max(error.indexOf(":"), 0)).trim())
+    .map((path) => path.replace(/^document\.?/, ""))
+    .filter(Boolean);
+}
+
+function touches(fields: string[], path: string): boolean {
+  return fields.some(
+    (field) =>
+      path === field ||
+      path.startsWith(`${field}.`) ||
+      field.startsWith(`${path}.`),
+  );
+}
+
+/** What each section shows below its fields, besides its steps: the parts of the
+ * configuration that are not document fields (credentials, links, invitations,
+ * the calendar's account, datasets in use). */
+function sectionExtras(section: Section, detail: Detail): ReactNode {
+  if (section.key === "channel")
+    return (
+      <>
+        <ChannelSection detail={detail} />
+        <ChannelQr detail={detail} />
+      </>
+    );
+  if (section.key === "people") return <OwnerSection detail={detail} />;
+  if (section.key === "calendar") return <CalendarSection detail={detail} />;
+  const datasets = section.steps
+    .filter((step) => step.key.startsWith("dataset:"))
+    .map((step) => step.key.slice("dataset:".length));
+  if (datasets.length > 0)
+    return datasets.map((name) => (
+      <DatasetSection key={name} detail={detail} dataset={name} />
+    ));
+  return null;
+}
+
 export function ConfigEditor({
   detail,
   onDirtyChange,
@@ -229,8 +322,59 @@ export function ConfigEditor({
   onDirtyChange: (dirty: boolean) => void;
   initialSection?: string;
 }) {
+  const schema = useQuery(packSchemaQueryOptions(detail.pack));
+  const resolvedSchema = useMemo(
+    () =>
+      schema.data
+        ? resolveChannelSchema(schema.data.document, detail.channel_type)
+        : undefined,
+    [schema.data, detail.channel_type],
+  );
+  if (schema.isPending) return <p>Cargando formulario…</p>;
+  if (schema.isError || !resolvedSchema)
+    return (
+      <ErrorState
+        message="No se pudo cargar el esquema."
+        onRetry={() => void schema.refetch()}
+      />
+    );
+  return (
+    <ConfigSections
+      detail={detail}
+      schema={resolvedSchema}
+      ui={schema.data.ui_schema}
+      onDirtyChange={onDirtyChange}
+      initialSection={initialSection}
+    />
+  );
+}
+
+function ConfigSections({
+  detail,
+  schema,
+  ui,
+  onDirtyChange,
+  initialSection,
+}: {
+  detail: Detail;
+  schema: Record<string, unknown>;
+  ui: Record<string, unknown>;
+  onDirtyChange: (dirty: boolean) => void;
+  initialSection?: string;
+}) {
+  // The same defaults rjsf fills in when a form mounts: the draft starts from them,
+  // so opening the tab is never an unsaved change.
+  const schemaUtils = useMemo(
+    () => createSchemaUtils(validator, schema as RJSFSchema),
+    [schema],
+  );
+  const normalize = useCallback(
+    (document: Json) =>
+      schemaUtils.getDefaultFormState(schema as RJSFSchema, document) as Json,
+    [schemaUtils, schema],
+  );
   const {
-    baseline,
+    normalized,
     version,
     draft,
     yaml,
@@ -248,67 +392,92 @@ export function ConfigEditor({
     latest,
     setLatest,
     dirty,
-    changeForm,
+    changeFields,
+    enterYaml,
     changeYaml,
     discard,
+    toSave,
     saved,
     replaceWith,
-  } = useConfigDraft(detail, onDirtyChange);
-  const schema = useQuery(packSchemaQueryOptions(detail.pack));
+  } = useConfigDraft(detail, onDirtyChange, normalize);
+  const steps = useSetupSteps(detail.slug);
+  const groups = (ui.groups ?? []) as Group[];
+  const hidden = (ui.hidden ?? []) as string[];
+  const showIf = (ui.show_if ?? {}) as Record<string, string>;
+  // "demo" only makes sense for the platform's own demo tenants; hiding it
+  // keeps a real client's form from offering to turn it into one.
+  const isDemo = Boolean(detail.document.demo);
+  const sections = useMemo(
+    () =>
+      buildSections(
+        schema,
+        groups.map((group) =>
+          isDemo
+            ? group
+            : { ...group, fields: group.fields.filter((f) => f !== "demo") },
+        ),
+        isDemo ? hidden : [...hidden, "demo"],
+        steps.data ?? [],
+      ),
+    [schema, groups, hidden, steps.data, isDemo],
+  );
+  const baseUi = useMemo(() => uiSchema(ui), [ui]);
+  // One schema object per set of fields, so rjsf sees the same schema on every
+  // render instead of rebuilding its state on each keystroke.
+  const schemaCache = useMemo(
+    () => ({ root: schema, byPaths: new Map<string, RJSFSchema>() }),
+    [schema],
+  );
+  const schemaFor = (paths: string[]): RJSFSchema => {
+    const key = paths.join(",");
+    let cached = schemaCache.byPaths.get(key);
+    if (!cached) {
+      cached = sectionSchema(schemaCache.root, paths) as RJSFSchema;
+      schemaCache.byPaths.set(key, cached);
+    }
+    return cached;
+  };
+  const [open, setOpen] = useState<string[]>(() =>
+    initialSection ? [initialSection] : [],
+  );
+  // Once the steps arrive, open what still blocks the activation.
+  const [autoOpened, setAutoOpened] = useState(false);
+  useEffect(() => {
+    if (autoOpened || !steps.data) return;
+    setAutoOpened(true);
+    if (detail.status !== "onboarding") return;
+    const pending = steps.data
+      .filter((step) => step.blocking && step.state !== "ok")
+      .map((step) => step.section);
+    setOpen((current) => [...new Set([...current, ...pending])]);
+  }, [autoOpened, steps.data, detail.status]);
   useEffect(() => {
     if (!initialSection) return;
     document
       .getElementById(`section-${initialSection}`)
       ?.scrollIntoView({ block: "start" });
   }, [initialSection]);
-  // "demo" only makes sense for the platform's own demo tenants; hiding it
-  // keeps a real client's form from offering to turn it into one.
-  const isDemo = Boolean(detail.document.demo);
-  const ui = useMemo(
-    () =>
-      schema.data
-        ? uiSchema(
-            isDemo
-              ? schema.data.ui_schema
-              : {
-                  ...schema.data.ui_schema,
-                  hidden: [
-                    ...((schema.data.ui_schema.hidden as string[]) ?? []),
-                    "demo",
-                  ],
-                },
-          )
-        : {},
-    [schema.data, isDemo],
-  );
-  const resolvedSchema = useMemo(
-    () =>
-      schema.data
-        ? resolveChannelSchema(schema.data.document, detail.channel_type)
-        : undefined,
-    [schema.data, detail.channel_type],
-  );
-  const formContext = useMemo(
-    (): FormContext => ({
-      groups: schema.data?.ui_schema.groups as FormContext["groups"],
-      collapsed: schema.data?.ui_schema.collapsed as FormContext["collapsed"],
-      groupExtras: {
-        channel: <ChannelSection detail={detail} />,
-        people: <OwnerSection detail={detail} />,
-        ...(detail.pack === "salon"
-          ? { config: <CalendarSection detail={detail} /> }
-          : {}),
-        ...(detail.pack === "bus"
-          ? { config: <DatasetSection detail={detail} dataset="timetable" /> }
-          : {}),
-      },
-    }),
-    [schema.data, detail],
-  );
+  const failing = errorPaths(errors);
+  /** A failed save opens the sections with the fields to fix. */
+  function openFailing(details: string[]) {
+    const paths = errorPaths(details);
+    const keys = sections
+      .filter((section) => paths.some((path) => touches(section.fields, path)))
+      .map((section) => section.key);
+    setOpen((current) => [...new Set([...current, ...keys])]);
+  }
+  function goTo(key: string) {
+    setOpen((current) => (current.includes(key) ? current : [...current, key]));
+    requestAnimationFrame(() =>
+      document
+        .getElementById(`section-${key}`)
+        ?.scrollIntoView({ block: "start", behavior: "smooth" }),
+    );
+  }
   const save = useApiMutation({
     // The document sent is passed in, so on success the baseline is exactly what the
     // server stored, even if the person kept typing while the request was in flight.
-    fn: (sent: Record<string, unknown>) =>
+    fn: (sent: Json) =>
       unwrap(
         api.PUT("/tenants/{slug}/document", {
           params: { path: { slug: detail.slug } },
@@ -321,12 +490,14 @@ export function ConfigEditor({
       ),
     success: (result) =>
       `Guardado: versión ${result.version}; se aplica en unos segundos`,
-    invalidate: tenantChanged(detail.slug),
+    invalidate: [...tenantChanged(detail.slug), qk.tenantSetup(detail.slug)],
     onSuccess: (result, sent) => saved(sent, result.version),
     onError: (caught) => {
       const error = caught as ApiError;
-      if (error.status === 422) setErrors(error.details);
-      else if (error.status === 409) setConflict(true);
+      if (error.status === 422) {
+        setErrors(error.details);
+        openFailing(error.details);
+      } else if (error.status === 409) setConflict(true);
       else setErrors([error.message || "No se pudo guardar."]);
     },
   });
@@ -341,92 +512,33 @@ export function ConfigEditor({
       setErrors(["No se pudo cargar la versión más reciente."]);
     }
   }
-  if (schema.isPending) return <p>Cargando formulario…</p>;
-  if (schema.isError || !resolvedSchema)
-    return (
-      <ErrorState
-        message="No se pudo cargar el esquema."
-        onRetry={() => void schema.refetch()}
-      />
-    );
+  const extraErrors = useMemo(() => errorsToSchema(errors), [errors]);
+  const placed = new Set(sections.map((section) => section.key));
+  const orphanSteps = (steps.data ?? []).filter(
+    (step) => !placed.has(step.section),
+  );
   return (
     <div className="space-y-4 pb-20">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span>Negocio</span>
-          <span>·</span>
-          <code>{detail.slug}</code>
-          <span>·</span>
-          <span>{detail.pack}</span>
-          <span>·</span>
-          <StatusBadge status={detail.status as Status} />
-          <span>·</span>
-          <code className="text-xs">{String(detail.document.id ?? "")}</code>
-        </div>
-        <div className="flex items-center gap-2">
-          <HistorySection
-            slug={detail.slug}
-            current={draft}
-            dirty={dirty}
-            onRolledBack={() => {
-              discard();
-              void loadLatest(true);
-            }}
-          />
-          {mode === "form" ? (
-            <Button variant="outline" size="sm" onClick={() => setMode("yaml")}>
-              Editar YAML
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!!yamlError}
-              onClick={() => setMode("form")}
-            >
-              Volver al formulario
-            </Button>
-          )}
-        </div>
-      </div>
-      {mode === "form" ? (
-        <Form
-          schema={resolvedSchema}
-          uiSchema={ui}
-          validator={validator}
-          formData={draft}
-          extraErrors={errorsToSchema(errors)}
-          templates={{ ObjectFieldTemplate: GroupedObjectTemplate }}
-          widgets={{ timezone: TimezoneWidget }}
-          fields={{ OpeningHours: OpeningHoursField, Services: ServicesField }}
-          formContext={formContext}
-          onChange={({ formData }) => {
-            if (formData && typeof formData === "object") changeForm(formData);
-          }}
-        >
-          <div />
-        </Form>
-      ) : (
-        <>
-          <Label htmlFor="config-yaml">Documento YAML</Label>
-          <Textarea
-            id="config-yaml"
-            className="min-h-96 font-mono"
-            value={yaml}
-            onChange={(event) => changeYaml(event.target.value)}
-          />
-          {yamlError && (
-            <p role="alert" className="text-sm text-destructive">
-              {yamlError}
-            </p>
-          )}
-        </>
+      {detail.status === "onboarding" && steps.data && (
+        <ActivationBanner
+          slug={detail.slug}
+          steps={steps.data}
+          sectionLabel={(key) =>
+            sections.find((section) => section.key === key)?.label
+          }
+          onGo={goTo}
+        />
       )}
-      {errors.length > 0 && (
-        <ul role="alert" className="text-sm text-destructive">
-          {errors.map((error, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: the same message can repeat
-            <li key={`${index}:${error}`}>{error}</li>
+      {steps.isError && (
+        <ErrorState
+          message="No se pudieron cargar los pasos del alta."
+          onRetry={() => void steps.refetch()}
+        />
+      )}
+      {orphanSteps.length > 0 && (
+        <ul className="space-y-3 rounded-md border p-4">
+          {orphanSteps.map((step) => (
+            <StepRow key={step.key} slug={detail.slug} step={step} />
           ))}
         </ul>
       )}
@@ -441,6 +553,188 @@ export function ConfigEditor({
           </Button>
           {latest && <JsonDiff before={latest.document} after={draft} />}
         </div>
+      )}
+      {mode === "yaml" ? (
+        <div className="space-y-2 rounded-md border p-4">
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="config-yaml">Documento YAML</Label>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!!yamlError}
+              onClick={() => setMode("form")}
+            >
+              Volver al formulario
+            </Button>
+          </div>
+          <Textarea
+            id="config-yaml"
+            className="min-h-96 font-mono"
+            value={yaml}
+            onChange={(event) => changeYaml(event.target.value)}
+          />
+          {yamlError && (
+            <p role="alert" className="text-sm text-destructive">
+              {yamlError}
+            </p>
+          )}
+        </div>
+      ) : (
+        <Accordion
+          type="multiple"
+          value={open}
+          onValueChange={setOpen}
+          className="rounded-md border px-4"
+        >
+          {sections.map((section) => {
+            const level = sectionLevel(section.steps);
+            const modified = section.fields.some(
+              (path) =>
+                !sameValue(getPath(draft, path), getPath(normalized, path)),
+            );
+            const withErrors = failing.some((path) =>
+              touches(section.fields, path),
+            );
+            const visible = section.fields.filter((path) => {
+              const controller = showIf[path];
+              return !controller || Boolean(getPath(draft, controller));
+            });
+            const summary = summaryText(schema, draft, section.summary ?? []);
+            return (
+              <AccordionItem
+                key={section.key}
+                value={section.key}
+                id={`section-${section.key}`}
+                className="scroll-mt-4"
+              >
+                <AccordionTrigger className="items-center hover:no-underline">
+                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="flex w-3 justify-center">
+                      {level && <StatusDot level={level} />}
+                    </span>
+                    <span className="font-medium">{section.label}</span>
+                    {summary && (
+                      <span className="truncate font-normal text-muted-foreground">
+                        {summary}
+                      </span>
+                    )}
+                    {modified && (
+                      <span className="text-xs font-normal text-status-notice">
+                        modificado
+                      </span>
+                    )}
+                    {withErrors && (
+                      <span className="text-xs font-normal text-destructive">
+                        con errores
+                      </span>
+                    )}
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4">
+                  {section.description && (
+                    <p className="text-muted-foreground">
+                      {section.description}
+                    </p>
+                  )}
+                  {visible.length > 0 && (
+                    <Form
+                      schema={schemaFor(visible)}
+                      uiSchema={baseUi}
+                      validator={validator}
+                      formData={pickPaths(draft, visible)}
+                      extraErrors={extraErrors}
+                      widgets={{ timezone: TimezoneWidget }}
+                      fields={{
+                        OpeningHours: OpeningHoursField,
+                        Services: ServicesField,
+                      }}
+                      onChange={({ formData }) => {
+                        if (formData && typeof formData === "object")
+                          changeFields(formData as Json, visible);
+                      }}
+                    >
+                      <div />
+                    </Form>
+                  )}
+                  {sectionExtras(section, detail)}
+                  {section.steps.length > 0 && (
+                    <div className="space-y-2 border-t pt-4">
+                      <h3 className="text-sm font-medium text-muted-foreground">
+                        Comprobaciones del alta
+                      </h3>
+                      {modified && (
+                        <p className="text-xs text-status-warning">
+                          Guarda antes de comprobar: se comprueba lo guardado.
+                        </p>
+                      )}
+                      <ul className="space-y-3">
+                        {section.steps.map((step) => (
+                          <StepRow
+                            key={step.key}
+                            slug={detail.slug}
+                            step={step}
+                            locked={modified}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
+          <AccordionItem value={ADVANCED} id={`section-${ADVANCED}`}>
+            <AccordionTrigger className="items-center hover:no-underline">
+              <span className="flex flex-1 items-center gap-3">
+                <span className="w-3" />
+                <span className="font-medium">Avanzado</span>
+                <span className="font-normal text-muted-foreground">
+                  Historial de versiones · YAML · ids
+                </span>
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="space-y-4">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                <dt className="text-muted-foreground">Slug</dt>
+                <dd>
+                  <code>{detail.slug}</code>
+                </dd>
+                <dt className="text-muted-foreground">Pack</dt>
+                <dd>{detail.pack}</dd>
+                <dt className="text-muted-foreground">Id</dt>
+                <dd>
+                  <code className="text-xs">
+                    {String(detail.document.id ?? "")}
+                  </code>
+                </dd>
+                <dt className="text-muted-foreground">Versión</dt>
+                <dd>{version ?? "—"}</dd>
+              </dl>
+              <div className="flex flex-wrap gap-2">
+                <HistorySection
+                  slug={detail.slug}
+                  current={draft}
+                  dirty={dirty}
+                  onRolledBack={() => {
+                    discard();
+                    void loadLatest(true);
+                  }}
+                />
+                <Button variant="outline" size="sm" onClick={enterYaml}>
+                  Editar como YAML
+                </Button>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      )}
+      {errors.length > 0 && (
+        <ul role="alert" className="text-sm text-destructive">
+          {errors.map((error, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the same message can repeat
+            <li key={`${index}:${error}`}>{error}</li>
+          ))}
+        </ul>
       )}
       {dirty && (
         <div className="fixed inset-x-0 bottom-0 z-10 flex flex-wrap items-center gap-3 border-t bg-card p-3 shadow-lg">
@@ -461,7 +755,7 @@ export function ConfigEditor({
             </Button>
             <Button
               disabled={!!yamlError || save.isPending || version === null}
-              onClick={() => save.mutate(draft)}
+              onClick={() => save.mutate(toSave())}
             >
               Guardar
             </Button>
@@ -474,7 +768,7 @@ export function ConfigEditor({
             <SheetTitle>Cambios sin guardar</SheetTitle>
           </SheetHeader>
           <div className="px-4">
-            <JsonDiff before={baseline} after={draft} />
+            <JsonDiff before={normalized} after={draft} />
           </div>
         </SheetContent>
       </Sheet>

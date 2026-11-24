@@ -1,21 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import YAML from "yaml";
 import type { components } from "@/api/schema";
+import {
+  type Json,
+  mergePaths,
+  sameValue,
+  withoutUntouchedDefaults,
+} from "@/lib/form-draft";
 
 type Detail = components["schemas"]["TenantDetail"];
-type Document = Record<string, unknown>;
 
 /** The editing state of a tenant's config: the saved baseline, the draft being
  * edited (as a form or as YAML), the server errors and the optimistic-lock
- * version. The editor component only wires it to the form and the requests. */
+ * version. The editor component only wires it to the form and the requests.
+ *
+ * `normalize` applies the schema's defaults to a stored document. rjsf fills them in
+ * as soon as a form mounts, so the draft starts already normalized and «dirty» means
+ * "differs from the normalized baseline": opening the tab never counts as a change.
+ * `toSave` leaves the untouched defaults out again. */
 export function useConfigDraft(
   detail: Detail,
   onDirtyChange: (dirty: boolean) => void,
+  normalize: (document: Json) => Json,
 ) {
-  const [baseline, setBaseline] = useState(detail.document);
+  const [baseline, setBaseline] = useState<Json>(detail.document);
   const [version, setVersion] = useState(detail.version);
-  const [draft, setDraft] = useState(detail.document);
-  const [yaml, setYaml] = useState(() => YAML.stringify(detail.document));
+  const normalized = useMemo(() => normalize(baseline), [normalize, baseline]);
+  const [draft, setDraft] = useState<Json>(() => normalize(detail.document));
+  const [yaml, setYaml] = useState(() =>
+    YAML.stringify(normalize(detail.document)),
+  );
   const [yamlError, setYamlError] = useState("");
   const [mode, setMode] = useState<"form" | "yaml">("form");
   const [comment, setComment] = useState("");
@@ -23,8 +37,7 @@ export function useConfigDraft(
   const [errors, setErrors] = useState<string[]>([]);
   const [conflict, setConflict] = useState(false);
   const [latest, setLatest] = useState<Detail | null>(null);
-  const dirty =
-    yamlError !== "" || JSON.stringify(draft) !== JSON.stringify(baseline);
+  const dirty = yamlError !== "" || !sameValue(draft, normalized);
   useEffect(() => {
     onDirtyChange(dirty);
     return () => onDirtyChange(false);
@@ -38,15 +51,23 @@ export function useConfigDraft(
     if (dirty || detail.version === null || detail.version <= (version ?? -1))
       return;
     setBaseline(detail.document);
-    setDraft(detail.document);
+    setDraft(normalize(detail.document));
     setVersion(detail.version);
-    setYaml(YAML.stringify(detail.document));
-  }, [detail, dirty, version]);
+    setYaml(YAML.stringify(normalize(detail.document)));
+  }, [detail, dirty, version, normalize]);
 
-  function changeForm(formData: Document) {
-    setDraft(formData);
-    setYaml(YAML.stringify(formData));
-    setErrors([]);
+  /** One section's form changed: take its `paths` from `part`. Functional, since
+   * several section forms can report in the same render (each on mount). */
+  function changeFields(part: Json, paths: string[]) {
+    setDraft((previous) => {
+      const next = mergePaths(previous, part, paths);
+      return sameValue(next, previous) ? previous : next;
+    });
+  }
+  function enterYaml() {
+    setYaml(YAML.stringify(draft));
+    setYamlError("");
+    setMode("yaml");
   }
   function changeYaml(value: string) {
     setYaml(value);
@@ -54,21 +75,25 @@ export function useConfigDraft(
       const parsed: unknown = YAML.parse(value);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
         throw new Error();
-      setDraft(parsed as Document);
+      setDraft(parsed as Json);
       setYamlError("");
     } catch {
       setYamlError("El YAML debe contener un documento válido.");
     }
   }
   function discard() {
-    setDraft(baseline);
-    setYaml(YAML.stringify(baseline));
+    setDraft(normalized);
+    setYaml(YAML.stringify(normalized));
     setYamlError("");
     setComment("");
     setErrors([]);
   }
+  /** The document to send: the draft without the defaults nobody touched. */
+  function toSave(): Json {
+    return withoutUntouchedDefaults(draft, normalized, baseline) as Json;
+  }
   /** The server stored `sent` as `newVersion`. */
-  function saved(sent: Document, newVersion: number) {
+  function saved(sent: Json, newVersion: number) {
     setBaseline(sent);
     setVersion(newVersion);
     setComment("");
@@ -79,9 +104,9 @@ export function useConfigDraft(
   /** Drop the draft for the server's current version (after a conflict). */
   function replaceWith(current: Detail) {
     setBaseline(current.document);
-    setDraft(current.document);
+    setDraft(normalize(current.document));
     setVersion(current.version);
-    setYaml(YAML.stringify(current.document));
+    setYaml(YAML.stringify(normalize(current.document)));
     setYamlError("");
     setConflict(false);
     setLatest(null);
@@ -90,6 +115,7 @@ export function useConfigDraft(
 
   return {
     baseline,
+    normalized,
     version,
     draft,
     yaml,
@@ -107,9 +133,11 @@ export function useConfigDraft(
     latest,
     setLatest,
     dirty,
-    changeForm,
+    changeFields,
+    enterYaml,
     changeYaml,
     discard,
+    toSave,
     saved,
     replaceWith,
   };

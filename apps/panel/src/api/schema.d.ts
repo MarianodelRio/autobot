@@ -2070,6 +2070,8 @@ export interface components {
             key: string;
             /** Label */
             label: string;
+            /** Section */
+            section: string;
             /** State */
             state: string;
             /**

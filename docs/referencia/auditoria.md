@@ -53,9 +53,9 @@ El registro lo puede borrar solo la retención nocturna o `tenant_purge`
 | `tenant.owner_invite` | Se genera el enlace de invitación del dueño. | |
 | `tenant.owner_unlink` | Se desconecta al dueño, o se cancela su invitación. | |
 | `tenant.webhook_register`, `tenant.webhook_delete` | Se registra o borra el webhook de Telegram de un bot. Para los bots de plataforma (`demo`, `notify`) no hay `tenant_id` y el objeto es `bot`. | |
-| `tenant.setup_add_tester` | Se añade un tester desde la pestaña Alta. | |
-| `tenant.setup_check` | Se comprueba un paso de la pestaña Alta. | `step`, `state` |
-| `tenant.setup_action` | Se ejecuta una acción de la pestaña Alta. | `step`, `outcome` |
+| `tenant.setup_add_tester` | Se añade un tester desde la pestaña Configuración (sección «Dueño y testers»). | |
+| `tenant.setup_check` | Se comprueba un paso del alta (pestaña Configuración). | `step`, `state` |
+| `tenant.setup_action` | Se ejecuta una acción del alta (pestaña Configuración). | `step`, `outcome` |
 
 ### Contactos (`contact.*`)
 

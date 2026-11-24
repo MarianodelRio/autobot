@@ -56,10 +56,55 @@ def _refs(node: Any) -> list[str]:
 
 def test_ui_schema_groups_and_read_only_fields() -> None:
     ui = forms.ui_schema("salon")
-    assert [g["key"] for g in ui["groups"]] == ["business", "channel", "people", "legal", "config"]
+    assert [g["key"] for g in ui["groups"]] == [
+        "business",
+        "channel",
+        "people",
+        "legal",
+        "services",
+        "bookings",
+        "calendar",
+        "special_event",
+        "texts",
+    ]
+    assert all(g["description"] for g in ui["groups"])
     assert "channel.public_id" in ui["read_only"]
     assert set(ui["hidden"]) == {"id", "slug", "pack", "status"}
-    assert set(ui["collapsed"]) == {"config.texts", "config.special_event"}
+    assert ui["show_if"]["config.reminder_window_hours"] == "config.reminders_enabled"
+
+
+def _field_exists(schema: dict[str, Any], path: str) -> bool:
+    node: Any = schema
+    for part in path.split("."):
+        if "$ref" in node:
+            node = schema["$defs"][node["$ref"].removeprefix("#/$defs/")]
+        properties = node.get("properties", {})
+        if part not in properties:
+            # `channel` is a union: the field belongs to one of its branches.
+            return part in {"type", "display_phone", "bot_username"}
+        node = properties[part]
+    return True
+
+
+@pytest.mark.parametrize("pack", ["salon", "bus"])
+def test_every_pack_config_field_is_in_one_section_and_paths_exist(pack: str) -> None:
+    """A new config field without a section still shows («Otros ajustes» in the panel),
+    but the real packs place every field, each in exactly one section; and every path a
+    section names (fields, summary, show_if) is a real field of the pack, or of the
+    platform document in the shared sections."""
+    ui = forms.ui_schema(pack)
+    schema = forms.document_schema(pack)
+    placed = [field for g in ui["groups"] for field in g["fields"]]
+    assert len(placed) == len(set(placed))
+    config_fields = set(schema["properties"]["config"]["properties"])
+    assert {f"config.{name}" for name in config_fields} <= set(placed)
+    pack_sections = forms.PACK_SECTIONS[pack]
+    for section in pack_sections:
+        for path in (*section.fields, *section.summary):
+            assert _field_exists(schema, path), path
+    for path, controller in ui["show_if"].items():
+        if pack == "salon":
+            assert _field_exists(schema, path) and _field_exists(schema, controller)
 
 
 def test_salon_texts_and_info_text_get_a_textarea_widget() -> None:

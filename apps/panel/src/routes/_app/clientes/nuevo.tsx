@@ -11,7 +11,7 @@ function OnboardingRoute() {
         void navigate({
           to: "/clientes/$slug",
           params: { slug },
-          search: { tab: "alta" },
+          search: { tab: "configuracion" },
         })
       }
     />

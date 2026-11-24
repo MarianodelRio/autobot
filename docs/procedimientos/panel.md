@@ -31,49 +31,93 @@ cada 30 segundos.
 ## Clientes
 
 La lista se puede filtrar por pack y estado o buscar por nombre y slug. La ficha
-tiene seis pestañas: Resumen, Alta, Configuración, Actividad, Contactos y Avisos (ver
-[Avisos](#avisos-del-cliente)).
+tiene cinco pestañas: Resumen, Configuración, Actividad, Contactos y Avisos (ver
+[Avisos](#avisos-del-cliente)). Pausar o reactivar un negocio ya activo está en la
+cabecera de la ficha; el panel pide confirmación.
+
 Resumen muestra los indicadores del mes, la salud del canal con «Comprobar
 ahora» y las alertas abiertas; el resumen del dueño se carga a petición, pues
-puede consultar Calendar. Alta (ADR-014) reúne en un solo sitio, paso a paso, lo que
-falta para activar el negocio: documento, canal (en WhatsApp, también la URL del
-webhook a pegar en el panel de Meta), secretos, plantillas (WhatsApp: el texto de
-cada una del pack y, al «Comprobar», su estado real en Meta), salud, un mensaje real
-de un tester, el dueño, el webhook de Telegram, el calendario de `salon` (D1-D4) y
-los horarios de `bus`; los pasos marcados «Comprobar» hacen una llamada real al
-proveedor (nunca al cargar la pestaña, ni al volver a ella: leer solo consulta la caché
-de salud, y una salud sin comprobar cuenta como pendiente) y quedan auditados. «Salud
-del canal» también se comprueba así; «Activar» fuerza siempre la comprobación. Lo que
-bloquea la activación lo decide el backend (`activation.checklist`): el webhook de
-Telegram no bloquea por sí mismo, pero un webhook sin registrar hace fallar «Salud
-del canal», que sí bloquea. «Añadir» un tester solo acepta a quien de verdad escribió. El paso del tester lista
-los últimos que escribieron sin estarlo, con «Añadir» para sumarlos a
-`testers.main` sin pasar por Configuración. Al final de la pestaña, el QR del canal
-(con tamaño y margen correctos, descarga en SVG/PNG y vista para imprimir) y, mientras
-el negocio está en `onboarding`, «Activar» (exige completar los pasos bloqueantes y
-escribir el slug); pausar o reactivar un negocio ya activo sigue en la cabecera de la
-ficha.
-Configuración edita con formulario o YAML, con diff legible (campo por campo, no un
-volcado de la librería de diferencias) y comentario opcional, e incluye el canal
-(enlace, webhook y «Cambiar credenciales», con «Generar» para los campos que lo
-admiten — el QR está en Alta) y el dueño («Invitar al dueño», con el enlace mostrado una sola vez, su
-caducidad y el aviso de que sustituirá al chat ya conectado). En `salon`, el horario
-de apertura tiene un editor por día (abierto/cerrado y tramos con hora) y los
-servicios una tabla con id automático; la zona horaria se elige de una lista,
-no se escribe a mano. En Telegram, el estado del webhook («Registrado», «Sin
-registrar» o «Sin comprobar») se consulta a Telegram (`getWebhookInfo`) y se
-refresca al registrarlo; «Sin comprobar» significa que no se pudo saberlo.
-«Historial» (junto a «Editar YAML») lista las versiones guardadas con autor y
-comentario, con «Ver cambios» (el mismo diff legible contra el documento actual) y
-«Volver a esta versión», que crea una versión nueva con ese contenido tras pedir
-confirmación. Actividad usa la misma lista que Logs → Conversaciones, limitada a
+puede consultar Calendar.
+
+Actividad usa la misma lista que Logs → Conversaciones, limitada a
 este cliente. Cada consulta de una conversación desde Contactos queda auditada, y
 desde ahí también se puede «Exportar datos» (descarga un JSON) u «Olvidar contacto»
 (borrado irreversible, con confirmación) de ese contacto; «Exportar datos del
 negocio» (`POST`, pues audita), en el menú «⋯» de la ficha, hace lo mismo a nivel de
 negocio, con un tope de 50 000 filas y de 25 MB de JSON (más allá responde 413 y hay que usar el comando `tenant_data_export`, que escribe un fichero privado) (ver
-`docs/procedimientos/retencion-rgpd.md`). El panel pide confirmación para pausar o
-reactivar.
+`docs/procedimientos/retencion-rgpd.md`).
+
+### Configuración del cliente
+
+Reúne el alta y la edición del documento en una sola pestaña (ADR-014, ADR-027);
+`?tab=alta` en la URL también la abre.
+
+**Banner de alta.** Mientras el negocio está en `onboarding`, arriba aparece «Alta: N de M
+pasos obligatorios listos», con los pasos bloqueantes que faltan (cada uno abre su
+sección y se desplaza a ella) y «Activar»: exige completar los pasos bloqueantes y
+escribir el slug, y fuerza siempre la comprobación de salud. Con el negocio activo o
+pausado no hay banner. Lo que bloquea la activación lo decide el backend
+(`activation.checklist`): el webhook de Telegram no es un paso aparte, pero un webhook
+sin registrar hace fallar «Salud del canal», que sí bloquea; el dueño no bloquea. Un paso
+que no pertenece a ninguna sección se muestra también arriba.
+
+**Secciones.** Debajo, secciones plegables (se pueden abrir varias). Cerrada, cada una
+muestra un punto de estado según sus pasos de alta (rojo si un paso bloqueante no está
+listo, ámbar si uno dio error, verde si todos están bien), su nombre, un resumen de una
+línea con los valores clave y, si procede, «modificado» (cambios sin guardar) o «con
+errores» (el último guardado falló en algún campo suyo). Abierta: una explicación breve,
+sus campos, «Comprobaciones del alta» (sus pasos, cada uno con su estado, por qué importa,
+qué hacer y valores con copiar) y sus extras. Al cargar se abren solas las secciones con un
+paso bloqueante pendiente (en `onboarding`) y la de `?section=` (p. ej. `?section=canal`).
+
+Los pasos marcados «Comprobar» y las acciones hacen una llamada real al proveedor (nunca
+al cargar la pestaña, ni al volver a ella: leer solo consulta la caché de salud, y una
+salud sin comprobar cuenta como pendiente) y quedan auditados. Comprueban lo **guardado**:
+mientras su sección tiene cambios sin guardar se deshabilitan con «Guarda antes de
+comprobar».
+
+Secciones de todos los packs:
+
+- **Negocio:** nombre, zona horaria (se elige de una lista, no se escribe a mano),
+  `business_name`, `contact_phone` y `demo`. Paso: documento válido.
+- **Canal:** ids del canal, el enlace público, el QR (con tamaño y margen correctos,
+  descarga en SVG/PNG y vista para imprimir) y «Cambiar credenciales», con «Generar» para
+  los campos que lo admiten. Pasos: canal, secretos, salud del canal y, en WhatsApp, la URL
+  del webhook a pegar en Meta, las plantillas (el texto de cada una del pack y, al
+  «Comprobar», su estado real en Meta) y las acciones de Meta (ADR-016): «Configurar
+  webhook», «Registrar número» (pide un PIN de verificación en dos pasos de 6 dígitos que
+  no se guarda) y «Suscribir app» (con confirmación). Una acción con «Resultado
+  desconocido» no se repite sola: «Comprobar» antes de volver a lanzarla. En Telegram, el
+  estado del webhook («Registrado», «Sin registrar» o «Sin comprobar») se consulta a
+  Telegram (`getWebhookInfo`) cada vez que se abre la sección y se refresca al registrarlo
+  con «Registrar webhook»; «Sin comprobar» significa que no se pudo saberlo. Es el único
+  sitio donde sale el webhook de Telegram: no hay un paso del alta que lo repita.
+- **Dueño y testers:** `owner` y `testers`, más «Invitar al dueño» (enlace mostrado una
+  sola vez, su caducidad y el aviso de que sustituirá al chat ya conectado) y
+  desconectarlo. El paso del tester exige un mensaje real de un tester por el canal
+  principal y lista los últimos que escribieron sin estarlo, con «Añadir» para sumarlos a
+  `testers.main` (solo acepta a quien de verdad escribió).
+- **Privacidad y atención:** `privacy` y `support` (`privacy.policy_url` y
+  `support.human_contact` son obligatorios para activar).
+
+`salon` añade Servicios y horario (tabla de servicios con id automático y editor de
+apertura por día, abierto/cerrado y tramos con hora), Reservas y recordatorios
+(`reminder_window_hours` solo aparece con los recordatorios activados y
+`manual_confirmations_since` solo con las confirmaciones manuales), Calendario de Google
+(ver [abajo](#cuenta-de-servicio-de-google-calendar), con la prueba de escritura D1-D4),
+Evento especial y Textos del bot. `bus` añade Oficina y enlaces y Horarios y búsqueda
+(los horarios en uso, con «Aplicar» para cambiar a otra entrada de la biblioteca). Un
+campo de `config` que ninguna sección nombra sale en «Otros ajustes».
+
+La última sección es siempre **Avanzado**: «Historial» lista las versiones guardadas con
+autor y comentario, con «Ver cambios» (diff legible campo por campo contra el documento
+actual) y «Volver a esta versión», que crea una versión nueva con ese contenido tras pedir
+confirmación; «Editar como YAML»; y los ids técnicos (slug, pack, id).
+
+**Guardar.** Una sola barra fija abajo, visible solo si algo cambió, guarda todo el
+documento como una versión nueva, con diff legible y comentario opcional. Solo se envía
+lo que se cambió: los valores por defecto del pack que nadie tocó no se escriben en el
+documento, así que un cambio futuro de ese valor por defecto sigue llegando al negocio.
 
 ### Asistente de alta de un cliente
 
@@ -87,8 +131,8 @@ un negocio en estado `onboarding` en cinco pasos:
 4. **Datasets:** solo para packs que los necesitan (`bus`): se elige una entrada de la
    biblioteca ([horarios-bus.md](horarios-bus.md)); si no hay ninguna, avisa de que hay que
    subirla antes con `make bus-subir`.
-5. **Revisión:** resumen y YAML final; «Crear cliente» lo crea y abre su pestaña Alta con
-   lo que falta para activarlo ([alta-baja-negocio.md](alta-baja-negocio.md)).
+5. **Revisión:** resumen y YAML final; «Crear cliente» lo crea y abre su pestaña Configuración, con
+   el banner de lo que falta para activarlo ([alta-baja-negocio.md](alta-baja-negocio.md)).
 
 El asistente guarda su progreso en `sessionStorage` del navegador, nunca en el servidor.
 
@@ -102,7 +146,7 @@ los mensajes a clientes finales (eso está en Actividad).
 
 ### Cuenta de servicio de Google Calendar
 
-En Configuración de un cliente `salon`, la tarjeta «Calendario de Google»
+En Configuración de un cliente `salon`, la sección «Calendario de Google»
 (`routers/calendar.py`, `GET /calendar/service-account`) muestra el email de la **cuenta de
 servicio de la plataforma** con botón de copiar (nunca su clave privada). Es el email con el
 que el negocio debe compartir su calendario («Hacer cambios y ver todos los detalles de

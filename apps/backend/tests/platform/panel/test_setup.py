@@ -46,12 +46,13 @@ def test_setup_lists_the_common_and_channel_steps(authed_client: Any, tenants: A
     assert "webhook" not in keys  # WhatsApp has no webhook-registration step
 
 
-def test_setup_includes_the_telegram_webhook_step(authed_client: Any, tenants: Any) -> None:
+def test_telegram_has_no_separate_webhook_step(authed_client: Any, tenants: Any) -> None:
+    """The Canal section shows the webhook's status with «Registrar webhook»; a step
+    repeating it would show the same thing twice."""
     tenants(tg_tenant("tg"))
     body = get(authed_client, "tenants/tg/setup").json()
-    webhook = next(step for step in body if step["key"] == "webhook")
-    assert webhook["checkable"] is True
-    assert webhook["state"] == "pending"
+    assert "webhook" not in {step["key"] for step in body}
+    assert post(authed_client, "tenants/tg/setup/check/webhook").status_code == 400
 
 
 def test_setup_includes_the_calendar_step_only_for_salon(
@@ -67,24 +68,34 @@ def test_setup_includes_the_calendar_step_only_for_salon(
     assert any(v["label"] == "Cuenta de servicio" for v in calendar["values"])
 
 
-def test_check_webhook_reports_unregistered(
-    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Settings
+def test_every_step_names_a_section_of_its_packs_form(
+    authed_client: Any, tenants: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    tenants(tg_tenant("tg"))
-    settings.PUBLIC_URL = "https://api.example.org"
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"ok": True, "result": {"url": ""}})
-
-    original = httpx.Client
-    monkeypatch.setattr(
-        "httpx.Client", lambda **kwargs: original(transport=httpx.MockTransport(handle))
+    """The panel shows each step inside the Configuración section it names: a typo
+    would quietly move it to the top of the page."""
+    monkeypatch.setattr("packs.registry.PACKS", PACKS | REGISTERED)
+    bus = source_from_dir(REGISTERED["bus"].template)  # type: ignore[arg-type]
+    tenants(
+        wa_tenant("wa"),
+        salon_document("sal"),
+        tg_tenant("bu", pack="bus", config=bus.document["config"]),
     )
-    response = post(authed_client, "tenants/tg/setup/check/webhook")
+    for slug, pack in (("wa", "toy"), ("sal", "salon"), ("bu", "bus")):
+        sections = {
+            g["key"]
+            for g in get(authed_client, f"packs/{pack}/schema").json()["ui_schema"]["groups"]
+        }
+        steps = get(authed_client, f"tenants/{slug}/setup").json()
+        assert {step["section"] for step in steps} <= sections, slug
+
+
+def test_check_health_is_audited(authed_client: Any, tenants: Any) -> None:
+    tenants(tg_tenant("tg"))
+    response = post(authed_client, "tenants/tg/setup/check/health")
     assert response.status_code == 200, response.content
-    body = response.json()
-    assert body["state"] == "error"
-    assert AuditEvent.objects.using("owner").filter(action="tenant.setup_check").exists()
+    assert response.json()["state"] == "ok"
+    event = AuditEvent.objects.using("owner").get(action="tenant.setup_check")
+    assert event.details == {"step": "health", "state": "ok"}
 
 
 def test_check_calendar_without_credentials_is_a_clear_error(

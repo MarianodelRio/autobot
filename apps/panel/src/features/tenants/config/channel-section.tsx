@@ -58,9 +58,6 @@ export function ChannelSection({ detail }: { detail: Detail }) {
             </a>
             <CopyButton value={detail.public_link} />
           </div>
-          <p className="text-xs text-muted-foreground">
-            El QR está en la pestaña Alta.
-          </p>
         </div>
       ) : (
         // shown, never hidden — there is no QR until this is fixed.
