@@ -104,6 +104,30 @@ def test_auth_row_separates_the_demo_bot(tenants: Any, alerts: Any) -> None:
     assert "auth" not in kinds(alerts)
 
 
+@pytest.mark.parametrize(
+    ("age_h", "sent_after", "expected"),
+    [
+        (1, False, True),
+        (25, False, False),  # an old rejection must not alert forever
+        (1, True, False),  # a later send went through: the credential works again
+    ],
+)
+def test_auth_row_is_recent_and_unresolved(
+    tenants: Any, alerts: Any, monkeypatch: Any, age_h: int, sent_after: bool, expected: bool
+) -> None:
+    tenants(wa_tenant())
+    now = timezone.now()
+    monkeypatch.setattr(timezone, "now", lambda: now)
+    rejected = message(status="failed", last_error="auth: HTTP 401")
+    OutboundMessage.objects.using("owner").filter(id=rejected.id).update(
+        created_at=now - timedelta(hours=age_h)
+    )
+    if sent_after:
+        message(status="sent", sent_at=now - timedelta(minutes=5))
+    check.run()
+    assert ("auth" in kinds(alerts)) == expected
+
+
 def test_every_tenant_alert_names_its_tenant(
     tenants: Any, alerts: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:

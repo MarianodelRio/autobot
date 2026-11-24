@@ -12,7 +12,7 @@ import httpx
 from django.conf import settings
 from django.core.cache import cache
 from django.db import DatabaseError, connection, transaction
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.utils import timezone
 
 from autobot.channels.demo.doors import door
@@ -265,11 +265,18 @@ def _check_tenant(
             )
         # A demo-door rejection belongs to the platform's own credentials, not the
         # tenant's configured main-channel credentials.
-        auth_channels = list(
-            messages.filter(last_error__startswith="auth:")
-            .values_list("channel", flat=True)
-            .distinct()
-        )
+        # Only a recent rejection counts, and only while no send of that channel has gone
+        # through since: a later success proves the credential works again.
+        auth_channels = [
+            row["channel"]
+            for row in messages.filter(last_error__startswith="auth:", created_at__gte=day_ago)
+            .values("channel")
+            .order_by()
+            .annotate(last=Max("created_at"))
+            if not messages.filter(
+                channel=row["channel"], status="sent", sent_at__gt=row["last"]
+            ).exists()
+        ]
         channel = tenant.document.channel
         if channel is not None and channel.type == "whatsapp":
             local_now = now.astimezone(tenant.info.timezone)
