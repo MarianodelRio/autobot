@@ -70,7 +70,7 @@ Esta entrada la comparten los webhooks, el sondeo de Telegram (`telegram_poll`) 
 - `acknowledge` del adaptador (Telegram responde al `callback_query`). Si falla, no detiene el mensaje.
 - Limite por contacto: más de 20 mensajes en 60 s se guardan y no se contestan (`contact_limiter`; solo cuenta en el primer intento).
 - Orden `menu` (`is_menu_command`): `menu`, `menú`, `inicio` y `/start` reinician el estado antes de llamar al pack. Es la única orden de la plataforma; `persona` o `baja` llegan al pack como texto ([ADR-028](adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
-- Aviso de primera capa de privacidad: si la respuesta es el menú del pack (`PackResult.menu`) o el contacto aún no lo ha recibido (y el negocio puede contestar), se añade como última línea de las respuestas (`with_notice`; [Aviso inicial](packs.md#aviso-inicial)).
+- Línea de privacidad: si la respuesta es el menú del pack (`PackResult.menu`) o el contacto aún no lo ha recibido (y el negocio puede contestar), se añade como última línea de las respuestas (`with_notice`; [Aviso inicial](packs.md#aviso-inicial)).
 - Si el negocio no tiene pack o está degradado, el contacto recibe un texto genérico (`UNAVAILABLE_TEXT`) y su conversación no se toca.
 - En el caso normal, `_run_pack` construye el `PackContext` y llama a `Pack.handle_message` dentro de un **presupuesto de tiempo de 8 s** para todo lo que haga con Google Calendar: el cliente no empieza un intento cuando se ha agotado, y un cortacircuitos por proceso hace fallar al instante las llamadas mientras Google no contesta.
 

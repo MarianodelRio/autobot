@@ -25,10 +25,10 @@ Estas tablas llevan `tenant_id` pero sin RLS por diseño: son configuración de 
 - `channel`: `whatsapp` (ids de Meta, teléfono público, umbral mensual) o `telegram` (usuario del bot), con un `public_id` que forma la URL del webhook.
 - `testers.main`: los únicos ids que pueden escribir por el canal principal durante el alta.
 - `owner`: tipos de aviso (`notify`) y `summary_monthly` ([Bot de dueños](bot-de-duenos.md)).
-- `privacy` (opcional): `controller_name` (responsable del tratamiento; por defecto el nombre del negocio) y `policy_url` (`https://…`, segunda capa de información). Alimentan el aviso de primera capa del bot ([Aviso inicial](packs.md#aviso-inicial)).
+- `privacy` (opcional): `policy_url` (`https://…`), el enlace a la política de privacidad que cita la línea de privacidad del bot ([Aviso inicial](packs.md#aviso-inicial)).
 - `demo`: marca un negocio de demo. Un demo no tiene canal ni testers y su estado es `active`, `paused` u `offboarded` ([Bot de demo](bot-de-demo.md)). Un negocio que no es demo necesita canal.
 
-El campo `privacy` es opcional para no romper negocios existentes: si falta, el aviso usa el nombre del negocio como responsable y omite el enlace; nunca se inventa un dato. La lista de activación (siguiente sección) exige `privacy.policy_url` antes de abrir el canal real. El antiguo bloque `support` (el contacto de la orden `PERSONA`, retirada en el [ADR-028](adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)) ya no existe: si una versión guardada antes lo trae, se descarta al cargarla.
+El campo `privacy` es opcional para no romper negocios existentes: si falta, el aviso solo nombra al negocio; nunca se inventa un dato. La lista de activación (siguiente sección) exige `privacy.policy_url` antes de abrir el canal real. El antiguo bloque `support` (el contacto de la orden `PERSONA`, retirada en el [ADR-028](adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)) ya no existe, ni `privacy.controller_name`: si una versión guardada antes los trae, se descartan al cargarla.
 
 Los secretos de canal no van en el documento: `WhatsAppSecrets` (`app_secret`, `access_token`, `verify_token`) o `TelegramSecrets` (`bot_token`, `webhook_secret`).
 

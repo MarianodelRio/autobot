@@ -194,13 +194,19 @@ def test_invalid_config_degrades_only_that_tenant(tmp_path: Path) -> None:
 
 
 def test_privacy_reaches_the_tenant_info(tmp_path: Path) -> None:
-    doc = tenant_document(
-        "legal", privacy={"controller_name": "Lola S.L.", "policy_url": "https://lola.example/p"}
-    )
-    info = load(tmp_path, doc).tenants[0].info
-    assert (info.controller_name, info.policy_url) == ("Lola S.L.", "https://lola.example/p")
+    doc = tenant_document("legal", privacy={"policy_url": "https://lola.example/p"})
+    assert load(tmp_path, doc).tenants[0].info.policy_url == "https://lola.example/p"
     bare = load(tmp_path, tenant_document("bare")).tenants[0].info  # an existing tenant
-    assert (bare.controller_name, bare.policy_url) == (None, None)
+    assert bare.policy_url is None
+
+
+def test_a_retired_controller_name_is_dropped_on_load(tmp_path: Path) -> None:
+    """ADR-028: versions saved before keep `privacy.controller_name`; they still load."""
+    doc = tenant_document(
+        "old", privacy={"controller_name": "Lola S.L.", "policy_url": "https://lola.example/p"}
+    )
+    (tenant,) = load(tmp_path, doc).tenants
+    assert tenant.info.policy_url == "https://lola.example/p"
 
 
 def test_a_retired_support_block_is_dropped_on_load(tmp_path: Path) -> None:

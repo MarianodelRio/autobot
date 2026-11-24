@@ -29,7 +29,6 @@ def test_the_notice_links_the_configured_policy() -> None:
     tenant = TenantInfo(
         **{
             **Conversation(pack, config=configuration(), calendar=FakeCalendar()).tenant.__dict__,
-            "controller_name": "Lola Pérez S.L.",
             "policy_url": "https://lola.example/privacidad",
         }
     )
@@ -42,5 +41,4 @@ def test_baja_and_persona_in_the_name_step_are_a_name(salon: Conversation) -> No
     choose(salon)
     salon.send("Baja").expect(text_contains="confirmada")
     assert salon.calendar.created[0].summary == "Corte de pelo - Baja"
-    assert not salon.contact.opt_out
     assert all(n.kind != "human_requested" for n in salon.notifications)

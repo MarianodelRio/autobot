@@ -1354,8 +1354,6 @@ export interface components {
             id: string;
             /** Last Activity At */
             last_activity_at: string | null;
-            /** Opt Out */
-            opt_out: boolean;
             /** Phone E164 */
             phone_e164: string | null;
             /** Tenant */

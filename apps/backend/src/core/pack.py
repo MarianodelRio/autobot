@@ -28,9 +28,8 @@ class TenantInfo:
     slug: str
     name: str
     timezone: ZoneInfo
-    # Legal text of the first-contact notice (the tenant document's `privacy`); None →
-    # generic wording that invents nothing.
-    controller_name: str | None = None
+    # Privacy link of the first-contact notice (the tenant document's `privacy`); None →
+    # the notice only names the business.
     policy_url: str | None = None
 
 
@@ -40,7 +39,6 @@ class ContactInfo:
     external_id: str
     phone: str | None
     display_name: str | None
-    opt_out: bool
     alias_ids: tuple[UUID, ...] = ()
 
 

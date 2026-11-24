@@ -69,7 +69,7 @@ Un negocio de demo es un negocio normal con `demo: {description}` en lugar de `c
 
 `manage.py seed_demos` (`apps/backend/src/autobot/management/commands/seed_demos.py`) crea el negocio de demo de cada pack **una sola vez**: si el negocio ya tiene versiones, escribe `exists <slug>` y no toca nada, de modo que los cambios posteriores del operador se conservan. Para un pack con datasets, sube el de la plantilla a la biblioteca como entrada `demo` y el negocio copia de ella, como cualquier cliente ([biblioteca de datasets](config-y-registro.md#biblioteca-de-datasets)). Para `salon`, sustituye el calendario de relleno por `DEMO_SALON_CALENDAR_ID`; si está vacío avisa de que esa demo no podrá reservar.
 
-**Aviso de primera capa.** Cada vez que un negocio de demo muestra su menú (y en la primera respuesta a una persona) va, como última línea, un aviso redactado en `channels/demo/notice.py` donde la responsable es la plataforma: «_🤖 Demo de Autobot · Privacidad:_ {enlace}». El enlace viene de `PLATFORM_PRIVACY_URL`; sin ella queda «_🤖 Demo de Autobot_».
+**Línea de privacidad.** Cada vez que un negocio de demo muestra su menú (y en la primera respuesta a una persona) va, como última línea, un aviso de la plataforma, redactado en `channels/demo/notice.py`: «_🤖 Demo de Autobot · Privacidad:_ {enlace}». El enlace viene de `PLATFORM_PRIVACY_URL`; sin ella queda «_🤖 Demo de Autobot_».
 
 El dueño de un negocio de demo también puede enlazar su chat para recibir avisos y resúmenes ([Bot de dueños](bot-de-duenos.md)); los negocios de demo son los únicos que pueden compartir chat.
 

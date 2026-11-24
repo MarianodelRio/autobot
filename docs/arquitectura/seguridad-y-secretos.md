@@ -67,7 +67,7 @@ Detalle y motivos en [ADR-020](adr/ADR-020-api-del-panel-aparte.md):
 - **Sentry**: `before_send` descarta peticiones, variables locales y texto de excepciones.
 - **Estado de Calendar y salud** (`ops/state.py`): cuentas y marcas de tiempo, nunca ids de calendario ni de cliente.
 - **Demo**: lo que se recibe de un desconocido no se guarda (WhatsApp) o se vacía (Telegram); ver [Bot de demo](bot-de-demo.md#quien-puede-usar-la-demo).
-- **Retención y borrado**: plazos, exportación y olvido de contactos en [Retención y RGPD](../procedimientos/retencion-rgpd.md).
+- **Retención y borrado**: plazos, exportación y olvido de contactos en [Retención y borrado de datos](../procedimientos/retencion-rgpd.md).
 
 ## Términos prohibidos en CI
 

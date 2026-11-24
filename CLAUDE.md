@@ -52,5 +52,4 @@ Visión completa en [`docs/arquitectura/vision-general.md`](docs/arquitectura/vi
 - Decisiones: `docs/arquitectura/adr/` (índice en `README.md`). Conceptos: `docs/arquitectura/`.
 - Desarrollo: `docs/desarrollo/` (entorno local, tests, añadir un pack, migraciones y RLS, documentación).
 - Operación: `docs/procedimientos/`; incidencias por síntoma: `docs/incidencias/`.
-- Cumplimiento y RGPD: `docs/cumplimiento/` (roles, registro de actividades, contrato de encargado, brechas, checklist de lanzamiento).
 - Referencia: `docs/referencia/` (comandos, variables de entorno, packs, alertas, glosario).

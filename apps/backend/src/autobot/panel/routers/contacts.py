@@ -36,7 +36,6 @@ class ContactOut(Schema):
     external_id: str
     phone_e164: str | None
     display_name: str
-    opt_out: bool
     unreachable: bool
     last_activity_at: datetime | None
     created_at: datetime
@@ -50,7 +49,6 @@ def contact_out(contact: Contact) -> ContactOut:
         external_id=contact.external_id,
         phone_e164=contact.phone_e164,
         display_name=contact.display_name,
-        opt_out=contact.opt_out,
         unreachable=contact.unreachable,
         last_activity_at=contact.last_activity_at,
         created_at=contact.created_at,

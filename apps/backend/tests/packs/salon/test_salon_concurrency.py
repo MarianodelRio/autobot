@@ -43,7 +43,7 @@ def test_two_contacts_only_one_booking_and_retry_is_idempotent(salon_setup: Any)
     def attempt(index: int) -> tuple[str, str]:
         close_old_connections()
         try:
-            contact = ContactInfo(contact_ids[index], str(index), None, "Lucía", False)
+            contact = ContactInfo(contact_ids[index], str(index), None, "Lucía")
             ctx = build_context(
                 tenant,
                 Channel.MAIN,
@@ -67,7 +67,7 @@ def test_two_contacts_only_one_booking_and_retry_is_idempotent(salon_setup: Any)
     assert sorted(status for status, _ in results) == ["created", "taken"]
     assert len(calendar.created) == 1
     winner = next(index for index, result in enumerate(results) if result[0] == "created")
-    contact = ContactInfo(contact_ids[winner], str(winner), None, "Lucía", False)
+    contact = ContactInfo(contact_ids[winner], str(winner), None, "Lucía")
     ctx = build_context(
         tenant,
         Channel.MAIN,

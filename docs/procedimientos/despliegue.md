@@ -148,7 +148,7 @@ no lo mata (ignora `SIGHUP`).
    (como `backup.sh`: el tamaño de la base o 512 MiB, el mayor) y escribe en
    `pre-migrate.dump.tmp`; solo si `pg_restore --list` lee el índice del volcado lo renombra.
    Un fallo (o cualquier salida del script) borra el `.tmp` y va a **abort**. Es una copia
-   en claro de todos los clientes: por RGPD solo vive el tiempo en que aún se notaría una
+   en claro de todos los clientes: solo vive el tiempo en que aún se notaría una
    migración mala; el backup cifrado horario es la copia que debe existir. Por eso las migraciones solo pueden
    **expandir** el esquema (`CLAUDE.md`; ver [../desarrollo/migraciones-y-rls.md](../desarrollo/migraciones-y-rls.md)).
 8. **Esquema y datos:** `migrate` (con `PGOPTIONS='-c lock_timeout=5s'`, ajustable con

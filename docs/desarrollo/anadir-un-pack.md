@@ -134,7 +134,7 @@ Es tarea de quien añade el pack, y se hace en el mismo commit:
 - [ ] Alta en `packs/registry.py`.
 - [ ] `template/document.yaml` válido, y `template_blank`.
 - [ ] Escenario en `tests/packs/<nombre>/` con los dos canales.
-- [ ] Obligaciones legales: el aviso de primera capa lo añade la plataforma debajo del menú: el pack devuelve `PackResult(menu=True)` cuando su respuesta es el menú principal ([Packs](../arquitectura/packs.md#aviso-inicial)). El pack muestra el contacto del negocio en su menú o en «ℹ️ Información» (la salida a una persona) y añade su propio descargo si lo necesita (como `schedule_disclaimer` en `bus`).
+- [ ] Línea de privacidad: la añade la plataforma debajo del menú: el pack devuelve `PackResult(menu=True)` cuando su respuesta es el menú principal ([Packs](../arquitectura/packs.md#aviso-inicial)). El pack muestra el contacto del negocio en su menú o en «ℹ️ Información» (la salida a una persona) y añade su propio descargo si lo necesita (como `schedule_disclaimer` en `bus`).
 - [ ] `make check` en verde (incluye `lint-imports` y `tests/repo/`).
 - [ ] `docs/referencia/packs/<nombre>.md` y entrada en `mkdocs.yml`.
 

@@ -89,7 +89,7 @@ def try_lock(session: psycopg.Connection[Any], lock_id: int) -> bool:
 
 def test_message_context() -> None:
     tenant = loaded()
-    contact = ContactInfo(uuid.uuid7(), "34600000001", "+34600000001", "Lucía", False)
+    contact = ContactInfo(uuid.uuid7(), "34600000001", "+34600000001", "Lucía")
     ctx = build_context(tenant, Channel.MAIN, contact=contact, state={"step": 1}, event_id=EVENT_ID)
     assert ctx.tenant == tenant.info and ctx.contact == contact and ctx.state == {"step": 1}
     assert ctx.config == tenant.config and ctx.calendar is None  # the toy pack needs none

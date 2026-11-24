@@ -125,8 +125,8 @@ def check_compose_services(services: dict[str, Any]) -> None:
         assert not services[worker]["environment"].get("DB_OWNER_URL")
         assert not services[worker]["environment"].get("DB_READONLY_URL")
         assert not services[worker]["environment"].get("FP_OWNER_PASSWORD")
-    # The retention periods promised in docs/cumplimiento only hold if the nightly cleanup
-    # runs: production has it on unless the host .env says otherwise.
+    # The retention periods (docs/procedimientos/retencion-rgpd.md) only hold if the
+    # nightly cleanup runs: production has it on unless the host .env says otherwise.
     assert services["worker-periodic"]["environment"].get("RETENTION_CLEANUP_ENABLED") == "true"
     assert not services["db"]["environment"].get("DJANGO_SECRET_KEY")
     assert not services["caddy"]["environment"].get("DB_APP_URL")

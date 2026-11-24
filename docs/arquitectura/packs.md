@@ -93,17 +93,17 @@ Un pack construye respuestas que caben en **los dos** canales, así que se aplic
 - `effective_state`: reinicio por caducidad (silencioso) o por cambio de `state_version` (con aviso «he tenido que empezar de nuevo»).
 - `is_menu_command`: `menu`, `menú`, `inicio` y `/start` abren el menú. Es la única orden que la plataforma atiende antes que el pack; cualquier otra palabra (también `persona` o `baja`) llega al pack como texto ([ADR-028](adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
 - `recovery_result` y `degraded_result`: disculpa tras un error inesperado o tras agotar los reintentos de un error temporal.
-- `first_contact_notice` y `with_notice`: aviso de primera capa (ver abajo).
+- `first_contact_notice` y `with_notice`: la línea de privacidad (ver abajo).
 
 ### Aviso inicial
 
-El negocio es el responsable del tratamiento y la plataforma su encargada; por eso el aviso vive en la plataforma y no en cada pack.
+El aviso es igual para todos los packs; por eso vive en la plataforma y no en cada pack.
 
-Cada vez que el pack muestra su menú principal (lo marca devolviendo `PackResult(menu=True)`), y también en la primera respuesta que recibe un contacto aunque no sea el menú (`Contact.notice_sent_at` nulo; si se olvida al contacto, vuelve a nulo), el runtime añade **una línea en cursiva al final** de la respuesta del pack, separada por una línea en blanco: «_🤖 Asistente automático de {negocio} · Privacidad:_ {enlace}». Sin `privacy.policy_url` no hay enlace: queda «_🤖 Asistente automático de {negocio}_», y solo si el responsable (`privacy.controller_name`) es otro distinto del negocio se añade «· Responsable: {responsable}». Va al final para que lo primero que se lea sea la respuesta; si no cabe en la última respuesta (1.024 caracteres en un interactivo), va como texto aparte después. El enlace queda fuera de la cursiva para que no se le pegue el `_`; Telegram la muestra con `<i>`.
+Cada vez que el pack muestra su menú principal (lo marca devolviendo `PackResult(menu=True)`), y también en la primera respuesta que recibe un contacto aunque no sea el menú (`Contact.notice_sent_at` nulo; si se olvida al contacto, vuelve a nulo), el runtime añade **una línea en cursiva al final** de la respuesta del pack, separada por una línea en blanco: «_🤖 Asistente automático de {negocio} · Privacidad:_ {enlace}». Sin `privacy.policy_url` no hay enlace: queda «_🤖 Asistente automático de {negocio}_». Va al final para que lo primero que se lea sea la respuesta; si no cabe en la última respuesta (1.024 caracteres en un interactivo), va como texto aparte después. El enlace queda fuera de la cursiva para que no se le pegue el `_`; Telegram la muestra con `<i>`.
 
-En el resto de pasos no sale. La primera vez se marca como enviado en la misma transacción que las respuestas (tx2), así que un reintento no lo duplica y un fallo no lo pierde. En el bot de demo lo redacta `channels/demo/notice.py` con la plataforma como responsable y `PLATFORM_PRIVACY_URL` como enlace.
+En el resto de pasos no sale. La primera vez se marca como enviado en la misma transacción que las respuestas (tx2), así que un reintento no lo duplica y un fallo no lo pierde. En el bot de demo lo redacta `channels/demo/notice.py` con `PLATFORM_PRIVACY_URL` como enlace.
 
-No hay órdenes de atención: la atención humana la cubre el teléfono del negocio que muestra el pack (en `bus`, en «ℹ️ Información»; en `salon`, en el menú), y la baja de los recordatorios queda por decidir antes de activarlos ([ADR-028](adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
+No hay órdenes de atención: la atención humana la cubre el teléfono del negocio que muestra el pack (en `bus`, en «ℹ️ Información»; en `salon`, en el menú), y quien no quiere recordatorios lo pide al negocio y se le olvida desde el panel ([ADR-028](adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
 
 El bot nunca adivina en silencio: o hay una respuesta única, o pregunta.
 

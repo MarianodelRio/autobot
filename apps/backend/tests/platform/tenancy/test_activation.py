@@ -145,8 +145,8 @@ def test_the_privacy_policy_is_required_to_activate(monkeypatch: pytest.MonkeyPa
     assert activation.checklist("tg").blocking == ["privacy"]
     with pytest.raises(store.StoreError):
         store.change_status("tg", action="activate", actor="user", confirm_slug="tg")
-    # The controller alone is not enough: the notice links the policy.
-    other = tg_tenant("tg2", privacy={"controller_name": "Tg S.L."})
+    # An empty `privacy` block is not enough: the notice links the policy.
+    other = tg_tenant("tg2", privacy={})
     create(other, TG_SECRETS)
     inbound(other)
     assert activation.checklist("tg2").blocking == ["privacy"]

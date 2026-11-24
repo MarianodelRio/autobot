@@ -446,14 +446,14 @@ def test_send_proactive_creates_a_proactive_message(tenants: Any) -> None:
     assert sum(j[0] == "send_message" for j in jobs()) == len(outbound())
 
 
-def test_no_proactive_to_an_opted_out_or_unreachable_contact(
+def test_no_proactive_to_an_unreachable_contact(
     tenants: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The target is a separate contact from the one writing: it must not write back in
     # between (that would clear `unreachable`) to keep testing the block itself.
     tenants(wa_tenant())
     other = Contact.objects.using("owner").create(
-        tenant_id=tenant().id, channel="test", external_id="100000001", opt_out=True
+        tenant_id=tenant().id, channel="test", external_id="100000001", unreachable=True
     )
 
     def notice(ctx: PackContext, msg: IncomingMessage) -> PackResult:
@@ -469,10 +469,6 @@ def test_no_proactive_to_an_opted_out_or_unreachable_contact(
     use_pack(monkeypatch, handle_message=notice)
     reset_registry()
     receive(wa_text("hola"))
-    assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
-
-    Contact.objects.using("owner").filter(id=other.id).update(opt_out=False, unreachable=True)
-    receive(wa_text("hola de nuevo"))
     assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
 
 
@@ -569,35 +565,6 @@ def test_proactive_to_a_phone_without_contact(
         "34611111111",
         "+34611111111",
     )
-
-
-def test_a_phone_that_opted_out_on_its_bsuid_contact_gets_no_proactive(
-    tenants: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The same person: a contact made from the phone (manual booking) and the BSUID
-    contact they write from, the one marked `opt_out`."""
-
-    def notice(ctx: PackContext, msg: IncomingMessage) -> PackResult:
-        if msg.text != "uno":
-            return PackResult(replies=[Text("ok")])
-        action = SendProactive(
-            to=ContactRef(phone="+34600000001"),
-            template=toy.TEMPLATE_THANKS,
-            params=["Rojo"],
-            button_payloads=["thanks_yes"],
-            idem_key=f"manual:{msg.text}",
-        )
-        return PackResult(replies=[Text("ok")], actions=[action])
-
-    use_pack(monkeypatch, handle_message=notice)
-    tenants(wa_tenant())
-    Contact.objects.using("owner").create(
-        tenant_id=tenant().id, channel="main", external_id="34600000001", phone_e164="+34600000001"
-    )
-    receive(wa_text("hola"))  # creates the BSUID contact, which has the same phone
-    Contact.objects.using("owner").exclude(external_id="34600000001").update(opt_out=True)
-    receive(wa_text("uno"))
-    assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
 
 
 # ── apply_status ──────────────────────────────────────────────────────────

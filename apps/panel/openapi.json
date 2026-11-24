@@ -854,10 +854,6 @@
             ],
             "title": "Last Activity At"
           },
-          "opt_out": {
-            "title": "Opt Out",
-            "type": "boolean"
-          },
           "phone_e164": {
             "anyOf": [
               {
@@ -885,7 +881,6 @@
           "external_id",
           "phone_e164",
           "display_name",
-          "opt_out",
           "unreachable",
           "last_activity_at",
           "created_at"

@@ -18,7 +18,5 @@ config:
   next_day_search_days: 45
   schedule_disclaimer: Horarios orientativos; confirma con la compañía.
 status: active
-privacy:
-  controller_name: Autobot (demo)
 demo:
   description: Consulta horarios entre pueblos

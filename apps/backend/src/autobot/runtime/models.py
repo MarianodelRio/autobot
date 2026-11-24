@@ -44,8 +44,6 @@ class Contact(TenantScoped):
     external_id = models.CharField(max_length=160)  # BSUID, phone or Telegram id
     phone_e164 = models.CharField(max_length=16, null=True, blank=True)  # noqa: DJ001 (NULL = unknown)
     display_name = models.CharField(max_length=200, blank=True, default="", db_default="")
-    opt_out = models.BooleanField(default=False, db_default=False)
-    opt_out_at = models.DateTimeField(null=True, blank=True)
     unreachable = models.BooleanField(default=False, db_default=False)
     last_activity_at = models.DateTimeField(null=True, blank=True)
     # When the first-layer privacy notice was sent; NULL = not yet (the contact is

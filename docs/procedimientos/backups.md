@@ -109,11 +109,11 @@ esa cuenta de servicio y se puede revocar y reemitir desde Google.
 ## RPO y RTO
 
 - **RPO (cuántos datos se pueden perder): 1 hora.** El timer de backup es horario; el peor
-  caso es una caída justo antes de la siguiente copia. Las supresiones del libro RGPD se
+  caso es una caída justo antes de la siguiente copia. Los olvidos del libro de supresiones se
   reaplican al restaurar (ADR-025).
 - **RTO (cuánto se tarda en volver): no medido.** Es el tiempo de una VPS nueva con
   `install-vm.sh` más una restauración (`restaurar.md`); la cifra real sale del simulacro
-  contra el bucket de verdad (checklist de lanzamiento) y debe anotarse aquí cuando exista.
+  contra el bucket de verdad ([Servidor](servidor.md#antes-del-primer-cliente-real)) y debe anotarse aquí cuando exista.
 
 ## Configurar un servidor nuevo
 

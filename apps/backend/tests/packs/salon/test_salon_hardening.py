@@ -136,7 +136,6 @@ def test_alta_and_baja_are_no_commands_any_more(salon: Conversation) -> None:
     for word in ("baja", "alta"):
         turn = salon.send(word)
         assert not any("ya no te enviaré" in r.body for r in turn.replies)
-    assert not salon.contact.opt_out
 
 
 def test_the_name_step_reacts_to_a_stale_button_with_the_prompt(salon: Conversation) -> None:

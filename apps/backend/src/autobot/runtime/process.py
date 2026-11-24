@@ -405,11 +405,11 @@ def _proactive_target(tenant: LoadedTenant, channel: str, action: SendProactive)
         number = phone_key(
             target.phone_e164 or (target.external_id if target.external_id.isdecimal() else "")
         )
-        if number and any(c.opt_out or c.unreachable for c in phone_group(tenant.id, number)):
-            log.info("proactive not sent: linked phone identity opted out or is unreachable")
+        if number and any(c.unreachable for c in phone_group(tenant.id, number)):
+            log.info("proactive not sent: linked phone identity is unreachable")
             return None
-    if target.opt_out or target.unreachable:
-        log.info("proactive %s not sent: contact opted out or unreachable", action.template.name)
+    if target.unreachable:
+        log.info("proactive %s not sent: contact unreachable", action.template.name)
         return None
     return target
 
@@ -434,10 +434,10 @@ def _contact_by_phone(tenant: LoadedTenant, channel: str, phone: str) -> Contact
         .filter(Q(phone_e164=e164) | Q(external_id=digits))
         .order_by(F("last_activity_at").desc(nulls_last=True))
     )
-    if any(c.opt_out or c.unreachable for c in same_phone):
+    if any(c.unreachable for c in same_phone):
         # The same person may have a BSUID contact and one made from the phone: an
-        # opt-out on either one counts.
-        log.info("proactive to a phone not sent: that phone opted out or is unreachable")
+        # unreachable mark on either one counts.
+        log.info("proactive to a phone not sent: that phone is unreachable")
         return None
     if same_phone:
         return same_phone[0]
@@ -616,7 +616,6 @@ def _contact_info(contact: Contact, aliases: tuple[UUID, ...]) -> ContactInfo:
         external_id=contact.external_id,
         phone=contact.phone_e164,
         display_name=contact.display_name or None,
-        opt_out=contact.opt_out,
         alias_ids=aliases,
     )
 

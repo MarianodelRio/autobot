@@ -43,9 +43,8 @@ def _channel_complete(channel: Channel | None) -> bool:
 
 
 def _privacy_complete(tenant: LoadedTenant) -> bool:
-    """The first-contact notice cites `privacy.policy_url`: a real channel must not open
-    without it (RGPD art. 13). Optional in the document so existing tenants keep
-    loading."""
+    """The privacy line cites `privacy.policy_url`: a real channel must not open without
+    it. Optional in the document so existing tenants keep loading."""
     document = tenant.document
     return bool(document.privacy and document.privacy.policy_url)
 

@@ -86,16 +86,7 @@ def _cleanup_tenant(tenant: LoadedTenant, now: datetime, cutoff: datetime) -> No
         ),
         (Notification.objects.filter(created_at__lte=cutoff), None),
         (MetricEvent.objects.filter(created_at__lte=cutoff), None),
-        # A contact that opted out is NOT purged: the opt-out is the suppression
-        # that stops later reminders (a manual appointment for the same phone would
-        # create a fresh contact and message it). Only its name is cleared; the
-        # identifier stays as the minimal suppression record (see
-        # docs/procedimientos/retencion-rgpd.md). `contact_forget` still erases it.
-        (Contact.objects.filter(expired, opt_out=False), None),
-        (
-            Contact.objects.filter(expired, opt_out=True).exclude(display_name=""),
-            {"display_name": ""},
-        ),
+        (Contact.objects.filter(expired), None),
     ]
     if tenant.pack is not None:
         operations.append(

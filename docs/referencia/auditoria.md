@@ -34,7 +34,7 @@ haya un borrado sin rastro.
   debe fallar (ni deshacer la acción) por texto libre.
 
 El registro lo puede borrar solo la retención nocturna o `tenant_purge`
-([retención RGPD](../procedimientos/retencion-rgpd.md)).
+([retención y borrado de datos](../procedimientos/retencion-rgpd.md)).
 
 ## Acciones
 

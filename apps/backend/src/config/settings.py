@@ -73,6 +73,10 @@ if importlib.util.find_spec("django_migration_linter"):
     # Third-party migrations are not ours to fix; every app of ours is linted.
     MIGRATION_LINTER_OPTIONS = {
         "exclude_apps": ["procrastinate", "otp_totp"],
+        # Contract migrations allowed by hand (deploy.sh: migrations only expand the
+        # schema). 0034 drops `contact.opt_out`, which no released code reads: nothing
+        # was in production yet when it was written.
+        "ignore_name": ["0034_contact_drop_opt_out"],
     }
 
 MIDDLEWARE = [

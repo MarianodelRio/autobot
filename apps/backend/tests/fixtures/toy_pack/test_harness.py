@@ -85,7 +85,6 @@ def test_retired_command_words_are_plain_text(chat: Conversation, word: str) -> 
     chat.send("hola")
     chat.press("greet")
     chat.send(word).expect(text_contains=f"¡Encantado, *{word}*!")
-    assert not chat.contact.opt_out
 
 
 def test_expired_conversation_starts_over(chat: Conversation) -> None:

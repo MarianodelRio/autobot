@@ -141,7 +141,6 @@ def test_first_contact_notice_links_the_policy() -> None:
     tenant = TenantInfo(
         **{
             **TENANT.__dict__,
-            "controller_name": "Lola S.L.",
             "policy_url": "https://lola.example/p",
         }
     )
@@ -151,20 +150,8 @@ def test_first_contact_notice_links_the_policy() -> None:
     )
 
 
-def test_first_contact_notice_without_config_invents_nothing() -> None:
-    notice = first_contact_notice(TENANT)
-    # The business is the controller: saying it twice adds nothing.
-    assert notice == "_🤖 Asistente automático de Peluquería Lola_"
-    same = TenantInfo(**{**TENANT.__dict__, "controller_name": "peluqueria lola"})
-    assert first_contact_notice(same) == notice
-    assert "\n" not in notice
-
-
-def test_first_contact_notice_names_another_controller() -> None:
-    tenant = TenantInfo(**{**TENANT.__dict__, "controller_name": "Lola S.L."})
-    assert first_contact_notice(tenant) == (
-        "_🤖 Asistente automático de Peluquería Lola · Responsable: Lola S.L._"
-    )
+def test_first_contact_notice_without_a_link_names_only_the_business() -> None:
+    assert first_contact_notice(TENANT) == "_🤖 Asistente automático de Peluquería Lola_"
 
 
 NOTICE = "_🤖 aviso_"

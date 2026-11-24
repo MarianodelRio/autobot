@@ -108,23 +108,25 @@ class DemoInfo(Strict):
 
 
 class Privacy(Strict):
-    """What the first-contact notice tells about who handles the contacts' data (RGPD
-    art. 13, LOPDGDD art. 11). The business is the controller; the platform only
-    processes the data for it."""
+    """The privacy link the bot's privacy line cites."""
 
-    controller_name: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=200,
-        title="Responsable del tratamiento",
-        description="Nombre legal del responsable; si falta, se usa el nombre del negocio.",
-    )
     policy_url: str | None = Field(
         default=None,
         max_length=300,
         title="Enlace a la política de privacidad",
-        description="Segunda capa de información (https://…); si falta, el aviso no la cita.",
+        description="Se muestra en la línea de privacidad del bot (https://…); si falta, la"
+        " línea no lo cita.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_retired_controller(cls, data: Any) -> Any:
+        """`controller_name` is no longer part of the document (ADR-028). The versions
+        saved before keep it and are immutable, so it is dropped on load instead of
+        rejected."""
+        if isinstance(data, dict) and "controller_name" in data:
+            return {k: v for k, v in data.items() if k != "controller_name"}
+        return data
 
     @field_validator("policy_url")
     @classmethod
@@ -150,8 +152,8 @@ class TenantDocument(Strict):
     privacy: Privacy | None = Field(
         default=None,
         title="Privacidad",
-        description="Quién trata los datos de los clientes, tal como lo cuenta el primer"
-        " mensaje del bot.",
+        description="El enlace a la política de privacidad que cita la línea de privacidad"
+        " del bot.",
     )
     config: dict[str, Any] = Field(default={}, title="Configuración del pack")
 

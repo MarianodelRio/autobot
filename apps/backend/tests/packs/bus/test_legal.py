@@ -51,7 +51,7 @@ def test_persona_y_baja_ya_no_son_ordenes(canal: ChannelType, palabra: str) -> N
     chat.press("menu_horarios")
     chat.send(palabra).expect(text_contains="No conozco ese pueblo")
     assert chat.state["step"] == "SEL_ORIGEN"
-    assert chat.notifications == [] and not chat.contact.opt_out
+    assert chat.notifications == []
 
 
 def test_el_resultado_lleva_el_aviso_de_horarios_orientativos(canal: ChannelType) -> None:

@@ -146,6 +146,32 @@ necesitan `sudo`, como `admin`.
 - `https://<PUBLIC_HOST>/health` responde 200. El panel solo se alcanza con
   `make panel-tunnel`, nunca por el Caddy público.
 
+## Antes del primer cliente real
+
+Lo que debe estar comprobado antes de activar el canal real de un negocio (activarlo
+requiere aprobación humana explícita, `CLAUDE.md`). Marca cada punto solo con la prueba
+delante, nunca por suposición.
+
+- [ ] VPS en la UE y almacenamiento de backups en otro proveedor, también en la UE
+  ([backups.md](backups.md)).
+- [ ] `HEALTHCHECKS_PING_URL` y el check de backups (`HEALTHCHECKS_BACKUP_PING_URL` en
+  `var/backup.env`, periodo 1 h, gracia 90 min) dados de alta con aviso a una persona: sin
+  ellos nadie se entera de un worker colgado ni de que los backups pararon.
+- [ ] Vigilante del host activo (`autobot-watchdog.timer`), con `NOTIFY_BOT_TOKEN` y
+  `OPS_TELEGRAM_CHAT_ID` en `.env` y un aviso de prueba recibido
+  ([despliegue.md](despliegue.md#vigilante-del-host-watchdogsh)).
+- [ ] Simulacro real de restauración desde el bucket (no solo `make restore-test`): el
+  último snapshot en una VPS desechable, con la clave de secretos guardada aparte; comprobar
+  los datos y el libro de supresiones y anotar el RTO medido en
+  [backups.md](backups.md#rpo-y-rto) ([restaurar.md](restaurar.md)).
+- [ ] Tras el primer despliegue, una pasada de la limpieza nocturna (`retention_cleanup`,
+  03:00 UTC) y un snapshot `autobot-ledger` tras el primer backup
+  ([retencion-rgpd.md](retencion-rgpd.md)).
+- [ ] `privacy.policy_url` en cada negocio, con su política publicada (la activación lo
+  exige), y `PLATFORM_PRIVACY_URL` para la demo.
+- [ ] Si un negocio usa recordatorios de WhatsApp (`reminders_enabled`), sus plantillas
+  aprobadas en Meta.
+
 ## Operación posterior
 
 - Operación diaria por SSH como `deploy` con `deploy/scripts/manage.sh` y

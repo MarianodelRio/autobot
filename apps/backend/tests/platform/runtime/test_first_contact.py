@@ -28,11 +28,7 @@ NOTICE = "_🤖 Asistente automático de Wa · Privacidad:_ https://wa.example/p
 
 
 def test_the_notice_is_the_last_line_and_goes_only_once(tenants: Any) -> None:
-    tenants(
-        wa_tenant(
-            privacy={"controller_name": "Wa S.L.", "policy_url": "https://wa.example/privacidad"}
-        )
-    )
+    tenants(wa_tenant(privacy={"policy_url": "https://wa.example/privacidad"}))
     assert contact_row() is None
     first = receive(wa_text("hola"))
     (body,) = bodies(first)  # one message: the pack's menu, the notice below
@@ -88,7 +84,6 @@ def test_retired_command_words_reach_the_pack(tenants: Any, word: str) -> None:
     # The toy pack takes it as the name it asked for: no command, no owner notice.
     assert f"¡Encantado, *{word}*!" in bodies(event)[0]
     assert conversation().state == {}
-    assert not contact().opt_out
     assert Notification.objects.using("owner").count() == 0
 
 

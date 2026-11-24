@@ -48,14 +48,14 @@ tienen un valor por defecto en `settings.py` o se generan con `ensure-env.sh`.
 | `NOTIFY_BOT_TOKEN` | Token del bot de avisos / asistente del dueño | no | vacío | la persona (@BotFather) |
 | `NOTIFY_BOT_WEBHOOK_SECRET` | Secreto del webhook del bot de avisos | no (local no lo necesita) | vacío | `ensure-env.sh` en el servidor |
 | `OWNER_SUPPORT_EMAIL` | Email de soporte que ofrece el menú del dueño (opción "Contacto") | no | vacío | la persona |
-| `PLATFORM_PRIVACY_URL` | Política de privacidad de la plataforma (`https://…`); la cita el aviso de primera capa del bot de demo, donde la plataforma es la responsable. Sin ella, el aviso omite el enlace | no | vacío | la persona |
+| `PLATFORM_PRIVACY_URL` | Política de privacidad de la plataforma (`https://…`); la cita la línea de privacidad del bot de demo. Sin ella, la línea omite el enlace | no | vacío | la persona |
 | `OPS_TELEGRAM_CHAT_ID` | Chat de Telegram donde el bot de avisos manda alertas de operación | no | vacío | la persona |
 | `SENTRY_DSN` | DSN del proyecto de Sentry; vacío desactiva la integración | no | vacío | la persona |
 | `HEALTHCHECKS_PING_URL` | URL de latido del check "worker" de healthchecks.io | no | vacío | la persona |
 | `RELEASE_SHA` | SHA desplegado, expuesto a la app para los logs | sí (prod) | vacío | lo fija el compose de producción (= `SHA`); no va en `.env` |
 | `SERVICE_NAME` | Nombre del servicio en los logs estructurados (`web`/`web-panel`/`worker-inbound`/`worker-calendar`/`worker-periodic`/`worker-outbound`) | no | `web` | lo fija el compose por cada servicio; no va en `.env` |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Ruta de la clave de la cuenta de servicio de Google Calendar; vacío monta `/dev/null` | no | vacío | la persona |
-| `RETENTION_CLEANUP_ENABLED` | Borrado nocturno de retención RGPD | no | `true` en producción (`compose.prod.yaml`, aprobado 2026-11-23); `false` en local y en `settings.py` | la persona: `false` en el `.env` del servidor lo apaga; `check_prod_config.py` exige `true` en el compose |
+| `RETENTION_CLEANUP_ENABLED` | Limpieza nocturna de datos antiguos | no | `true` en producción (`compose.prod.yaml`, aprobado 2026-11-23); `false` en local y en `settings.py` | la persona: `false` en el `.env` del servidor lo apaga; `check_prod_config.py` exige `true` en el compose |
 | `OPS_STATE_DIR` | Directorio con el estado de operación que el panel y `ops_check` leen (`backup.json`, `backup-prune.json`, `deploys.jsonl`, instantánea de contenedores) | no | `/tmp/ops` en `compose.local.yaml` | por defecto `<app>/state/ops`; `/run/ops` en `compose.prod.yaml` (montaje de solo lectura de `var/state/ops`) |
 | `VICTORIALOGS_URL` | URL de VictoriaLogs: destino de los logs estructurados y de la consulta de logs del panel; vacío los deja solo en stdout | no | `http://victorialogs:9428` | fija en `compose.yaml` |
 | `AUTOBOT_BINARY_STDOUT` | Interna: `manage.py` la fija en `1` cuando un comando escribe binario por stdout (`tenant_config export -`, `dataset_library pull -`) para que el log vaya a stderr | no | no se define a mano | `manage.py` |

@@ -1,9 +1,9 @@
-# Retención y derechos de datos
+# Retención y borrado de datos
 
-Cómo se limpian los datos con el tiempo y cómo atender una petición de exportación u
-olvido de un contacto, o la baja total de un negocio. Léelo cuando un cliente o un
-contacto ejerza sus derechos, al dar de baja un negocio o antes de activar la limpieza
-automática.
+Cómo se limpian los datos con el tiempo, cómo exportar u olvidar a un contacto y cómo
+borrar un negocio entero. Léelo cuando alguien pida sus datos o que se le borre (por
+ejemplo, llamando al negocio porque no quiere más mensajes), al dar de baja un negocio o
+antes de tocar la limpieza automática.
 
 !!! warning "Aprobación humana explícita"
     Actuar sobre datos de producción (exportar, olvidar, purgar, activar la limpieza)
@@ -12,8 +12,8 @@ automática.
 
 ## Objetivo, cuándo y requisitos
 
-- **Objetivo:** cumplir los plazos de retención y atender derechos de acceso y supresión
-  con auditoría, sin dejar datos personales de más.
+- **Objetivo:** no guardar datos personales más tiempo del necesario y poder entregar o
+  borrar los de una persona o un negocio, con auditoría.
 - **Cuándo:** petición de un contacto o de un negocio; baja de un cliente (máximo 30 días
   desde la baja efectiva hasta el borrado); decisión de activar la limpieza nocturna.
 - **Requisitos:** aprobación humana; SSH como `deploy` (clave de operación) o el panel por
@@ -45,9 +45,8 @@ defecto** (`compose.prod.yaml` pasa `RETENTION_CLEANUP_ENABLED=true`; la persona
 2026-11-23 y `check_prod_config.py` lo exige en el compose renderizado); en local vale
 `false`. Para pararla en un servidor, `RETENTION_CLEANUP_ENABLED=false` en su `.env` y
 reiniciar `worker-periodic` (ejecuta la cola `periodic`): el permiso se comprueba al ejecutar
-el trabajo, incluidos los trabajos ya encolados. Los plazos aplicados son exactamente los de
-[Registro de actividades](../cumplimiento/registro-de-actividades.md) (`runtime/retention.py`,
-revisado el 2026-11-23): `inbound_event` vaciado a los 30 días y borrado a los 90;
+el trabajo, incluidos los trabajos ya encolados. Los plazos (`runtime/retention.py`):
+`inbound_event` vaciado a los 30 días y borrado a los 90;
 `outbound_message` con `payload` vaciado a los 30 días y fila a los 12 meses; `notification`,
 `metric_event` y contactos a los 12 meses de inactividad; negocios de demo, 30 días;
 `demo_event` y `owner_event`, 7 días; `demo_session`, 30; `audit_event` y `ops_alert`, 1 año.
@@ -60,13 +59,6 @@ baja que sigan en el registro. Los doce meses se calculan por calendario; para c
 sin actividad registrada se usa la fecha de creación. `test_session.selected_at`
 registra la selección o el último mensaje remitido al negocio. Los estados se vacían
 cuando superan el tiempo de conversación del pack o carecen de fecha de entrada.
-
-Un contacto que ha pedido la baja (`opt_out`) **no se purga** al caducar: se conserva
-como supresión mínima (el identificador o teléfono y la marca `opt_out`, con el nombre
-vaciado). Así una cita manual posterior para el mismo teléfono no crea un contacto
-nuevo al que enviar recordatorios (`_contact_by_phone` respeta el `opt_out`). Solo
-`contact_forget` (o «Olvidar contacto» en el panel) lo borra del todo, y entonces se
-pierde también esa supresión: el operador debe decirlo a quien lo pide.
 
 Las tablas de la cola (`procrastinate_jobs`/`procrastinate_events`) solo guardan ids y
 nombres de tarea, nunca datos personales. Un periódico propio (`jobs_cleanup`, 03:30
@@ -83,6 +75,11 @@ y el fallo es visible en Incidencias → Trabajos fallidos; la purga de esa noch
 al día siguiente.
 
 ## Exportar, olvidar y purgar
+
+El bot no tiene orden de baja (ADR-028): quien no quiere más mensajes o pide que se borren
+sus datos se lo dice al negocio, y el operador lo olvida desde el panel («Olvidar
+contacto»). Una cita manual posterior con el mismo teléfono volvería a crear el contacto:
+el negocio debe saberlo.
 
 Los comandos son síncronos, usan el alias `owner` y no encolan identificadores
 personales. Sustituye los argumentos por el negocio y el contacto correspondientes:
@@ -188,9 +185,6 @@ locales y los accesos externos. No se retira la entrada del registro antes del b
 recorre ese registro. `synced_at` se actualiza al publicar configuración y nunca demuestra
 la fecha de baja. La gestión de calendarios pertenece al negocio y la retención de
 backups corresponde a restic (`deploy/scripts/backup.sh`); estos comandos no modifican ninguno de ellos.
-
-Fuentes útiles (AEPD, consultadas el 2026-11-09): [contratos de encargo](https://www.aepd.es/es/node/813)
-y [pymes y Facilita](https://www.aepd.es/derechos-y-deberes/cumple-tus-deberes/directrices-de-aplicacion/pymes).
 
 ## Verificación
 

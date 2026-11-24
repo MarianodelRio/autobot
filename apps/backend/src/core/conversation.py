@@ -91,17 +91,13 @@ def degraded_result() -> PackResult:
 
 
 def first_contact_notice(tenant: TenantInfo) -> str:
-    """First layer of the privacy information (RGPD art. 13), in one discreet line: that
-    an automatic assistant answers and where to read the rest. Without a policy link it
-    names the controller only when it is not the business itself. Added below the pack's
+    """The privacy line, in one discreet line: that an automatic assistant answers and,
+    when the business has one, the link to its privacy policy. Added below the pack's
     menu every time it is shown (`PackResult.menu`) and below a contact's very first
     reply (`with_notice`)."""
     if tenant.policy_url:
         return f"_🤖 Asistente automático de {tenant.name} · Privacidad:_ {tenant.policy_url}"
-    controller = tenant.controller_name
-    if controller and normalize(controller) != normalize(tenant.name):
-        return f"_🤖 Asistente automático de {tenant.name} · Responsable: {controller}_"
-    return f"_🤖 Asistente automático de {tenant.name}_"  # the business is the controller
+    return f"_🤖 Asistente automático de {tenant.name}_"
 
 
 def with_notice(replies: list[Reply], notice: str) -> list[Reply]:

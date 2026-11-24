@@ -257,10 +257,10 @@ def test_defaults_exist_in_the_database() -> None:
         cursor.execute(
             "INSERT INTO contact (id, tenant_id, channel, external_id, created_at)"
             " VALUES (%s, %s, 'main', 'x', now())"
-            " RETURNING opt_out, unreachable, display_name",
+            " RETURNING unreachable, display_name",
             [uuid.uuid7(), a.id],
         )
-        assert cursor.fetchone() == (False, False, "")
+        assert cursor.fetchone() == (False, "")
 
 
 def test_outbound_pending_index_is_partial() -> None:

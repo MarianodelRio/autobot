@@ -43,8 +43,7 @@ Después, según lo que vayas a hacer: [Añadir un pack](desarrollo/anadir-un-pa
 | Restaurar un backup | [Restaurar](procedimientos/restaurar.md) |
 | Rotar un secreto de canal | [Rotar secretos](procedimientos/rotar-secretos.md) |
 | Actualizar horarios de `bus` | [Horarios de bus](procedimientos/horarios-bus.md) |
-| Atender un derecho de datos (RGPD) | [Derechos de los interesados](cumplimiento/derechos-de-los-interesados.md), [Retención y RGPD](procedimientos/retencion-rgpd.md) |
-| Cumplimiento legal y protección de datos (contrato, roles, brechas) | [Cumplimiento](cumplimiento/README.md), [Checklist de lanzamiento](cumplimiento/checklist-lanzamiento.md) |
+| Exportar u olvidar un contacto, borrar un negocio o ver los plazos de retención | [Retención y borrado de datos](procedimientos/retencion-rgpd.md) |
 | Hacer el mantenimiento periódico | [Mantenimiento](procedimientos/mantenimiento.md) |
 | Resolver algo que falla en producción | [Incidencias](incidencias/README.md) (por síntoma) |
 | Buscar un comando | [Comandos](referencia/comandos.md) |

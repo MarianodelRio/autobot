@@ -51,7 +51,7 @@ def test_booking_over_every_channel(
     providers: Providers = request.getfixturevalue("recorded_providers")
     setup, calendars = salon_setup
     slug = "wa" if channel == "whatsapp" else "tg"
-    tenant = setup(
+    setup(
         channel=channel,
         slug=slug,
         config={"reminders_enabled": True, "reminder_window_hours": [0, 2]},
@@ -82,12 +82,6 @@ def test_booking_over_every_channel(
         )
     else:
         assert providers.meta and providers.telegram == []
-
-    # A contact with `opt_out` (no bot command sets it since ADR-028) gets no reminder.
-    Contact.objects.using("owner").update(opt_out=True)
-    periodic.run_periodic(tenant.id, "calendar_sweep", int(time.time()))
-    assert Contact.objects.using("owner").get().opt_out
-    assert not OutboundMessage.objects.using("owner").filter(kind="proactive").exists()
 
 
 @pytest.mark.parametrize("channel", ["whatsapp", "telegram"])

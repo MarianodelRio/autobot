@@ -122,8 +122,8 @@ también se puede pasar en la línea de comandos.
 | `telegram_poll [<slug>]` | *Long polling* de un bot de Telegram (desarrollo local) |
 | `owner_invite <slug>` | Genera un enlace de un solo uso para que el dueño del negocio enlace su Telegram |
 | `owner_unlink <slug>` | Desconecta el Telegram del dueño del negocio |
-| `contact_export <slug> <external_id> [--channel main\|demo_tg\|demo_wa] --output <fichero>` | Exporta los datos de un contacto a un fichero privado (derechos RGPD) |
-| `tenant_data_export <slug> --output <fichero>` | Exporta todos los datos de un negocio a un fichero privado (derechos RGPD) |
+| `contact_export <slug> <external_id> [--channel main\|demo_tg\|demo_wa] --output <fichero>` | Exporta los datos de un contacto a un fichero privado (si pide sus datos) |
+| `tenant_data_export <slug> --output <fichero>` | Exporta todos los datos de un negocio a un fichero privado (al darlo de baja) |
 | `contact_forget <slug> <external_id> [--channel ...]` | Borra los datos de un contacto |
 | `tenant_purge <slug>` | Solo tras la baja: borra todo lo que el sistema guarda del negocio, incluida su fila y su slug (que queda libre); exige escribir el slug |
 | `privacy_ledger_export` | Imprime el libro de supresiones (JSON lines, sin datos personales). `backup.sh` ya lo sube cada hora a restic (ADR-025); la exportación manual es una copia opcional |

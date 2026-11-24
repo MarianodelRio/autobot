@@ -1,5 +1,5 @@
-"""Disconnect a business owner's Telegram chat (change of owner, or a GDPR
-request) (ADR-007)."""
+"""Disconnect a business owner's Telegram chat (change of owner, or the owner
+asks for it) (ADR-007)."""
 
 from typing import Any
 

@@ -63,7 +63,6 @@ def sample_contact(channel: ChannelType) -> ContactInfo:
         external_id="34600000001" if whatsapp else "100000001",
         phone="+34600000001" if whatsapp else None,
         display_name="Lucía",
-        opt_out=False,
     )
 
 

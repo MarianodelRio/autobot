@@ -27,7 +27,7 @@ sequenceDiagram
 - **Canje** (`start_link`): el código es de un solo uso; vincular borra la invitación, así que repetirlo da `invalid`. Un negocio dado de baja no se puede vincular.
 - **Chat sustituido**: si el canje cambia el chat conectado de un negocio por otro, `start_link` devuelve el chat anterior (`replaced_chat_id`) y el bot le envía «Este chat ha dejado de recibir los avisos de <negocio>…» (`texts.chat_replaced`) por la vía normal del bot (`deliver`), sin transacción abierta y una sola vez: si falla solo se registra, sin id de chat, y no se reintenta a ciegas. Volver a canjear desde el mismo chat no avisa.
 - **Un chat, un negocio real**: un chat se conecta como mucho a un negocio real (`taken` en otro caso); solo los negocios de demo pueden compartir chat. La comprobación está en código (`_chat_taken_by_another_real_tenant`), no en una restricción de base de datos, porque la demo la rompe a propósito.
-- **Desvincular**: `manage.py owner_unlink` (cambio de dueño, petición RGPD). Los vínculos no dependen de los secretos del bot, así que rotarlos no los rompe.
+- **Desvincular**: `manage.py owner_unlink` (cambio de dueño, o lo pide el dueño). Los vínculos no dependen de los secretos del bot, así que rotarlos no los rompe.
 
 ## Cómo llega un mensaje
 

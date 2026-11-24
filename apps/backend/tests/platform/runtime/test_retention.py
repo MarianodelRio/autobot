@@ -350,29 +350,6 @@ def test_the_jobs_cleanup_is_its_own_periodic_task() -> None:
     assert jobs_cleanup.queueing_lock == "jobs_cleanup"
 
 
-def test_an_expired_contact_that_opted_out_keeps_only_its_suppression(
-    tenants: Any, settings: Settings
-) -> None:
-    """The opt-out outlives the retention period (it is what stops reminders for a later
-    manual appointment of the same phone); only the name is cleared."""
-    a = loaded(tenants)
-    settings.RETENTION_CLEANUP_ENABLED = True
-    kept = contact(a, "optout")
-    gone = contact(a, "plain")
-    Contact.objects.using("owner").filter(id=kept.id).update(
-        opt_out=True,
-        display_name="Lucía",
-        last_activity_at=NOW - timedelta(days=400),
-    )
-    Contact.objects.using("owner").filter(id=gone.id).update(
-        display_name="Pedro", last_activity_at=NOW - timedelta(days=400)
-    )
-    retention.cleanup(now=NOW)
-    row = Contact.objects.using("owner").get(id=kept.id)
-    assert row.opt_out is True and row.display_name == ""
-    assert not Contact.objects.using("owner").filter(id=gone.id).exists()
-
-
 def test_selector_and_expired_conversations(tenants: Any, settings: Settings) -> None:
     a = loaded(tenants)
     settings.RETENTION_CLEANUP_ENABLED = True

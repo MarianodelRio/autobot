@@ -66,27 +66,3 @@ def test_onboarding_never_confirms_manuals(salon_setup: Any) -> None:
     calendars.main.add(event)
     assert periodic.dispatch("salon", "calendar_sweep", int(time.time())) == 0
     assert not OutboundMessage.objects.using("owner").exists()
-
-
-def test_opted_out_contact_gets_no_reminder(salon_setup: Any) -> None:
-    from django.utils import timezone
-
-    setup, calendars = salon_setup
-    tenant = setup(config={"reminders_enabled": True})
-    with tenant_tx(tenant.id):
-        contact = Contact.objects.create(
-            tenant_id=tenant.id, channel=Channel.MAIN, external_id="34600000001", opt_out=True
-        )
-    now = timezone.now()
-    calendars.main.add(
-        CalendarEvent(
-            "optout",
-            "Corte - Lucía",
-            "",
-            now + timedelta(hours=24),
-            now + timedelta(hours=24, minutes=30),
-            private={"fp_key": "key", "fp_contact": str(contact.id)},
-        )
-    )
-    periodic.run_periodic(tenant.id, "calendar_sweep", int(time.time()))
-    assert not OutboundMessage.objects.using("owner").exists()
