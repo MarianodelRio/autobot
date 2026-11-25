@@ -13,7 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { qk } from "@/lib/queries";
+import { LIVE, qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 /** the version-history and rollback API already existed; this is its panel
@@ -35,6 +35,7 @@ export function HistorySection({
   const [comment, setComment] = useState("");
   const versions = useInfiniteQuery({
     queryKey: qk.tenantVersions(slug),
+    ...LIVE,
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -68,7 +69,7 @@ export function HistorySection({
       ),
     success: "Restaurado: se aplica en unos segundos",
     error: "No se pudo restaurar.",
-    invalidate: [qk.tenant(slug), qk.tenantVersions(slug)],
+    tenant: slug,
     onSuccess: () => {
       setComment("");
       setPreview(null);

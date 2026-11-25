@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { errorDetail } from "@/lib/errors";
-import { invalidateKeys } from "@/lib/queries";
+import { invalidateKeys, invalidateTenantEverything } from "@/lib/queries";
 
 type Resolvable<T, V, R> = R | ((data: T, variables: V) => R);
 
@@ -23,6 +23,8 @@ export function useApiMutation<T, V = void>({
   success,
   error,
   invalidate,
+  tenant,
+  keepSetup,
   onSuccess,
   onError,
 }: {
@@ -31,6 +33,11 @@ export function useApiMutation<T, V = void>({
   /** Fallback text of the error toast (the backend's message wins). */
   error?: string;
   invalidate?: Resolvable<T, V, readonly QueryKey[]>;
+  /** Slug of the tenant this write changes: everything of it (and the lists and
+   * summaries that show it) is refreshed. Every tenant mutation must pass it. */
+  tenant?: Resolvable<T, V, string>;
+  /** With `tenant`: do not refetch the setup steps (see invalidateTenantEverything). */
+  keepSetup?: boolean;
   onSuccess?: (data: T, variables: V) => void;
   onError?: (err: unknown) => void;
 }) {
@@ -39,6 +46,10 @@ export function useApiMutation<T, V = void>({
     mutationFn: fn,
     onSuccess: (data, variables) => {
       if (success) toast.success(resolve(success, data, variables));
+      if (tenant)
+        invalidateTenantEverything(client, resolve(tenant, data, variables), {
+          keepSetup,
+        });
       if (invalidate)
         invalidateKeys(client, resolve(invalidate, data, variables));
       onSuccess?.(data, variables);

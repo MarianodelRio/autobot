@@ -1,7 +1,7 @@
 // The installed shadcn theme renders with the panel's existing components and styles.
 import Form from "@rjsf/shadcn";
 import { createSchemaUtils, type RJSFSchema } from "@rjsf/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleHelp } from "lucide-react";
 import {
   type ComponentProps,
@@ -41,7 +41,10 @@ import {
   sectionSchema,
 } from "@/lib/form-draft";
 import { validator } from "@/lib/form-validator";
-import { packSchemaQueryOptions, qk, tenantChanged } from "@/lib/queries";
+import {
+  invalidateTenantEverything,
+  packSchemaQueryOptions,
+} from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 import { CalendarSection } from "./calendar-section";
 import { ChannelSection } from "./channel-section";
@@ -477,6 +480,7 @@ function ConfigSections({
         ?.scrollIntoView({ block: "start", behavior: "smooth" }),
     );
   }
+  const client = useQueryClient();
   const save = useApiMutation({
     // The document sent is passed in, so on success the baseline is exactly what the
     // server stored, even if the person kept typing while the request was in flight.
@@ -493,15 +497,17 @@ function ConfigSections({
       ),
     success: (result) =>
       `Guardado: versión ${result.version}; se aplica en unos segundos`,
-    invalidate: [...tenantChanged(detail.slug), qk.tenantSetup(detail.slug)],
+    tenant: detail.slug,
     onSuccess: (result, sent) => saved(sent, result.version),
     onError: (caught) => {
       const error = caught as ApiError;
       if (error.status === 422) {
         setErrors(error.details);
         openFailing(error.details);
-      } else if (error.status === 409) setConflict(true);
-      else setErrors([error.message || "No se pudo guardar."]);
+      } else if (error.status === 409) {
+        setConflict(true);
+        invalidateTenantEverything(client, detail.slug);
+      } else setErrors([error.message || "No se pudo guardar."]);
     },
   });
   async function loadLatest(replace: boolean) {

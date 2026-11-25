@@ -6,7 +6,7 @@ import { ErrorState } from "@/components/error-state";
 import { StatusDot } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/errors";
-import { qk } from "@/lib/queries";
+import { LIVE, qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 import { SecretsForm } from "./secrets-form";
 
@@ -15,6 +15,7 @@ type Detail = components["schemas"]["TenantDetail"];
 export function ChannelSection({ detail }: { detail: Detail }) {
   const secrets = useQuery({
     queryKey: qk.tenantSecrets(detail.slug),
+    ...LIVE,
     queryFn: () =>
       unwrap(
         api.GET("/tenants/{slug}/secrets", {
@@ -26,6 +27,7 @@ export function ChannelSection({ detail }: { detail: Detail }) {
   const isTelegram = detail.channel_type === "telegram";
   const webhookStatus = useQuery({
     queryKey: qk.tenantWebhook(detail.slug),
+    ...LIVE,
     queryFn: () =>
       unwrap(
         api.GET("/tenants/{slug}/telegram-webhook", {
@@ -44,7 +46,7 @@ export function ChannelSection({ detail }: { detail: Detail }) {
         }),
       ),
     success: "Webhook registrado.",
-    invalidate: [qk.tenant(detail.slug), qk.tenantWebhook(detail.slug)],
+    tenant: detail.slug,
   });
   if (detail.channel_type === null) return null;
   return (

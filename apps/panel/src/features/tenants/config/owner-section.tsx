@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
-import { qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 type Detail = components["schemas"]["TenantDetail"];
@@ -32,7 +31,7 @@ export function OwnerSection({ detail }: { detail: Detail }) {
           params: { path: { slug: detail.slug } },
         }),
       ),
-    invalidate: [qk.tenant(detail.slug)],
+    tenant: detail.slug,
     onSuccess: (result) => setLink(result),
   });
   const unlink = useApiMutation({
@@ -44,7 +43,7 @@ export function OwnerSection({ detail }: { detail: Detail }) {
       ),
     success: (result) =>
       result.had_chat ? "Dueño desconectado." : "Invitación cancelada.",
-    invalidate: [qk.tenant(detail.slug)],
+    tenant: detail.slug,
     onSuccess: () => setConfirmUnlink(false),
   });
   const label = detail.owner_linked

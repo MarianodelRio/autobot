@@ -6,11 +6,12 @@ import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { errorMessage } from "@/lib/errors";
-import { qk } from "@/lib/queries";
+import { LIVE, qk } from "@/lib/queries";
 
 export function NotificationsTab({ slug }: { slug: string }) {
   const q = useInfiniteQuery({
     queryKey: qk.notifications(slug),
+    ...LIVE,
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(

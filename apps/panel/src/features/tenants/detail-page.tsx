@@ -21,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/features/activity/components/timeline";
 import { errorMessage } from "@/lib/errors";
 import { formatEur, formatNumber } from "@/lib/format";
-import { qk, tenantChanged } from "@/lib/queries";
+import { LIVE, qk } from "@/lib/queries";
 import { HEALTH_LEVEL, levelOf } from "@/lib/status-levels";
 import { useApiMutation } from "@/lib/use-api-mutation";
 import { ConfigEditor } from "./config/editor";
@@ -37,6 +37,7 @@ function Summary({ detail }: { detail: Detail }) {
   const [load, setLoad] = useState(false);
   const summary = useQuery({
     queryKey: qk.tenantSummary(detail.slug),
+    ...LIVE,
     queryFn: () =>
       unwrap(api.GET("/tenants/{slug}/summary", param(detail.slug))),
     enabled: load,
@@ -44,7 +45,7 @@ function Summary({ detail }: { detail: Detail }) {
   const health = useApiMutation({
     fn: () =>
       unwrap(api.POST("/tenants/{slug}/health-check", param(detail.slug))),
-    invalidate: tenantChanged(detail.slug),
+    tenant: detail.slug,
   });
   return (
     <div className="space-y-6">
@@ -194,6 +195,7 @@ export function TenantDetailPage({
   const setTab = onTabChange ?? setLocalTab;
   const q = useQuery({
     queryKey: qk.tenant(slug),
+    ...LIVE,
     queryFn: () => unwrap(api.GET("/tenants/{slug}", param(slug))),
   });
   if (q.isPending) return <p>Cargando cliente…</p>;

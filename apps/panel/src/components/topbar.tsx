@@ -1,6 +1,35 @@
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { NAV_SECTIONS } from "./nav-sections";
+
+/** Refetches everything on screen. It is an explicit request, so it also refreshes
+ * the setup steps (their «Comprobar» results are then dropped, as the label says).
+ * Unsaved edits live in component state, never in the query cache: they survive. */
+export function ReloadButton() {
+  const client = useQueryClient();
+  const fetching = useIsFetching() > 0;
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="ml-auto"
+      aria-label="Recargar"
+      title="Recargar los datos de esta pantalla (descarta los resultados de «Comprobar»)"
+      onClick={() => void client.invalidateQueries({ refetchType: "active" })}
+    >
+      <RefreshCw
+        aria-hidden="true"
+        data-fetching={fetching}
+        className={fetching ? "animate-spin" : undefined}
+      />
+      Recargar
+    </Button>
+  );
+}
 
 export function Topbar() {
   const pathname = useRouterState({
@@ -14,6 +43,7 @@ export function Topbar() {
       <span className="text-sm text-muted-foreground">
         {current?.title ?? ""}
       </span>
+      <ReloadButton />
     </header>
   );
 }

@@ -44,7 +44,7 @@ export function DatasetSection({
       );
     },
     success: "Horarios actualizados.",
-    invalidate: [qk.tenantDataset(detail.slug, dataset)],
+    tenant: detail.slug,
     onSuccess: () => setConfirming(false),
   });
   if (status.isPending) return <p className="text-sm">Cargando horarios…</p>;

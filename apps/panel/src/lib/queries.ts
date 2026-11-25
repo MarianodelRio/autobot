@@ -57,17 +57,71 @@ export function invalidateKeys(client: QueryClient, keys: readonly QueryKey[]) {
   for (const queryKey of keys) void client.invalidateQueries({ queryKey });
 }
 
-/** Keys stale after editing one tenant: its detail and the Resumen screen. */
-export const tenantChanged = (slug: string): QueryKey[] => [
-  qk.tenant(slug),
-  qk.overview(),
-];
-/** ... after its status changes: the list shows it too. */
-export const tenantLifecycleChanged = (slug: string): QueryKey[] => [
-  qk.tenant(slug),
+/** Live queries: refetched every 30 s while the tab is visible. Spread it into the
+ * options of anything that shows data other people or the backend change on their
+ * own. Never into: setup steps (they hold the «Comprobar» results only in the
+ * cache), logs, console/audit results, version previews or QR images. */
+export const LIVE_REFETCH_MS = 30_000;
+export const LIVE = {
+  refetchInterval: LIVE_REFETCH_MS,
+  refetchIntervalInBackground: false,
+} as const;
+
+/** First element of every key whose second element is a tenant slug. */
+const TENANT_SCOPED = new Set([
+  "tenant",
+  "tenant-setup",
+  "tenant-secrets",
+  "tenant-webhook",
+  "tenant-versions",
+  "tenant-version",
+  "tenant-dataset",
+  "tenant-summary",
+  "activation-checklist",
+  "contacts",
+  "notifications",
+  "activity",
+  "audit",
+]);
+
+/** Cross-tenant views that show data of a tenant. */
+const TENANT_VIEWS: readonly QueryKey[] = [
   qk.tenants(),
   qk.overview(),
+  qk.incidents(),
+  qk.alerts(),
+  qk.system(),
 ];
+
+/** Does this query key hold data of tenant `slug`? (`activity` / `audit` take ""
+ * for "every tenant", which includes this one.) */
+export function isTenantKey(queryKey: QueryKey, slug: string): boolean {
+  const [scope, who] = queryKey;
+  return (
+    typeof scope === "string" &&
+    TENANT_SCOPED.has(scope) &&
+    (who === slug ||
+      ((scope === "activity" || scope === "audit") && who === ""))
+  );
+}
+
+/** The one rule after any write on a tenant: everything of that tenant and the
+ * cross-tenant views that show it are stale. `keepSetup` leaves the setup steps
+ * alone, for the mutations that just wrote a step result into the cache by hand
+ * (the backend never returns «Comprobar» results, so a refetch would wipe it). */
+export function invalidateTenantEverything(
+  client: QueryClient,
+  slug: string,
+  { keepSetup = false }: { keepSetup?: boolean } = {},
+) {
+  void client.invalidateQueries({
+    predicate: ({ queryKey }) =>
+      isTenantKey(queryKey, slug) &&
+      !(keepSetup && queryKey[0] === qk.tenantSetup(slug)[0]),
+  });
+  invalidateKeys(client, TENANT_VIEWS);
+}
+
 /** ... after deleting a tenant. */
 export const tenantRemoved = (): QueryKey[] => [
   qk.tenants(),
@@ -75,14 +129,10 @@ export const tenantRemoved = (): QueryKey[] => [
   qk.incidents(),
 ];
 
-export const invalidateTenant = (client: QueryClient, slug: string) =>
-  invalidateKeys(client, tenantChanged(slug));
-export const invalidateTenantLifecycle = (client: QueryClient, slug: string) =>
-  invalidateKeys(client, tenantLifecycleChanged(slug));
-
 export const tenantsQueryOptions = () =>
   queryOptions({
     queryKey: qk.tenants(),
+    ...LIVE,
     queryFn: () => unwrap(api.GET("/tenants")),
   });
 

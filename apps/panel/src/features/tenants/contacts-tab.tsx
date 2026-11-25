@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sheet";
 import { downloadJson } from "@/lib/download";
 import { errorMessage } from "@/lib/errors";
-import { qk } from "@/lib/queries";
+import { LIVE, qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 export function ContactsTab({ slug }: { slug: string }) {
@@ -34,7 +34,7 @@ export function ContactsTab({ slug }: { slug: string }) {
       unwrap(api.POST("/contacts/{id}/forget", { params: { path: { id } } })),
     success: "Contacto olvidado.",
     error: "No se pudo olvidar el contacto.",
-    invalidate: [qk.contacts(slug)],
+    tenant: slug,
     onSuccess: () => {
       setForgetOpen(false);
       setSelected(null);
@@ -42,6 +42,7 @@ export function ContactsTab({ slug }: { slug: string }) {
   });
   const list = useInfiniteQuery({
     queryKey: qk.contactsSearch(slug, search),
+    ...LIVE,
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(

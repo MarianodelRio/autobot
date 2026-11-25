@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorDetail } from "@/lib/errors";
-import { invalidateKeys, qk } from "@/lib/queries";
+import { invalidateTenantEverything } from "@/lib/queries";
 
 type SecretField = components["schemas"]["SecretField"];
 
@@ -71,11 +71,7 @@ export function SecretsForm({
       }
       setOpen(false);
       reset();
-      invalidateKeys(client, [
-        qk.tenantSecrets(slug),
-        qk.tenant(slug),
-        qk.tenantWebhook(slug),
-      ]);
+      invalidateTenantEverything(client, slug);
     } catch (caught) {
       // The typed values stay in the form: only a success clears them.
       setError(

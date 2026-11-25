@@ -39,6 +39,13 @@ Las rutas de `routes/` son finas: solo declaran la ruta y apuntan al componente 
 - **shadcn:** los componentes de `components/ui/` se dejan tal cual, sin podar exports sin uso, para poder actualizarlos con el CLI.
 - **Estilo:** Biome formatea y lintea (`pnpm -C apps/panel check`); `make fix` lo aplica.
 
+## Refresco de datos
+
+- **Toda mutación de un cliente pasa `tenant: slug`** a `useApiMutation`: invalida con `invalidateTenantEverything` (`src/lib/queries.ts`) todas las claves del cliente (las de `qk` con el slug en la segunda posición, incluidas `activity` y `audit`) y las vistas globales (`tenants`, `overview`, `incidents`, `alerts`, `system`). Una clave nueva con slug se añade a `TENANT_SCOPED` y al test de `queries.test.tsx`. Se puede añadir `invalidate` para claves ajenas al cliente.
+- **Trampa de los pasos del alta**: `useSetupSteps` guarda los resultados de «Comprobar» y de las acciones solo en la caché (`setQueryData`); el GET del backend nunca llama a Meta o Telegram y devuelve esos pasos como pendientes. Por eso esa query no se refresca sola y las mutaciones que escriben un paso pasan `keepSetup: true` (refrescan todo menos los pasos). Guardar la configuración sí invalida los pasos: los resultados antiguos ya no valen.
+- **Queries vivas**: `...LIVE` (`src/lib/queries.ts`) añade `refetchInterval` de 30 s sin refresco en segundo plano. Úsalo en datos que cambian por su cuenta; no en pasos del alta, logs, consola, auditoría, vistas previas ni QR.
+- El botón **Recargar** (`components/topbar.tsx`) invalida las queries activas. El editor de configuración no se ve afectado: su borrador vive en estado de componente y solo sigue al `detail` refrescado si no está modificado (`use-config-draft.ts`, con test).
+
 ## Cómo añadir una pantalla
 
 Ejemplo: la página de Demo, `features/demo-invites/` y `routes/_app/demo.tsx`.

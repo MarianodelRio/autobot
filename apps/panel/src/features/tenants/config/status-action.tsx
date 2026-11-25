@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorDetail } from "@/lib/errors";
-import { qk, tenantLifecycleChanged } from "@/lib/queries";
+import { LIVE, qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 export function StatusAction({
@@ -42,6 +42,7 @@ export function StatusAction({
         : "Activar";
   const checklist = useQuery({
     queryKey: qk.activationChecklist(slug),
+    ...LIVE,
     queryFn: () =>
       unwrap(
         api.GET("/tenants/{slug}/activation-checklist", {
@@ -60,7 +61,8 @@ export function StatusAction({
           params: { path: { slug, step: "health" } },
         }),
       ),
-    onSuccess: () => void checklist.refetch(),
+    tenant: slug,
+    keepSetup: true,
   });
   const mutation = useApiMutation({
     fn: () =>
@@ -74,7 +76,7 @@ export function StatusAction({
         }),
       ),
     success: "Estado actualizado.",
-    invalidate: tenantLifecycleChanged(slug),
+    tenant: slug,
     onSuccess: () => {
       setOpen(false);
       setTyped("");

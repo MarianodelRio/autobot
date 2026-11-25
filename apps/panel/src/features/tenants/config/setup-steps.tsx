@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorDetail, errorMessage } from "@/lib/errors";
-import { qk, tenantLifecycleChanged } from "@/lib/queries";
+import { qk } from "@/lib/queries";
 import { levelOf, STEP_LEVEL } from "@/lib/status-levels";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
@@ -35,6 +35,8 @@ function TesterCandidates({ slug, step }: { slug: string; step: SetupStep }) {
         }),
       ),
     success: "Tester añadido.",
+    tenant: slug,
+    keepSetup: true,
     error: "No se pudo añadir el tester.",
     onSuccess: (result) => {
       client.setQueryData<SetupStep[]>(qk.tenantSetup(slug), (previous) =>
@@ -92,6 +94,8 @@ function StepActionButton({
         }),
       ),
     success: (result) => result.detail,
+    tenant: slug,
+    keepSetup: true,
     onSuccess: (result) => {
       setOpen(false);
       setPin("");
@@ -194,9 +198,11 @@ export function StepRow({
           params: { path: { slug, step: step.key } },
         }),
       ),
-    // The forced health check also refreshes what «templates» and the activation
-    // checklist read from the cache.
-    invalidate: step.key === "health" ? [qk.activationChecklist(slug)] : [],
+    // A check can change what the rest of the tenant shows (the forced health
+    // check feeds the activation checklist); the step result itself is written
+    // below and must survive, hence keepSetup.
+    tenant: slug,
+    keepSetup: true,
     onSuccess: (result) => {
       client.setQueryData<SetupStep[]>(qk.tenantSetup(slug), (previous) =>
         previous?.map((item) => (item.key === step.key ? result : item)),
@@ -299,7 +305,7 @@ function ActivateButton({ slug, blocked }: { slug: string; blocked: boolean }) {
         }),
       ),
     success: "Cliente activado.",
-    invalidate: tenantLifecycleChanged(slug),
+    tenant: slug,
     onSuccess: () => {
       setOpen(false);
       setTyped("");

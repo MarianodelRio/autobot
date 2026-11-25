@@ -268,6 +268,13 @@ los comandos se lanzan desde el portátil, con la clave de operación y el alias
 - `panel_user exists <usuario>` sale con código 0 si existe y 1 si no; lo usa `make local`
   en local para no pedir el alta en cada arranque.
 
+## Datos al día
+
+- El botón **Recargar** de la barra superior (siempre visible) vuelve a pedir los datos de la pantalla; el icono gira mientras hay peticiones en curso. Es una petición explícita: también refresca los pasos del alta, así que los resultados de «Comprobar» se descartan. Los cambios sin guardar de la configuración no se pierden.
+- Cada 30 s, solo con la pestaña visible, se refrescan solos: la lista de clientes, el detalle y el resumen de un cliente, el historial de versiones, secretos y webhook, la lista de avisos y contactos, la checklist de activación y las invitaciones de demo (Resumen, Incidencias y Sistema ya lo hacían).
+- No se refrescan solos los pasos del alta (se perderían los resultados de «Comprobar», que solo viven en el navegador), ni los logs, ni los resultados de la consola de datos o de la búsqueda de auditoría, ni las vistas previas de versiones ni los QR.
+- Al guardar o cambiar algo de un cliente (configuración, restaurar versión, aplicar horarios, credenciales, webhook, dueño, estado), se refresca todo lo suyo sin recargar el navegador: ficha, canal, enlace y QR, pasos del alta, checklist, historial, resumen, la lista de clientes y Resumen. Si el guardado choca con una versión más reciente, también se refresca.
+
 ## Sesión y acceso
 
 - La SPA y la API viven en el contenedor `panel` (puerto 8080, solo en

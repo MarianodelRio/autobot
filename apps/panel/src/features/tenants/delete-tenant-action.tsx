@@ -41,6 +41,7 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
       ),
     success: "Cliente eliminado.",
     invalidate: tenantRemoved(),
+    tenant: detail.slug,
     onSuccess: (result) => {
       if (result.telegram_webhook_removed === false) {
         toast.warning(

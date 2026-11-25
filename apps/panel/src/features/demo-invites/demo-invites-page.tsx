@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { errorDetail } from "@/lib/errors";
-import { qk } from "@/lib/queries";
+import { LIVE, qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 type Invite = components["schemas"]["DemoInviteOut"];
@@ -214,6 +214,7 @@ function InviteQr({ invite }: { invite: Invite }) {
 export function DemoInvitesPage() {
   const query = useInfiniteQuery({
     queryKey: qk.demoInvites(),
+    ...LIVE,
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(
