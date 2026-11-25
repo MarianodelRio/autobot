@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import QuerySet
 from django.utils import timezone
 from procrastinate import App
 from procrastinate.contrib.django.models import ProcrastinateJob
@@ -72,33 +71,17 @@ def _past_not_after(message: OutboundMessage) -> bool:
     return limit is not None and limit <= timezone.now()
 
 
+def can_discard(message: OutboundMessage) -> tuple[bool, str]:
+    """Any ambiguous send, with no waiting time: the person decided (ADR-031)."""
+    if message.status != "unknown":
+        return False, "No es un envío ambiguo."
+    return True, ""
+
+
 def can_resend(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, str]:
     ok, reason = can_mark_sent(message)
     if not ok:
         return ok, reason
-    return _deliverable(message, db_tenant=db_tenant)
-
-
-# What a bulk resend (after an incident) may pick up.
-BULK_STATUSES = ("failed", "unknown", "expired")
-BULK_CAP = 500  # messages per action
-
-
-def can_bulk_resend(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, str]:
-    """Like `can_resend`, for `failed` and `expired` too; a recent `unknown` is left to
-    resolve itself, and a contact known to be unreachable is not retried."""
-    if message.status not in BULK_STATUSES:
-        return False, "El mensaje no está en un estado reenviable."
-    if message.status == "unknown":
-        ok, reason = can_mark_sent(message)
-        if not ok:
-            return ok, reason
-    if message.status == "expired" and message.kind == "reply":
-        # ADR-024: a late reply is never delivered (its buttons may be stale); the
-        # contact already got an apology instead.
-        return False, "Una respuesta caducada no se reenvía (ADR-024)."
-    if message.contact.unreachable:
-        return False, "El contacto está marcado como inalcanzable."
     return _deliverable(message, db_tenant=db_tenant)
 
 
@@ -156,6 +139,28 @@ def mark_sent(outbound_id: UUID, *, actor: str) -> Result:
     return Result(True, "Marcado como enviado.")
 
 
+def discard(outbound_id: UUID, *, actor: str) -> Result:
+    """Final state `discarded`: it is not resent, the reconciliation ignores it and it does
+    not come back (a later provider status that proves delivery still makes it `sent`)."""
+    with transaction.atomic(using=OWNER):
+        message = OutboundMessage.objects.using(OWNER).select_for_update().get(pk=outbound_id)
+        ok, reason = can_discard(message)
+        if not ok:
+            return Result(False, reason)
+        message.status = "discarded"
+        message.unknown_at = None
+        message.save(using=OWNER, update_fields=["status", "unknown_at"])
+        audit.record(
+            actor=actor,
+            action="outbound.discard",
+            summary="Operador descarta un envío ambiguo.",
+            tenant_id=message.tenant_id,
+            target_type="outbound_message",
+            target_id=str(message.pk),
+        )
+    return Result(True, "Envío descartado.")
+
+
 def _requeue(message: OutboundMessage) -> None:
     """A person decided to resend it: it gets a fresh time limit (or it would expire at
     once) and the platform never adds its own resend on top (`ambiguous_resends`)."""
@@ -183,76 +188,6 @@ def _requeue(message: OutboundMessage) -> None:
         priority=send_priority(message.kind),
         alias=OWNER,
     )
-
-
-def bulk_queryset(
-    *,
-    tenant_id: UUID | None,
-    statuses: list[str],
-    since: datetime | None,
-    until: datetime | None,
-) -> QuerySet[OutboundMessage]:
-    qs = OutboundMessage.objects.using(OWNER).filter(status__in=statuses)
-    if tenant_id is not None:
-        qs = qs.filter(tenant_id=tenant_id)
-    if since is not None:
-        qs = qs.filter(created_at__gte=since)
-    if until is not None:
-        qs = qs.filter(created_at__lt=until)
-    # What `can_bulk_resend` always refuses, left out so the preview and the cap are exact:
-    # late replies (ADR-024) and messages past the pack's deadline.
-    now = timezone.now()
-    qs = qs.exclude(status="expired", kind="reply").exclude(not_after__lte=now)
-    return qs
-
-
-@dataclass(frozen=True)
-class BulkResult:
-    selected: int
-    resent: int
-    skipped: int
-    over_cap: int  # matched but beyond the cap: not touched, run the action again
-
-
-def resend_many(ids: list[UUID], *, over_cap: int = 0, actor: str) -> BulkResult:
-    """Resend each message in its own short transaction (a failure of one never undoes the
-    others), then one audit entry with counts only."""
-    resent = 0
-    # Written before the loop: if the worker dies midway, the requeued messages (some may be
-    # `unknown`, with a duplicate risk) still have an audit trail. Counts only.
-    audit.record(
-        actor=actor,
-        action="outbound.resend_bulk_start",
-        summary=f"Operador inicia reenvío en bloque de {len(ids)} mensajes.",
-        target_type="outbound_message",
-    )
-    for outbound_id in ids:
-        with transaction.atomic(using=OWNER):
-            message = (
-                OutboundMessage.objects.using(OWNER)
-                .select_related("contact")
-                .select_for_update(of=("self",))
-                .filter(pk=outbound_id)
-                .first()
-            )
-            if message is None:
-                continue
-            db_tenant = Tenant.objects.using(OWNER).select_for_update().get(pk=message.tenant_id)
-            if not can_bulk_resend(message, db_tenant=db_tenant)[0]:
-                continue
-            _requeue(message)
-            resent += 1
-    result = BulkResult(len(ids), resent, len(ids) - resent, over_cap)
-    audit.record(
-        actor=actor,
-        action="outbound.resend_bulk",
-        summary=(
-            f"Operador reenvía en bloque: {result.resent} reenviados,"
-            f" {result.skipped} omitidos, {result.over_cap} fuera del límite."
-        ),
-        target_type="outbound_message",
-    )
-    return result
 
 
 def resend(outbound_id: UUID, *, actor: str) -> Result:

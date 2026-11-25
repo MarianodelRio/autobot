@@ -31,7 +31,9 @@ MADRID = ZoneInfo("Europe/Madrid")
 type Level = Literal["ok", "notice", "warning", "critical"]
 _LEVELS: tuple[Level, ...] = ("ok", "notice", "warning", "critical")  # least to most severe
 _RANK: dict[str, int] = {level: rank for rank, level in enumerate(_LEVELS)}
-_FAILED = (OutboundMessage.Status.FAILED, OutboundMessage.Status.EXPIRED)
+# Rejected sends only: a lapsed reply (`expired`, ADR-024) is not a failure and a `discarded`
+# one is a person's decision (ADR-031).
+_FAILED = (OutboundMessage.Status.FAILED,)
 
 
 def worst(levels: list[str]) -> Level:

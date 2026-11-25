@@ -145,6 +145,7 @@ def _channel_label(tenant: LoadedTenant) -> Literal["whatsapp", "telegram", "dem
     return "demo"
 
 
+# `discarded` (a person's decision, ADR-031) is neither failed nor ambiguous: not counted.
 def _stale_outbound(now: datetime, tenant_ids: list[UUID]) -> int:
     return (
         OutboundMessage.objects.using("owner")

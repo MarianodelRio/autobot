@@ -320,11 +320,11 @@ def test_send_posts_sendmessage_with_the_chat_id() -> None:
         (httpx.Response(401, json=load("error_401.json")), Rejected("HTTP 401, error 401", "auth")),
         (
             httpx.Response(403, json=load("error_403.json")),
-            Rejected("HTTP 403, error 403", "recipient"),
+            Rejected("HTTP 403, error 403 (bot was blocked by the user)", "recipient"),
         ),
         (
             httpx.Response(400, json=load("error_400.json")),
-            Rejected("HTTP 400, error 400", "other"),
+            Rejected("HTTP 400, error 400 (chat not found)", "other"),
         ),
         (httpx.Response(429, json=load("error_429.json")), RetryLater(17.0)),
         (httpx.Response(429), RetryLater(None)),
@@ -360,7 +360,9 @@ def test_network_errors(error: Exception, outcome: object) -> None:
 def test_token_and_descriptions_are_never_logged(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG)
     for answer in (
-        httpx.Response(403, json=load("error_403.json")),
+        httpx.Response(
+            403, json={"ok": False, "error_code": 403, "description": "Forbidden: free text Ana"}
+        ),
         httpx.ConnectError("https://api.telegram.org/bot123:SECRET-TOKEN/sendMessage"),
         httpx.ReadTimeout("https://api.telegram.org/bot123:SECRET-TOKEN/sendMessage"),
     ):
@@ -368,7 +370,7 @@ def test_token_and_descriptions_are_never_logged(caplog: pytest.LogCaptureFixtur
             {"text": "x"}, "1", None, SECRETS, OUTBOUND_ID
         )
     assert "SECRET-TOKEN" not in caplog.text
-    assert "blocked" not in caplog.text
+    assert "free text" not in caplog.text  # only a few known phrases are ever kept
 
 
 # ── The harness renders every scenario message with both adapters ─────────

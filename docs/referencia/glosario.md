@@ -92,6 +92,10 @@ Nunca se mantiene abierta durante llamadas externas.
 concilia con el estado de entrega y, sin evidencia tras 10 minutos, se reenvía una sola vez si su clase
 admite duplicados (ADR-026); si no, lo resuelve una persona. [Envíos unknown](../incidencias/envios-unknown.md).
 
+**`discarded`.** Estado final de un envío `unknown` que una persona decidió no enviar («Descartar»). No se reenvía, la
+conciliación lo ignora y no cuenta como fallo; solo un estado de entrega del proveedor que demuestre la entrega lo
+pasa a `sent`. [ADR-031](../arquitectura/adr/ADR-031-incidencias-como-bandeja.md).
+
 **`expired`.** Estado de un envío que pasó su `expires_at` (30 minutos una respuesta, hasta 24 h un
 recordatorio) sin que el proveedor lo aceptara: no se envió ni se enviará. Una respuesta caducada se
 sustituye por una disculpa; un recordatorio caducado puede revivirse; un aviso al dueño caduca a las 2 h, sin disculpa. No es un fallo.

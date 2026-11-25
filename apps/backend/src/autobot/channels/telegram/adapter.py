@@ -18,6 +18,7 @@ from django.http import HttpRequest
 
 from autobot.channels.base import (
     Ambiguous,
+    ErrorClass,
     InboundItem,
     ParsedItem,
     Rejected,
@@ -389,10 +390,54 @@ def _html(text: str) -> str:
     return ITALIC.sub(r"<i>\1</i>", BOLD.sub(r"<b>\1</b>", html.escape(text, quote=False)))
 
 
+# The only parts of Telegram's `description` that are kept ("Bad Request: chat not found"):
+# fixed phrases that name the cause, never free text (a description may echo user data).
+# Each maps to the error class it means.
+_DESCRIPTIONS: dict[str, ErrorClass] = {
+    "chat not found": "undeliverable",
+    "user is deactivated": "undeliverable",
+    "bot can't initiate conversation with a user": "undeliverable",
+    "bot was blocked by the user": "blocked",
+}
+_STORED = re.compile(r"HTTP (\d{3})(?:, error (\d+))?(?: \(([^)]*)\))?")
+
+
+def _description(data: dict[str, Any]) -> str | None:
+    text = data.get("description")
+    if not isinstance(text, str):
+        return None
+    lowered = text.lower()
+    return next((phrase for phrase in _DESCRIPTIONS if phrase in lowered), None)
+
+
 def _describe(response: httpx.Response) -> str:
-    """Status and error code only: never the description nor the URL."""
-    code = safe_json_dict(response).get("error_code")
-    return f"HTTP {response.status_code}" + (f", error {code}" if code is not None else "")
+    """Status, error code and, when it is one of a few known causes, a short phrase:
+    never the free-text description nor the URL."""
+    data = safe_json_dict(response)
+    code = data.get("error_code")
+    phrase = _description(data)
+    return (
+        f"HTTP {response.status_code}"
+        + (f", error {code}" if code is not None else "")
+        + (f" ({phrase})" if phrase is not None else "")
+    )
+
+
+def error_class(last_error: str) -> ErrorClass:
+    """The class of a stored `last_error` of a Telegram send (pure)."""
+    match = _STORED.search(last_error)
+    if match is None:
+        return "other"
+    status = int(match[1])
+    if match[3] in _DESCRIPTIONS:
+        return _DESCRIPTIONS[match[3]]
+    if status == 401:
+        return "auth"
+    if status == 403:  # the user blocked the bot
+        return "blocked"
+    if status == 429:
+        return "rate"
+    return "other"
 
 
 def _seconds(value: object) -> float | None:

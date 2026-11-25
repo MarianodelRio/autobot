@@ -5,10 +5,12 @@ doors (`channels/demo/doors.py`), shared by every demo tenant."""
 from dataclasses import dataclass
 from typing import Any
 
-from autobot.channels.base import ChannelAdapter
+from autobot.channels.base import ChannelAdapter, ChannelType, ErrorClass
 from autobot.channels.demo.doors import door
 from autobot.channels.telegram import TelegramAdapter
+from autobot.channels.telegram.adapter import error_class as telegram_error_class
 from autobot.channels.whatsapp import WhatsAppAdapter
+from autobot.channels.whatsapp.adapter import error_class as whatsapp_error_class
 from autobot.runtime.models import Channel
 from autobot.tenancy.registry import LoadedTenant
 
@@ -37,3 +39,15 @@ def endpoint(tenant: LoadedTenant, channel: str) -> Endpoint:
     if found is None:  # the door is off: fail to send, as if its token were missing
         return Endpoint(demo_adapter, None, None)
     return Endpoint(found.adapter, found.description, found.secrets)
+
+
+def channel_type(tenant: LoadedTenant, channel: str) -> ChannelType:
+    """The provider behind a message's `channel` (`main` depends on the tenant's channel)."""
+    return endpoint(tenant, channel).adapter.type
+
+
+def error_class(channel_type: ChannelType, last_error: str) -> ErrorClass:
+    """The class of a stored `last_error`, read by the adapter of the message's channel."""
+    if channel_type == "whatsapp":
+        return whatsapp_error_class(last_error)
+    return telegram_error_class(last_error)

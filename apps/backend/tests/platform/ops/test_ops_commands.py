@@ -58,6 +58,17 @@ def test_outbound_resolve_mark_sent(message: OutboundMessage) -> None:
     assert AuditEvent.objects.using("owner").filter(target_id=str(message.pk)).exists()
 
 
+def test_outbound_resolve_discard(message: OutboundMessage) -> None:
+    with pytest.raises(CommandError, match="--confirm"):
+        call_command("outbound_resolve", str(message.pk), "--discard")
+    with pytest.raises(CommandError):  # mutually exclusive with the other resolutions
+        call_command("outbound_resolve", str(message.pk), "--discard", "--resend", "--confirm")
+    call_command("outbound_resolve", str(message.pk), "--discard", "--confirm", stdout=StringIO())
+    message.refresh_from_db(using="owner")
+    assert message.status == "discarded"
+    assert AuditEvent.objects.using("owner").filter(action="outbound.discard").exists()
+
+
 def test_outbound_resolve_rejects_ineligible(message: OutboundMessage) -> None:
     message.status = "sent"
     message.save(using="owner")

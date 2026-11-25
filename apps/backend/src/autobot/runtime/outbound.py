@@ -164,6 +164,8 @@ def create_proactive(
         return row
     if expires_at <= now:
         return None
+    # Only `expired` and auth-failed rows come back: `discarded` is a person's decision
+    # (ADR-031) and is never revived, nor are `sent`, `unknown` or other `failed` ones.
     revived = (
         OutboundMessage.objects.filter(
             tenant_id=tenant_id,
@@ -283,7 +285,13 @@ def send_message(tenant_id: UUID, outbound_id: UUID) -> None:
             # the job has nothing to send and ops_check will see the stuck state.
             log.error("send_message: outbound %s of tenant %s not found", outbound_id, tenant.id)
             return
-        if message.status in (Status.SENT, Status.UNKNOWN, Status.FAILED, Status.EXPIRED):
+        if message.status in (
+            Status.SENT,
+            Status.UNKNOWN,
+            Status.FAILED,
+            Status.EXPIRED,
+            Status.DISCARDED,
+        ):
             return  # done, or never resent blindly
         if message.status == Status.SENDING:
             message.status = Status.UNKNOWN

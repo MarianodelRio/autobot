@@ -74,8 +74,9 @@ El registro lo puede borrar solo la retención nocturna o `tenant_purge`
 |---|---|---|
 | `outbound.mark_sent` | El operador marca como enviado un envío `unknown`. | |
 | `outbound.resend` | El operador autoriza reenviar con riesgo de duplicado. | |
-| `outbound.resend_bulk_start` | El operador inicia un reenvío en bloque; se escribe antes de reenviar nada, para que quede rastro aunque el panel o el worker se caigan a medias. | Solo el número de mensajes seleccionados. |
-| `outbound.resend_bulk` | El operador reenvía en bloque mensajes fallidos, sin confirmar o caducados (con TOTP reciente y como mucho 500 por acción). | Solo cifras: seleccionados, reenviados y omitidos; ni ids ni datos personales. |
+| `outbound.discard` | El operador descarta un envío `unknown`: pasa al estado final `discarded` y no se reenvía (ADR-031). | |
+| `outbound.resend_bulk_start` | Histórica (reenvío en bloque, retirado por el ADR-031): se escribía al iniciar un reenvío en bloque. | Solo el número de mensajes seleccionados. |
+| `outbound.resend_bulk` | Histórica (reenvío en bloque, retirado por el ADR-031): reenvío en bloque de mensajes fallidos, sin confirmar o caducados. | Solo cifras: seleccionados, reenviados y omitidos; ni ids ni datos personales. |
 | `job.retry` | El operador reintenta un trabajo fallido idempotente. | |
 
 Ver [envíos unknown](../incidencias/envios-unknown.md).

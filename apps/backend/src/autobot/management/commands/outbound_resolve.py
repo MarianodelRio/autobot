@@ -12,24 +12,32 @@ ACTOR = "command:outbound_resolve"
 
 
 class Command(BaseCommand):
-    help = "Resuelve un envío ambiguo: marcarlo como enviado o autorizar su reenvío."
+    help = "Resuelve un envío ambiguo: marcarlo como enviado, autorizar su reenvío o descartarlo."
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("outbound_id", type=UUID)
         group = parser.add_mutually_exclusive_group(required=True)
         group.add_argument("--mark-sent", action="store_true")
         group.add_argument("--resend", action="store_true")
+        group.add_argument("--discard", action="store_true")
         parser.add_argument("--confirm", action="store_true")
 
     def handle(self, *args: Any, **options: Any) -> None:
         if not options["confirm"]:
-            risk = (
-                "Reenviar un envío ambiguo puede duplicarlo si el proveedor sí lo entregó."
-                if options["resend"]
-                else "Marcarlo como enviado da por buena una entrega que no se pudo confirmar."
-            )
+            if options["resend"]:
+                risk = "Reenviar un envío ambiguo puede duplicarlo si el proveedor sí lo entregó."
+            elif options["discard"]:
+                risk = "Descartarlo es definitivo: el mensaje no se enviará ni se reenviará."
+            else:
+                risk = "Marcarlo como enviado da por buena una entrega que no se pudo confirmar."
             raise CommandError(f"{risk} Repita con --confirm si asume ese riesgo.")
-        fn = actions.resend if options["resend"] else actions.mark_sent
+        fn = (
+            actions.resend
+            if options["resend"]
+            else actions.discard
+            if options["discard"]
+            else actions.mark_sent
+        )
         result = fn(options["outbound_id"], actor=ACTOR)
         if not result.ok:
             raise CommandError(result.message)

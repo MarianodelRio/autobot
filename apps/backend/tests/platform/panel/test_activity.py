@@ -143,6 +143,48 @@ def test_activity_pagination_filters_and_contact_audit() -> None:
     assert excinfo.value.status == 404
 
 
+@pytest.mark.django_db(databases=["default", "owner"])
+def test_the_errors_status_group_covers_failed_unknown_and_discarded() -> None:
+    now = timezone.now()
+    tenant = Tenant.objects.using("owner").create(
+        id=uuid.uuid7(),
+        slug="test",
+        name="Test",
+        pack="toy",
+        status="active",
+        timezone="UTC",
+        synced_at=now,
+    )
+    contact = Contact.objects.using("owner").create(
+        tenant=tenant, channel="main", external_id="123", display_name="Ana"
+    )
+    for status in ("sent", "failed", "unknown", "discarded", "expired"):
+        OutboundMessage.objects.using("owner").create(
+            tenant=tenant,
+            contact=contact,
+            channel="main",
+            kind="reply",
+            idem_key=status,
+            payload={"body": "x"},
+            status=status,
+        )
+    InboundEvent.objects.using("owner").create(
+        tenant=tenant,
+        channel="main",
+        kind="message",
+        provider_event_id="1",
+        payload={},
+        status="failed",
+        received_at=now,
+    )
+
+    page = activity_page(tenant="test", status="errors")
+    assert sorted(str(item.status) for item in page.items) == ["discarded", "failed", "unknown"]
+    assert {item.kind for item in page.items} == {"outbound"}
+    exact = activity_page(tenant="test", kinds="outbound", status="expired")
+    assert [item.status for item in exact.items] == ["expired"]
+
+
 def test_descriptions_from_fixtures() -> None:
     root = Path("tests/fixtures")
 

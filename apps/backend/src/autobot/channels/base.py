@@ -16,6 +16,19 @@ from core.serialization import Outbound
 
 type ChannelType = Literal["whatsapp", "telegram"]
 
+# What a rejected send was about, as each adapter reads its own stored `last_error`
+# (ADR-031). `ops/send_errors.py` gives each class its Spanish title and advice.
+type ErrorClass = Literal[
+    "outside_window",  # WhatsApp 131047: only a template may be sent
+    "undeliverable",  # the number or chat cannot receive it
+    "blocked",  # the person blocked the bot
+    "auth",  # the provider rejects the channel's credential
+    "rate",  # the provider's rate limit
+    "marketing_declined",  # WhatsApp 131049
+    "spam_limit",  # WhatsApp 131048
+    "other",
+]
+
 
 @dataclass(frozen=True)
 class InboundItem:

@@ -22,7 +22,6 @@ import {
 import { errorMessage } from "@/lib/errors";
 import { qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
-import { BulkResend } from "./bulk-resend";
 import { IncidentRow } from "./incident-row";
 
 type Alert = components["schemas"]["AlertOut"];
@@ -363,16 +362,6 @@ function ResolvedHistory() {
   );
 }
 
-/** The businesses known from the open incidents: enough to narrow a bulk resend. */
-function bulkTenants(data: components["schemas"]["IncidentsOut"] | undefined) {
-  const found = new Map<string, string>();
-  for (const message of data?.outbound ?? [])
-    found.set(message.tenant_id, message.tenant);
-  for (const row of data?.held_notices ?? [])
-    found.set(row.tenant_id, row.tenant);
-  return [...found].map(([id, slug]) => ({ id, slug }));
-}
-
 export function IncidentsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const query = useQuery({
@@ -446,14 +435,6 @@ export function IncidentsPage() {
         </div>
       )}
       {query.data && <HeldNotices held={query.data.held_notices} />}
-      <details>
-        <summary className="cursor-pointer text-sm text-muted-foreground">
-          Reenvío en bloque
-        </summary>
-        <div className="mt-3">
-          <BulkResend tenants={bulkTenants(query.data)} />
-        </div>
-      </details>
       <details
         open={historyOpen}
         onToggle={(event) =>

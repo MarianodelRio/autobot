@@ -110,6 +110,16 @@ def test_a_status_webhook_is_evidence(tenants: Any, clock: Clock, meta: Meta) ->
     assert reload(message).status == "sent" and not meta.requests
 
 
+def test_a_discarded_message_is_left_alone(tenants: Any, clock: Clock, meta: Meta) -> None:
+    tenants(wa_tenant())
+    message = make_unknown(reply_to(), clock)
+    OutboundMessage.objects.using("owner").filter(id=message.id).update(status="discarded")
+    clock.advance(minutes=11)
+    result = run()
+    assert (result.resent, result.expired) == (0, 0)
+    assert reload(message).status == "discarded" and not meta.requests
+
+
 def test_a_provider_id_is_evidence(tenants: Any, clock: Clock, meta: Meta) -> None:
     tenants(wa_tenant())
     message = make_unknown(reply_to(), clock, provider_message_id="wamid.9")

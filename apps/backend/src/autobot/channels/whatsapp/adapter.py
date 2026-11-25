@@ -8,6 +8,7 @@ import copy
 import hashlib
 import hmac
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 from uuid import UUID
@@ -18,6 +19,7 @@ from django.http import HttpRequest
 
 from autobot.channels.base import (
     Ambiguous,
+    ErrorClass,
     InboundItem,
     ParsedItem,
     Rejected,
@@ -62,6 +64,13 @@ STATUSES = frozenset({"sent", "delivered", "read", "failed"})
 AUTH_ERROR = 190
 RECIPIENT_ERRORS = frozenset({131021, 131026, 131030})
 RATE_LIMIT_ERRORS = frozenset({4, 17, 32, 613, 80007, 130429, 131056})
+OUTSIDE_WINDOW_ERROR = 131047
+SPAM_LIMIT_ERROR = 131048
+MARKETING_DECLINED_ERROR = 131049
+# The two formats `last_error` holds: a synchronous rejection ("HTTP 400, error 131047[/sub]",
+# `_describe`) and an asynchronous `failed` status ("status failed: 131047,…", runtime).
+_SYNC_ERROR = re.compile(r"HTTP (\d{3})(?:, error (\d+))?")
+_ASYNC_ERROR = re.compile(r"status failed: ([\d,]+)")
 # Message types that are not the contact writing to the business, never answered: a
 # system notice (e.g. a number change), a reaction to a message, the `request_welcome`
 # of a chat opened from an ad or a "click to chat" button. Media (audio, image…) is not
@@ -252,6 +261,40 @@ def classify(response: httpx.Response) -> SendOutcome:
     return Ambiguous(
         reason, transport=status >= 500
     )  # e.g. 502/504 from a proxy, without Meta's error body
+
+
+def _code_class(code: int) -> ErrorClass:
+    if code == AUTH_ERROR:
+        return "auth"
+    if code == OUTSIDE_WINDOW_ERROR:
+        return "outside_window"
+    if code in RECIPIENT_ERRORS:
+        return "undeliverable"
+    if code == MARKETING_DECLINED_ERROR:
+        return "marketing_declined"
+    if code == SPAM_LIMIT_ERROR:
+        return "spam_limit"
+    if code in RATE_LIMIT_ERRORS:
+        return "rate"
+    return "other"
+
+
+def error_class(last_error: str) -> ErrorClass:
+    """The class of a stored `last_error` of a WhatsApp send (pure; reads both formats)."""
+    if (match := _ASYNC_ERROR.search(last_error)) is not None:
+        classes = [_code_class(int(code)) for code in match[1].split(",") if code]
+        return next((c for c in classes if c != "other"), "other")
+    if (match := _SYNC_ERROR.search(last_error)) is not None:
+        status = int(match[1])
+        if match[2] is not None:
+            found = _code_class(int(match[2]))
+            if found != "other":
+                return found
+        if status == 401:
+            return "auth"
+        if status == 429:
+            return "rate"
+    return "other"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────

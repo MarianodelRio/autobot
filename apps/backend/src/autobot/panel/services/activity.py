@@ -19,6 +19,11 @@ from autobot.tenancy.models import Tenant
 
 UNAVAILABLE = "(contenido no disponible)"
 
+# A status group the Actividad tab asks for ("Envíos con error", ADR-031): sends that need a
+# person's eyes or that one already decided on. Exact statuses keep working too.
+ERRORS_GROUP = "errors"
+ERROR_STATUSES = ("failed", "unknown", "discarded")
+
 SOURCES: dict[str, tuple[Any, str]] = {
     "inbound": (InboundEvent, "received_at"),
     "outbound": (OutboundMessage, "created_at"),
@@ -139,7 +144,13 @@ def activity_page(
             qs = qs.filter(kind="message")
         if status:
             if kind in ("inbound", "outbound", "notification"):
-                qs = qs.filter(status=status)
+                if status == ERRORS_GROUP:
+                    # Only outbound has a review state; the other kinds have no such group.
+                    if kind != "outbound":
+                        continue
+                    qs = qs.filter(status__in=ERROR_STATUSES)
+                else:
+                    qs = qs.filter(status=status)
             else:
                 continue
         if position:

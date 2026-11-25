@@ -393,23 +393,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/jobs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Jobs */
-        get: operations["autobot_panel_routers_incidents_jobs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/jobs/{id}/retry": {
         parameters: {
             query?: never;
@@ -444,7 +427,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/outbound/resend-bulk": {
+    "/outbound/{id}/discard": {
         parameters: {
             query?: never;
             header?: never;
@@ -453,29 +436,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Resend Bulk
-         * @description Resend after an incident: the selected messages or those matching a filter, at most
-         *     `BULK_CAP` per action (oldest first; run it again for the rest). Needs a recent TOTP.
-         */
-        post: operations["autobot_panel_routers_incidents_resend_bulk"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/outbound/resend-bulk/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Resend Bulk Preview */
-        post: operations["autobot_panel_routers_incidents_resend_bulk_preview"];
+        /** Discard */
+        post: operations["autobot_panel_routers_incidents_discard"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1231,71 +1193,6 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
-        /** BulkFilter */
-        BulkFilter: {
-            /** Since */
-            since?: string | null;
-            /**
-             * Statuses
-             * @default [
-             *       "failed",
-             *       "unknown",
-             *       "expired"
-             *     ]
-             */
-            statuses: string[];
-            /** Tenant Id */
-            tenant_id?: string | null;
-            /** Until */
-            until?: string | null;
-        };
-        /** BulkPreviewOut */
-        BulkPreviewOut: {
-            /** Cap */
-            cap: number;
-            /** Total */
-            total: number;
-            /** Will Resend */
-            will_resend: number;
-        };
-        /** BulkResendIn */
-        BulkResendIn: {
-            /**
-             * Confirm Duplicate Risk
-             * @default false
-             */
-            confirm_duplicate_risk: unknown;
-            /** Ids */
-            ids?: string[] | null;
-            /** Since */
-            since?: string | null;
-            /**
-             * Statuses
-             * @default [
-             *       "failed",
-             *       "unknown",
-             *       "expired"
-             *     ]
-             */
-            statuses: string[];
-            /** Tenant Id */
-            tenant_id?: string | null;
-            /** Until */
-            until?: string | null;
-        };
-        /** BulkResendOut */
-        BulkResendOut: {
-            /** Message */
-            message: string;
-            /** Over Cap */
-            over_cap: number;
-            /** Resent */
-            resent: number;
-            /** Selected */
-            selected: number;
-            /** Skipped */
-            skipped: number;
-        };
         /** ChecklistItemOut */
         ChecklistItemOut: {
             /** Blocking */
@@ -1719,13 +1616,6 @@ export interface components {
             status: string;
             /** Task Name */
             task_name: string;
-        };
-        /** JobsPage */
-        JobsPage: {
-            /** Items */
-            items: components["schemas"]["JobOut"][];
-            /** Next Cursor */
-            next_cursor: string | null;
         };
         /** LastEventOut */
         LastEventOut: {
@@ -3013,31 +2903,6 @@ export interface operations {
             };
         };
     };
-    autobot_panel_routers_incidents_jobs: {
-        parameters: {
-            query?: {
-                status?: string;
-                queue?: string;
-                cursor?: string;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobsPage"];
-                };
-            };
-        };
-    };
     autobot_panel_routers_incidents_retry: {
         parameters: {
             query?: never;
@@ -3088,18 +2953,16 @@ export interface operations {
             };
         };
     };
-    autobot_panel_routers_incidents_resend_bulk: {
+    autobot_panel_routers_incidents_discard: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BulkResendIn"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -3107,31 +2970,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BulkResendOut"];
-                };
-            };
-        };
-    };
-    autobot_panel_routers_incidents_resend_bulk_preview: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BulkFilter"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BulkPreviewOut"];
+                    "application/json": components["schemas"]["MessageOut"];
                 };
             };
         };

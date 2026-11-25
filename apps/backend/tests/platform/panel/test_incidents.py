@@ -1,7 +1,6 @@
 # ruff: noqa: F811
 """HTTP contract for incident actions, listings and history cursors."""
 
-from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -41,6 +40,25 @@ def test_send_actions(
     )
 
 
+def test_discard_endpoint(authed_client: Any, message: OutboundMessage) -> None:
+    endpoint = f"outbound/{message.id}/discard"
+    assert post(authed_client, endpoint).status_code == 200
+    message.refresh_from_db(using="owner")
+    assert message.status == "discarded"
+    assert post(authed_client, endpoint).status_code == 409
+    assert (
+        AuditEvent.objects.using("owner")
+        .filter(action="outbound.discard", target_id=str(message.id))
+        .count()
+        == 1
+    )
+    assert (
+        post(authed_client, "outbound/00000000-0000-0000-0000-000000000001/discard").status_code
+        == 404
+    )
+    assert post(authed_client, "outbound/resend-bulk").status_code in (404, 405, 422)
+
+
 @pytest.mark.usefixtures("clean_jobs")
 def test_incident_listing_and_retry(authed_client: Any, message: OutboundMessage) -> None:
     ids = [
@@ -65,12 +83,8 @@ def test_incident_listing_and_retry(authed_client: Any, message: OutboundMessage
     assert (
         AuditEvent.objects.using("owner").filter(action="job.retry", target_id=str(ids[0])).exists()
     )
-    jobs = get(authed_client, "jobs?queue=default&limit=1").json()
-    assert len(jobs["items"]) == 1
-    assert jobs["next_cursor"]
-    assert "secret" not in str(jobs)
-    second = get(authed_client, "jobs?queue=default&limit=1&cursor=" + jobs["next_cursor"]).json()
-    assert jobs["items"][0]["id"] != second["items"][0]["id"]
+    assert "secret" not in str(data)
+    assert get(authed_client, "jobs").status_code == 404  # the unused listing was removed
 
 
 def test_alert_resolution_and_pagination(authed_client: Any) -> None:
@@ -96,7 +110,7 @@ def test_alert_resolution_and_pagination(authed_client: Any) -> None:
     first = get(authed_client, "alerts?limit=1").json()
     second = get(authed_client, "alerts?limit=1&cursor=" + first["next_cursor"]).json()
     assert {first["items"][0]["id"], second["items"][0]["id"]} == {str(manual.id), str(auto.id)}
-    for endpoint in ("alerts", "jobs", "audit"):
+    for endpoint in ("alerts", "audit"):
         assert get(authed_client, endpoint + "?cursor=bad").status_code == 400
     history = get(authed_client, "audit?action=alert.resolve").json()
     assert len(history["items"]) == 1
@@ -155,120 +169,6 @@ def test_audit_actions(authed_client: Any) -> None:
     assert actions.index("yyy.action") < actions.index("zzz.action")
 
 
-# ── Bulk resend after an incident (ADR-026) ──────────────────────────────
-
-
-def spawn(message: OutboundMessage, n: int, status: str, **fields: Any) -> list[OutboundMessage]:
-    fields.setdefault("kind", "reply")
-    return [
-        OutboundMessage.objects.using("owner").create(
-            tenant=message.tenant,
-            contact=message.contact,
-            channel="main",
-            idem_key=f"bulk:{status}:{i}:{fields.get('last_error', '')}",
-            payload=message.payload,
-            status=status,
-            unknown_at=timezone.now() - timedelta(minutes=30) if status == "unknown" else None,
-            **fields,
-        )
-        for i in range(n)
-    ]
-
-
-def bulk_jobs() -> int:
-    return ProcrastinateJob.objects.using("owner").filter(task_name="send_message").count()
-
-
-@pytest.mark.usefixtures("clean_jobs")
-def test_bulk_resend_needs_step_up(authed_client: Any, message: OutboundMessage) -> None:
-    response = post(
-        authed_client,
-        "outbound/resend-bulk",
-        {"ids": [str(message.id)], "confirm_duplicate_risk": True},
-    )
-    assert response.status_code == 403 and response.json()["code"] == "reauth_required"
-    message.refresh_from_db(using="owner")
-    assert message.status == "unknown"
-
-
-@pytest.mark.usefixtures("clean_jobs")
-def test_bulk_resend_filters_preview_and_audit(
-    reauthed_client: Any, message: OutboundMessage
-) -> None:
-    failed = spawn(message, 2, "failed")
-    expired = spawn(message, 1, "expired", kind="proactive")
-    spawn(message, 1, "sent")
-    recent = spawn(message, 1, "unknown")[0]
-    recent.unknown_at = timezone.now()
-    recent.save(using="owner")
-    tenant_id = str(message.tenant_id)
-
-    preview = post(reauthed_client, "outbound/resend-bulk/preview", {"tenant_id": tenant_id}).json()
-    assert preview == {"total": 5, "will_resend": 5, "cap": 500}  # message + 2 + 1 + recent
-    only_failed = post(
-        reauthed_client, "outbound/resend-bulk/preview", {"statuses": ["failed"]}
-    ).json()
-    assert only_failed["total"] == 2
-    bad = post(reauthed_client, "outbound/resend-bulk/preview", {"statuses": ["sent"]})
-    assert bad.status_code == 400
-
-    no_confirm = post(reauthed_client, "outbound/resend-bulk", {"tenant_id": tenant_id})
-    assert no_confirm.status_code == 400
-
-    response = post(
-        reauthed_client,
-        "outbound/resend-bulk",
-        {"tenant_id": tenant_id, "confirm_duplicate_risk": True},
-    )
-    assert response.status_code == 200, response.content
-    body = response.json()
-    # The recent unknown is left to resolve itself.
-    assert (body["selected"], body["resent"], body["skipped"], body["over_cap"]) == (5, 4, 1, 0)
-    for row in (*failed, *expired, message):
-        row.refresh_from_db(using="owner")
-        assert row.status == "pending" and row.expires_at is not None
-        assert row.expires_at > timezone.now()
-    assert bulk_jobs() == 4
-    (start,) = AuditEvent.objects.using("owner").filter(action="outbound.resend_bulk_start")
-    assert "5 mensajes" in start.summary and not start.target_id
-    (event,) = AuditEvent.objects.using("owner").filter(action="outbound.resend_bulk")
-    assert "4 reenviados" in event.summary and not event.target_id
-    assert str(message.id) not in event.summary
-
-
-@pytest.mark.usefixtures("clean_jobs")
-def test_bulk_resend_cap_and_selection(
-    reauthed_client: Any, message: OutboundMessage, monkeypatch: Any
-) -> None:
-    from autobot.ops import actions
-
-    monkeypatch.setattr(actions, "BULK_CAP", 3)
-    spawn(message, 5, "failed")
-    preview = post(reauthed_client, "outbound/resend-bulk/preview", {"statuses": ["failed"]}).json()
-    assert preview == {"total": 5, "will_resend": 3, "cap": 3}
-    body = post(
-        reauthed_client,
-        "outbound/resend-bulk",
-        {"statuses": ["failed"], "confirm_duplicate_risk": True},
-    ).json()
-    assert (body["resent"], body["over_cap"]) == (3, 2)
-    too_many = post(
-        reauthed_client,
-        "outbound/resend-bulk",
-        {"ids": [str(message.id)] * 4, "confirm_duplicate_risk": True},
-    )
-    assert too_many.status_code == 200  # duplicates collapse: one id
-    over = post(
-        reauthed_client,
-        "outbound/resend-bulk",
-        {
-            "ids": [str(m.id) for m in spawn(message, 4, "failed", last_error="x")],
-            "confirm_duplicate_risk": True,
-        },
-    )
-    assert over.status_code == 400
-
-
 def test_incidents_lists_held_notices(authed_client: Any, message: OutboundMessage) -> None:
     from autobot.runtime.models import Notification
 
@@ -279,58 +179,3 @@ def test_incidents_lists_held_notices(authed_client: Any, message: OutboundMessa
     assert data["held_notices"] == [
         {"tenant_id": str(message.tenant_id), "tenant": message.tenant.slug, "count": 1}
     ]
-
-
-@pytest.mark.usefixtures("clean_jobs")
-def test_bulk_resend_keeps_the_packs_deadline_and_drops_late_replies(
-    reauthed_client: Any, message: OutboundMessage
-) -> None:
-    now = timezone.now()
-    useful = spawn(
-        message, 1, "expired", kind="proactive", not_after=now + timedelta(hours=2), last_error="a"
-    )[0]
-    obsolete = spawn(
-        message, 1, "expired", kind="proactive", not_after=now - timedelta(hours=1), last_error="b"
-    )[0]
-    (late_reply,) = spawn(message, 1, "expired", last_error="c")
-    # Rows from before `not_after` was stored: a short `expires_at` implies the deadline.
-    legacy = spawn(
-        message, 1, "expired", kind="proactive", expires_at=now - timedelta(hours=1), last_error="d"
-    )[0]
-    OutboundMessage.objects.using("owner").filter(pk=legacy.pk).update(
-        created_at=now - timedelta(hours=5)
-    )
-    body = {"statuses": ["expired"]}
-    preview = post(reauthed_client, "outbound/resend-bulk/preview", body).json()
-    assert preview["total"] == 2  # the obsolete reminder and the late reply are not offered
-    response = post(
-        reauthed_client,
-        "outbound/resend-bulk",
-        {"ids": [str(m.id) for m in (useful, obsolete, late_reply, legacy)]}
-        | {"confirm_duplicate_risk": True},
-    ).json()
-    assert (response["resent"], response["skipped"]) == (1, 3)
-    useful.refresh_from_db(using="owner")
-    assert useful.status == "pending"
-    assert now < useful.expires_at <= now + timedelta(hours=2, seconds=5)  # type: ignore[operator]
-    for row in (obsolete, late_reply, legacy):
-        row.refresh_from_db(using="owner")
-        assert row.status == "expired"
-
-
-def test_bulk_resend_validates_its_input(reauthed_client: Any, message: OutboundMessage) -> None:
-    ok = {"confirm_duplicate_risk": True}
-    naive = post(reauthed_client, "outbound/resend-bulk/preview", {"since": "2026-01-01T00:00:00"})
-    assert naive.status_code == 400
-    reversed_ = post(
-        reauthed_client,
-        "outbound/resend-bulk",
-        ok | {"since": "2026-02-01T00:00:00Z", "until": "2026-01-01T00:00:00Z"},
-    )
-    assert reversed_.status_code == 400
-    too_long = post(
-        reauthed_client,
-        "outbound/resend-bulk",
-        ok | {"ids": ["00000000-0000-0000-0000-000000000001"] * 501},
-    )
-    assert too_long.status_code in (400, 422)

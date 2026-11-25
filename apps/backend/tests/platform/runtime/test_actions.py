@@ -202,3 +202,30 @@ def test_audit_record_rejects_forbidden_keys_nested() -> None:
 def test_audit_record_accepts_ordinary_details() -> None:
     audit.record(actor="t", action="t.test", summary="s", details={"fields": ["a", "b"]})
     assert AuditEvent.objects.using("owner").filter(action="t.test").exists()
+
+
+def test_discard_needs_no_waiting_and_is_final(message: OutboundMessage) -> None:
+    OutboundMessage.objects.using("owner").filter(pk=message.pk).update(
+        unknown_at=timezone.now()  # recent: mark-sent and resend refuse it, discard does not
+    )
+    message.refresh_from_db(using="owner")
+    assert not actions.can_mark_sent(message)[0]
+    assert actions.can_discard(message) == (True, "")
+    assert actions.discard(message.pk, actor="operator").ok
+    message.refresh_from_db(using="owner")
+    assert (message.status, message.unknown_at) == ("discarded", None)
+    event = AuditEvent.objects.using("owner").get(action="outbound.discard")
+    assert (event.actor, event.target_id) == ("operator", str(message.pk))
+    # Final: nothing else applies to it, and a second discard is refused without an audit entry.
+    assert not actions.discard(message.pk, actor="operator").ok
+    assert not actions.can_mark_sent(message)[0]
+    assert not actions.can_resend(message, db_tenant=message.tenant)[0]
+    assert AuditEvent.objects.using("owner").filter(action="outbound.discard").count() == 1
+
+
+@pytest.mark.parametrize("status", ["pending", "sent", "failed", "expired"])
+def test_only_an_ambiguous_send_can_be_discarded(message: OutboundMessage, status: str) -> None:
+    message.status = status
+    message.save(using="owner")
+    assert not actions.can_discard(message)[0]
+    assert not actions.discard(message.pk, actor="operator").ok

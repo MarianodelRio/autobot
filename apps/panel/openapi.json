@@ -510,190 +510,6 @@
         "title": "AuditPage",
         "type": "object"
       },
-      "BulkFilter": {
-        "properties": {
-          "since": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Since"
-          },
-          "statuses": {
-            "default": [
-              "failed",
-              "unknown",
-              "expired"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "title": "Statuses",
-            "type": "array"
-          },
-          "tenant_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tenant Id"
-          },
-          "until": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Until"
-          }
-        },
-        "title": "BulkFilter",
-        "type": "object"
-      },
-      "BulkPreviewOut": {
-        "properties": {
-          "cap": {
-            "title": "Cap",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          },
-          "will_resend": {
-            "title": "Will Resend",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total",
-          "will_resend",
-          "cap"
-        ],
-        "title": "BulkPreviewOut",
-        "type": "object"
-      },
-      "BulkResendIn": {
-        "properties": {
-          "confirm_duplicate_risk": {
-            "default": false,
-            "title": "Confirm Duplicate Risk"
-          },
-          "ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "maxItems": 500,
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ids"
-          },
-          "since": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Since"
-          },
-          "statuses": {
-            "default": [
-              "failed",
-              "unknown",
-              "expired"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "title": "Statuses",
-            "type": "array"
-          },
-          "tenant_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tenant Id"
-          },
-          "until": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Until"
-          }
-        },
-        "title": "BulkResendIn",
-        "type": "object"
-      },
-      "BulkResendOut": {
-        "properties": {
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "over_cap": {
-            "title": "Over Cap",
-            "type": "integer"
-          },
-          "resent": {
-            "title": "Resent",
-            "type": "integer"
-          },
-          "selected": {
-            "title": "Selected",
-            "type": "integer"
-          },
-          "skipped": {
-            "title": "Skipped",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "message",
-          "selected",
-          "resent",
-          "skipped",
-          "over_cap"
-        ],
-        "title": "BulkResendOut",
-        "type": "object"
-      },
       "ChecklistItemOut": {
         "properties": {
           "blocking": {
@@ -1957,34 +1773,6 @@
           "retry_reason"
         ],
         "title": "JobOut",
-        "type": "object"
-      },
-      "JobsPage": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/JobOut"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "next_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Cursor"
-          }
-        },
-        "required": [
-          "items",
-          "next_cursor"
-        ],
-        "title": "JobsPage",
         "type": "object"
       },
       "LastEventOut": {
@@ -5014,74 +4802,6 @@
         ]
       }
     },
-    "/jobs": {
-      "get": {
-        "operationId": "autobot_panel_routers_incidents_jobs",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Status",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "queue",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Queue",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Cursor",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobsPage"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "PanelAuth": []
-          }
-        ],
-        "summary": "Jobs",
-        "tags": [
-          "incidents"
-        ]
-      }
-    },
     "/jobs/{id}/retry": {
       "post": {
         "operationId": "autobot_panel_routers_incidents_retry",
@@ -5231,27 +4951,27 @@
         ]
       }
     },
-    "/outbound/resend-bulk": {
+    "/outbound/{id}/discard": {
       "post": {
-        "description": "Resend after an incident: the selected messages or those matching a filter, at most\n`BULK_CAP` per action (oldest first; run it again for the rest). Needs a recent TOTP.",
-        "operationId": "autobot_panel_routers_incidents_resend_bulk",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkResendIn"
-              }
+        "operationId": "autobot_panel_routers_incidents_discard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
             }
-          },
-          "required": true
-        },
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BulkResendOut"
+                  "$ref": "#/components/schemas/MessageOut"
                 }
               }
             },
@@ -5263,44 +4983,7 @@
             "PanelAuth": []
           }
         ],
-        "summary": "Resend Bulk",
-        "tags": [
-          "incidents"
-        ]
-      }
-    },
-    "/outbound/resend-bulk/preview": {
-      "post": {
-        "operationId": "autobot_panel_routers_incidents_resend_bulk_preview",
-        "parameters": [],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkFilter"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BulkPreviewOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "PanelAuth": []
-          }
-        ],
-        "summary": "Resend Bulk Preview",
+        "summary": "Discard",
         "tags": [
           "incidents"
         ]

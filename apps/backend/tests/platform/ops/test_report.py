@@ -85,18 +85,19 @@ def test_a_day_counts_each_tenant_inside_its_own_rls(tenants: Any) -> None:
     received("wa", before)
     sent("wa", lucia, inside)
     sent("wa", lucia, inside, status="failed")
-    sent("wa", lucia, inside, status="expired")
+    sent("wa", lucia, inside, status="expired")  # a lapsed reply is not a failure (ADR-024)
+    sent("wa", lucia, inside, status="discarded")  # a person's decision (ADR-031)
     demo = contact("demo-toy", "100000001", before)
     received("demo-toy", inside)
     sent("demo-toy", demo, inside)
 
     day = report.day_figures(start, end)
     by_name = {t.name: t for t in day.tenants}
-    assert by_name["Wa"].figures == report.Figures(received=2, sent=1, failed=2, new_contacts=1)
+    assert by_name["Wa"].figures == report.Figures(received=2, sent=1, failed=1, new_contacts=1)
     assert by_name["Otro"].figures.empty
     assert [t.name for t in day.real] == ["Wa"]  # the quiet tenant is left out
     assert day.demos == report.Figures(received=1, sent=1)
-    assert day.total == report.Figures(received=3, sent=2, failed=2, new_contacts=1)
+    assert day.total == report.Figures(received=3, sent=2, failed=1, new_contacts=1)
 
 
 def test_open_alerts_most_severe_and_recent_first() -> None:

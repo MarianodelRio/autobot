@@ -449,6 +449,29 @@ def test_a_rejected_reminder_is_not_revived(tenants: Any, clock: Clock) -> None:
     assert reload(row).status == "failed"
 
 
+def test_a_discarded_reminder_is_never_revived_nor_sent(tenants: Any, clock: Clock) -> None:
+    """ADR-031: a person's decision is final; a sweep re-offering the reminder must not
+    bring it back, and a pending job must not send it."""
+    tenants(wa_tenant())
+    contact = Contact.objects.using("owner").get(id=reply_to().contact_id)
+    row = make_proactive(contact, "reminder:g4")
+    OutboundMessage.objects.using("owner").filter(id=row.id).update(status="discarded")
+    with tenant_tx(tenant().id):
+        assert (
+            create_proactive(
+                tenant().id,
+                contact,
+                ProactiveMessage(toy.TEMPLATE_THANKS, ["Rojo"], ["thanks_yes"]),
+                "reminder:g4",
+                None,
+            )
+            is None
+        )
+    assert reload(row).status == "discarded"
+    try_send(reload(row))
+    assert reload(row).status == "discarded"
+
+
 # ── Locks ────────────────────────────────────────────────────────────────
 
 

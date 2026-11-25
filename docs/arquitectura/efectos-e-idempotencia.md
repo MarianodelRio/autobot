@@ -33,10 +33,13 @@ stateDiagram-v2
     unknown --> failed: estado de entrega failed
     unknown --> pending: resend (una persona) o reconcile_unknown (una vez)
     unknown --> expired: reconcile_unknown, pasado expires_at
+    unknown --> discarded: descartar (una persona)
+    discarded --> sent: estado de entrega que prueba la entrega
     sent --> failed: estado de entrega failed
     sent --> [*]
     failed --> [*]
     expired --> [*]
+    discarded --> [*]
 ```
 
 | Estado | Significado |
@@ -46,6 +49,7 @@ stateDiagram-v2
 | `sent` | El proveedor aceptó el mensaje (o un estado de entrega lo demuestra). |
 | `failed` | Rechazado de forma definitiva. No se reintenta. |
 | `expired` | Pasó su `expires_at` sin que el proveedor lo aceptara: **no se envió** (y no saldrá más tarde). Una respuesta caducada se sustituye por una disculpa; un recordatorio puede revivirse. Ver [ADR-024](adr/ADR-024-envio-saliente-por-caducidad.md). |
+| `discarded` | Una persona decidió no enviarlo ([ADR-031](adr/ADR-031-incidencias-como-bandeja.md)). Estado final: no se reenvía, la conciliación y las barridas lo ignoran y un recordatorio no lo revive. Solo un estado de entrega del proveedor que **demuestre** la entrega lo pasa a `sent`; un `failed` posterior lo deja como está. No es un fallo: no cuenta en las cifras de fallos. |
 | `unknown` | Pudo salir o no. Se concilia (estado de entrega) y, sin evidencia tras 10 minutos, se reenvía una sola vez si la clase admite duplicados; si no, decide una persona. |
 
 ### Por qué existe `sending`
@@ -71,7 +75,7 @@ Todo lo que puede fallar antes de la llamada (traducir el mensaje, resolver el c
 | `RetryLater` | Seguro que no salió: no hubo conexión, límite de tasa, o un 5xx de Meta con su cuerpo de error. Puede traer `after_s`; su `kind` es `rate`, `server` o `network`. | `pending` y se reintenta hasta `expires_at`, sin tope de intentos |
 | `Ambiguous` | Pudo salir: tiempo agotado tras conectar, 2xx sin id, 5xx de Telegram... Lleva `transport` si fue un fallo del proveedor o de la red (alimenta el cortacircuitos, no cambia el estado). | `unknown` |
 
-La clasificación vive en cada adaptador (`autobot/channels/whatsapp/adapter.py` y `autobot/channels/telegram/adapter.py`, función `classify`), porque difiere: un 5xx es `RetryLater` para Meta y `Ambiguous` para Telegram. Solo un fallo de conexión (`ConnectError`, `ConnectTimeout`, `PoolTimeout`) es `RetryLater` seguro; cualquier otro error de red después de conectar es `Ambiguous`.
+La clasificación vive en cada adaptador (`autobot/channels/whatsapp/adapter.py` y `autobot/channels/telegram/adapter.py`, función `classify`), porque difiere: un 5xx es `RetryLater` para Meta y `Ambiguous` para Telegram. Cada adaptador también traduce el `last_error` guardado a una **clase de error** (`outside_window`, `undeliverable`, `blocked`, `auth`, `rate`, `marketing_declined`, `spam_limit`, `other`; función `error_class`, que lee los dos formatos de WhatsApp y el de Telegram), y `ops/send_errors.py` le da el título y el consejo en español. Telegram guarda, además del código, una frase corta de una lista fija (p. ej. `chat not found`), nunca el texto libre de la descripción. Solo un fallo de conexión (`ConnectError`, `ConnectTimeout`, `PoolTimeout`) es `RetryLater` seguro; cualquier otro error de red después de conectar es `Ambiguous`.
 
 ### Cómo sale un mensaje de `unknown`
 
@@ -80,8 +84,9 @@ La clasificación vive en cada adaptador (`autobot/channels/whatsapp/adapter.py`
 3. **Una persona.** Con las acciones de `apps/backend/src/autobot/ops/actions.py`, que usan el panel y el comando `outbound_resolve`:
     - `mark_sent`: confirma que llegó (revisado en el panel del proveedor o con el destinatario). Pasa a `sent`.
     - `resend`: autoriza un reenvío **sabiendo que puede duplicarse**. Pasa a `pending` y encola `send_message` en la misma transacción.
-    - Ambas exigen estado `unknown` y que lleve más de 10 minutos (`unknown_at`), porque uno reciente aún puede resolverse solo con un estado de entrega. `resend` exige además que el contenido siga disponible (el payload se vacía a los 30 días), que el negocio se resuelva sin ambigüedad, no esté dado de baja y su canal esté activo. Ambas dejan registro de auditoría.
-    - Para tras una incidencia, `resend_many` reenvía en bloque `failed`, `unknown` y `expired` (hasta 500 por acción, con TOTP reciente y un único registro de auditoría con cifras). Un reenvío de una persona fija `ambiguous_resends = 1`: la plataforma no añade el suyo.
+    - `discard`: la persona decide no enviarlo (ni confirmarlo). Pasa a `discarded`, sin espera mínima.
+    - `mark_sent` y `resend` exigen estado `unknown` y que lleve más de 10 minutos (`unknown_at`), porque uno reciente aún puede resolverse solo con un estado de entrega. `resend` exige además que el contenido siga disponible (el payload se vacía a los 30 días), que el negocio se resuelva sin ambigüedad, no esté dado de baja y su canal esté activo. Las tres acciones dejan registro de auditoría (`outbound.mark_sent`, `outbound.resend`, `outbound.discard`).
+    - Ya no hay reenvío en bloque (retirado por el [ADR-031](adr/ADR-031-incidencias-como-bandeja.md)). Un reenvío de una persona fija `ambiguous_resends = 1`: la plataforma no añade el suyo.
 4. Los trabajos `send_message` y `send_notification` **nunca** se reintentan desde «Trabajos fallidos» (`NOT_RETRYABLE_TASKS`).
 
 El procedimiento para el operador está en [envíos unknown](../incidencias/envios-unknown.md).

@@ -614,6 +614,25 @@ def test_a_status_updates_its_message(tenants: Any) -> None:
     assert row.status == "failed"
 
 
+def test_a_status_on_a_discarded_message_follows_the_evidence(tenants: Any) -> None:
+    """ADR-031: `discarded` is a person's decision, but a provider status that proves
+    delivery wins (real evidence); a `failed` one leaves it discarded."""
+    tenants(wa_tenant())
+    receive(wa_text("hola"))
+    (row,) = outbound()
+    OutboundMessage.objects.using("owner").filter(id=row.id).update(
+        status="discarded", last_error="timeout"
+    )
+    apply(status_body("failed", str(row.id), errors=[{"code": 131047}]))
+    row.refresh_from_db(using="owner")
+    assert (row.status, row.last_error) == ("discarded", "timeout")
+
+    apply(status_body("delivered", str(row.id)))
+    row.refresh_from_db(using="owner")
+    assert (row.status, row.last_error, row.unknown_at) == ("sent", "", None)
+    assert row.sent_at is not None
+
+
 def test_a_status_of_an_unknown_message_is_done(tenants: Any) -> None:
     tenants(wa_tenant())
     event = apply(status_body("sent", "not-a-uuid", wamid="wamid.NOBODY"))

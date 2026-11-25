@@ -152,6 +152,7 @@ def flow(now: datetime, queues: list[dict[str, Any]]) -> FlowOut:
     outbound = OutboundMessage.objects.using("owner").filter(tenant_id__in=ids)
     received_1h = inbound.filter(received_at__gte=hour_ago).count()
     answered_1h = outbound.filter(sent_at__gte=hour_ago).count()
+    # `discarded` is an operator decision (ADR-031), neither delivered nor a failure to alert on.
     failed_1h = inbound.filter(status="failed", received_at__gte=hour_ago).count() + (
         outbound.filter(status__in=["failed", "unknown"], created_at__gte=hour_ago).count()
     )

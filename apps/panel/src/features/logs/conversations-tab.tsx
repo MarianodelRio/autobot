@@ -25,6 +25,7 @@ const STATUSES = [
   "sent",
   "unknown",
   "expired",
+  "discarded",
 ];
 
 export function ConversationsTab({

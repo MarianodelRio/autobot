@@ -145,10 +145,8 @@ Parámetros y cuerpos:
 | GET | `/api/panel/alerts` | Alerts | AlertsPage |
 | POST | `/api/panel/alerts/{id}/resolve` | Resolve | MessageOut |
 | GET | `/api/panel/incidents` | Incidents | IncidentsOut |
-| GET | `/api/panel/jobs` | Jobs | JobsPage |
 | POST | `/api/panel/jobs/{id}/retry` | Retry | MessageOut |
-| POST | `/api/panel/outbound/resend-bulk` | Resend Bulk | BulkResendOut |
-| POST | `/api/panel/outbound/resend-bulk/preview` | Resend Bulk Preview | BulkPreviewOut |
+| POST | `/api/panel/outbound/{id}/discard` | Discard | MessageOut |
 | POST | `/api/panel/outbound/{id}/mark-sent` | Mark Sent | MessageOut |
 | POST | `/api/panel/outbound/{id}/resend` | Resend | MessageOut |
 
@@ -162,27 +160,10 @@ Parámetros y cuerpos:
     - Parámetro `id` (path, obligatorio): string (uuid)
 - `GET /api/panel/incidents`
     - Parámetro `limit` (query): integer
-- `GET /api/panel/jobs`
-    - Parámetro `cursor` (query): string
-    - Parámetro `limit` (query): integer
-    - Parámetro `queue` (query): string
-    - Parámetro `status` (query): string
 - `POST /api/panel/jobs/{id}/retry`
     - Parámetro `id` (path, obligatorio): integer
-- `POST /api/panel/outbound/resend-bulk`
-    - Cuerpo: BulkResendIn
-        - `confirm_duplicate_risk` (opcional): any
-        - `ids` (opcional): string (uuid)[] | null
-        - `since` (opcional): string (date-time) | null
-        - `statuses` (opcional): string[]
-        - `tenant_id` (opcional): string (uuid) | null
-        - `until` (opcional): string (date-time) | null
-- `POST /api/panel/outbound/resend-bulk/preview`
-    - Cuerpo: BulkFilter
-        - `since` (opcional): string (date-time) | null
-        - `statuses` (opcional): string[]
-        - `tenant_id` (opcional): string (uuid) | null
-        - `until` (opcional): string (date-time) | null
+- `POST /api/panel/outbound/{id}/discard`
+    - Parámetro `id` (path, obligatorio): string (uuid)
 - `POST /api/panel/outbound/{id}/mark-sent`
     - Parámetro `id` (path, obligatorio): string (uuid)
 - `POST /api/panel/outbound/{id}/resend`

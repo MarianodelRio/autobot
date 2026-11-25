@@ -535,7 +535,9 @@ def _outbound_of(item: StatusItem) -> OutboundMessage | None:
 def _update_from_status(message: OutboundMessage, item: StatusItem) -> None:
     """`sent`, `delivered` and `read` prove the message left: an `unknown` (or a status
     that overtook our own `sent`) becomes `sent`. `failed` turns a sent message into
-    `failed`. Pricing is kept whenever it comes."""
+    `failed`. Pricing is kept whenever it comes. A `discarded` message (ADR-031) follows the
+    same rule: a status that proves delivery is real evidence and moves it to `sent`; a later
+    `failed` leaves it `discarded` (a person already decided it was not going out)."""
     if item.status == "failed":
         if message.status in (Sent.SENT, Sent.UNKNOWN, Sent.SENDING):
             message.status = Sent.FAILED

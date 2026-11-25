@@ -75,8 +75,10 @@ if importlib.util.find_spec("django_migration_linter"):
         "exclude_apps": ["procrastinate", "otp_totp"],
         # Contract migrations allowed by hand (deploy.sh: migrations only expand the
         # schema). 0034 drops `contact.opt_out`, which no released code reads: nothing
-        # was in production yet when it was written.
-        "ignore_name": ["0034_contact_drop_opt_out"],
+        # was in production yet when it was written. 0036 widens `outbound_message.status`
+        # (varchar 8 -> 10): old code still writes values that fit, and PostgreSQL does it
+        # without rewriting the table.
+        "ignore_name": ["0034_contact_drop_opt_out", "0036_outbound_discarded"],
     }
 
 MIDDLEWARE = [

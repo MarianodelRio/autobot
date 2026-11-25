@@ -133,6 +133,7 @@ class OutboundMessage(TenantScoped):
         FAILED = "failed"
         UNKNOWN = "unknown"
         EXPIRED = "expired"  # not delivered in time (ADR-024); never sent
+        DISCARDED = "discarded"  # a person decided not to send it (ADR-031); final
 
     contact = models.ForeignKey(
         Contact, on_delete=models.CASCADE, db_constraint=False, related_name="+"
@@ -143,7 +144,7 @@ class OutboundMessage(TenantScoped):
     kind = models.CharField(max_length=10, choices=Kind)
     payload = models.JSONField(null=True)  # common Reply/ProactiveMessage; emptied after 30 days
     status = models.CharField(
-        max_length=8, choices=Status, default=Status.PENDING, db_default=Status.PENDING
+        max_length=10, choices=Status, default=Status.PENDING, db_default=Status.PENDING
     )
     unknown_at = models.DateTimeField(null=True, blank=True)
     # Until when it may still be sent (ADR-024); NULL on rows from before it existed, which

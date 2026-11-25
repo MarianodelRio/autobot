@@ -128,7 +128,7 @@ también se puede pasar en la línea de comandos.
 | `tenant_purge <slug>` | Solo tras la baja: borra todo lo que el sistema guarda del negocio, incluida su fila y su slug (que queda libre); exige escribir el slug |
 | `privacy_ledger_export` | Imprime el libro de supresiones (JSON lines, sin datos personales). `backup.sh` ya lo sube cada hora a restic (ADR-025); la exportación manual es una copia opcional |
 | `privacy_reapply [--ledger FICHERO]` | Tras restaurar: vuelve a aplicar los olvidos y purgas del libro (tabla + fichero, o `--ledger -` por stdin); idempotente |
-| `outbound_resolve <uuid> (--mark-sent\|--resend) --confirm` | Resuelve un envío ambiguo a mano; sin `--confirm` explica el riesgo y no hace nada |
+| `outbound_resolve <uuid> (--mark-sent\|--resend\|--discard) --confirm` | Resuelve un envío ambiguo a mano (marcarlo enviado, reenviarlo o descartarlo, que es definitivo); sin `--confirm` explica el riesgo y no hace nada |
 | `job_retry <id>` | Reintenta un trabajo fallido idempotente a mano; rechaza los de envío (`send_message`, `send_notification`) |
 | `tenant_secrets_reencrypt` | Recifra todos los secretos de canal con la primera clave de `SECRETS_ENCRYPTION_KEY`, atómicamente y con auditoría; ver [rotación](../procedimientos/rotar-secretos.md) |
 | `tenant_config export <slug> <dir\|->` | Exporta documento y datasets vigentes, sin secretos; el directorio debe estar vacío o ser nuevo. Con `-`, tar.gz por stdout y diagnósticos por stderr |
