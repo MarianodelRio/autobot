@@ -18,12 +18,14 @@ Messages never contain secret values.
 import json
 import logging
 import os
+import socket
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -32,6 +34,7 @@ from zoneinfo import ZoneInfo
 
 import yaml
 from django.db import DatabaseError, connections, transaction
+from django.utils import timezone
 from pydantic import BaseModel, ValidationError
 
 from autobot.tenancy.schema import SECRETS_SCHEMA, ChannelSecrets, TenantDocument
@@ -433,6 +436,9 @@ class _RegistryScope:
 POLL_SECONDS = 2.0
 # At most one forced check per this many seconds and process for lookup misses.
 MISS_RETRY_SECONDS = 1.0
+# A polling process tells the database which revision it has loaded (`config_follower`):
+# at once when it changes, and otherwise at most this often, so it counts as alive.
+HEARTBEAT_SECONDS = 15.0
 
 _scope: ContextVar[_RegistryScope | None] = ContextVar("registry_scope", default=None)
 _registry: Registry | None = None
@@ -453,6 +459,12 @@ _refresher_pid = 0
 _poll_interval: float | None = None
 _stopping = False
 _last_reload_ok = True
+# The heartbeat (`_beat`), touched only by the refresher thread: what was last written,
+# and when (monotonic), and the earliest next attempt after a failure.
+_beat_revision: int | None = None
+_beat_at = float("-inf")
+_beat_retry_at = float("-inf")
+_started_at: datetime | None = None
 # Throttle of the forced check after a lookup miss.
 _miss_lock = threading.Lock()
 _last_forced_at = float("-inf")
@@ -465,12 +477,15 @@ def _after_fork_in_child() -> None:
     `start_polling` itself."""
     global _registry_lock, _refresh_cv, _refresh_state, _refresher, _refresher_pid
     global _poll_interval, _stopping, _miss_lock
+    global _beat_revision, _beat_at, _beat_retry_at, _started_at
     _registry_lock = threading.Lock()
     _refresh_cv = threading.Condition()
     _refresh_state = "idle"
     _refresher, _refresher_pid = None, 0
     _poll_interval, _stopping = None, False
     _miss_lock = threading.Lock()
+    # The child is another process: its own row, written from scratch.
+    _beat_revision, _beat_at, _beat_retry_at, _started_at = None, float("-inf"), float("-inf"), None
 
 
 os.register_at_fork(after_in_child=_after_fork_in_child)
@@ -659,10 +674,75 @@ def _refresher_loop(cv: threading.Condition) -> None:
             ok = False
         if not ok:
             _drop_connection()  # never keep a connection that just failed
+        elif polling:
+            _beat(time.monotonic())
         with cv:
             _refresh_state = "idle"
             cv.notify_all()
+    _forget_process()
     _drop_connection()
+
+
+def _beat(now: float) -> None:
+    """Tell the database which revision this process has loaded (`config_follower`), when
+    it changed or `HEARTBEAT_SECONDS` have passed since the last write. Refresher thread
+    only, on its own connection and in autocommit: never on the hot path, never inside a
+    request or job transaction. A failure is logged and ignored (retried after
+    `HEARTBEAT_SECONDS`); it never breaks the refresher."""
+    global _beat_revision, _beat_at, _beat_retry_at
+    revision = _revision
+    if revision is None or now < _beat_retry_at:
+        return
+    if revision == _beat_revision and now - _beat_at < HEARTBEAT_SECONDS:
+        return
+    try:
+        _write_beat(revision)
+    except Exception:
+        _beat_retry_at = now + HEARTBEAT_SECONDS
+        log.warning("Configuration heartbeat failed; will retry", exc_info=True)
+        return
+    _beat_revision, _beat_at = revision, now
+
+
+def _write_beat(revision: int) -> None:
+    """Upsert this process's `config_follower` row (one statement, default connection)."""
+    global _started_at
+    from django.conf import settings
+
+    from autobot.tenancy.models import ConfigFollower
+
+    if _started_at is None:
+        _started_at = timezone.now()
+    ConfigFollower.objects.bulk_create(
+        [
+            ConfigFollower(
+                service=settings.SERVICE_NAME,
+                host=socket.gethostname(),
+                pid=os.getpid(),
+                revision=revision,
+                started_at=_started_at,
+                seen_at=timezone.now(),
+            )
+        ],
+        update_conflicts=True,
+        unique_fields=["host", "pid"],
+        update_fields=["service", "revision", "started_at", "seen_at"],
+    )
+
+
+def _forget_process() -> None:
+    """Remove this process's row when its refresher is stopped on purpose (best effort;
+    a process that just dies leaves a row that readers ignore once it is old)."""
+    global _beat_revision
+    if _beat_revision is None:
+        return
+    _beat_revision = None
+    try:
+        from autobot.tenancy.models import ConfigFollower
+
+        ConfigFollower.objects.filter(host=socket.gethostname(), pid=os.getpid()).delete()
+    except Exception:
+        log.warning("Configuration heartbeat cleanup failed", exc_info=True)
 
 
 def _request_refresh() -> None:

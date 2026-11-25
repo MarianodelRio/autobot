@@ -46,6 +46,7 @@ function Summary({ detail }: { detail: Detail }) {
     fn: () =>
       unwrap(api.POST("/tenants/{slug}/health-check", param(detail.slug))),
     tenant: detail.slug,
+    appliesConfig: false,
   });
   return (
     <div className="space-y-6">

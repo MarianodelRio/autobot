@@ -745,6 +745,85 @@
         "title": "ColumnOut",
         "type": "object"
       },
+      "ConfigProcessOut": {
+        "properties": {
+          "behind": {
+            "title": "Behind",
+            "type": "boolean"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "pid": {
+            "title": "Pid",
+            "type": "integer"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "seen_at": {
+            "format": "date-time",
+            "title": "Seen At",
+            "type": "string"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service",
+          "host",
+          "pid",
+          "revision",
+          "started_at",
+          "seen_at",
+          "behind"
+        ],
+        "title": "ConfigProcessOut",
+        "type": "object"
+      },
+      "ConfigStateOut": {
+        "properties": {
+          "processes": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigProcessOut"
+            },
+            "title": "Processes",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "revision",
+          "updated_at",
+          "processes"
+        ],
+        "title": "ConfigStateOut",
+        "type": "object"
+      },
       "Confirmation": {
         "properties": {
           "confirm_duplicate_risk": {
@@ -5512,6 +5591,33 @@
           }
         ],
         "summary": "System",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/system/config": {
+      "get": {
+        "operationId": "autobot_panel_routers_system_system_config",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigStateOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "System Config",
         "tags": [
           "system"
         ]

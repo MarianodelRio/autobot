@@ -447,3 +447,44 @@ def test_a_stopped_worker_container_is_not_masked_by_the_heartbeat_count() -> No
     assert _worker_containers_running(stale)
     unavailable = state().model_copy(update={"available": False, "items": []})
     assert _worker_containers_running(unavailable)
+
+
+def test_config_state_endpoint_lists_alive_processes_and_the_ones_behind(
+    authed_client: Any,
+) -> None:
+    from autobot.tenancy.models import ConfigFollower, ConfigRevision
+
+    ConfigRevision.objects.using("owner").update_or_create(pk=1, defaults={"revision": 12})
+    now = datetime.now(UTC)
+    for pid, service, revision, age in (
+        (1, "web", 12, 3),
+        (2, "worker-inbound", 11, 10),
+        (3, "web-panel", 1, 600),  # not alive any more
+    ):
+        ConfigFollower.objects.using("owner").create(
+            service=service,
+            host="box",
+            pid=pid,
+            revision=revision,
+            started_at=now - timedelta(hours=2),
+            seen_at=now - timedelta(seconds=age),
+        )
+    data = get(authed_client, "system/config").json()
+    assert data["revision"] == 12 and data["updated_at"]
+    assert [(p["service"], p["revision"], p["behind"]) for p in data["processes"]] == [
+        ("web", 12, False),
+        ("worker-inbound", 11, True),
+    ]
+    assert set(data["processes"][0]) == {
+        "service",
+        "host",
+        "pid",
+        "revision",
+        "started_at",
+        "seen_at",
+        "behind",
+    }
+
+
+def test_config_state_endpoint_needs_a_session(client: Any) -> None:
+    assert get(client, "system/config").status_code in (401, 403)

@@ -618,6 +618,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** System Config */
+        get: operations["autobot_panel_routers_system_system_config"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant-slug-availability": {
         parameters: {
             query?: never;
@@ -1298,6 +1315,38 @@ export interface components {
             name: string;
             /** Type */
             type: string;
+        };
+        /** ConfigProcessOut */
+        ConfigProcessOut: {
+            /** Behind */
+            behind: boolean;
+            /** Host */
+            host: string;
+            /** Pid */
+            pid: number;
+            /** Revision */
+            revision: number;
+            /**
+             * Seen At
+             * Format: date-time
+             */
+            seen_at: string;
+            /** Service */
+            service: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
+        /** ConfigStateOut */
+        ConfigStateOut: {
+            /** Processes */
+            processes: components["schemas"]["ConfigProcessOut"][];
+            /** Revision */
+            revision: number;
+            /** Updated At */
+            updated_at: string | null;
         };
         /** Confirmation */
         Confirmation: {
@@ -3256,6 +3305,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_system_system_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigStateOut"];
                 };
             };
         };

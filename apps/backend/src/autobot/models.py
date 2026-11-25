@@ -14,10 +14,11 @@ from autobot.runtime.models import (
     OwnerLink,
     PlatformCache,
 )
-from autobot.tenancy.models import Tenant
+from autobot.tenancy.models import ConfigFollower, Tenant
 
 __all__ = [
     "AuditEvent",
+    "ConfigFollower",
     "Contact",
     "Conversation",
     "DemoEvent",

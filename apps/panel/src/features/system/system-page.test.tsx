@@ -88,15 +88,45 @@ const BASE: Record<string, unknown> = {
   },
 };
 
-function renderWith(overrides: Record<string, unknown>) {
+const CONFIG: Record<string, unknown> = {
+  revision: 12,
+  updated_at: "2026-11-04T09:50:00Z",
+  processes: [
+    {
+      service: "web",
+      host: "box1",
+      pid: 7,
+      revision: 12,
+      started_at: "2026-11-04T08:00:00Z",
+      seen_at: "2026-11-04T09:59:50Z",
+      behind: false,
+    },
+    {
+      service: "worker-outbound",
+      host: "box2",
+      pid: 9,
+      revision: 11,
+      started_at: "2026-11-04T08:00:00Z",
+      seen_at: "2026-11-04T09:59:55Z",
+      behind: true,
+    },
+  ],
+};
+
+function renderWith(
+  overrides: Record<string, unknown>,
+  config: Record<string, unknown> = CONFIG,
+) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(
-      async () =>
-        new Response(JSON.stringify({ ...BASE, ...overrides }), {
-          headers: { "Content-Type": "application/json" },
-        }),
-    ),
+    vi.fn(async (request: Request) => {
+      const body = request.url.endsWith("/system/config")
+        ? config
+        : { ...BASE, ...overrides };
+      return new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
   );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -323,5 +353,30 @@ test("shows how long the oldest ready and running jobs of each queue have waited
   ).toBeInTheDocument();
   expect(
     screen.getByText(/1 en curso \(el más antiguo, 45 s\)/),
+  ).toBeInTheDocument();
+});
+
+async function configCard() {
+  const title = await screen.findByText("Configuración cargada");
+  const card = title.closest('[data-slot="card"]');
+  if (!card) throw new Error("config card not found");
+  return within(card as HTMLElement);
+}
+
+test("lists the alive processes with their revision and marks the one behind", async () => {
+  renderWith({});
+  const card = await configCard();
+  expect(await card.findByText("Revisión 12", { exact: false })).toBeVisible();
+  expect(card.getByText("web")).toBeInTheDocument();
+  expect(card.getByText("worker-outbound")).toBeInTheDocument();
+  expect(card.getByText("11 (atrasado)")).toBeInTheDocument();
+  expect(card.getAllByText("12").length).toBeGreaterThan(0);
+});
+
+test("says so when no process has reported its configuration", async () => {
+  renderWith({}, { ...CONFIG, processes: [] });
+  const card = await configCard();
+  expect(
+    await card.findByText(/Ningún proceso ha informado/),
   ).toBeInTheDocument();
 });

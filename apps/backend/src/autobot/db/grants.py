@@ -42,6 +42,10 @@ CONFIG_TABLES: tuple[str, ...] = (
     "tenant_secret",
     "config_revision",
 )
+# `config_follower` (ADR-030) is deliberately NOT in CONFIG_TABLES: every booted process
+# writes its own row as fp_app (the base grant above gives SELECT, INSERT, UPDATE and DELETE;
+# DELETE also lets `ops_check` purge stale rows). fp_readonly reads it through the default
+# SELECT grant: it holds hostnames and pids, nothing sensitive.
 # Django's own auth/session/OTP tables: routed to fp_owner by AuthDatabaseRouter.
 # fp_app has no business with them at all, unlike CONFIG_TABLES (no SELECT either).
 AUTH_TABLES: tuple[str, ...] = (

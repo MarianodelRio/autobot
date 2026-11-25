@@ -142,3 +142,27 @@ class ConfigRevision(models.Model):
 
     def __str__(self) -> str:
         return f"revision {self.revision}"
+
+
+class ConfigFollower(models.Model):
+    """One row per live process (a gunicorn worker or a queue worker): the configuration
+    revision it has loaded, refreshed by its registry refresher (ADR-030). It lets the
+    panel say «applied in N processes» after a save and lets `ops_check` alert on a process
+    that stays behind. Platform operation data: no tenant_id, no RLS. Rows are only
+    meaningful while recent (`seen_at`); a dead process's row is ignored and later purged."""
+
+    service = models.CharField(max_length=64)  # SERVICE_NAME: web, web-panel, worker-...
+    host = models.CharField(max_length=128)  # the container's hostname
+    pid = models.IntegerField()
+    revision = models.BigIntegerField()  # the config revision the process has loaded
+    started_at = models.DateTimeField()
+    seen_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "config_follower"
+        constraints = [
+            models.UniqueConstraint(fields=["host", "pid"], name="config_follower_host_pid")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.service} {self.host}:{self.pid} r{self.revision}"

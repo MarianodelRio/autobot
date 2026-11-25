@@ -27,6 +27,7 @@ RUNBOOKS: dict[str, str] = {
     "calendar_outage": "incidencias/calendar.md",
     "check_failed": "incidencias/cola-y-latido.md",
     "registry": "incidencias/negocio-o-canal.md",
+    "config_stale": "incidencias/negocio-o-canal.md#proceso-con-configuracion-desactualizada",
     "tenant_unavailable": "incidencias/negocio-o-canal.md",
     "auth": "incidencias/negocio-o-canal.md",
     "tenant_silent": "incidencias/negocio-o-canal.md#negocio-en-silencio",

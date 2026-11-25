@@ -185,3 +185,21 @@ def test_fp_readonly_cannot_read_tenant_secret() -> None:
     assert query(
         "owner", "SELECT has_table_privilege('fp_readonly', 'tenant_secret', 'SELECT')"
     ) == (False,)
+
+
+def test_config_follower_is_written_by_fp_app_and_read_by_the_console() -> None:
+    # ADR-030: every booted process upserts its own row as fp_app, and ops_check purges old
+    # ones; it is not sensitive, so the SQL console (fp_readonly) reads it and cannot write.
+    for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+        assert query(
+            "owner", f"SELECT has_table_privilege('fp_app', 'config_follower', '{privilege}')"
+        ) == (True,)
+    assert query(
+        "owner", "SELECT has_table_privilege('fp_readonly', 'config_follower', 'SELECT')"
+    ) == (True,)
+    for privilege in ("INSERT", "UPDATE", "DELETE"):
+        assert query(
+            "owner", f"SELECT has_table_privilege('fp_readonly', 'config_follower', '{privilege}')"
+        ) == (False,)
+    assert "config_follower" not in db_grants.SENSITIVE_TABLES
+    assert "config_follower" not in db_grants.CONFIG_TABLES

@@ -236,6 +236,7 @@ Parámetros y cuerpos:
 | Método | Ruta | Resumen | Respuesta |
 | --- | --- | --- | --- |
 | GET | `/api/panel/system` | System | SystemOut |
+| GET | `/api/panel/system/config` | System Config | ConfigStateOut |
 
 ## tenants
 

@@ -47,6 +47,7 @@ export function ChannelSection({ detail }: { detail: Detail }) {
       ),
     success: "Webhook registrado.",
     tenant: detail.slug,
+    appliesConfig: false, // registers it at Telegram; the configuration is untouched
   });
   if (detail.channel_type === null) return null;
   return (

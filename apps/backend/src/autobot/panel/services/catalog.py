@@ -120,6 +120,13 @@ CATALOG: dict[str, TableDoc] = {
         "Permanente",
         False,
     ),
+    "config_follower": TableDoc(
+        CONFIG,
+        "Revisión de la configuración cargada por cada proceso vivo (ADR-030).",
+        "Cada proceso, cada 15 s",
+        "Un día desde que el proceso deja de latir",
+        False,
+    ),
     "contact": TableDoc(
         MESSAGES,
         "Personas que han contactado con un negocio.",

@@ -38,6 +38,7 @@ from autobot.runtime.notifications import (
 from autobot.runtime.outbound import RECONCILE_WAIT
 from autobot.runtime.periodic import channels_for
 from autobot.runtime.sweeps import SweepResult, sweep_tenant
+from autobot.tenancy import followers
 from autobot.tenancy.registry import LoadedTenant, get_registry
 from autobot.tenancy.tx import tenant_tx
 
@@ -63,6 +64,10 @@ ALERT_CHANNEL_GRACE = timedelta(minutes=15)
 PRUNE_OVERDUE = timedelta(days=10)
 
 CHECK_FAILED = "check_failed"
+
+# `config_stale`: a live process still on an older configuration revision this long after
+# the revision changed (ADR-030): the refresher normally catches up in about 2 s.
+CONFIG_STALE_AFTER = timedelta(seconds=60)
 
 # `tenant_silent`: no customer message for max(SILENT_MIN, SILENT_GAP_FACTOR x the median
 # gap between its messages over the last SILENT_WINDOW). 48 h so a business closed for the
@@ -360,6 +365,30 @@ def _queue_lag_findings(lags: list[queues.QueueLag], now: datetime) -> list[Find
                 )
             )
     return out
+
+
+def _config_findings(now: datetime) -> list[Finding]:
+    """A live process that keeps an older configuration than the database's for more than
+    CONFIG_STALE_AFTER since the revision last changed."""
+    try:
+        config = followers.read_state(now)
+    except DatabaseError:
+        log.exception("configuration followers query failed")
+        return []
+    if config.updated_at is None or now - config.updated_at <= CONFIG_STALE_AFTER:
+        return []
+    behind = [f for f in config.followers if f.behind]
+    if not behind:
+        return []
+    names = ", ".join(sorted({f.service for f in behind}))
+    return [
+        Finding(
+            "config_stale",
+            None,
+            f"🟠 Procesos con la configuración desactualizada ({names}): siguen en una"
+            f" revisión anterior a la {config.revision} desde hace más de 1 minuto.",
+        )
+    ]
 
 
 def _google_signal(kind: str) -> bool:
@@ -722,6 +751,7 @@ def collect() -> list[Finding]:
     elif inodes_used_pct is not None and inodes_used_pct > INODES_WARNING_PCT:
         findings.append(Finding("inodes", None, "🟠 Inodos del disco por encima del 80 %."))
     findings.extend(_pressure_findings(now))
+    findings.extend(_config_findings(now))
     if not settings.IS_LOCAL:
         findings.extend(_backup_findings(now))
         findings.extend(_tls_findings())
@@ -791,6 +821,7 @@ def take_sample() -> None:
         db_bytes=db_bytes,
     )
     SystemSample.objects.filter(taken_at__lt=timezone.now() - SAMPLE_RETENTION).delete()
+    followers.purge_stale(timezone.now())
 
 
 def run() -> None:

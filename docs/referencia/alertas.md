@@ -54,6 +54,7 @@ Detalles de los barridos de trabajo atascado en `apps/backend/src/autobot/runtim
 
 | Clave | Significado y umbral | Se resuelve sola | Runbook |
 |---|---|---|---|
+| `config_stale` | 🟠 Plataforma: un proceso vivo (`web`, `web-panel` o un worker) sigue con una revisión de la configuración anterior a la de la base de datos más de 1 minuto después de que esta cambiara. Lo normal es que se ponga al día en unos 2 s. El texto nombra los servicios atrasados. | Sí, cuando todos los procesos vivos están al día (o el proceso deja de latir) | [Un negocio o canal no responde](../incidencias/negocio-o-canal.md#proceso-con-configuracion-desactualizada) |
 | `registry` | 🔴 Hay configuraciones de negocio o secretos ilegibles al cargar el registro. | Sí, al corregirse | [Un negocio o canal no responde](../incidencias/negocio-o-canal.md) |
 | `tenant_unavailable` | 🔴 Por negocio: degradado, o (si no es demo) con el canal principal sin secretos o sin configuración completa. | Sí | [Un negocio o canal no responde](../incidencias/negocio-o-canal.md) |
 | `errors:<canal>` | 🔴 Por negocio y canal: tres errores seguidos al procesar mensajes o ejecutar periodics. Un éxito pone el contador a cero. | Sí, al primer éxito | [Un negocio o canal no responde](../incidencias/negocio-o-canal.md) |

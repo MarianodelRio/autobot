@@ -27,7 +27,7 @@ Las alertas se guardan en `ops_alert` (`apps/backend/src/autobot/ops/check.py`, 
 | --- | --- |
 | `inbound_delay`, `failed_jobs`, `inbound_stuck`, `queue_lag_unknown` | [cola-y-latido](cola-y-latido.md) |
 | `outbound_stuck`, `outbound_failed`, `notification_failed`, `owner_unlinked` | [envios-unknown](envios-unknown.md) |
-| `registry`, `tenant_unavailable`, `errors:<canal>`, `health:<codigo>` | [negocio-o-canal](negocio-o-canal.md) |
+| `registry`, `tenant_unavailable`, `errors:<canal>`, `health:<codigo>`, `config_stale` | [negocio-o-canal](negocio-o-canal.md) |
 | `tenant_silent`, `webhook_unsubscribed`, `webhook_errors`, `number_quality` | [negocio-o-canal](negocio-o-canal.md) |
 | `auth`, `auth:<canal>`, `bot:notify:auth` | [negocio-o-canal](negocio-o-canal.md) y [rotar secretos](../procedimientos/rotar-secretos.md) |
 | `bot:<bot>:<codigo>` (`demo_tg`, `notify`, `demo_wa`) | [negocio-o-canal](negocio-o-canal.md) |

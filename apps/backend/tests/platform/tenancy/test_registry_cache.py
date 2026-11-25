@@ -20,7 +20,9 @@ from tests.platform.tenancy.helpers import PACKS, tenant_document
 @pytest.fixture
 def state(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     registry.reset_registry()
-    state = SimpleNamespace(now=10.0, revision=1, loads=0)
+    state = SimpleNamespace(now=10.0, revision=1, loads=0, beats=[])
+    # The heartbeat (a `config_follower` upsert) is tested in test_config_follower.py.
+    monkeypatch.setattr(registry, "_write_beat", lambda revision: state.beats.append(revision))
     monkeypatch.setattr(registry, "time", SimpleNamespace(monotonic=lambda: state.now))
     monkeypatch.setattr("packs.registry.PACKS", PACKS)
     monkeypatch.setattr(registry, "_read_revision", lambda: state.revision)

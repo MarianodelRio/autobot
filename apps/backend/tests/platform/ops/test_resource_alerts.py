@@ -372,3 +372,94 @@ def test_a_failing_lag_query_degrades_to_a_finding(
     monkeypatch.setattr(queues, "queue_lags", timeout)
     check.run()  # does not raise
     assert "queue_lag_unknown" in kinds(alerts)
+
+
+# --- config_stale (ADR-030) --------------------------------------------------------------
+
+
+def _follower(service: str, revision: int, *, seen_s_ago: int = 5) -> None:
+    from autobot.tenancy.models import ConfigFollower
+
+    now = timezone.now()
+    ConfigFollower.objects.create(
+        service=service,
+        host=service,
+        pid=1,
+        revision=revision,
+        started_at=now - timedelta(hours=1),
+        seen_at=now - timedelta(seconds=seen_s_ago),
+    )
+
+
+def _revision(value: int, changed_s_ago: int) -> None:
+    from autobot.tenancy.models import ConfigRevision
+
+    ConfigRevision.objects.using("owner").update_or_create(pk=1, defaults={"revision": value})
+    # `updated_at` is auto_now: set it behind the ORM's back.
+    ConfigRevision.objects.using("owner").filter(pk=1).update(
+        updated_at=timezone.now() - timedelta(seconds=changed_s_ago)
+    )
+
+
+def test_config_stale_names_a_live_process_behind_for_over_a_minute(
+    tenants: Any, alerts: Any
+) -> None:
+    tenants()
+    _revision(9, changed_s_ago=120)
+    _follower("web", 9)
+    _follower("worker-outbound", 8)
+    check.run()
+    found = [a for a in alerts if a[0] == "config_stale"]
+    assert len(found) == 1 and found[0][1] is None  # platform-level
+    assert "worker-outbound" in found[0][2] and "web," not in found[0][2]
+
+
+def test_config_stale_waits_a_minute_after_the_change(tenants: Any, alerts: Any) -> None:
+    tenants()
+    _revision(9, changed_s_ago=20)
+    _follower("web", 8)
+    check.run()
+    assert "config_stale" not in kinds(alerts)
+
+
+def test_config_stale_ignores_dead_processes_and_ones_up_to_date(tenants: Any, alerts: Any) -> None:
+    tenants()
+    _revision(9, changed_s_ago=600)
+    _follower("web", 9)
+    _follower("worker-inbound", 3, seen_s_ago=300)  # gone: its row is old
+    check.run()
+    assert "config_stale" not in kinds(alerts)
+
+
+def test_config_stale_resolves_when_the_process_catches_up(
+    tenants: Any, monkeypatch: pytest.MonkeyPatch, settings: Any
+) -> None:
+    from autobot.tenancy.models import ConfigFollower
+
+    tenants()
+    settings.HEALTHCHECKS_PING_URL = ""
+    settings.DEMO_TELEGRAM_TOKEN = settings.NOTIFY_BOT_TOKEN = ""
+    monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
+    monkeypatch.setattr(system, "memory", lambda: 10.0)
+    monkeypatch.setattr(system, "load", lambda: 0.1)
+    monkeypatch.setattr(system, "swap", lambda: 0.0)
+    fake_disk(monkeypatch, 1)
+    monkeypatch.setattr(notifications, "_send_text", lambda *a, **k: None, raising=False)
+    _revision(9, changed_s_ago=120)
+    _follower("web", 8)
+    check.sync_alerts(check.collect())
+    assert OpsAlert.objects.filter(kind="config_stale", resolved_at__isnull=True).count() == 1
+    ConfigFollower.objects.update(revision=9)
+    check.sync_alerts(check.collect())
+    assert OpsAlert.objects.filter(kind="config_stale", resolved_at__isnull=True).count() == 0
+
+
+def test_the_check_purges_followers_not_seen_for_a_day(tenants: Any, alerts: Any) -> None:
+    from autobot.tenancy.models import ConfigFollower
+
+    tenants()
+    _revision(1, changed_s_ago=10)
+    _follower("old", 1, seen_s_ago=3 * 86400)
+    _follower("web", 1)
+    check.run()
+    assert list(ConfigFollower.objects.values_list("service", flat=True)) == ["web"]

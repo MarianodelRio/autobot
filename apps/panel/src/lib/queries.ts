@@ -11,6 +11,7 @@ export const qk = {
   me: () => ["me"] as const,
   overview: () => ["overview"] as const,
   system: () => ["system"] as const,
+  systemConfig: () => ["system", "config"] as const,
   tenants: () => ["tenants"] as const,
   tenant: (slug: string) => ["tenant", slug] as const,
   tenantSummary: (slug: string) => ["tenant-summary", slug] as const,

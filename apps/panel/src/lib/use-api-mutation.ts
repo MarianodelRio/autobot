@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { confirmApplied } from "@/lib/config-applied";
 import { errorDetail } from "@/lib/errors";
 import { invalidateKeys, invalidateTenantEverything } from "@/lib/queries";
 
@@ -25,6 +26,7 @@ export function useApiMutation<T, V = void>({
   invalidate,
   tenant,
   keepSetup,
+  appliesConfig = true,
   onSuccess,
   onError,
 }: {
@@ -38,6 +40,10 @@ export function useApiMutation<T, V = void>({
   tenant?: Resolvable<T, V, string>;
   /** With `tenant`: do not refetch the setup steps (see invalidateTenantEverything). */
   keepSetup?: boolean;
+  /** With `tenant`: the write changes the tenant's configuration, so the panel
+   * confirms «Aplicado en N procesos» (config-applied.ts). Pass `false` for writes
+   * that leave the configuration alone (a health check, forgetting a contact). */
+  appliesConfig?: boolean;
   onSuccess?: (data: T, variables: V) => void;
   onError?: (err: unknown) => void;
 }) {
@@ -50,6 +56,7 @@ export function useApiMutation<T, V = void>({
         invalidateTenantEverything(client, resolve(tenant, data, variables), {
           keepSetup,
         });
+      if (tenant && appliesConfig) void confirmApplied();
       if (invalidate)
         invalidateKeys(client, resolve(invalidate, data, variables));
       onSuccess?.(data, variables);

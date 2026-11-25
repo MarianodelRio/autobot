@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+import { confirmApplied } from "@/lib/config-applied";
 import {
   invalidateTenantEverything,
   isTenantKey,
@@ -9,6 +10,8 @@ import {
   qk,
 } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
+
+vi.mock("@/lib/config-applied", () => ({ confirmApplied: vi.fn() }));
 
 const tenantKeys = (slug: string) => [
   qk.tenant(slug),
@@ -89,4 +92,32 @@ test("LIVE polls every 30 s only while the tab is visible", () => {
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
+});
+
+async function runMutation(options: {
+  tenant?: string;
+  appliesConfig?: boolean;
+}) {
+  vi.mocked(confirmApplied).mockClear();
+  const client = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const { result } = renderHook(
+    () => useApiMutation({ fn: async () => "ok", ...options }),
+    { wrapper },
+  );
+  result.current.mutate();
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+}
+
+test("a tenant write asks for the «applied in N processes» confirmation", async () => {
+  await runMutation({ tenant: "a" });
+  expect(confirmApplied).toHaveBeenCalledTimes(1);
+});
+
+test("writes that leave the configuration alone, or have no tenant, do not", async () => {
+  await runMutation({ tenant: "a", appliesConfig: false });
+  await runMutation({});
+  expect(confirmApplied).not.toHaveBeenCalled();
 });

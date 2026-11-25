@@ -13,6 +13,7 @@ Nada de la configuración de un negocio está en git ni en la imagen. Cada pieza
 | `tenant_dataset_version` | Una fila por versión de cada dataset del negocio (`files`, `sha256`, procedencia). |
 | `tenant_secret` | Secretos del canal, cifrados (ver [Seguridad y secretos](seguridad-y-secretos.md)). |
 | `config_revision` | Una sola fila (`id=1`) con un contador que sube con cada escritura. |
+| `config_follower` | Una fila por proceso vivo con la revisión que ha cargado (ver [Confirmación](#confirmacion-de-que-un-cambio-esta-aplicado)). Datos de operación: sin `tenant_id` ni RLS. |
 | `dataset_library_version` | La biblioteca de datasets, independiente de cualquier negocio. |
 
 Estas tablas llevan `tenant_id` pero sin RLS por diseño: son configuración de la plataforma, no datos de cliente. `fp_app` solo las lee; escribe `fp_owner` (ver [Tenants y RLS](tenants-y-rls.md) y `autobot/db/grants.py`, listas `CONFIG_TABLES` y `SENSITIVE_TABLES`).
@@ -58,7 +59,17 @@ Más reglas:
 - `get_registry(force=True)` es la vía **síncrona**: salta la ventana, comprueba la revisión ahora y, si cambió, reconstruye en el propio llamante (esperando a la reconstrucción de fondo si hay una). La usan los servicios del panel y las búsquedas de arriba.
 - **Arranque**: `config/wsgi.py` llama a `warm_up_in_background(poll=True)` al arrancar cada worker de gunicorn (no se usa `--preload`), y `procrastinate worker` hace lo mismo desde `runtime/worker_pool.py` (`configure`): precarga el registro y después `start_polling()`. Es idempotente y solo vale para el proceso que lo llama; un hijo tras un `fork` empieza sin sondeo. Los tests, los comandos de `manage.py` y el chat de desarrollo siguen siendo perezosos; `stop_polling()` detiene y espera al hilo (tests y apagado) y `wait_for_refresh()` espera a que el refrescador quede libre.
 
-Efecto en la visibilidad: un negocio nuevo se encuentra al instante en cualquier camino de ejecución; un cambio en un negocio que ya estaba (estado, configuración, secretos) llega a los procesos arrancados en unos 2 s más el tiempo de reconstrucción. No hay confirmación de «aplicado en todos los procesos»; el ADR-030 la deja para una fase posterior.
+Efecto en la visibilidad: un negocio nuevo se encuentra al instante en cualquier camino de ejecución; un cambio en un negocio que ya estaba (estado, configuración, secretos) llega a los procesos arrancados en unos 2 s más el tiempo de reconstrucción. Cada proceso informa de la revisión que ha cargado y el panel lo muestra como confirmación (sección siguiente).
+
+### Confirmación de que un cambio está aplicado
+
+Cada proceso que sondea (el mismo hilo refrescador) escribe en `config_follower` (`autobot/tenancy/models.py`) una fila con su `service` (`SERVICE_NAME`: `web`, `web-panel`, `worker-inbound`…), su `host` (el contenedor), su `pid`, la `revision` cargada, `started_at` y `seen_at`; la clave única es (`host`, `pid`). Es un *upsert* de una fila que se hace solo cuando cambia la revisión cargada o han pasado 15 s desde la última escritura (`HEARTBEAT_SECONDS`), siempre desde el hilo refrescador con su propia conexión, nunca en la ruta caliente ni dentro de la transacción de una petición o un trabajo. Si falla se registra un aviso y se reintenta a los 15 s; nunca rompe al refrescador. Al parar el sondeo a propósito (`stop_polling`) el proceso borra su fila; si muere sin avisar, su fila queda y deja de contar como viva a los 45 s. `ops_check` borra las filas con más de un día sin latir. Escritura: `fp_app` (los permisos están en `autobot/db/grants.py`; la tabla no es sensible y la consola SQL la lee).
+
+Los lectores (`autobot/tenancy/followers.py`) consideran **viva** una fila vista en los últimos 45 s y **atrasada** la que tiene una revisión menor que la de `config_revision`. Los usan tres cosas:
+
+- `GET /api/panel/system/config`: la revisión de la base de datos, su `updated_at` y los procesos vivos con `behind`.
+- La confirmación del panel: tras cualquier escritura de un cliente (`useApiMutation({ tenant })`, el formulario de secretos), el panel lee la revisión que dejó el guardado y consulta ese endpoint cada 0,5 s, hasta unos 10 s, hasta que todos los procesos vivos la hayan cargado. Muestra «Aplicado en N procesos» o «Aplicado en X de N; siguen con la versión anterior: <servicio>». La escritura ya está confirmada en la base de datos; es solo información.
+- La alerta `config_stale` de `ops_check`: un proceso vivo atrasado más de un minuto después del último cambio de `config_revision.updated_at`.
 
 `registry_scope` fija el primer registro leído durante una petición o trabajo (incluidos ámbitos anidados), de modo que una unidad de trabajo ve una sola versión de la configuración. `loaded_registry` devuelve el registro ya cargado sin consultas; lo usa la redacción de logs.
 

@@ -35,6 +35,7 @@ export function ContactsTab({ slug }: { slug: string }) {
     success: "Contacto olvidado.",
     error: "No se pudo olvidar el contacto.",
     tenant: slug,
+    appliesConfig: false,
     onSuccess: () => {
       setForgetOpen(false);
       setSelected(null);

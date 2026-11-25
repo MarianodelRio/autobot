@@ -242,6 +242,14 @@ desactualizados», que lleva más de 3 minutos sin actualizarse (revisa el timer
 aviso de «Despliegue en curso» y no genera alertas nuevas; igual con una
 restauración a medias.
 
+Debajo, el bloque «Configuración cargada»: la revisión de la configuración en la base de
+datos, cuándo cambió por última vez y una fila por proceso vivo (`web`, `web-panel` y los
+cuatro workers) con la revisión que ha cargado y cuándo latió por última vez. Un proceso que
+va por detrás de la base de datos se marca en ámbar; en condiciones normales todos están
+al día en unos 2 s tras un cambio. Si uno se queda atrás más de un minuto salta la alerta
+`config_stale` ([runbook](../incidencias/negocio-o-canal.md#proceso-con-configuracion-desactualizada)).
+«Vivo» significa que su fila se renovó en los últimos 45 s.
+
 Debajo, CPU, RAM, disco y carga actuales con la gráfica del mes, tamaño de la base
 de datos y sus tablas más grandes, y por cola los trabajos pendientes, cuánto espera el
 más antiguo y los que están en curso (si una cola se retrasa, salta `queue_lag:<cola>`,
@@ -274,6 +282,10 @@ los comandos se lanzan desde el portátil, con la clave de operación y el alias
 - Cada 30 s, solo con la pestaña visible, se refrescan solos: la lista de clientes, el detalle y el resumen de un cliente, el historial de versiones, secretos y webhook, la lista de avisos y contactos, la checklist de activación y las invitaciones de demo (Resumen, Incidencias y Sistema ya lo hacían).
 - No se refrescan solos los pasos del alta (se perderían los resultados de «Comprobar», que solo viven en el navegador), ni los logs, ni los resultados de la consola de datos o de la búsqueda de auditoría, ni las vistas previas de versiones ni los QR.
 - Al guardar o cambiar algo de un cliente (configuración, restaurar versión, aplicar horarios, credenciales, webhook, dueño, estado), se refresca todo lo suyo sin recargar el navegador: ficha, canal, enlace y QR, pasos del alta, checklist, historial, resumen, la lista de clientes y Resumen. Si el guardado choca con una versión más reciente, también se refresca.
+
+## Confirmación de que un cambio está aplicado
+
+Al guardar un cambio de un cliente (configuración, restaurar versión, aplicar horarios, credenciales, webhook, dueño, estado) sale un aviso en la esquina que se actualiza solo: «Aplicando el cambio…» mientras algún proceso sigue con la configuración anterior y, como mucho unos 10 s después, «Aplicado en N procesos» (verde) o, si alguno no ha llegado, «Aplicado en X de N; siguen con la versión anterior: <servicio>» (ámbar). El cambio ya está guardado en cualquiera de los casos: el aviso solo dice cuántos procesos lo han cargado. No aparece al exportar ni en acciones que no cambian configuración. Si un servicio no se pone al día, mira Sistema y la alerta `config_stale`.
 
 ## Sesión y acceso
 

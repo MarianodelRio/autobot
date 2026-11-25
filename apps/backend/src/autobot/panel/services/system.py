@@ -24,6 +24,7 @@ from autobot.runtime.cache import auth_flag_key
 from autobot.runtime.jobs import INBOUND, INBOUND_EXT
 from autobot.runtime.models import Channel, InboundEvent, OutboundMessage
 from autobot.runtime.summary import month_to_date
+from autobot.tenancy import followers
 from autobot.tenancy.registry import get_registry
 
 # Compose services that run a `procrastinate worker` (one process each).
@@ -356,4 +357,42 @@ def build_containers(now: datetime) -> ContainersOut:
         stale=assessment.stale,
         maintenance=assessment.maintenance,
         items=[ContainerOut.model_validate(row) for row in assessment.services],
+    )
+
+
+class ConfigProcessOut(Schema):
+    service: str
+    host: str
+    pid: int
+    revision: int
+    started_at: datetime
+    seen_at: datetime
+    behind: bool
+
+
+class ConfigStateOut(Schema):
+    revision: int
+    updated_at: datetime | None
+    processes: list[ConfigProcessOut]
+
+
+def build_config_state() -> ConfigStateOut:
+    """The configuration revision in the database and the alive processes with the one
+    each has loaded (ADR-030). Cheap enough to poll every 500 ms while a save is confirmed."""
+    state = followers.read_state(timezone.now(), alias="owner")
+    return ConfigStateOut(
+        revision=state.revision,
+        updated_at=state.updated_at,
+        processes=[
+            ConfigProcessOut(
+                service=f.service,
+                host=f.host,
+                pid=f.pid,
+                revision=f.revision,
+                started_at=f.started_at,
+                seen_at=f.seen_at,
+                behind=f.behind,
+            )
+            for f in state.followers
+        ],
     )

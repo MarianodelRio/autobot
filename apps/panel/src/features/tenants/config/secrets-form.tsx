@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { confirmApplied } from "@/lib/config-applied";
 import { errorDetail } from "@/lib/errors";
 import { invalidateTenantEverything } from "@/lib/queries";
 
@@ -72,6 +73,7 @@ export function SecretsForm({
       setOpen(false);
       reset();
       invalidateTenantEverything(client, slug);
+      void confirmApplied();
     } catch (caught) {
       // The typed values stay in the form: only a success clears them.
       setError(

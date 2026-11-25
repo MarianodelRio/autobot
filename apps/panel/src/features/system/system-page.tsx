@@ -34,6 +34,7 @@ import {
 } from "@/lib/format";
 import { qk } from "@/lib/queries";
 import { tlsLevel } from "@/lib/status-levels";
+import { ConfigCard } from "./config-card";
 import { ContainersCard } from "./containers-card";
 import { FlowCard } from "./flow-card";
 import { StatusCard } from "./status-card";
@@ -102,6 +103,8 @@ function SystemContent({ data }: { data: components["schemas"]["SystemOut"] }) {
       </div>
 
       <ContainersCard containers={data.containers} />
+
+      <ConfigCard />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="CPU" value={percent(data.machine.cpu_pct)} />

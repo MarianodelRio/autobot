@@ -96,6 +96,7 @@ function StepActionButton({
     success: (result) => result.detail,
     tenant: slug,
     keepSetup: true,
+    appliesConfig: false,
     onSuccess: (result) => {
       setOpen(false);
       setPin("");
@@ -203,6 +204,7 @@ export function StepRow({
     // below and must survive, hence keepSetup.
     tenant: slug,
     keepSetup: true,
+    appliesConfig: false,
     onSuccess: (result) => {
       client.setQueryData<SetupStep[]>(qk.tenantSetup(slug), (previous) =>
         previous?.map((item) => (item.key === step.key ? result : item)),

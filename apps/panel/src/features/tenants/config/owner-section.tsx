@@ -32,6 +32,7 @@ export function OwnerSection({ detail }: { detail: Detail }) {
         }),
       ),
     tenant: detail.slug,
+    appliesConfig: false, // owner links are not configuration
     onSuccess: (result) => setLink(result),
   });
   const unlink = useApiMutation({
@@ -44,6 +45,7 @@ export function OwnerSection({ detail }: { detail: Detail }) {
     success: (result) =>
       result.had_chat ? "Dueño desconectado." : "Invitación cancelada.",
     tenant: detail.slug,
+    appliesConfig: false, // owner links are not configuration
     onSuccess: () => setConfirmUnlink(false),
   });
   const label = detail.owner_linked

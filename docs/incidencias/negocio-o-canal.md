@@ -31,6 +31,16 @@ Otros negocios funcionan, pero uno no responde en su canal `main`. Alertas posib
     Los secretos se cargan con `tenant_config import --secrets <yaml>`. No hace falta desplegar.
 3. Un tenant degradado no debe arrastrar a otros.
 
+### Proceso con configuración desactualizada
+
+`config_stale`: un proceso vivo no ha cargado la última revisión de la configuración, un minuto o más después de un cambio (lo normal son unos 2 s; [ADR-030](../arquitectura/adr/ADR-030-registro-siempre-al-dia.md)). Mira en el panel, Sistema, bloque «Configuración cargada»: marca en ámbar el proceso atrasado, con su servicio, contenedor y pid. El proceso late (su fila se renueva cada 15 s) pero no se pone al día, así que su hilo refrescador está atascado o la reconstrucción del registro falla en él: busca en los logs de ese servicio `Configuration reload failed` o `rebuild failed`. Si no hay un error de datos que corregir, reinicia solo ese servicio:
+
+```bash
+make prod-compose ARGS="restart <servicio>"
+```
+
+Un proceso que muere deja su fila hasta 45 s como «vivo»: si el servicio se acaba de reiniciar, espera y comprueba de nuevo antes de actuar. La alerta se resuelve sola cuando todos los procesos vivos están al día.
+
 ### Negocio en silencio
 
 `tenant_silent`: un negocio activo no recibe mensajes desde hace más de lo habitual. Puede ser normal (vacaciones, cierre) o un canal roto. Comprueba primero `webhook_unsubscribed`, `webhook_errors` y `auth` del mismo negocio, y envía tú un mensaje de prueba al número o bot: si no aparece en la bandeja del panel, el problema está entre Meta/Telegram y nosotros. Si el negocio está cerrado, avisa a la persona responsable; la alerta se resuelve sola al llegar el siguiente mensaje.

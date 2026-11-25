@@ -3,7 +3,12 @@
 from django.http import HttpRequest
 from ninja import Router
 
-from autobot.panel.services.system import SystemOut, build_system
+from autobot.panel.services.system import (
+    ConfigStateOut,
+    SystemOut,
+    build_config_state,
+    build_system,
+)
 
 router = Router(tags=["system"])
 
@@ -11,3 +16,8 @@ router = Router(tags=["system"])
 @router.get("/system", response=SystemOut)
 def system(request: HttpRequest) -> SystemOut:
     return build_system()
+
+
+@router.get("/system/config", response=ConfigStateOut)
+def system_config(request: HttpRequest) -> ConfigStateOut:
+    return build_config_state()
