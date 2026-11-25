@@ -72,8 +72,8 @@ export function SecretsForm({
       }
       setOpen(false);
       reset();
-      invalidateTenantEverything(client, slug);
-      void confirmApplied();
+      invalidateTenantEverything(client, slug, { channel: true });
+      void confirmApplied(client, slug);
     } catch (caught) {
       // The typed values stay in the form: only a success clears them.
       setError(

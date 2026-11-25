@@ -15,6 +15,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { KpiCard } from "@/components/kpi-card";
 import { PageHeader } from "@/components/page-header";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { TimeAgo } from "@/components/time-ago";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -71,13 +72,18 @@ export function SystemPage() {
       <PageHeader title="Sistema" help="procedimientos/despliegue/" />
       {query.isPending ? (
         <p>Cargando sistema…</p>
-      ) : query.isError ? (
+      ) : query.isError && !query.data ? (
         <ErrorState
           message={errorMessage(query.error, "No se pudo cargar el sistema.")}
           onRetry={() => void query.refetch()}
         />
       ) : (
-        <SystemContent data={query.data} />
+        <>
+          {query.isError && (
+            <RefreshWarning onRetry={() => void query.refetch()} />
+          )}
+          <SystemContent data={query.data} />
+        </>
       )}
     </div>
   );

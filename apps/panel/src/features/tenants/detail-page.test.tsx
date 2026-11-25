@@ -2,7 +2,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { confirmApplied } from "@/lib/config-applied";
+import { qk } from "@/lib/queries";
 import { TenantDetailPage } from "./detail-page";
+
+vi.mock("@/lib/config-applied", () => ({ confirmApplied: vi.fn() }));
+let failTenant = false;
 
 const tenant = {
   slug: "demo",
@@ -25,12 +30,14 @@ const tenant = {
   owner_linked: false,
   month: { inbound: 12, outbound: 10, users: 4, cost_eur: "1.20" },
 };
-function setup(status = "active") {
+function setup(status = "active", initialTab?: string) {
   const fetcher = vi.fn(async (request: RequestInfo | URL) => {
     const url = new URL(
       request instanceof Request ? request.url : String(request),
     );
     let value: unknown;
+    if (failTenant && url.pathname.endsWith("/tenants/demo"))
+      return new Response("{}", { status: 500 });
     if (url.pathname.endsWith("/health-check")) value = [];
     else if (url.pathname.endsWith("/setup")) value = [];
     else if (url.pathname.includes("/packs/"))
@@ -120,12 +127,16 @@ function setup(status = "active") {
   });
   render(
     <QueryClientProvider client={client}>
-      <TenantDetailPage slug="demo" />
+      <TenantDetailPage slug="demo" initialTab={initialTab} />
     </QueryClientProvider>,
   );
-  return fetcher;
+  return Object.assign(fetcher, { client });
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(confirmApplied).mockClear();
+  failTenant = false;
+});
 test.each([
   ["active", "Pausar"],
   ["paused", "Reactivar"],
@@ -177,6 +188,7 @@ test("health check is sent from the summary tab and displays its result", async 
   expect(
     fetcher.mock.calls.some((call) => (call[0] as Request).method === "POST"),
   ).toBe(true);
+  expect(confirmApplied).not.toHaveBeenCalled(); // a check is not a config change
 });
 test("a contact's data can be exported and the contact forgotten", async () => {
   const clickSpy = vi
@@ -203,4 +215,40 @@ test("a contact's data can be exported and the contact forgotten", async () => {
     ).toBe(true),
   );
   clickSpy.mockRestore();
+  expect(confirmApplied).not.toHaveBeenCalled(); // forgetting a contact is not config
+});
+
+test("pausing a tenant asks for the «Aplicado en N procesos» confirmation", async () => {
+  const user = userEvent.setup();
+  setup("active");
+  await user.click(await screen.findByRole("button", { name: "Pausar" }));
+  const dialog = await screen.findByRole("alertdialog");
+  await user.click(within(dialog).getByRole("button", { name: "Pausar" }));
+  await vi.waitFor(() =>
+    expect(confirmApplied).toHaveBeenCalledWith(expect.anything(), "demo"),
+  );
+});
+
+test("a failed background refresh keeps the editor and its unsaved input", async () => {
+  const user = userEvent.setup();
+  const { client } = setup("active", "configuracion");
+  await user.click(await screen.findByRole("button", { name: /^Negocio/ }));
+  const name = await screen.findByLabelText("Nombre");
+  await user.type(name, " nuevo");
+  failTenant = true;
+  await client.invalidateQueries({ queryKey: qk.tenant("demo") });
+  expect(
+    await screen.findByText(
+      /No se pudo actualizar; se muestran los últimos datos/,
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Nombre")).toHaveValue(" nuevo");
+  expect(screen.getByRole("heading", { name: "Negocio" })).toBeInTheDocument();
+  // Retrying once the backend is back clears the warning, the draft stays.
+  failTenant = false;
+  await user.click(screen.getByRole("button", { name: "Reintentar" }));
+  await vi.waitFor(() =>
+    expect(screen.queryByText(/No se pudo actualizar/)).toBeNull(),
+  );
+  expect(screen.getByLabelText("Nombre")).toHaveValue(" nuevo");
 });

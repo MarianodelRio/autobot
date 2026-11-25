@@ -107,6 +107,8 @@ def _deliverable(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, 
         return False, "El mensaje ya no es útil: pasó su fecha límite (p. ej. la cita)."
     if message.payload is None:
         return False, "El contenido del mensaje ya no está disponible."
+    # Inside the caller's transaction (row lock held): a miss here never waits nor
+    # rebuilds, it only asks the refresher and answers from the newest snapshot.
     tenant = tenant_by_id(message.tenant_id)
     if tenant is None or tenant.ambiguous:
         return False, "El negocio no se puede resolver de forma inequívoca."

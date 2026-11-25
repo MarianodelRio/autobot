@@ -15,6 +15,7 @@ import { type ApiError, api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { ErrorState } from "@/components/error-state";
 import { JsonDiff } from "@/components/json-diff";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { StatusDot, type StatusDotLevel } from "@/components/status-dot";
 import {
   Accordion,
@@ -406,7 +407,7 @@ function ConfigSections({
     saved,
     replaceWith,
   } = useConfigDraft(detail, onDirtyChange, normalize);
-  const steps = useSetupSteps(detail.slug);
+  const steps = useSetupSteps(detail.slug, detail.version);
   const groups = (ui.groups ?? []) as Group[];
   const hidden = (ui.hidden ?? []) as string[];
   const showIf = (ui.show_if ?? {}) as Record<string, string>;
@@ -495,9 +496,9 @@ function ConfigSections({
           },
         }),
       ),
-    success: (result) =>
-      `Guardado: versión ${result.version}; se aplica en unos segundos`,
+    success: (result) => `Guardado: versión ${result.version}`,
     tenant: detail.slug,
+    channel: true,
     onSuccess: (result, sent) => saved(sent, result.version),
     onError: (caught) => {
       const error = caught as ApiError;
@@ -538,16 +539,24 @@ function ConfigSections({
           onGo={goTo}
         />
       )}
-      {steps.isError && (
-        <ErrorState
-          message="No se pudieron cargar los pasos del alta."
-          onRetry={() => void steps.refetch()}
-        />
-      )}
+      {steps.isError &&
+        (steps.data ? (
+          <RefreshWarning onRetry={() => void steps.refetch()} />
+        ) : (
+          <ErrorState
+            message="No se pudieron cargar los pasos del alta."
+            onRetry={() => void steps.refetch()}
+          />
+        ))}
       {orphanSteps.length > 0 && (
         <ul className="space-y-3 rounded-md border p-4">
           {orphanSteps.map((step) => (
-            <StepRow key={step.key} slug={detail.slug} step={step} />
+            <StepRow
+              key={step.key}
+              slug={detail.slug}
+              version={detail.version}
+              step={step}
+            />
           ))}
         </ul>
       )}
@@ -695,6 +704,7 @@ function ConfigSections({
                           <StepRow
                             key={step.key}
                             slug={detail.slug}
+                            version={detail.version}
                             step={step}
                             locked={modified}
                           />

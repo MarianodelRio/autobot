@@ -33,13 +33,13 @@ Otros negocios funcionan, pero uno no responde en su canal `main`. Alertas posib
 
 ### Proceso con configuración desactualizada
 
-`config_stale`: un proceso vivo no ha cargado la última revisión de la configuración, un minuto o más después de un cambio (lo normal son unos 2 s; [ADR-030](../arquitectura/adr/ADR-030-registro-siempre-al-dia.md)). Mira en el panel, Sistema, bloque «Configuración cargada»: marca en ámbar el proceso atrasado, con su servicio, contenedor y pid. El proceso late (su fila se renueva cada 15 s) pero no se pone al día, así que su hilo refrescador está atascado o la reconstrucción del registro falla en él: busca en los logs de ese servicio `Configuration reload failed` o `rebuild failed`. Si no hay un error de datos que corregir, reinicia solo ese servicio:
+`config_stale`: un proceso vivo tiene una revisión de la configuración distinta de la de la base de datos durante más de un minuto, o lleva más de un minuto con las comprobaciones o recargas fallando (lo normal es que se ponga al día en unos 2 s; [ADR-030](../arquitectura/adr/ADR-030-registro-siempre-al-dia.md)). Mira en el panel, Sistema, bloque «Configuración cargada»: marca en ámbar el proceso atrasado y en rojo «error al recargar» el que falla, con su servicio, contenedor y pid. El proceso late (su fila se renueva al menos cada 15 s, también cuando falla) pero no se pone al día, así que su hilo refrescador está atascado o la recarga del registro falla en él: busca en los logs de ese servicio `Configuration reload failed`, `rebuild failed` o `Registry refresher failed` (se registran la primera vez con su traza y después como mucho una vez por minuto). Si no hay un error de datos que corregir, reinicia solo ese servicio:
 
 ```bash
 make prod-compose ARGS="restart <servicio>"
 ```
 
-Un proceso que muere deja su fila hasta 45 s como «vivo»: si el servicio se acaba de reiniciar, espera y comprueba de nuevo antes de actuar. La alerta se resuelve sola cuando todos los procesos vivos están al día.
+Un proceso que muere deja su fila hasta 35 s como «vivo»: si el servicio se acaba de reiniciar, espera y comprueba de nuevo antes de actuar. La alerta se resuelve sola cuando todos los procesos vivos están al día.
 
 ### Negocio en silencio
 

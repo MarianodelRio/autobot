@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, unwrap } from "@/api/client";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ErrorState } from "@/components/error-state";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,15 +16,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorDetail } from "@/lib/errors";
 import { LIVE, qk } from "@/lib/queries";
+import { recordSetupResult } from "@/lib/setup-checks";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 export function StatusAction({
   slug,
   status,
+  version,
 }: {
   slug: string;
   status: string;
+  version: number | null | undefined;
 }) {
+  const client = useQueryClient();
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const action =
@@ -62,7 +67,9 @@ export function StatusAction({
         }),
       ),
     tenant: slug,
-    keepSetup: true,
+    channel: true,
+    appliesConfig: false, // a health check only reads and records
+    onSuccess: (result) => recordSetupResult(client, slug, result, version),
   });
   const mutation = useApiMutation({
     fn: () =>
@@ -77,6 +84,7 @@ export function StatusAction({
       ),
     success: "Estado actualizado.",
     tenant: slug,
+    channel: true,
     onSuccess: () => {
       setOpen(false);
       setTyped("");
@@ -125,13 +133,16 @@ export function StatusAction({
             </DialogHeader>
             {checklist.isPending ? (
               <p>Cargando comprobaciones…</p>
-            ) : checklist.isError ? (
+            ) : checklist.isError && !checklist.data ? (
               <ErrorState
                 message="No se pudieron cargar las comprobaciones."
                 onRetry={() => void checklist.refetch()}
               />
             ) : (
               <>
+                {checklist.isError && (
+                  <RefreshWarning onRetry={() => void checklist.refetch()} />
+                )}
                 <Button
                   size="sm"
                   variant="outline"

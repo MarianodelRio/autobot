@@ -755,6 +755,18 @@
             "title": "Host",
             "type": "string"
           },
+          "last_error_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error At"
+          },
           "pid": {
             "title": "Pid",
             "type": "integer"

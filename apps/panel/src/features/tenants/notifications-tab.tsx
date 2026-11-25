@@ -2,16 +2,17 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { api, unwrap } from "@/api/client";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { errorMessage } from "@/lib/errors";
-import { LIVE, qk } from "@/lib/queries";
+import { LIVE_FIRST_PAGE, qk } from "@/lib/queries";
 
 export function NotificationsTab({ slug }: { slug: string }) {
   const q = useInfiniteQuery({
     queryKey: qk.notifications(slug),
-    ...LIVE,
+    ...LIVE_FIRST_PAGE,
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -23,15 +24,19 @@ export function NotificationsTab({ slug }: { slug: string }) {
   });
   const items = q.data?.pages.flatMap((page) => page.items) ?? [];
   if (q.isPending) return <p>Cargando avisos…</p>;
-  if (q.isError)
+  if (!q.data)
     return (
       <ErrorState
         message={errorMessage(q.error, "No se pudieron cargar los avisos.")}
         onRetry={() => void q.refetch()}
       />
     );
+  const warning = q.isError && (
+    <RefreshWarning onRetry={() => void q.refetch()} />
+  );
   return items.length ? (
     <Card>
+      {warning}
       <CardContent className="divide-y p-0">
         {items.map((n, index) => (
           <div
@@ -59,6 +64,9 @@ export function NotificationsTab({ slug }: { slug: string }) {
       )}
     </Card>
   ) : (
-    <EmptyState message="No hay avisos." />
+    <>
+      {warning}
+      <EmptyState message="No hay avisos." />
+    </>
   );
 }

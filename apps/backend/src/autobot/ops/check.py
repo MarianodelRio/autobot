@@ -367,26 +367,55 @@ def _queue_lag_findings(lags: list[queues.QueueLag], now: datetime) -> list[Find
     return out
 
 
+BEHIND_SEEN_TIMEOUT = 7 * 24 * 3600
+
+
+def _behind_for(follower: followers.Follower, now: datetime) -> timedelta:
+    """How long this process has been on this revision while the database's is another:
+    measured from the first check that saw it so, kept in the cache by host, pid and
+    revision (it outlives the worker that runs this check, and a later change of the
+    database's revision does not restart it)."""
+    key = f"config:behind:{follower.host}:{follower.pid}:{follower.revision}"
+    since: datetime | None = cache.get(key)
+    if since is None:
+        cache.set(key, now, timeout=BEHIND_SEEN_TIMEOUT)
+        return timedelta(0)
+    return now - since
+
+
 def _config_findings(now: datetime) -> list[Finding]:
-    """A live process that keeps an older configuration than the database's for more than
-    CONFIG_STALE_AFTER since the revision last changed."""
+    """A live process that keeps a configuration other than the database's for more than
+    CONFIG_STALE_AFTER since THIS process was first seen so, or whose checks have been
+    failing for that long. A process that is not alive (it stopped writing) is not in
+    this list: the container checks and the service alerts cover it."""
     try:
         config = followers.read_state(now)
     except DatabaseError:
         log.exception("configuration followers query failed")
         return []
-    if config.updated_at is None or now - config.updated_at <= CONFIG_STALE_AFTER:
+    behind = [f for f in config.followers if f.behind and _behind_for(f, now) > CONFIG_STALE_AFTER]
+    failing = [
+        f
+        for f in config.followers
+        if f.last_error_at is not None and now - f.last_error_at > CONFIG_STALE_AFTER
+    ]
+    if not behind and not failing:
         return []
-    behind = [f for f in config.followers if f.behind]
-    if not behind:
-        return []
-    names = ", ".join(sorted({f.service for f in behind}))
+    names = ", ".join(sorted({f.service for f in [*behind, *failing]}))
+    reasons = []
+    if behind:
+        reasons.append(
+            f"siguen en una revisión distinta de la {config.revision} desde hace más de 1 minuto"
+        )
+    if failing:
+        reasons.append("fallan al comprobar o recargar la configuración desde hace más de 1 minuto")
     return [
         Finding(
             "config_stale",
             None,
-            f"🟠 Procesos con la configuración desactualizada ({names}): siguen en una"
-            f" revisión anterior a la {config.revision} desde hace más de 1 minuto.",
+            f"🟠 Procesos con la configuración desactualizada ({names}): "
+            + "; ".join(reasons)
+            + ".",
         )
     ]
 

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { ErrorState } from "@/components/error-state";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { StatusDot } from "@/components/status-dot";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export function DatasetSection({
     onSuccess: () => setConfirming(false),
   });
   if (status.isPending) return <p className="text-sm">Cargando horarios…</p>;
-  if (status.isError)
+  if (!status.data)
     return (
       <ErrorState
         message={errorDetail(
@@ -61,6 +62,9 @@ export function DatasetSection({
   const d = status.data;
   return (
     <div className="space-y-2 border-t pt-4 text-sm">
+      {status.isError && (
+        <RefreshWarning onRetry={() => void status.refetch()} />
+      )}
       <h3 className="font-medium text-muted-foreground">Horarios en uso</h3>
       {d.version === null ? (
         <p className="text-status-warning">

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, unwrap } from "@/api/client";
 import { ErrorState } from "@/components/error-state";
 import { JsonDiff } from "@/components/json-diff";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { LIVE, qk } from "@/lib/queries";
+import { LIVE_FIRST_PAGE, qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 /** the version-history and rollback API already existed; this is its panel
@@ -35,7 +36,7 @@ export function HistorySection({
   const [comment, setComment] = useState("");
   const versions = useInfiniteQuery({
     queryKey: qk.tenantVersions(slug),
-    ...LIVE,
+    ...LIVE_FIRST_PAGE,
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -67,9 +68,10 @@ export function HistorySection({
           body: { version: toVersion, comment: comment.trim() },
         }),
       ),
-    success: "Restaurado: se aplica en unos segundos",
+    success: "Restaurado",
     error: "No se pudo restaurar.",
     tenant: slug,
+    channel: true,
     onSuccess: () => {
       setComment("");
       setPreview(null);
@@ -107,84 +109,92 @@ export function HistorySection({
             </div>
             {versions.isPending ? (
               <p>Cargando versiones…</p>
-            ) : versions.isError ? (
+            ) : versions.isError && !versions.data ? (
               <ErrorState
                 message="No se pudo cargar el historial."
                 onRetry={() => void versions.refetch()}
               />
             ) : (
-              <ul className="space-y-3">
-                {items.map((item) => (
-                  <li
-                    key={item.version}
-                    className="space-y-1 border-b pb-3 last:border-b-0"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium">
-                        Versión {item.version}
-                      </span>
-                      <TimeAgo date={item.created_at} />
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {item.author} · {item.comment || "sin comentario"}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setPreview(
-                            preview === item.version ? null : item.version,
-                          )
-                        }
-                      >
-                        {preview === item.version
-                          ? "Ocultar cambios"
-                          : "Ver cambios"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={rollback.isPending}
-                        onClick={() => {
-                          if (
-                            dirty &&
-                            !window.confirm(
-                              "Hay cambios sin guardar que se perderán. ¿Continuar?",
-                            )
-                          )
-                            return;
-                          if (
-                            !window.confirm(
-                              `¿Volver a la versión ${item.version}? Se crea una versión nueva con ese contenido.`,
-                            )
-                          )
-                            return;
-                          rollback.mutate(item.version);
-                        }}
-                      >
-                        Volver a esta versión
-                      </Button>
-                    </div>
-                    {preview === item.version && (
-                      <div className="pt-2">
-                        {version.isPending ? (
-                          <p>Cargando cambios…</p>
-                        ) : version.isError ? (
-                          <p role="alert" className="text-sm text-destructive">
-                            No se pudieron cargar los cambios.
-                          </p>
-                        ) : (
-                          <JsonDiff
-                            before={version.data.document}
-                            after={current}
-                          />
-                        )}
+              <>
+                {versions.isError && (
+                  <RefreshWarning onRetry={() => void versions.refetch()} />
+                )}
+                <ul className="space-y-3">
+                  {items.map((item) => (
+                    <li
+                      key={item.version}
+                      className="space-y-1 border-b pb-3 last:border-b-0"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">
+                          Versión {item.version}
+                        </span>
+                        <TimeAgo date={item.created_at} />
                       </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                      <p className="text-sm text-muted-foreground">
+                        {item.author} · {item.comment || "sin comentario"}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setPreview(
+                              preview === item.version ? null : item.version,
+                            )
+                          }
+                        >
+                          {preview === item.version
+                            ? "Ocultar cambios"
+                            : "Ver cambios"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={rollback.isPending}
+                          onClick={() => {
+                            if (
+                              dirty &&
+                              !window.confirm(
+                                "Hay cambios sin guardar que se perderán. ¿Continuar?",
+                              )
+                            )
+                              return;
+                            if (
+                              !window.confirm(
+                                `¿Volver a la versión ${item.version}? Se crea una versión nueva con ese contenido.`,
+                              )
+                            )
+                              return;
+                            rollback.mutate(item.version);
+                          }}
+                        >
+                          Volver a esta versión
+                        </Button>
+                      </div>
+                      {preview === item.version && (
+                        <div className="pt-2">
+                          {version.isPending ? (
+                            <p>Cargando cambios…</p>
+                          ) : version.isError ? (
+                            <p
+                              role="alert"
+                              className="text-sm text-destructive"
+                            >
+                              No se pudieron cargar los cambios.
+                            </p>
+                          ) : (
+                            <JsonDiff
+                              before={version.data.document}
+                              after={current}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
             {versions.hasNextPage && (
               <Button

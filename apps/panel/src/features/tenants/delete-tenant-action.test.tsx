@@ -7,7 +7,10 @@ import {
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, expect, test, vi } from "vitest";
+import { confirmApplied } from "@/lib/config-applied";
 import { routeTree } from "@/routeTree.gen";
+
+vi.mock("@/lib/config-applied", () => ({ confirmApplied: vi.fn() }));
 
 // The route chunks are loaded lazily: the first render would otherwise pay for
 // transforming the whole page (rjsf, CodeMirror...) inside the test's own timeout.
@@ -15,7 +18,10 @@ beforeAll(async () => {
   await import("@/features/tenants/detail-page");
 }, 60_000);
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(confirmApplied).mockClear();
+});
 
 const base = {
   slug: "demo",
@@ -165,6 +171,8 @@ test("requires typing the exact slug, then deletes and returns to the list", asy
   await vi.waitFor(() =>
     expect(router.state.location.pathname).toBe("/clientes"),
   );
+  // The tenant is gone: nothing to apply or to refetch.
+  expect(confirmApplied).not.toHaveBeenCalled();
 }, 10_000);
 
 test("cancelling clears the typed slug", async () => {

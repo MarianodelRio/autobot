@@ -3,9 +3,11 @@ polling of this one (ADR-030). Reproduces the incident in which a just-imported 
 was refused by the web, left pending by the inbound worker and not sent by the outbound
 one: each held an old snapshot of the registry."""
 
+import threading
 import time
 from types import SimpleNamespace
 from typing import Any
+from uuid import UUID
 
 import pytest
 from django.test import Client
@@ -54,7 +56,8 @@ def go_stale(stale: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(registry, "_registry", stale.snapshot)
     monkeypatch.setattr(registry, "_revision", stale.revision)
     monkeypatch.setattr(registry, "_checked_at", time.monotonic())
-    monkeypatch.setattr(registry, "_last_forced_at", float("-inf"))
+    for bucket in registry._buckets.values():
+        monkeypatch.setattr(bucket, "last", float("-inf"))
 
 
 def test_webhook_verification_and_post_of_a_new_tenant(stale: SimpleNamespace) -> None:
@@ -104,21 +107,46 @@ def test_send_message_of_a_new_tenant(
     assert len(providers.meta) == 1
 
 
-def test_unknown_public_ids_cost_one_forced_check_per_window(
+def test_unknown_public_ids_cost_one_revision_read_per_window(
     tenants: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     tenants(tg_tenant())
     registry.get_registry()
-    forced = []
-    original = registry.get_registry
+    reads = []
+    original = registry._read_revision
 
-    def spy(*, force: bool = False) -> Any:
-        if force:
-            forced.append(1)
-        return original(force=force)
+    def spy() -> int:
+        reads.append(1)
+        return original()
 
-    monkeypatch.setattr(registry, "get_registry", spy)
+    monkeypatch.setattr(registry, "_read_revision", spy)
     client = Client()
     for i in range(50):
         assert client.get(f"/webhooks/whatsapp/unknown{i:04d}").status_code == 404
-    assert len(forced) == 1
+    assert len(reads) == 1
+
+
+def test_a_lookup_inside_a_transaction_neither_waits_nor_rebuilds(
+    stale: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ops.actions._deliverable` resolves the tenant while it holds a row lock in an
+    owner transaction: a miss there answers at once and leaves the rebuild to the
+    refresher thread."""
+    from django.db import transaction
+
+    tenant_id = UUID(stale.document["id"])
+    rebuilt_on = []
+    original = registry._reload_locked
+
+    def spy(now: float) -> Any:
+        rebuilt_on.append(threading.current_thread().name)
+        return original(now)
+
+    monkeypatch.setattr(registry, "_reload_locked", spy)
+    started = time.monotonic()
+    with transaction.atomic(using="owner"):
+        assert registry.tenant_by_id(tenant_id) is None
+    assert time.monotonic() - started < 0.5
+    assert "MainThread" not in rebuilt_on
+    registry.wait_for_refresh()
+    assert registry.tenant_by_id(tenant_id) is not None  # the refresher followed

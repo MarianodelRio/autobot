@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { CopyButton } from "@/components/copy-button";
@@ -17,6 +17,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { errorDetail, errorMessage } from "@/lib/errors";
 import { qk } from "@/lib/queries";
+import {
+  overlaySteps,
+  recordSetupResult,
+  useSetupChecks,
+} from "@/lib/setup-checks";
 import { levelOf, STEP_LEVEL } from "@/lib/status-levels";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
@@ -25,7 +30,6 @@ type SetupAction = components["schemas"]["SetupAction"];
 type Detail = components["schemas"]["TenantDetail"];
 
 function TesterCandidates({ slug, step }: { slug: string; step: SetupStep }) {
-  const client = useQueryClient();
   const add = useApiMutation({
     fn: (id: string) =>
       unwrap(
@@ -36,13 +40,7 @@ function TesterCandidates({ slug, step }: { slug: string; step: SetupStep }) {
       ),
     success: "Tester añadido.",
     tenant: slug,
-    keepSetup: true,
     error: "No se pudo añadir el tester.",
-    onSuccess: (result) => {
-      client.setQueryData<SetupStep[]>(qk.tenantSetup(slug), (previous) =>
-        previous?.map((item) => (item.key === step.key ? result : item)),
-      );
-    },
   });
   if (step.tester_candidates.length === 0) return null;
   return (
@@ -73,11 +71,13 @@ const PIN = /^[0-9]{6}$/;
 
 function StepActionButton({
   slug,
+  version,
   step,
   action,
   locked,
 }: {
   slug: string;
+  version: number | null | undefined;
   step: SetupStep;
   action: SetupAction;
   locked: boolean;
@@ -95,14 +95,12 @@ function StepActionButton({
       ),
     success: (result) => result.detail,
     tenant: slug,
-    keepSetup: true,
+    channel: true, // channel steps register things at Meta / Telegram
     appliesConfig: false,
     onSuccess: (result) => {
       setOpen(false);
       setPin("");
-      client.setQueryData<SetupStep[]>(qk.tenantSetup(slug), (previous) =>
-        previous?.map((item) => (item.key === step.key ? result : item)),
-      );
+      recordSetupResult(client, slug, result, version);
     },
   });
   const error = run.isError && (
@@ -184,10 +182,13 @@ function StepActionButton({
  * has unsaved edits: checks and actions run against what is saved. */
 export function StepRow({
   slug,
+  version,
   step,
   locked = false,
 }: {
   slug: string;
+  /** The tenant's configuration version on screen: tags the results of checks. */
+  version: number | null | undefined;
   step: SetupStep;
   locked?: boolean;
 }) {
@@ -200,16 +201,12 @@ export function StepRow({
         }),
       ),
     // A check can change what the rest of the tenant shows (the forced health
-    // check feeds the activation checklist); the step result itself is written
-    // below and must survive, hence keepSetup.
+    // check feeds the activation checklist). The step result is stored apart
+    // (setup-checks), so the refetch this triggers cannot wipe it.
     tenant: slug,
-    keepSetup: true,
+    channel: true, // it may have just read the webhook from Telegram
     appliesConfig: false,
-    onSuccess: (result) => {
-      client.setQueryData<SetupStep[]>(qk.tenantSetup(slug), (previous) =>
-        previous?.map((item) => (item.key === step.key ? result : item)),
-      );
-    },
+    onSuccess: (result) => recordSetupResult(client, slug, result, version),
   });
   return (
     <li className="space-y-1 border-b pb-3 last:border-b-0 last:pb-0">
@@ -234,6 +231,7 @@ export function StepRow({
           {step.action && (
             <StepActionButton
               slug={slug}
+              version={version}
               step={step}
               action={step.action}
               locked={locked}
@@ -282,16 +280,23 @@ export function ChannelQr({ detail }: { detail: Detail }) {
   );
 }
 
-/** The onboarding steps, read from the cache only (never a provider call). */
-export function useSetupSteps(slug: string) {
+/** The onboarding steps: what the backend reports (never a provider call) with the
+ * stored «Comprobar» results of the tenant's current `version` laid over them. */
+export function useSetupSteps(
+  slug: string,
+  version: number | null | undefined,
+) {
+  const checks = useSetupChecks(slug);
+  const select = useCallback(
+    (steps: SetupStep[]) => overlaySteps(steps, checks, version),
+    [checks, version],
+  );
   return useQuery({
     queryKey: qk.tenantSetup(slug),
     queryFn: () =>
       unwrap(api.GET("/tenants/{slug}/setup", { params: { path: { slug } } })),
     staleTime: 0,
-    // Reading the steps never calls a provider, but a refetch on every window focus
-    // would still overwrite results from «Comprobar» that are not cached.
-    refetchOnWindowFocus: false,
+    select,
   });
 }
 
@@ -308,6 +313,7 @@ function ActivateButton({ slug, blocked }: { slug: string; blocked: boolean }) {
       ),
     success: "Cliente activado.",
     tenant: slug,
+    channel: true,
     onSuccess: () => {
       setOpen(false);
       setTyped("");

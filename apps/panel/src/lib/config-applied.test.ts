@@ -13,9 +13,16 @@ vi.mock("@/api/client", () => ({
   unwrap: async (promise: Promise<unknown>) => promise,
 }));
 
-import { confirmApplied, POLL_ATTEMPTS, summarize } from "@/lib/config-applied";
+import { QueryClient } from "@tanstack/react-query";
+import {
+  confirmApplied,
+  MAX_WAIT_MS,
+  STALL_MS,
+  summarize,
+} from "@/lib/config-applied";
+import { qk } from "@/lib/queries";
 
-type P = { service: string; revision: number };
+type P = { service: string; revision: number; last_error_at?: string | null };
 const state = (revision: number, processes: P[]) => ({
   revision,
   updated_at: null,
@@ -29,14 +36,27 @@ const state = (revision: number, processes: P[]) => ({
   })),
 });
 
+const client = new QueryClient();
+const invalidate = vi.spyOn(client, "invalidateQueries");
+const invalidatedTenant = () =>
+  invalidate.mock.calls.some(([filters]) =>
+    filters?.predicate?.({ queryKey: qk.tenant("a") } as never),
+  );
+
 beforeEach(() => {
   vi.useFakeTimers();
   for (const fn of Object.values(toast)) fn.mockReset();
   get.mockReset();
+  invalidate.mockClear();
 });
 afterEach(() => vi.useRealTimers());
 
-test("summarize counts processes at or after the target and names services behind", () => {
+const done = state(5, [
+  { service: "web", revision: 5 },
+  { service: "worker-inbound", revision: 5 },
+]);
+
+test("summarize uses the API's behind flag, else a revision different from the target", () => {
   const s = summarize(
     state(5, [
       { service: "web", revision: 5 },
@@ -46,36 +66,48 @@ test("summarize counts processes at or after the target and names services behin
     ]),
     5,
   );
-  expect(s).toEqual({ total: 4, applied: 2, behind: ["worker-inbound"] });
+  // web-panel is ahead (a restore to an older version): its flag is false in this
+  // fixture (behind = revision < target), so only the flag decides.
+  expect(s).toMatchObject({ total: 4, applied: 2, behind: ["worker-inbound"] });
+  const noFlag = {
+    ...state(5, []),
+    processes: [
+      { service: "web", revision: 6 },
+      { service: "w", revision: 5 },
+    ],
+  } as never;
+  expect(summarize(noFlag, 5)).toMatchObject({ applied: 1, behind: ["web"] });
 });
 
-test("confirms at once when every process already has the revision", async () => {
-  get.mockResolvedValue(
+test("summarize names the services behind that also report an error", () => {
+  const s = summarize(
     state(5, [
-      { service: "web", revision: 5 },
-      { service: "worker-inbound", revision: 5 },
+      { service: "web", revision: 4, last_error_at: "2026-11-25T10:00:00Z" },
     ]),
+    5,
   );
-  await confirmApplied();
+  expect(s.failing).toEqual(["web"]);
+});
+
+test("confirms at once when every process already has the revision, and refreshes the tenant", async () => {
+  get.mockResolvedValue(done);
+  await confirmApplied(client, "a");
   expect(toast.loading).not.toHaveBeenCalled();
   expect(toast.success).toHaveBeenCalledWith("Aplicado en 2 procesos", {
     id: "config-applied",
     duration: 4000,
   });
+  expect(invalidatedTenant()).toBe(true);
 });
 
-test("shows «Aplicando…» until the laggards catch up, then succeeds", async () => {
+test("shows «Aplicando…» until the laggards catch up, then succeeds and refreshes once", async () => {
   const behind = state(5, [
     { service: "web", revision: 5 },
     { service: "worker-inbound", revision: 4 },
   ]);
-  const done = state(5, [
-    { service: "web", revision: 5 },
-    { service: "worker-inbound", revision: 5 },
-  ]);
   get.mockResolvedValueOnce(behind).mockResolvedValueOnce(behind);
   get.mockResolvedValue(done);
-  const finished = confirmApplied();
+  const finished = confirmApplied(client, "a");
   await vi.advanceTimersByTimeAsync(2000);
   await finished;
   expect(toast.loading).toHaveBeenCalledWith("Aplicando el cambio…", {
@@ -83,35 +115,61 @@ test("shows «Aplicando…» until the laggards catch up, then succeeds", async 
   });
   expect(toast.success).toHaveBeenCalledTimes(1);
   expect(toast.warning).not.toHaveBeenCalled();
+  expect(invalidatedTenant()).toBe(true);
 });
 
-test("warns with the services still behind after ~10 s", async () => {
+test("keeps waiting past 10 s while processes keep progressing, up to the 30 s bound", async () => {
+  // One more process catches up every 8 s (less than STALL_MS); one never does.
+  let calls = 0;
+  get.mockImplementation(async () => {
+    const caughtUp = Math.floor((calls++ * 500) / 8000);
+    return state(5, [
+      { service: "web", revision: 5 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        service: i < caughtUp ? "ok" : "lag",
+        revision: i < caughtUp ? 5 : 4,
+      })),
+    ]);
+  });
+  const finished = confirmApplied(client, "a");
+  await vi.advanceTimersByTimeAsync(STALL_MS + 2000);
+  expect(toast.warning).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(MAX_WAIT_MS);
+  await finished;
+  expect(toast.warning).toHaveBeenCalledTimes(1);
+  expect(invalidatedTenant()).toBe(true);
+});
+
+test("warns with the services still behind once nothing progresses for 10 s", async () => {
   get.mockResolvedValue(
     state(5, [
       { service: "web", revision: 5 },
       { service: "worker-inbound", revision: 4 },
-      { service: "worker-outbound", revision: 4 },
+      {
+        service: "worker-outbound",
+        revision: 4,
+        last_error_at: "2026-11-25T10:00:00Z",
+      },
     ]),
   );
-  const finished = confirmApplied();
-  await vi.advanceTimersByTimeAsync(11_000);
+  const finished = confirmApplied(client, "a");
+  await vi.advanceTimersByTimeAsync(STALL_MS + 1000);
   await finished;
   expect(toast.warning).toHaveBeenCalledWith(
-    "Aplicado en 1 de 3; siguen con la versión anterior: worker-inbound, worker-outbound",
+    "Aplicado en 1 de 3; siguen con la versión anterior: worker-inbound, worker-outbound (con error)",
     { id: "config-applied", duration: 15000 },
   );
   expect(toast.success).not.toHaveBeenCalled();
-  expect(get).toHaveBeenCalledTimes(POLL_ATTEMPTS + 1);
+  expect(invalidatedTenant()).toBe(true);
 });
 
 test("a newer save supersedes the one still polling", async () => {
-  const behind = state(5, [{ service: "web", revision: 4 }]);
-  get.mockResolvedValue(behind);
-  const first = confirmApplied();
+  get.mockResolvedValue(state(5, [{ service: "web", revision: 4 }]));
+  const first = confirmApplied(client, "a");
   await vi.advanceTimersByTimeAsync(600);
   get.mockResolvedValue(state(6, [{ service: "web", revision: 6 }]));
-  const second = confirmApplied();
-  await vi.advanceTimersByTimeAsync(11_000);
+  const second = confirmApplied(client, "a");
+  await vi.advanceTimersByTimeAsync(STALL_MS + 1000);
   await Promise.all([first, second]);
   expect(toast.warning).not.toHaveBeenCalled();
   expect(toast.success).toHaveBeenCalledTimes(1);
@@ -119,12 +177,13 @@ test("a newer save supersedes the one still polling", async () => {
 
 test("shows nothing when no process reports, and drops the toast on errors", async () => {
   get.mockResolvedValue(state(5, []));
-  await confirmApplied();
+  await confirmApplied(client, "a");
   expect(toast.dismiss).toHaveBeenCalledWith("config-applied");
   expect(toast.success).not.toHaveBeenCalled();
   toast.dismiss.mockReset();
   get.mockRejectedValue(new Error("down"));
-  await confirmApplied();
+  await confirmApplied(client, "a");
   expect(toast.dismiss).toHaveBeenCalledWith("config-applied");
   expect(toast.warning).not.toHaveBeenCalled();
+  expect(invalidatedTenant()).toBe(false);
 });

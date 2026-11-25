@@ -7,7 +7,9 @@ import {
   invalidateTenantEverything,
   isTenantKey,
   LIVE,
+  LIVE_FIRST_PAGE,
   qk,
+  removeTenantQueries,
 } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
@@ -47,6 +49,28 @@ test("isTenantKey matches every tenant-scoped key of the slug only", () => {
   expect(isTenantKey(qk.packs(), "a")).toBe(false);
 });
 
+test("isTenantKey copes with the empty slug and with keys of length 1", () => {
+  // "" means «every tenant» for activity and audit only.
+  expect(isTenantKey(qk.activity("", "", ""), "")).toBe(true);
+  expect(isTenantKey(qk.audit("", ""), "")).toBe(true);
+  expect(isTenantKey(qk.tenant("a"), "")).toBe(false);
+  expect(isTenantKey(qk.contacts("a"), "")).toBe(false);
+  for (const key of [
+    qk.tenants(),
+    qk.overview(),
+    qk.packs(),
+    qk.activityAll(),
+  ]) {
+    expect(isTenantKey(key, "a")).toBe(false);
+    expect(isTenantKey(key, "")).toBe(false);
+  }
+  expect(isTenantKey([], "a")).toBe(false);
+});
+
+test("the stored «Comprobar» results are not tenant-scoped", () => {
+  expect(isTenantKey(qk.setupChecks("a"), "a")).toBe(false);
+});
+
 function seeded() {
   const client = new QueryClient();
   for (const key of [...tenantKeys("a"), ...tenantKeys("b"), ...views])
@@ -60,15 +84,36 @@ test("invalidateTenantEverything refreshes the tenant and the views, not others"
   const client = seeded();
   invalidateTenantEverything(client, "a");
   for (const key of [...tenantKeys("a"), ...views])
-    expect(stale(client, key)).toBe(true);
+    if (key[0] !== "tenant-webhook") expect(stale(client, key)).toBe(true);
   for (const key of tenantKeys("b")) expect(stale(client, key)).toBe(false);
 });
 
-test("keepSetup leaves the setup steps alone", () => {
+test("the Telegram webhook status is only refreshed for writes about the channel", () => {
   const client = seeded();
-  invalidateTenantEverything(client, "a", { keepSetup: true });
-  expect(stale(client, qk.tenantSetup("a"))).toBe(false);
+  invalidateTenantEverything(client, "a");
+  expect(stale(client, qk.tenantWebhook("a"))).toBe(false);
   expect(stale(client, qk.tenant("a"))).toBe(true);
+  invalidateTenantEverything(client, "a", { channel: true });
+  expect(stale(client, qk.tenantWebhook("a"))).toBe(true);
+  expect(stale(client, qk.tenantWebhook("b"))).toBe(false);
+});
+
+test("the stored check results survive any tenant invalidation", () => {
+  const client = seeded();
+  client.setQueryData(qk.setupChecks("a"), { health: {} });
+  invalidateTenantEverything(client, "a", { channel: true });
+  expect(stale(client, qk.setupChecks("a"))).toBe(false);
+});
+
+test("removeTenantQueries drops what is cached about that tenant only", () => {
+  const client = seeded();
+  client.setQueryData(qk.setupChecks("a"), {});
+  client.setQueryData(qk.setupChecks("b"), {});
+  removeTenantQueries(client, "a");
+  for (const key of [...tenantKeys("a"), qk.setupChecks("a")])
+    expect(client.getQueryData(key)).toBeUndefined();
+  for (const key of [...tenantKeys("b"), qk.setupChecks("b"), ...views])
+    expect(client.getQueryData(key)).toBeDefined();
 });
 
 test("useApiMutation with `tenant` applies the rule", async () => {
@@ -94,6 +139,18 @@ test("LIVE polls every 30 s only while the tab is visible", () => {
   });
 });
 
+test("LIVE_FIRST_PAGE polls while on the first page and stops once more are loaded", () => {
+  const interval = LIVE_FIRST_PAGE.refetchInterval;
+  const at = (pages?: number) => ({
+    state: { data: pages === undefined ? undefined : { pages: Array(pages) } },
+  });
+  expect(interval(at(undefined))).toBe(30_000);
+  expect(interval(at(1))).toBe(30_000);
+  expect(interval(at(2))).toBe(false);
+  expect(interval(at(5))).toBe(false);
+  expect(LIVE_FIRST_PAGE.refetchIntervalInBackground).toBe(false);
+});
+
 async function runMutation(options: {
   tenant?: string;
   appliesConfig?: boolean;
@@ -114,6 +171,7 @@ async function runMutation(options: {
 test("a tenant write asks for the «applied in N processes» confirmation", async () => {
   await runMutation({ tenant: "a" });
   expect(confirmApplied).toHaveBeenCalledTimes(1);
+  expect(confirmApplied).toHaveBeenCalledWith(expect.anything(), "a");
 });
 
 test("writes that leave the configuration alone, or have no tenant, do not", async () => {

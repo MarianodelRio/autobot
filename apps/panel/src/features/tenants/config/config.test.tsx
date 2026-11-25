@@ -11,9 +11,12 @@ import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import type { components } from "@/api/schema";
+import { confirmApplied } from "@/lib/config-applied";
 import { ConfigEditor, errorsToSchema } from "./editor";
 import { SecretsForm } from "./secrets-form";
 import { StatusAction } from "./status-action";
+
+vi.mock("@/lib/config-applied", () => ({ confirmApplied: vi.fn() }));
 
 const detail: components["schemas"]["TenantDetail"] = {
   slug: "test",
@@ -101,7 +104,10 @@ async function openSection(
   if (trigger.getAttribute("aria-expanded") !== "true")
     await user.click(trigger);
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(confirmApplied).mockClear();
+});
 test("maps validation paths to field errors", () => {
   expect(
     errorsToSchema(["config.price: valor no válido", "name: falta"]),
@@ -214,6 +220,7 @@ test("opening the tab is not a change: schema defaults stay out of what is saved
       ],
     },
   };
+  const toastSuccess = vi.spyOn(toast, "success");
   const saved: { document?: unknown } = {};
   vi.stubGlobal(
     "fetch",
@@ -240,6 +247,11 @@ test("opening the tab is not a change: schema defaults stay out of what is saved
   await waitFor(() =>
     expect(screen.queryByText("Cambios sin guardar")).toBeNull(),
   );
+  // A configuration save is confirmed as applied; its toast says only the version.
+  await waitFor(() =>
+    expect(toastSuccess).toHaveBeenCalledWith("Guardado: versión 2"),
+  );
+  expect(confirmApplied).toHaveBeenCalledWith(expect.anything(), "test");
 });
 test("a field that depends on a checkbox only shows while it is on", async () => {
   const conditional = {
@@ -480,7 +492,7 @@ test("activation requires unblocked checklist and exact slug", async () => {
         ]),
   );
   vi.stubGlobal("fetch", fetcher);
-  provider(<StatusAction slug="test" status="onboarding" />);
+  provider(<StatusAction slug="test" status="onboarding" version={1} />);
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Activar" }));
   const dialog = await screen.findByRole("dialog");
@@ -602,4 +614,52 @@ test("partial replacement omits blank fields and a generated value fills its fie
   const body = sent as { secrets: Record<string, string> };
   expect(body.secrets.access_token).toBe("secret-one");
   expect(body.secrets.verify_token).toHaveLength(48);
+  await waitFor(() =>
+    expect(confirmApplied).toHaveBeenCalledWith(expect.anything(), "test"),
+  );
+});
+
+test("«Comprobar ahora» in the activation dialog is a check, not a configuration change", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) =>
+      req.method === "POST"
+        ? json({
+            key: "health",
+            section: "channel",
+            label: "Salud",
+            why: "",
+            state: "ok",
+            blocking: true,
+            detail: "ok",
+            values: [],
+            tester_candidates: [],
+            checkable: true,
+          })
+        : json([
+            {
+              key: "channel",
+              label: "Canal",
+              ok: true,
+              blocking: true,
+              detail: "ok",
+            },
+          ]),
+    ),
+  );
+  provider(<StatusAction slug="test" status="onboarding" version={1} />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Activar" }));
+  const dialog = await screen.findByRole("dialog");
+  await user.click(
+    await within(dialog).findByRole("button", { name: "Comprobar ahora" }),
+  );
+  await waitFor(() =>
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(([r]) => (r as Request).method === "POST"),
+    ).toBe(true),
+  );
+  expect(confirmApplied).not.toHaveBeenCalled();
 });

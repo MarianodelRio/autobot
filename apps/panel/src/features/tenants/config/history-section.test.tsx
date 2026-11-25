@@ -2,9 +2,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { confirmApplied } from "@/lib/config-applied";
 import { HistorySection } from "./history-section";
 
-afterEach(() => vi.unstubAllGlobals());
+vi.mock("@/lib/config-applied", () => ({ confirmApplied: vi.fn() }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(confirmApplied).mockClear();
+});
 
 const VERSIONS = [
   {
@@ -120,6 +126,9 @@ test("rolling back asks for confirmation and invalidates the tenant", async () =
     ).at(0) as HTMLElement,
   );
   expect(window.confirm).toHaveBeenCalled();
+  await vi.waitFor(() =>
+    expect(confirmApplied).toHaveBeenCalledWith(expect.anything(), "demo"),
+  );
 });
 
 test("rolling back with unsaved changes warns before confirming", async () => {

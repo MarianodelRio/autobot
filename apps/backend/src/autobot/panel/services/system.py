@@ -368,6 +368,7 @@ class ConfigProcessOut(Schema):
     started_at: datetime
     seen_at: datetime
     behind: bool
+    last_error_at: datetime | None = None  # since when its checks fail; null if healthy
 
 
 class ConfigStateOut(Schema):
@@ -392,6 +393,7 @@ def build_config_state() -> ConfigStateOut:
                 started_at=f.started_at,
                 seen_at=f.seen_at,
                 behind=f.behind,
+                last_error_at=f.last_error_at,
             )
             for f in state.followers
         ],

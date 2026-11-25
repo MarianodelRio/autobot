@@ -30,7 +30,7 @@ Nada del panel está expuesto a internet:
 - El contenedor `panel` escucha en `127.0.0.1:8080` del servidor. Se llega con `make panel-tunnel HOST=<servidor>`, que abre un túnel SSH hacia el puerto local 18000 ([Panel (uso)](../procedimientos/panel.md)).
 - El Caddy público (`deploy/caddy/Caddyfile`) solo reenvía una lista cerrada de rutas (los webhooks y `/health`) y les añade `X-Autobot-Edge: public`. Todo lo demás, incluido `/api/`, responde 404.
 - La primera barrera es de red y de privilegio (ADR-020): `web-panel` no publica puertos ni está en la red `edge` del Caddy público, y el `web` público no tiene las credenciales `fp_owner` ni `fp_readonly`.
-- `PanelGateMiddleware` (`autobot/panel/middleware.py`) es la segunda barrera: cualquier petición a `/api/panel/` que llegue con `X-Autobot-Edge` recibe 404, y en un proceso sin alias de base de datos `owner` (`web` público, workers) la API responde 503. Corre antes de `SessionMiddleware`, así que una petición rechazada ni siquiera toca la sesión.
+- `PanelGateMiddleware` (`autobot/panel/middleware.py`) es la segunda barrera: cualquier petición a `/api/panel/` que llegue con `X-Autobot-Edge` recibe 404, y en un proceso sin alias de base de datos `owner` (`web` público, workers) la API responde 503. Corre antes de `SessionMiddleware`, así que una petición rechazada ni siquiera toca la sesión. Justo después va `PanelFreshConfigMiddleware`, que comprueba la revisión de la configuración al empezar cada petición y fija esa instantánea, de modo que el panel nunca muestra datos de antes de un guardado hecho por el otro worker ([ADR-030](adr/ADR-030-registro-siempre-al-dia.md)).
 - Como el tráfico va por el túnel a `127.0.0.1`, las cookies usan `Secure=False` (ADR-008).
 
 ## Frontend (`apps/panel/`)

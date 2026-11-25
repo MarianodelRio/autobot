@@ -149,14 +149,19 @@ class ConfigFollower(models.Model):
     revision it has loaded, refreshed by its registry refresher (ADR-030). It lets the
     panel say «applied in N processes» after a save and lets `ops_check` alert on a process
     that stays behind. Platform operation data: no tenant_id, no RLS. Rows are only
-    meaningful while recent (`seen_at`); a dead process's row is ignored and later purged."""
+    meaningful while recent (`seen_at`); a dead process's row is ignored and later purged
+    (a clean exit deletes its own)."""
 
     service = models.CharField(max_length=64)  # SERVICE_NAME: web, web-panel, worker-...
     host = models.CharField(max_length=128)  # the container's hostname
     pid = models.IntegerField()
     revision = models.BigIntegerField()  # the config revision the process has loaded
-    started_at = models.DateTimeField()
-    seen_at = models.DateTimeField(db_index=True)
+    started_at = models.DateTimeField()  # when the process began following the config
+    # No index: the table has a row per process (under 50), a scan is cheaper than keeping
+    # an index, and without one each heartbeat can be a HOT update.
+    seen_at = models.DateTimeField()
+    # Since when the process's checks have failed, until one works again; null if healthy.
+    last_error_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "config_follower"

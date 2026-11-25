@@ -34,7 +34,7 @@ export function CalendarSection({ detail }: { detail: Detail }) {
       </h3>
       {account.isPending ? (
         <p className="text-sm">Cargando cuenta de servicio…</p>
-      ) : account.isError ? (
+      ) : account.isError && !account.data ? (
         <ErrorState
           message="No se pudo cargar la cuenta de servicio."
           onRetry={() => void account.refetch()}

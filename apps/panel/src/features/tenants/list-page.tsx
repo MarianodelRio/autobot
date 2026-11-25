@@ -3,6 +3,7 @@ import { useState } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { PageHeader } from "@/components/page-header";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { type Status, StatusBadge } from "@/components/status-badge";
 import { TimeAgo } from "@/components/time-ago";
 import { Input } from "@/components/ui/input";
@@ -90,7 +91,7 @@ export function TenantListPage() {
       </div>
       {query.isPending ? (
         <p>Cargando clientes…</p>
-      ) : query.isError ? (
+      ) : query.isError && !query.data ? (
         <ErrorState
           message={errorMessage(
             query.error,
@@ -101,58 +102,63 @@ export function TenantListPage() {
       ) : filtered.length === 0 ? (
         <EmptyState message="No hay clientes que mostrar." />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {[
-                "Negocio",
-                "Pack",
-                "Canal",
-                "Estado",
-                "Salud",
-                "Mensajes mes",
-                "Coste",
-                "Última actividad",
-              ].map((label) => (
-                <TableHead key={label}>{label}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((row) => (
-              <TableRow key={row.slug}>
-                <TableCell>
-                  <a
-                    className="underline"
-                    href={`/clientes/${encodeURIComponent(row.slug)}`}
-                  >
-                    {row.name}
-                  </a>
-                </TableCell>
-                <TableCell>{row.pack}</TableCell>
-                <TableCell>{row.channel}</TableCell>
-                <TableCell>
-                  <StatusBadge status={row.status as Status} />
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={row.health as Status} />
-                </TableCell>
-                <TableCell>
-                  {formatNumber(row.inbound_month)} /{" "}
-                  {formatNumber(row.outbound_month)}
-                </TableCell>
-                <TableCell>{formatEur(Number(row.cost_eur_month))}</TableCell>
-                <TableCell>
-                  {row.last_activity_at ? (
-                    <TimeAgo date={row.last_activity_at} />
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
+        <>
+          {query.isError && (
+            <RefreshWarning onRetry={() => void query.refetch()} />
+          )}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {[
+                  "Negocio",
+                  "Pack",
+                  "Canal",
+                  "Estado",
+                  "Salud",
+                  "Mensajes mes",
+                  "Coste",
+                  "Última actividad",
+                ].map((label) => (
+                  <TableHead key={label}>{label}</TableHead>
+                ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((row) => (
+                <TableRow key={row.slug}>
+                  <TableCell>
+                    <a
+                      className="underline"
+                      href={`/clientes/${encodeURIComponent(row.slug)}`}
+                    >
+                      {row.name}
+                    </a>
+                  </TableCell>
+                  <TableCell>{row.pack}</TableCell>
+                  <TableCell>{row.channel}</TableCell>
+                  <TableCell>
+                    <StatusBadge status={row.status as Status} />
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={row.health as Status} />
+                  </TableCell>
+                  <TableCell>
+                    {formatNumber(row.inbound_month)} /{" "}
+                    {formatNumber(row.outbound_month)}
+                  </TableCell>
+                  <TableCell>{formatEur(Number(row.cost_eur_month))}</TableCell>
+                  <TableCell>
+                    {row.last_activity_at ? (
+                      <TimeAgo date={row.last_activity_at} />
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </>
       )}
     </div>
   );

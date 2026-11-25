@@ -15,7 +15,7 @@ from django.db import OperationalError, connections
 
 from autobot.tenancy import followers, registry
 from autobot.tenancy.models import ConfigFollower, ConfigRevision
-from tests.platform.tenancy.helpers import PACKS, tenant_document
+from tests.platform.tenancy.helpers import PACKS, reader_of, tenant_document
 
 NOW = datetime(2026, 11, 25, 12, tzinfo=UTC)
 
@@ -24,22 +24,30 @@ NOW = datetime(2026, 11, 25, 12, tzinfo=UTC)
 def beat(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     """A loaded registry at revision 1 with a fake clock and a recording heartbeat."""
     registry.reset_registry()
-    state = SimpleNamespace(now=100.0, revision=1, writes=[])
+    state = SimpleNamespace(now=100.0, revision=1, writes=[], errors=[])
     monkeypatch.setattr(registry, "time", SimpleNamespace(monotonic=lambda: state.now))
     monkeypatch.setattr("packs.registry.PACKS", PACKS)
     monkeypatch.setattr(registry, "_read_revision", lambda: state.revision)
     monkeypatch.setattr(
         registry,
-        "sources_from_database",
-        lambda alias="default": (
-            state.revision,
-            [registry.TenantSource("a", tenant_document("a"), version=state.revision)],
+        "_read_config",
+        reader_of(
+            lambda: (
+                state.revision,
+                [registry.TenantSource("a", tenant_document("a"), version=state.revision)],
+            )
         ),
     )
-    monkeypatch.setattr(registry, "_write_beat", lambda revision: state.writes.append(revision))
-    monkeypatch.setattr(registry, "_beat_revision", None)
+    monkeypatch.setattr(
+        registry,
+        "_write_beat",
+        lambda revision, error: (state.writes.append(revision), state.errors.append(error)),
+    )
+    monkeypatch.setattr(registry, "_beat_key", None)
     monkeypatch.setattr(registry, "_beat_at", float("-inf"))
     monkeypatch.setattr(registry, "_beat_retry_at", float("-inf"))
+    monkeypatch.setattr(registry, "_error_since", None)
+    registry._last_logged.clear()
     registry.get_registry()
     yield state
     registry.stop_polling()
@@ -68,10 +76,10 @@ def test_a_revision_change_is_written_at_once(beat: Any) -> None:
     assert beat.writes == [1, 2]
 
 
-def test_nothing_is_written_before_the_registry_is_loaded(beat: Any) -> None:
+def test_a_process_that_loaded_nothing_yet_still_beats_with_revision_zero(beat: Any) -> None:
     registry.reset_registry()
     registry._beat(beat.now)
-    assert beat.writes == []
+    assert beat.writes == [0]
 
 
 def test_a_failed_beat_is_swallowed_and_retried_after_the_interval(
@@ -79,7 +87,7 @@ def test_a_failed_beat_is_swallowed_and_retried_after_the_interval(
 ) -> None:
     calls = []
 
-    def boom(revision: int) -> None:
+    def boom(revision: int, error: Any) -> None:
         calls.append(revision)
         raise OperationalError("private database details")
 
@@ -96,7 +104,7 @@ def test_a_failed_beat_is_swallowed_and_retried_after_the_interval(
 def test_a_failing_heartbeat_does_not_stop_the_refresher_following_the_revision(
     beat: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def boom(revision: int) -> None:
+    def boom(revision: int, error: Any) -> None:
         raise OperationalError("down")
 
     monkeypatch.setattr(registry, "_write_beat", boom)
@@ -124,14 +132,94 @@ def test_a_polling_process_beats_and_a_lazy_one_does_not(beat: Any) -> None:
     assert beat.writes == [1]
 
 
+def wait_until(condition: Any, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def test_every_polling_round_beats_even_when_the_check_fails_and_says_so(
+    beat: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def down() -> int:
+        raise OperationalError("private database details")
+
+    registry.start_polling(0.01)
+    assert wait_until(lambda: beat.writes == [1])
+    assert beat.errors == [None]
+    monkeypatch.setattr(registry, "_read_revision", down)
+    # The failure is reported at once, with the revision it still serves...
+    assert wait_until(lambda: len(beat.writes) == 2)
+    assert beat.writes == [1, 1] and beat.errors[1] is not None
+    since = beat.errors[1]
+    # ...and keeps being the start of the run, not the latest failure.
+    beat.now += registry.HEARTBEAT_SECONDS
+    assert wait_until(lambda: len(beat.writes) == 3)
+    assert beat.errors[2] == since
+    # Recovery clears it at once.
+    monkeypatch.setattr(registry, "_read_revision", lambda: beat.revision)
+    assert wait_until(lambda: len(beat.writes) == 4)
+    assert beat.errors[3] is None
+
+
+def test_a_first_load_that_keeps_failing_beats_revision_zero_and_logs_once(
+    beat: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    registry.reset_registry()
+
+    def down(known: Any) -> Any:
+        raise OperationalError("database down")
+
+    calls = []
+
+    def counting(known: Any) -> Any:
+        calls.append(1)
+        return down(known)
+
+    monkeypatch.setattr(registry, "_read_config", counting)
+    with caplog.at_level("WARNING", logger="autobot.tenancy.registry"):
+        registry.start_polling(0.005)
+        assert wait_until(lambda: len(calls) >= 20)
+        registry.stop_polling()
+    assert beat.writes[0] == 0 and beat.errors[0] is not None
+    tracebacks = [r for r in caplog.records if r.exc_info]
+    assert len(tracebacks) <= 2  # the refresher's first failure (and nothing every 5 ms)
+    assert len(caplog.records) <= 4
+
+
+def test_a_healthy_kept_connection_is_not_tested_every_round(
+    beat: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tested: list[Any] = []
+
+    def usable() -> bool:
+        tested.append(1)
+        return True
+
+    connection = SimpleNamespace(
+        connection=object(),
+        errors_occurred=True,
+        is_usable=usable,
+        close=lambda: tested.append("close"),
+    )
+    monkeypatch.setattr(registry, "connections", {"default": connection})
+    registry._prepare_connection(True)
+    registry._prepare_connection(True)
+    registry._prepare_connection(True)
+    assert tested == [1] and connection.errors_occurred is False
+
+
 # ── the real upsert and the readers ────────────────────────────────────────────────
 
 
 @pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 def test_the_real_beat_upserts_one_row_per_process(settings: Any) -> None:
     settings.SERVICE_NAME = "worker-x"
-    registry._write_beat(4)
-    registry._write_beat(5)
+    registry._write_beat(4, None)
+    registry._write_beat(5, None)
     row = ConfigFollower.objects.get()
     assert (row.service, row.host, row.pid, row.revision) == (
         "worker-x",
@@ -140,20 +228,51 @@ def test_the_real_beat_upserts_one_row_per_process(settings: Any) -> None:
         5,
     )
     assert row.seen_at >= row.started_at
+    assert row.last_error_at is None
+    failed_since = datetime.now(UTC)
+    registry._write_beat(5, failed_since)
+    row.refresh_from_db()
+    assert row.last_error_at == failed_since
+
+
+@pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+def test_a_clean_exit_removes_the_row_on_its_own_bounded_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry._write_beat(3, None)
+    assert ConfigFollower.objects.count() == 1
+    monkeypatch.setattr(registry, "_beat_key", (3, False))
+    registry._forget_process()  # what `atexit` runs
+    assert ConfigFollower.objects.count() == 0
+    registry._forget_process()  # nothing written any more: no work at all
+
+
+def test_the_exit_hook_never_raises_nor_hangs_on_a_sick_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Down:
+        def create_connection(self, alias: str) -> Any:
+            raise OperationalError("down")
+
+    monkeypatch.setattr(registry, "connections", Down())
+    monkeypatch.setattr(registry, "_beat_key", (3, False))
+    started = time.monotonic()
+    registry._forget_process()
+    assert time.monotonic() - started < 1
 
 
 @pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 def test_stopping_the_refresher_removes_the_row(monkeypatch: pytest.MonkeyPatch) -> None:
     registry.reset_registry()
-    monkeypatch.setattr(registry, "_beat_revision", None)
+    monkeypatch.setattr(registry, "_beat_key", None)
     monkeypatch.setattr(registry, "_beat_at", float("-inf"))
     ConfigRevision.objects.using("owner").get_or_create(pk=1)
     monkeypatch.setattr("packs.registry.PACKS", PACKS)
     monkeypatch.setattr(registry, "_read_revision", lambda: 1)
     monkeypatch.setattr(
         registry,
-        "sources_from_database",
-        lambda alias="default": (1, [registry.TenantSource("a", tenant_document("a"), version=1)]),
+        "_read_config",
+        reader_of(lambda: (1, [registry.TenantSource("a", tenant_document("a"), version=1)])),
     )
     registry.get_registry()
     registry._beat(time.monotonic() + 1000)
@@ -188,6 +307,13 @@ def test_read_state_marks_only_alive_processes_and_the_ones_behind() -> None:
         ("web", False),
         ("worker-inbound", True),
     ]
+    # Another revision is behind too, also an older one in the database (a restore).
+    ConfigRevision.objects.using("owner").filter(pk=1).update(revision=5)
+    assert [(f.service, f.behind) for f in followers.read_state(NOW).followers] == [
+        ("web", True),
+        ("worker-inbound", True),
+    ]
+    ConfigRevision.objects.using("owner").filter(pk=1).update(revision=7)
     assert followers.read_state(NOW, alias="owner").followers == state.followers
 
 

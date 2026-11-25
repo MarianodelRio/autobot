@@ -157,3 +157,28 @@ def seed_db(
         revision.save(using="owner")
     if reset:
         reset_registry()
+
+
+def reader_of(sources: Any) -> Any:
+    """A stand-in for `registry._read_config` built from a function that returns
+    `(revision, [TenantSource, ...])` the way the database would: it gives every tenant a
+    fingerprint (its version and document) and, given `known` fingerprints, only the
+    sources that changed."""
+    import json
+    from dataclasses import replace
+    from uuid import UUID
+
+    from autobot.tenancy.registry import ConfigRead
+
+    def read(known: Any) -> Any:
+        revision, listed = sources()
+        fingerprints = {}
+        changed = []
+        for source in listed:
+            tenant_id = UUID(source.document["id"])
+            fingerprints[tenant_id] = (source.version, json.dumps(source.document, sort_keys=True))
+            if known is None or known.get(tenant_id) != fingerprints[tenant_id]:
+                changed.append(replace(source, tenant_id=tenant_id))
+        return ConfigRead(revision, fingerprints, changed)
+
+    return read

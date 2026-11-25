@@ -16,6 +16,9 @@ export const qk = {
   tenant: (slug: string) => ["tenant", slug] as const,
   tenantSummary: (slug: string) => ["tenant-summary", slug] as const,
   tenantSetup: (slug: string) => ["tenant-setup", slug] as const,
+  /** Results of «Comprobar» and of step actions (see lib/setup-checks.ts). Not
+   * tenant-scoped on purpose: an invalidation or a reload must not drop them. */
+  setupChecks: (slug: string) => ["setup-checks", slug] as const,
   tenantSecrets: (slug: string) => ["tenant-secrets", slug] as const,
   tenantWebhook: (slug: string) => ["tenant-webhook", slug] as const,
   tenantVersions: (slug: string) => ["tenant-versions", slug] as const,
@@ -60,11 +63,22 @@ export function invalidateKeys(client: QueryClient, keys: readonly QueryKey[]) {
 
 /** Live queries: refetched every 30 s while the tab is visible. Spread it into the
  * options of anything that shows data other people or the backend change on their
- * own. Never into: setup steps (they hold the «Comprobar» results only in the
- * cache), logs, console/audit results, version previews or QR images. */
+ * own. Never into: setup steps, the Telegram webhook status (every read calls
+ * Telegram), logs, console/audit results, version previews or QR images. */
 export const LIVE_REFETCH_MS = 30_000;
 export const LIVE = {
   refetchInterval: LIVE_REFETCH_MS,
+  refetchIntervalInBackground: false,
+} as const;
+
+/** `LIVE` for infinite lists: a refetch reloads every loaded page, so polling stops
+ * as soon as the operator has scrolled past the first one. */
+export const LIVE_FIRST_PAGE = {
+  refetchInterval: (query: { state: { data?: unknown } }) => {
+    const pages = (query.state.data as { pages?: unknown[] } | undefined)
+      ?.pages;
+    return (pages?.length ?? 0) > 1 ? false : LIVE_REFETCH_MS;
+  },
   refetchIntervalInBackground: false,
 } as const;
 
@@ -107,20 +121,31 @@ export function isTenantKey(queryKey: QueryKey, slug: string): boolean {
 }
 
 /** The one rule after any write on a tenant: everything of that tenant and the
- * cross-tenant views that show it are stale. `keepSetup` leaves the setup steps
- * alone, for the mutations that just wrote a step result into the cache by hand
- * (the backend never returns «Comprobar» results, so a refetch would wipe it). */
+ * cross-tenant views that show it are stale. The Telegram webhook status is only
+ * refreshed when the write is about the channel (`channel`), because reading it
+ * calls Telegram. «Comprobar» results live under `setup-checks`, which is not
+ * tenant-scoped, so they are not touched here. */
 export function invalidateTenantEverything(
   client: QueryClient,
   slug: string,
-  { keepSetup = false }: { keepSetup?: boolean } = {},
+  { channel = false }: { channel?: boolean } = {},
 ) {
   void client.invalidateQueries({
     predicate: ({ queryKey }) =>
       isTenantKey(queryKey, slug) &&
-      !(keepSetup && queryKey[0] === qk.tenantSetup(slug)[0]),
+      (channel || queryKey[0] !== qk.tenantWebhook(slug)[0]),
   });
   invalidateKeys(client, TENANT_VIEWS);
+}
+
+/** After deleting a tenant: drop everything cached about it (nothing to refetch)
+ * and refresh the views that listed it. */
+export function removeTenantQueries(client: QueryClient, slug: string) {
+  client.removeQueries({
+    predicate: ({ queryKey }) =>
+      isTenantKey(queryKey, slug) ||
+      (queryKey[0] === qk.setupChecks(slug)[0] && queryKey[1] === slug),
+  });
 }
 
 /** ... after deleting a tenant. */
@@ -128,6 +153,8 @@ export const tenantRemoved = (): QueryKey[] => [
   qk.tenants(),
   qk.overview(),
   qk.incidents(),
+  qk.alerts(),
+  qk.system(),
 ];
 
 export const tenantsQueryOptions = () =>

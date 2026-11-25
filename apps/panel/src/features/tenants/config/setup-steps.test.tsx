@@ -1,15 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Toaster } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import type { components } from "@/api/schema";
+import { confirmApplied } from "@/lib/config-applied";
+import { invalidateTenantEverything } from "@/lib/queries";
 import { ConfigEditor } from "./editor";
+
+vi.mock("@/lib/config-applied", () => ({ confirmApplied: vi.fn() }));
 
 // The editor is rendered on its own, not through the app's route tree: loading every
 // route (rjsf, CodeMirror...) made these tests time out under the full suite.
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(confirmApplied).mockClear();
+});
 
 const TENANT: components["schemas"]["TenantDetail"] = {
   slug: "demo",
@@ -135,12 +142,24 @@ function renderEditor({
     });
   });
   vi.stubGlobal("fetch", fetcher);
-  render(
+  const tree = (shown: components["schemas"]["TenantDetail"]) => (
     <QueryClientProvider client={queryClient}>
       <Toaster />
-      <ConfigEditor detail={detail} onDirtyChange={vi.fn()} />
-    </QueryClientProvider>,
+      <ConfigEditor detail={shown} onDirtyChange={vi.fn()} />
+    </QueryClientProvider>
   );
+  const view = render(tree(detail));
+  return {
+    queryClient,
+    fetcher,
+    /** Unmount and mount again (a tab switch), optionally with another version. */
+    remount: (shown = detail) => {
+      view.rerender(<p>otra pestaña</p>);
+      view.rerender(tree(shown));
+    },
+    show: (shown: components["schemas"]["TenantDetail"]) =>
+      view.rerender(tree(shown)),
+  };
 }
 
 async function openSection(
@@ -182,6 +201,8 @@ test("each step shows in its section, which opens by itself when it blocks the a
   expect(screen.getByText("El documento es válido.")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Comprobar" }));
   await screen.findByText("Sin problemas críticos.");
+  // A check is not a configuration change: no «Aplicado en N procesos».
+  expect(confirmApplied).not.toHaveBeenCalled();
 });
 
 test("the alta banner counts the mandatory steps and links each missing one", async () => {
@@ -229,16 +250,28 @@ test("checks are locked while their section has unsaved changes", async () => {
 
 test("lists recent non-tester senders and adds one as a tester", async () => {
   const user = userEvent.setup();
+  let added = false;
   renderEditor({
-    handle: (path) =>
-      path.endsWith("/setup/testers")
-        ? { value: { ...STEPS[2], tester_candidates: [] } }
-        : undefined,
+    handle: (path) => {
+      if (path.endsWith("/setup/testers")) {
+        added = true;
+        return { value: { ...STEPS[2], tester_candidates: [] } };
+      }
+      return path.endsWith("/setup") && added
+        ? {
+            value: [STEPS[0], STEPS[1], { ...STEPS[2], tester_candidates: [] }],
+          }
+        : undefined;
+    },
   });
   await screen.findByText("id 999");
   await user.click(screen.getByRole("button", { name: "Añadir" }));
   await screen.findByText("Tester añadido.");
-  expect(screen.queryByText("id 999")).not.toBeInTheDocument();
+  // The steps are refetched (no stored result for a tester, it is configuration).
+  await waitFor(() =>
+    expect(screen.queryByText("id 999")).not.toBeInTheDocument(),
+  );
+  expect(confirmApplied).toHaveBeenCalledTimes(1);
 });
 
 test("shows a downloadable QR for the public link in the channel section", async () => {
@@ -366,4 +399,85 @@ test("a failed action shows the server's message", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Resultado desconocido",
   );
+});
+
+const OK_HEALTH = {
+  ...STEPS[1],
+  state: "ok",
+  detail: "Sin problemas críticos.",
+};
+const setupGets = (fetcher: ReturnType<typeof vi.fn>) =>
+  fetcher.mock.calls.filter(([r]) => {
+    const req = r as Request;
+    return req.method === "GET" && new URL(req.url).pathname.endsWith("/setup");
+  }).length;
+
+async function checkHealth() {
+  const user = userEvent.setup();
+  const page = renderEditor({
+    handle: (path) =>
+      path.endsWith("/setup/check/health") ? { value: OK_HEALTH } : undefined,
+  });
+  await screen.findByText("Sin comprobar todavía.");
+  await user.click(screen.getByRole("button", { name: "Comprobar" }));
+  await screen.findByText("Sin problemas críticos.");
+  return page;
+}
+
+test("a check result survives a tenant invalidation and a reload", async () => {
+  const { queryClient, fetcher } = await checkHealth();
+  await waitFor(() => expect(setupGets(fetcher)).toBe(2)); // the check's own refresh
+  invalidateTenantEverything(queryClient, "demo", { channel: true });
+  await waitFor(() => expect(setupGets(fetcher)).toBe(3));
+  void queryClient.invalidateQueries({ refetchType: "active" }); // «Recargar»
+  await waitFor(() => expect(setupGets(fetcher)).toBe(4));
+  expect(screen.getByText("Sin problemas críticos.")).toBeInTheDocument();
+  expect(screen.queryByText("Sin comprobar todavía.")).toBeNull();
+});
+
+test("a check result survives leaving the tab and coming back", async () => {
+  const { remount } = await checkHealth();
+  remount();
+  // The section is closed again (health is ok, nothing forces it open).
+  await openSection(userEvent.setup(), "Canal");
+  expect(
+    await screen.findByText("Sin problemas críticos."),
+  ).toBeInTheDocument();
+});
+
+test("a save that changes the version drops the check result", async () => {
+  const { show } = await checkHealth();
+  show({ ...TENANT, version: 2 });
+  expect(await screen.findByText("Sin comprobar todavía.")).toBeInTheDocument();
+  expect(screen.queryByText("Sin problemas críticos.")).toBeNull();
+});
+
+test("a setup read that was already in flight does not overwrite a fresh check", async () => {
+  const user = userEvent.setup();
+  let gate: Promise<void> | null = null;
+  let release = () => {};
+  const { queryClient } = renderEditor({
+    handle: async (path) => {
+      if (path.endsWith("/setup/check/health")) return { value: OK_HEALTH };
+      if (path.endsWith("/setup") && gate) {
+        await gate;
+        return { value: STEPS }; // the stale answer, with «Sin comprobar»
+      }
+      return undefined;
+    },
+  });
+  await screen.findByText("Sin comprobar todavía.");
+  gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  void queryClient.invalidateQueries({ queryKey: ["tenant-setup", "demo"] });
+  await user.click(screen.getByRole("button", { name: "Comprobar" }));
+  await screen.findByText("Sin problemas críticos.");
+  release();
+  await waitFor(() =>
+    expect(queryClient.isFetching({ queryKey: ["tenant-setup", "demo"] })).toBe(
+      0,
+    ),
+  );
+  expect(screen.getByText("Sin problemas críticos.")).toBeInTheDocument();
 });

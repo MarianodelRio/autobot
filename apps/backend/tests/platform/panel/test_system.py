@@ -468,6 +468,7 @@ def test_config_state_endpoint_lists_alive_processes_and_the_ones_behind(
             revision=revision,
             started_at=now - timedelta(hours=2),
             seen_at=now - timedelta(seconds=age),
+            last_error_at=now - timedelta(seconds=90) if pid == 2 else None,
         )
     data = get(authed_client, "system/config").json()
     assert data["revision"] == 12 and data["updated_at"]
@@ -483,7 +484,10 @@ def test_config_state_endpoint_lists_alive_processes_and_the_ones_behind(
         "started_at",
         "seen_at",
         "behind",
+        "last_error_at",
     }
+    assert data["processes"][0]["last_error_at"] is None
+    assert data["processes"][1]["last_error_at"] is not None
 
 
 def test_config_state_endpoint_needs_a_session(client: Any) -> None:

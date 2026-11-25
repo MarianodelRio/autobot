@@ -4,6 +4,7 @@ import { api, unwrap } from "@/api/client";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import {
 } from "@/components/ui/sheet";
 import { downloadJson } from "@/lib/download";
 import { errorMessage } from "@/lib/errors";
-import { LIVE, qk } from "@/lib/queries";
+import { LIVE_FIRST_PAGE, qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 export function ContactsTab({ slug }: { slug: string }) {
@@ -43,7 +44,7 @@ export function ContactsTab({ slug }: { slug: string }) {
   });
   const list = useInfiniteQuery({
     queryKey: qk.contactsSearch(slug, search),
-    ...LIVE,
+    ...LIVE_FIRST_PAGE,
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -73,7 +74,7 @@ export function ContactsTab({ slug }: { slug: string }) {
       />
       {list.isPending ? (
         <p>Cargando contactos…</p>
-      ) : list.isError ? (
+      ) : list.isError && !list.data ? (
         <ErrorState
           message={errorMessage(
             list.error,
@@ -84,22 +85,27 @@ export function ContactsTab({ slug }: { slug: string }) {
       ) : list.data.pages.every((page) => page.items.length === 0) ? (
         <EmptyState message="No hay contactos." />
       ) : (
-        <ul>
-          {list.data.pages
-            .flatMap((page) => page.items)
-            .map((contact) => (
-              <li key={contact.id} className="border-b py-3">
-                <button
-                  className="underline"
-                  type="button"
-                  onClick={() => setSelected(contact.id)}
-                >
-                  {contact.display_name || contact.external_id}
-                </button>{" "}
-                · {contact.phone_e164 ?? contact.external_id}
-              </li>
-            ))}
-        </ul>
+        <>
+          {list.isError && (
+            <RefreshWarning onRetry={() => void list.refetch()} />
+          )}
+          <ul>
+            {list.data.pages
+              .flatMap((page) => page.items)
+              .map((contact) => (
+                <li key={contact.id} className="border-b py-3">
+                  <button
+                    className="underline"
+                    type="button"
+                    onClick={() => setSelected(contact.id)}
+                  >
+                    {contact.display_name || contact.external_id}
+                  </button>{" "}
+                  · {contact.phone_e164 ?? contact.external_id}
+                </li>
+              ))}
+          </ul>
+        </>
       )}
       {list.hasNextPage && (
         <Button

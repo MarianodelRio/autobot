@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
@@ -22,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { downloadJson } from "@/lib/download";
 import { errorMessage } from "@/lib/errors";
-import { tenantRemoved } from "@/lib/queries";
+import { removeTenantQueries, tenantRemoved } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 type Detail = components["schemas"]["TenantDetail"];
@@ -31,6 +32,7 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const navigate = useNavigate();
+  const client = useQueryClient();
   const mutation = useApiMutation({
     fn: () =>
       unwrap(
@@ -40,8 +42,10 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
         }),
       ),
     success: "Cliente eliminado.",
+    // Not `tenant`: the tenant is gone, so its queries are dropped instead of
+    // refetched (they would 404), and there is no configuration to confirm: the
+    // delete purges the tenant's rows instead of publishing a revision to wait for.
     invalidate: tenantRemoved(),
-    tenant: detail.slug,
     onSuccess: (result) => {
       if (result.telegram_webhook_removed === false) {
         toast.warning(
@@ -49,6 +53,7 @@ export function DeleteTenantAction({ detail }: { detail: Detail }) {
         );
       }
       void navigate({ to: "/clientes" });
+      removeTenantQueries(client, detail.slug);
     },
   });
   function close() {

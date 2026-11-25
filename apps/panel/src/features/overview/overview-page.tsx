@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/error-state";
 import { KpiCard } from "@/components/kpi-card";
 import { Meter } from "@/components/meter";
 import { PageHeader } from "@/components/page-header";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { type Status, StatusBadge } from "@/components/status-badge";
 import { StatusDot } from "@/components/status-dot";
 import { TimeAgo } from "@/components/time-ago";
@@ -319,12 +320,17 @@ export function OverviewContent({ data }: { data: Overview }) {
 export function OverviewPage() {
   const query = useOverview();
   if (query.isPending) return <p>Cargando resumen…</p>;
-  if (query.isError || !query.data)
+  if (!query.data)
     return (
       <ErrorState
         message="No se pudo cargar el resumen."
         onRetry={() => void query.refetch()}
       />
     );
-  return <OverviewContent data={query.data} />;
+  return (
+    <>
+      {query.isError && <RefreshWarning onRetry={() => void query.refetch()} />}
+      <OverviewContent data={query.data} />
+    </>
+  );
 }

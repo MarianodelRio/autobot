@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { PageHeader } from "@/components/page-header";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { TimeAgo } from "@/components/time-ago";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { errorDetail } from "@/lib/errors";
-import { LIVE, qk } from "@/lib/queries";
+import { LIVE_FIRST_PAGE, qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 
 type Invite = components["schemas"]["DemoInviteOut"];
@@ -214,7 +215,7 @@ function InviteQr({ invite }: { invite: Invite }) {
 export function DemoInvitesPage() {
   const query = useInfiniteQuery({
     queryKey: qk.demoInvites(),
-    ...LIVE,
+    ...LIVE_FIRST_PAGE,
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -235,7 +236,7 @@ export function DemoInvitesPage() {
       <CreateInviteForm />
       {query.isPending ? (
         <p>Cargando invitaciones…</p>
-      ) : query.isError ? (
+      ) : query.isError && !query.data ? (
         <ErrorState
           message={errorDetail(
             query.error,
@@ -246,55 +247,60 @@ export function DemoInvitesPage() {
       ) : invites.length === 0 ? (
         <EmptyState message="No hay invitaciones todavía." />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {[
-                "Nota",
-                "Usos",
-                "Caduca",
-                "Estado",
-                "Creada",
-                "Código",
-                "Acciones",
-              ].map((label) => (
-                <TableHead key={label}>{label}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {invites.map((invite) => {
-              const s = status(invite);
-              return (
-                <TableRow key={invite.id}>
-                  <TableCell>{invite.note || "—"}</TableCell>
-                  <TableCell>
-                    {invite.uses}/{invite.max_uses}
-                  </TableCell>
-                  <TableCell>
-                    {invite.expires_at ? (
-                      <TimeAgo date={invite.expires_at} />
-                    ) : (
-                      "Nunca"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={s.variant}>{s.label}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <TimeAgo date={invite.created_at} />
-                  </TableCell>
-                  <TableCell>
-                    <InviteQr invite={invite} />
-                  </TableCell>
-                  <TableCell>
-                    <RevokeAction invite={invite} />
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        <>
+          {query.isError && (
+            <RefreshWarning onRetry={() => void query.refetch()} />
+          )}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {[
+                  "Nota",
+                  "Usos",
+                  "Caduca",
+                  "Estado",
+                  "Creada",
+                  "Código",
+                  "Acciones",
+                ].map((label) => (
+                  <TableHead key={label}>{label}</TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invites.map((invite) => {
+                const s = status(invite);
+                return (
+                  <TableRow key={invite.id}>
+                    <TableCell>{invite.note || "—"}</TableCell>
+                    <TableCell>
+                      {invite.uses}/{invite.max_uses}
+                    </TableCell>
+                    <TableCell>
+                      {invite.expires_at ? (
+                        <TimeAgo date={invite.expires_at} />
+                      ) : (
+                        "Nunca"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={s.variant}>{s.label}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <TimeAgo date={invite.created_at} />
+                    </TableCell>
+                    <TableCell>
+                      <InviteQr invite={invite} />
+                    </TableCell>
+                    <TableCell>
+                      <RevokeAction invite={invite} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </>
       )}
       {query.hasNextPage && (
         <Button

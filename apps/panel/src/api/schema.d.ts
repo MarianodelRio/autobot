@@ -1322,6 +1322,8 @@ export interface components {
             behind: boolean;
             /** Host */
             host: string;
+            /** Last Error At */
+            last_error_at?: string | null;
             /** Pid */
             pid: number;
             /** Revision */

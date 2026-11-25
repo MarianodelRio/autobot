@@ -181,8 +181,11 @@ services:
   # threads, i.e. 6 on a 2-vCPU VPS, which would silently cap a --concurrency 8 worker.
   # Connections in the worst case (max_connections in db, below): web 2x4 threads + one
   # recycling worker = 12, web-panel 24, worker-inbound 4+8 = 12, worker-calendar 8+10 = 18,
-  # worker-periodic 2+6 = 8, worker-outbound 8+10 = 18: 92, plus 5 reserved for superusers,
-  # pg_dump, migrations and one-off commands: well under 200.
+  # worker-periodic 2+6 = 8, worker-outbound 8+10 = 18: 92. Each process that polls the
+  # config revision (ADR-030: every gunicorn worker, including the one recycling, and every
+  # queue worker) keeps one more persistent connection for its refresher thread, whatever
+  # DB_CONN_MAX_AGE says: 3 web + 3 web-panel + 4 workers = 10 more, 102 in all. Plus 5
+  # reserved for superusers, pg_dump, migrations and one-off commands: about half of 200.
   worker-inbound:
     <<: *app
     environment:

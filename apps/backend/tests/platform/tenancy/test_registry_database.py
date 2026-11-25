@@ -71,7 +71,7 @@ def test_health_catches_initial_registry_failure(monkeypatch: pytest.MonkeyPatch
     def fail(alias: str = "default") -> Any:
         raise OperationalError("private database failure")
 
-    monkeypatch.setattr("autobot.tenancy.registry.sources_from_database", fail)
+    monkeypatch.setattr("autobot.tenancy.registry._read_config", lambda known: fail())
     response = Client().get("/health")
     assert response.status_code == 200  # public: liveness only, no database
     assert response.json() == {"status": "ok"}
@@ -90,7 +90,7 @@ def test_webhook_retries_when_initial_registry_load_fails(
     def fail(alias: str = "default") -> Any:
         raise OperationalError("private database failure")
 
-    monkeypatch.setattr("autobot.tenancy.registry.sources_from_database", fail)
+    monkeypatch.setattr("autobot.tenancy.registry._read_config", lambda known: fail())
     response = Client().post(f"/webhooks/{kind}/missingpublic")
     assert response.status_code == 503
     assert b"private database failure" not in response.content

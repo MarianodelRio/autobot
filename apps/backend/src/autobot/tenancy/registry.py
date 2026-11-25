@@ -15,6 +15,7 @@ the others:
 Messages never contain secret values.
 """
 
+import atexit
 import json
 import logging
 import os
@@ -34,6 +35,7 @@ from zoneinfo import ZoneInfo
 
 import yaml
 from django.db import DatabaseError, connections, transaction
+from django.db.models.functions import MD5
 from django.utils import timezone
 from pydantic import BaseModel, ValidationError
 
@@ -136,17 +138,42 @@ class TenantSource:
     document_error: str | None = None
     # ADR-013: where each dataset's copy came from, {name: (entry name, version, sha256)}.
     dataset_origins: Mapping[str, tuple[str, int, str]] = field(default_factory=dict)
+    tenant_id: UUID | None = None  # set when it comes from the database
 
 
 def load_registry(sources: Iterable[TenantSource], packs: Mapping[str, Pack]) -> Registry:
+    """A registry from `sources`, in their order, loading every one of them."""
+    return _assemble(_load_entry(source, packs) for source in sources)
+
+
+@dataclass(frozen=True)
+class _Entry:
+    """What loading one source gave, BEFORE the passes that look across tenants: either
+    the tenant, or why it was left out. Immutable and shared between the snapshots of a
+    process, so an unchanged tenant is loaded once (`_reload_locked`)."""
+
+    name: str
+    tenant: LoadedTenant | None = None
+    errors: tuple[str, ...] = ()
+    fingerprint: Any = None
+
+
+def _load_entry(source: TenantSource, packs: Mapping[str, Pack], fingerprint: Any = None) -> _Entry:
+    if source.document_error:
+        return _Entry(source.name, errors=(source.document_error,), fingerprint=fingerprint)
+    tenant, errors = _load_tenant(source, packs)
+    return _Entry(source.name, tenant, tuple(errors), fingerprint)
+
+
+def _assemble(entries: Iterable[_Entry]) -> Registry:
+    """The registry of `entries` (in order): the passes across tenants run on fresh lists,
+    never on the cached entries, so a duplicate never leaves a mark on them."""
     registry = Registry()
-    for source in sources:
-        if source.document_error:
-            registry.errors[source.name] = [source.document_error]
-            continue
-        tenant = _load_tenant(source, packs, registry)
-        if tenant is not None:
-            registry.tenants.append(tenant)
+    for entry in entries:
+        if entry.tenant is None:
+            registry.errors[entry.name] = list(entry.errors)
+        else:
+            registry.tenants.append(entry.tenant)
     _mark_duplicates(registry)
     _index(registry)
     for name, problems in registry.problems.items():
@@ -211,13 +238,13 @@ def source_from_dir(directory: Path, secrets: Mapping[str, Any] | None = None) -
 
 
 def _load_tenant(
-    source: TenantSource, packs: Mapping[str, Pack], registry: Registry
-) -> LoadedTenant | None:
+    source: TenantSource, packs: Mapping[str, Pack]
+) -> tuple[LoadedTenant | None, list[str]]:
+    """The tenant of `source`, or why it cannot be identified."""
     try:
         document = TenantDocument.model_validate(source.document)
     except ValidationError as error:
-        registry.errors[source.name] = _describe(error)
-        return None
+        return None, _describe(error)
     tenant = LoadedTenant(document=document, version=source.version)
     tenant = _with_pack(tenant, packs, source.datasets)
     tenant = _with_secrets(tenant, source.secrets)
@@ -227,7 +254,7 @@ def _load_tenant(
             secrets=None,
             main_disabled=[*tenant.main_disabled, "secrets cannot be decrypted"],
         )
-    return tenant
+    return tenant, []
 
 
 def _dataset_path(path: str) -> bool:
@@ -349,8 +376,37 @@ def _describe(error: ValidationError) -> list[str]:
     return [f"{'.'.join(str(p) for p in e['loc']) or '(root)'}: {e['msg']}" for e in error.errors()]
 
 
+Fingerprint = tuple[Any, ...]
+
+
+@dataclass(frozen=True)
+class ConfigRead:
+    """One snapshot of the configuration: its revision, the fingerprint of every tenant
+    (None when not asked for) and the sources read in full, which are every tenant or,
+    given `known` fingerprints, only the new and the changed ones."""
+
+    revision: int
+    fingerprints: dict[UUID, Fingerprint] | None
+    sources: list[TenantSource]
+
+
 def sources_from_database(alias: str = "default") -> tuple[int, list[TenantSource]]:
     """Read the current config in a single snapshot, with a bounded query count."""
+    read = read_config(alias, fingerprints=False)
+    return read.revision, read.sources
+
+
+def read_config(
+    alias: str = "default",
+    known: Mapping[UUID, Fingerprint] | None = None,
+    *,
+    fingerprints: bool = True,
+) -> ConfigRead:
+    """The config in ONE read-only REPEATABLE READ snapshot, with a bounded query count.
+
+    With `known` (the fingerprints of what the caller already holds) only the tenants
+    whose fingerprint differs, or that it lacks, are read in full; the rest cost three
+    aggregate queries that carry no payload."""
     from autobot.tenancy.crypto import SecretsUnreadable, decrypt
     from autobot.tenancy.models import (
         ConfigRevision,
@@ -365,17 +421,31 @@ def sources_from_database(alias: str = "default") -> tuple[int, list[TenantSourc
             with connections[alias].cursor() as cursor:
                 cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
         revision = ConfigRevision.objects.using(alias).get(pk=1).revision
-        documents = list(
-            TenantDocumentVersion.objects.using(alias)
-            .order_by("tenant_id", "-version")
-            .distinct("tenant_id")
-            .values("tenant_id", "version", "document")
-        )
-        datasets, origins = _latest_datasets(TenantDatasetVersion, alias)
-        secrets = {
-            row["tenant_id"]: bytes(row["ciphertext"])
-            for row in TenantSecret.objects.using(alias).values("tenant_id", "ciphertext")
-        }
+        current = _fingerprints(alias) if fingerprints or known is not None else None
+        wanted: set[UUID] | None = None  # None: every tenant
+        if known is not None and current is not None:
+            wanted = {tid for tid, fp in current.items() if known.get(tid) != fp}
+        if wanted is not None and not wanted:
+            documents: list[Any] = []
+            datasets: dict[UUID, dict[str, dict[str, str]]] = {}
+            origins: dict[UUID, dict[str, tuple[str, int, str]]] = {}
+            secrets: dict[UUID, bytes] = {}
+        else:
+            doc_rows = TenantDocumentVersion.objects.using(alias)
+            secret_rows = TenantSecret.objects.using(alias)
+            if wanted is not None:
+                doc_rows = doc_rows.filter(tenant_id__in=wanted)
+                secret_rows = secret_rows.filter(tenant_id__in=wanted)
+            documents = list(
+                doc_rows.order_by("tenant_id", "-version")
+                .distinct("tenant_id")
+                .values("tenant_id", "version", "document")
+            )
+            datasets, origins = _latest_datasets(TenantDatasetVersion, alias, wanted)
+            secrets = {
+                row["tenant_id"]: bytes(row["ciphertext"])
+                for row in secret_rows.values("tenant_id", "ciphertext")
+            }
     sources = []
     for doc_row in documents:
         document = doc_row["document"]
@@ -398,20 +468,58 @@ def sources_from_database(alias: str = "default") -> tuple[int, list[TenantSourc
                 secrets_error=secrets_error,
                 version=doc_row["version"],
                 dataset_origins=origins.get(tenant_id, {}),
+                tenant_id=tenant_id,
             )
         )
-    return revision, sources
+    return ConfigRead(revision, current if fingerprints else None, sources)
+
+
+def _fingerprints(alias: str) -> dict[UUID, Fingerprint]:
+    """What identifies the content of each tenant without reading it: the row of its
+    latest document, of the latest version of each dataset and its secrets' row and hash.
+    Row ids grow with every write, so a tenant purged and created again never repeats one;
+    three queries, no payload."""
+    from autobot.tenancy.models import TenantDatasetVersion, TenantDocumentVersion, TenantSecret
+
+    documents = {
+        tenant_id: (version, row_id)
+        for tenant_id, version, row_id in TenantDocumentVersion.objects.using(alias)
+        .order_by("tenant_id", "-version")
+        .distinct("tenant_id")
+        .values_list("tenant_id", "version", "id")
+    }
+    datasets: dict[UUID, list[tuple[str, int, int]]] = {}
+    for tenant_id, name, version, row_id in (
+        TenantDatasetVersion.objects.using(alias)
+        .order_by("tenant_id", "name", "-version")
+        .distinct("tenant_id", "name")
+        .values_list("tenant_id", "name", "version", "id")
+    ):
+        datasets.setdefault(tenant_id, []).append((name, version, row_id))
+    secrets = {
+        tenant_id: (updated_at, digest)
+        for tenant_id, updated_at, digest in TenantSecret.objects.using(alias)
+        .annotate(digest=MD5("ciphertext"))
+        .values_list("tenant_id", "updated_at", "digest")
+    }
+    return {
+        tenant_id: (document, tuple(sorted(datasets.get(tenant_id, ()))), secrets.get(tenant_id))
+        for tenant_id, document in documents.items()
+    }
 
 
 def _latest_datasets(
-    model: Any, alias: str
+    model: Any, alias: str, only: set[UUID] | None = None
 ) -> tuple[dict[UUID, dict[str, dict[str, str]]], dict[UUID, dict[str, tuple[str, int, str]]]]:
-    """The latest version of each tenant's datasets, and where each was copied from."""
+    """The latest version of each tenant's datasets (of the tenants in `only`, if given),
+    and where each was copied from."""
     datasets: dict[UUID, dict[str, dict[str, str]]] = {}
     origins: dict[UUID, dict[str, tuple[str, int, str]]] = {}
+    query = model.objects.using(alias)
+    if only is not None:
+        query = query.filter(tenant_id__in=only)
     rows = (
-        model.objects.using(alias)
-        .order_by("tenant_id", "name", "-version")
+        query.order_by("tenant_id", "name", "-version")
         .distinct("tenant_id", "name")
         .values("tenant_id", "name", "files", "source_name", "source_version", "source_sha")
     )
@@ -434,15 +542,23 @@ class _RegistryScope:
 # Seconds between two revision checks of the polling refresher, and the window inside
 # which a hot-path caller does not even wake it (ADR-030).
 POLL_SECONDS = 2.0
-# At most one forced check per this many seconds and process for lookup misses.
+# At most one check per this many seconds, process and bucket, for lookup misses.
 MISS_RETRY_SECONDS = 1.0
+# The longest a lookup miss waits for the refresher to publish a newer snapshot, or for
+# the check another miss of its bucket has in flight. Never longer, whatever the rebuild.
+MISS_WAIT_SECONDS = 1.0
 # A polling process tells the database which revision it has loaded (`config_follower`):
 # at once when it changes, and otherwise at most this often, so it counts as alive.
 HEARTBEAT_SECONDS = 15.0
+# While a failure repeats, it is logged at most this often.
+FAILURE_LOG_SECONDS = 60.0
 
 _scope: ContextVar[_RegistryScope | None] = ContextVar("registry_scope", default=None)
 _registry: Registry | None = None
 _revision: int | None = None
+# What `_registry` was built from: the loaded entry of each tenant, by tenant id. Only
+# touched under `_registry_lock`, and replaced as a whole together with `_registry`.
+_entries: dict[UUID, _Entry] | None = None
 _checked_at = 0.0
 _registry_lock = threading.Lock()  # held while checking the revision and rebuilding
 # The background refresher: ONE persistent daemon thread per process, started lazily (or
@@ -451,23 +567,43 @@ _registry_lock = threading.Lock()  # held while checking the revision and rebuil
 # nobody calls still follows the configuration. In polling mode it keeps its own Django
 # connection between checks and drops it only after a failed check; otherwise it follows
 # Django's `CONN_MAX_AGE` rules. `_refresh_state` (under `_refresh_cv`) is "idle",
-# "queued" (requested, not started) or "running".
+# "queued" (requested, not started) or "running"; a request made while it runs sets
+# `_rerun`, so one more check follows it. `_stop_target` is the thread `stop_polling` is
+# stopping: it alone obeys, and a request made meanwhile starts another thread.
 _refresh_cv = threading.Condition()
 _refresh_state = "idle"
+_rerun = False
 _refresher: threading.Thread | None = None
 _refresher_pid = 0
 _poll_interval: float | None = None
-_stopping = False
+_stop_target: threading.Thread | None = None
 _last_reload_ok = True
-# The heartbeat (`_beat`), touched only by the refresher thread: what was last written,
-# and when (monotonic), and the earliest next attempt after a failure.
-_beat_revision: int | None = None
+# The heartbeat (`_beat`), touched only by the refresher thread: what was last written
+# (revision, in error), when (monotonic), and the earliest next attempt after a failure.
+# `_error_since` is when the current run of failed checks began.
+_beat_key: tuple[int, bool] | None = None
 _beat_at = float("-inf")
 _beat_retry_at = float("-inf")
-_started_at: datetime | None = None
-# Throttle of the forced check after a lookup miss.
+_error_since: datetime | None = None
+_polling_started_at: datetime | None = None
+_atexit_registered = False
+_last_logged: dict[str, float] = {}
+
+
+class _Bucket:
+    """The throttle of one kind of lookup miss: when it last checked, and the check in
+    flight (an event the others can wait for)."""
+
+    def __init__(self) -> None:
+        self.last = float("-inf")
+        self.inflight: threading.Event | None = None
+
+
+# Public lookups (`tenant_by_public_id`, from the webhooks and the Telegram polling) and
+# internal ones (`tenant_by_id`, `tenant_by_slug`) throttle apart: whoever sprays unknown
+# public ids from the internet cannot spend the slot the jobs rely on.
 _miss_lock = threading.Lock()
-_last_forced_at = float("-inf")
+_buckets = {"public": _Bucket(), "internal": _Bucket()}
 
 
 def _after_fork_in_child() -> None:
@@ -475,17 +611,20 @@ def _after_fork_in_child() -> None:
     threads, and may have inherited a lock held by one: start over with fresh primitives,
     keeping the loaded snapshot. Polling does not run in the child until it calls
     `start_polling` itself."""
-    global _registry_lock, _refresh_cv, _refresh_state, _refresher, _refresher_pid
-    global _poll_interval, _stopping, _miss_lock
-    global _beat_revision, _beat_at, _beat_retry_at, _started_at
+    global _registry_lock, _refresh_cv, _refresh_state, _refresher, _refresher_pid, _rerun
+    global _poll_interval, _stop_target, _miss_lock, _buckets
+    global _beat_key, _beat_at, _beat_retry_at, _error_since, _polling_started_at
     _registry_lock = threading.Lock()
     _refresh_cv = threading.Condition()
-    _refresh_state = "idle"
+    _refresh_state, _rerun = "idle", False
     _refresher, _refresher_pid = None, 0
-    _poll_interval, _stopping = None, False
+    _poll_interval, _stop_target = None, None
     _miss_lock = threading.Lock()
+    _buckets = {"public": _Bucket(), "internal": _Bucket()}
     # The child is another process: its own row, written from scratch.
-    _beat_revision, _beat_at, _beat_retry_at, _started_at = None, float("-inf"), float("-inf"), None
+    _beat_key, _beat_at, _beat_retry_at = None, float("-inf"), float("-inf")
+    _error_since, _polling_started_at = None, None
+    _last_logged.clear()
 
 
 os.register_at_fork(after_in_child=_after_fork_in_child)
@@ -493,12 +632,13 @@ os.register_at_fork(after_in_child=_after_fork_in_child)
 
 def reset_registry() -> None:
     """Clear the process cache, for tests and explicit operator reloads."""
-    global _registry, _revision, _checked_at, _last_forced_at
+    global _registry, _revision, _checked_at, _entries
     wait_for_refresh()
     with _registry_lock:
-        _registry, _revision, _checked_at = None, None, 0.0
+        _registry, _revision, _entries, _checked_at = None, None, None, 0.0
     with _miss_lock:
-        _last_forced_at = float("-inf")
+        for bucket in _buckets.values():
+            bucket.last = float("-inf")
 
 
 def wait_for_refresh(timeout: float | None = 30) -> None:
@@ -536,28 +676,38 @@ def warm_up_in_background(*, poll: bool = False) -> None:
 
 def start_polling(interval: float = POLL_SECONDS) -> None:
     """Make this process check the configuration revision every `interval` seconds on
-    its own, even with nobody calling. Idempotent; starts the refresher thread if this
-    process has none. Never raises."""
-    global _poll_interval
+    its own, even with nobody calling, and report it in `config_follower`. Idempotent;
+    starts the refresher thread if this process has none. Never raises."""
+    global _poll_interval, _polling_started_at, _atexit_registered
     with _refresh_cv:
         _poll_interval = interval
+    if _polling_started_at is None:
+        _polling_started_at = timezone.now()
+    if not _atexit_registered:
+        _atexit_registered = True
+        atexit.register(_forget_process)  # a clean exit removes the row at once
     _request_refresh()  # starts the thread, or wakes it so it sees the interval
 
 
 def stop_polling() -> None:
-    """Stop the refresher thread and wait for it, closing its connection (tests and
-    shutdown). A later lazy refresh request starts a new thread."""
-    global _poll_interval, _stopping
+    """Stop the refresher thread and wait for it, then remove this process's row (tests
+    and shutdown). A later lazy refresh request starts a new thread."""
+    global _poll_interval, _stop_target
     with _refresh_cv:
         _poll_interval = None
         thread = _refresher
-        if thread is None or not thread.is_alive() or _refresher_pid != os.getpid():
-            return
-        _stopping = True
-        _refresh_cv.notify_all()
-    thread.join(timeout=30)
-    with _refresh_cv:
-        _stopping = False
+        if thread is not None and thread.is_alive() and _refresher_pid == os.getpid():
+            _stop_target = thread
+            _refresh_cv.notify_all()
+        else:
+            thread = None
+    if thread is not None:
+        thread.join(timeout=30)
+        with _refresh_cv:
+            if not thread.is_alive() and _stop_target is thread:
+                _stop_target = None
+            # Still alive after the wait: it stays the stop target and leaves by itself.
+    _forget_process()
 
 
 def loaded_registry() -> Registry | None:
@@ -588,12 +738,34 @@ def _read_revision() -> int:
     return int(row[0])
 
 
+def _log_failure(key: str, message: str, error: BaseException | None = None) -> None:
+    """Log a failure that repeats every poll: the first time with its traceback, then at
+    most once a minute until `_log_recovered`."""
+    now = time.monotonic()
+    last = _last_logged.get(key)
+    if last is not None and now - last < FAILURE_LOG_SECONDS:
+        return
+    _last_logged[key] = now
+    if last is None:
+        log.warning(message, exc_info=error or True)
+    else:
+        log.warning("%s (still failing: %s)", message, type(error).__name__ if error else "?")
+
+
+def _log_recovered() -> None:
+    if _last_logged:
+        log.info("Configuration checks work again")
+        _last_logged.clear()
+
+
 def _reload_locked(now: float) -> Registry:
     """Check the revision and rebuild if it changed. Needs `_registry_lock`.
 
-    The new snapshot is published only once complete; if the rebuild fails the
-    previous one stays (the first load propagates the error)."""
-    global _registry, _revision, _checked_at, _last_reload_ok
+    The rebuild is incremental: only the tenants whose fingerprint changed are loaded
+    again (the first load, and any inconsistency, rebuild everything). The new snapshot
+    is published only once complete; if the rebuild fails the previous one stays (the
+    first load propagates the error)."""
+    global _registry, _revision, _checked_at, _last_reload_ok, _entries
     _last_reload_ok = False
     try:
         if _registry is not None and _read_revision() == _revision:
@@ -602,27 +774,85 @@ def _reload_locked(now: float) -> Registry:
             return _registry
         from packs.registry import PACKS
 
-        revision, sources = sources_from_database()
-        registry = load_registry(sources, PACKS)
-    except DatabaseError:
+        previous = _entries if _registry is not None else None
+        try:
+            revision, entries, changed = _read_entries(previous, PACKS)
+        except _Inconsistent:
+            revision, entries, changed = _read_entries(None, PACKS)
+        except DatabaseError:
+            raise
+        except Exception:
+            if previous is None:
+                raise
+            log.exception("Incremental configuration reload failed; rebuilding everything")
+            revision, entries, changed = _read_entries(None, PACKS)
+        registry = _assemble(entries[tenant_id] for tenant_id in sorted(entries))
+    except DatabaseError as error:
         if _registry is None:
             raise
         _checked_at = now
-        log.warning("Configuration reload failed; keeping the loaded registry")
+        _log_failure("reload", "Configuration reload failed; keeping the loaded registry", error)
         return _registry
-    except Exception:
+    except Exception as error:
         if _registry is None:
             raise
         _checked_at = now
-        log.exception("Configuration rebuild failed; keeping the loaded registry")
+        _log_failure("reload", "Configuration rebuild failed; keeping the loaded registry", error)
         return _registry
-    _registry, _revision, _checked_at = registry, revision, now
+    _registry, _revision, _entries, _checked_at = registry, revision, entries, now
     _last_reload_ok = True
+    log.info(
+        "Configuration reloaded: revision %s, %s tenants loaded, %s reused",
+        revision,
+        changed,
+        len(entries) - changed,
+    )
     return registry
 
 
-def _should_run() -> bool:
-    return _refresh_state == "queued" or _stopping
+class _Inconsistent(Exception):
+    """The cached entries do not match the database's fingerprints: rebuild everything."""
+
+
+def _read_entries(
+    previous: Mapping[UUID, _Entry] | None, packs: Mapping[str, Pack]
+) -> tuple[int, dict[UUID, _Entry], int]:
+    """The revision, an entry for every tenant and how many were loaded now. With
+    `previous`, a tenant whose fingerprint did not change keeps its entry."""
+    known = (
+        {tenant_id: entry.fingerprint for tenant_id, entry in previous.items()}
+        if previous is not None
+        else None
+    )
+    read = _read_config(known)
+    if read.fingerprints is None:
+        # A reader without fingerprints (a test's fake): every source is loaded.
+        return (
+            read.revision,
+            {s.tenant_id or UUID(int=i): _load_entry(s, packs) for i, s in enumerate(read.sources)},
+            len(read.sources),
+        )
+    loaded = {s.tenant_id: s for s in read.sources}
+    entries: dict[UUID, _Entry] = {}
+    for tenant_id, fingerprint in read.fingerprints.items():
+        source = loaded.get(tenant_id)
+        if source is not None:
+            entries[tenant_id] = _load_entry(source, packs, fingerprint)
+            continue
+        entry = previous.get(tenant_id) if previous is not None else None
+        if entry is None or entry.fingerprint != fingerprint:
+            raise _Inconsistent
+        entries[tenant_id] = entry
+    return read.revision, entries, len(loaded)
+
+
+def _read_config(known: Mapping[UUID, Fingerprint] | None) -> ConfigRead:
+    """`read_config`, through a seam the tests can replace."""
+    return read_config(known=known)
+
+
+def _should_run(me: threading.Thread) -> bool:
+    return _stop_target is me or (_refresh_state == "queued" and _refresher is me)
 
 
 def _prepare_connection(polling: bool) -> None:
@@ -632,12 +862,11 @@ def _prepare_connection(polling: bool) -> None:
     connection = connections["default"]
     try:
         if polling:
-            if (
-                connection.connection is not None
-                and connection.errors_occurred
-                and not connection.is_usable()
-            ):
-                connection.close()
+            if connection.connection is not None and connection.errors_occurred:
+                if connection.is_usable():
+                    connection.errors_occurred = False  # healthy: do not test it every poll
+                else:
+                    connection.close()
         else:
             connection.close_if_unusable_or_obsolete()
             connection.close_if_health_check_failed()
@@ -653,66 +882,89 @@ def _drop_connection() -> None:
 
 def _refresher_loop(cv: threading.Condition) -> None:
     """The refresher thread: one check/rebuild per request or, when polling, per
-    interval, on its own connection."""
-    global _refresh_state
+    interval, on its own connection. Every polling round ends with a heartbeat, whether
+    it worked or not."""
+    global _refresh_state, _refresher, _rerun
+    me = threading.current_thread()
     while True:
         with cv:
-            cv.wait_for(_should_run, timeout=_poll_interval)
-            if _stopping:
-                _refresh_state = "idle"
+            cv.wait_for(lambda: _should_run(me), timeout=_poll_interval)
+            if _stop_target is me:
+                # Leave under the lock, so that from now on a caller sees no refresher
+                # (and starts another) instead of queueing for a thread that is gone.
+                if _refresher is me:
+                    _refresher, _refresh_state, _rerun = None, "idle", False
                 cv.notify_all()
                 break
+            if _refresher is not me:
+                break  # replaced (a fork's leftover): not its business any more
             _refresh_state = "running"
+            _rerun = False
             polling = _poll_interval is not None
         _prepare_connection(polling)
         try:
             with _registry_lock:
                 _reload_locked(time.monotonic())
                 ok = _last_reload_ok
-        except Exception:
-            log.exception("Registry refresher failed")
+        except Exception as error:
+            _log_failure("refresher", "Registry refresher failed", error)
             ok = False
-        if not ok:
+        if ok:
+            _log_recovered()
+        else:
             _drop_connection()  # never keep a connection that just failed
-        elif polling:
+        if polling:
+            _note_round(ok)
             _beat(time.monotonic())
         with cv:
-            _refresh_state = "idle"
+            _refresh_state = "queued" if _rerun else "idle"
             cv.notify_all()
-    _forget_process()
     _drop_connection()
 
 
+def _note_round(ok: bool) -> None:
+    """Remember since when the checks have been failing (cleared by a good one)."""
+    global _error_since
+    if ok:
+        _error_since = None
+    elif _error_since is None:
+        _error_since = timezone.now()
+
+
 def _beat(now: float) -> None:
-    """Tell the database which revision this process has loaded (`config_follower`), when
-    it changed or `HEARTBEAT_SECONDS` have passed since the last write. Refresher thread
-    only, on its own connection and in autocommit: never on the hot path, never inside a
-    request or job transaction. A failure is logged and ignored (retried after
-    `HEARTBEAT_SECONDS`); it never breaks the refresher."""
-    global _beat_revision, _beat_at, _beat_retry_at
-    revision = _revision
-    if revision is None or now < _beat_retry_at:
+    """Tell the database which revision this process has loaded (`config_follower`, 0 if
+    none yet) and since when its checks fail, if at all: when either changed or
+    `HEARTBEAT_SECONDS` have passed since the last write, and after every polling round,
+    so a live process never goes silent. Refresher thread only, on its own connection and
+    in autocommit: never on the hot path, never inside a request or job transaction. A
+    failure is logged and ignored (retried after `HEARTBEAT_SECONDS`); it never breaks
+    the refresher."""
+    global _beat_key, _beat_at, _beat_retry_at
+    if now < _beat_retry_at:
         return
-    if revision == _beat_revision and now - _beat_at < HEARTBEAT_SECONDS:
+    revision = _revision or 0
+    error_since = _error_since
+    key = (revision, error_since is not None)
+    if key == _beat_key and now - _beat_at < HEARTBEAT_SECONDS:
         return
     try:
-        _write_beat(revision)
-    except Exception:
+        _write_beat(revision, error_since)
+    except Exception as error:
         _beat_retry_at = now + HEARTBEAT_SECONDS
-        log.warning("Configuration heartbeat failed; will retry", exc_info=True)
+        _log_failure("heartbeat", "Configuration heartbeat failed; will retry", error)
         return
-    _beat_revision, _beat_at = revision, now
+    _beat_key, _beat_at = key, now
 
 
-def _write_beat(revision: int) -> None:
+def _write_beat(revision: int, last_error_at: datetime | None) -> None:
     """Upsert this process's `config_follower` row (one statement, default connection)."""
-    global _started_at
+    global _polling_started_at
     from django.conf import settings
 
     from autobot.tenancy.models import ConfigFollower
 
-    if _started_at is None:
-        _started_at = timezone.now()
+    if _polling_started_at is None:
+        _polling_started_at = timezone.now()
     ConfigFollower.objects.bulk_create(
         [
             ConfigFollower(
@@ -720,38 +972,70 @@ def _write_beat(revision: int) -> None:
                 host=socket.gethostname(),
                 pid=os.getpid(),
                 revision=revision,
-                started_at=_started_at,
+                started_at=_polling_started_at,
                 seen_at=timezone.now(),
+                last_error_at=last_error_at,
             )
         ],
         update_conflicts=True,
         unique_fields=["host", "pid"],
-        update_fields=["service", "revision", "started_at", "seen_at"],
+        update_fields=["service", "revision", "started_at", "seen_at", "last_error_at"],
     )
 
 
-def _forget_process() -> None:
-    """Remove this process's row when its refresher is stopped on purpose (best effort;
-    a process that just dies leaves a row that readers ignore once it is old)."""
-    global _beat_revision
-    if _beat_revision is None:
-        return
-    _beat_revision = None
-    try:
-        from autobot.tenancy.models import ConfigFollower
+FORGET_TIMEOUT_MS = 2000
+FORGET_CONNECT_TIMEOUT_S = 2
 
-        ConfigFollower.objects.filter(host=socket.gethostname(), pid=os.getpid()).delete()
+
+def _forget_process() -> None:
+    """Remove this process's row when it stops on purpose (`stop_polling`, and `atexit`
+    on a clean exit); a process that just dies leaves a row that readers ignore once it is
+    35 s old. Best effort and bounded: its own short-lived connection, with a connect and
+    a statement timeout, so shutdown never waits on a sick database."""
+    global _beat_key
+    if _beat_key is None:
+        return
+    _beat_key = None
+    connection = None
+    try:
+        connection = connections.create_connection("default")
+        options = dict(connection.settings_dict.get("OPTIONS") or {})
+        options["connect_timeout"] = FORGET_CONNECT_TIMEOUT_S
+        connection.settings_dict = {**connection.settings_dict, "OPTIONS": options}
+        with connection.cursor() as cursor:
+            cursor.execute(f"SET statement_timeout = {FORGET_TIMEOUT_MS}")
+            cursor.execute(
+                "DELETE FROM config_follower WHERE host = %s AND pid = %s",
+                [socket.gethostname(), os.getpid()],
+            )
     except Exception:
         log.warning("Configuration heartbeat cleanup failed", exc_info=True)
+    finally:
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                log.debug("Closing the cleanup connection failed", exc_info=True)
 
 
 def _request_refresh() -> None:
-    """Ask the refresher for one check, unless one is queued or running."""
-    global _refresher, _refresher_pid, _refresh_state
+    """Ask the refresher for one check: queue it, or note that one more is wanted if it
+    is running right now (that one may have read the revision before the caller's write).
+    Starts a thread if there is none, or the one there is is being stopped."""
+    global _refresher, _refresher_pid, _refresh_state, _rerun
     with _refresh_cv:
+        if _refresh_state == "running":
+            _rerun = True
+            return
         if _refresh_state != "idle":
             return
-        if _refresher is None or _refresher_pid != os.getpid() or not _refresher.is_alive():
+        current = _refresher
+        if (
+            current is None
+            or _refresher_pid != os.getpid()
+            or not current.is_alive()
+            or _stop_target is current
+        ):
             thread = threading.Thread(
                 target=_refresher_loop, args=(_refresh_cv,), name="registry-refresh", daemon=True
             )
@@ -769,14 +1053,15 @@ def _cached_registry(*, force: bool = False) -> Registry:
     snapshot is returned. After that, the first caller wakes the process's single
     refresher thread, which checks the revision and rebuilds if it changed; everyone keeps
     using the previous snapshot until the new one is swapped in, so no request or job
-    waits for a rebuild (3.8 s at 300 tenants, 40 s at 3,000). In a booted process the
-    refresher also polls on its own (`start_polling`), so that snapshot is at most about
-    one interval old even after hours without callers.
+    waits for a rebuild. In a booted process the refresher also polls on its own
+    (`start_polling`), so that snapshot is at most about one interval old even after hours
+    without callers.
 
     Synchronous (blocking) paths: the very first load, and `force`, which skips the
-    window and re-checks the revision now. Callers that need fresh config right after
-    a write (panel services, lookups that missed) use `force`: with several gunicorn
-    workers this process's own cache may be behind the write."""
+    window and re-checks the revision now, taking `_registry_lock` (it waits for a rebuild
+    in flight). Only code that is not on a public request path uses `force`: the panel
+    (authenticated, behind the tunnel, and the rebuild is incremental) and tests. A
+    lookup miss never does, see `_lookup`."""
     global _checked_at
     now = time.monotonic()
     current = _registry
@@ -803,34 +1088,90 @@ def get_registry(*, force: bool = False) -> Registry:
     return registry
 
 
-def _lookup(find: Callable[[Registry], LoadedTenant | None]) -> LoadedTenant | None:
-    """`find` in the current snapshot; on a miss, ONE forced check and look again, at
-    most once per `MISS_RETRY_SECONDS` per process (concurrent misses inside the window
-    answer None without querying), so unknown ids sprayed from the internet cost about
-    one revision query per second. Inside a `registry_scope` the forced reload replaces
-    the pinned snapshot, which only adds what was missing."""
+def _in_transaction() -> bool:
+    """Whether this thread has a transaction open on any connection: a lookup inside one
+    never waits (it would hold the transaction's locks meanwhile)."""
+    return any(c.in_atomic_block for c in connections.all(initialized_only=True))
+
+
+def _newest() -> Registry | None:
+    """The newest snapshot this process has published, whatever a scope pinned."""
+    return _registry
+
+
+def _lookup(
+    find: Callable[[Registry], LoadedTenant | None], *, public: bool
+) -> LoadedTenant | None:
+    """`find` in the current snapshot; on a miss, check whether the configuration moved
+    on, wait a bounded time for this process to follow, and look again in the newest
+    snapshot.
+
+    Never rebuilds on the caller's thread and never takes `_registry_lock`: it reads the
+    revision (one query), and if it differs asks the refresher thread, waiting at most
+    `MISS_WAIT_SECONDS` for it. At most one such check per `MISS_RETRY_SECONDS` runs in
+    each bucket (public, from the internet; internal), and a miss that arrives while the
+    bucket's check is in flight waits for that check instead of answering at once. A miss
+    inside a transaction never waits. Under a spray of unknown public ids the bucket may
+    answer None for a tenant written a moment ago: the provider retries, and the 2 s
+    polling closes the gap.
+
+    A `registry_scope` is not re-pinned: the tenant found is returned, the snapshot the
+    unit of work pinned stays as it was."""
     tenant = find(get_registry())
     if tenant is not None:
         return tenant
-    global _last_forced_at
+    newest = _newest()
+    if _in_transaction():
+        _request_refresh()  # the next caller finds it; this one must not wait
+        return find(newest) if newest is not None else None
+    bucket = _buckets["public" if public else "internal"]
     with _miss_lock:
         now = time.monotonic()
-        if now - _last_forced_at < MISS_RETRY_SECONDS:
-            return None
-        _last_forced_at = now
-    tenant = find(get_registry(force=True))
+        inflight = bucket.inflight
+        leader = inflight is None and now - bucket.last >= MISS_RETRY_SECONDS
+        if leader:
+            bucket.last = now
+            bucket.inflight = inflight = threading.Event()
+    if leader:
+        assert inflight is not None
+        try:
+            _wait_for_newer_config()
+        finally:
+            with _miss_lock:
+                bucket.inflight = None
+            inflight.set()
+    elif inflight is not None:
+        inflight.wait(MISS_WAIT_SECONDS)
+    newest = _newest()
+    tenant = find(newest) if newest is not None else None
     if tenant is not None:
-        log.info("Tenant %s was missing from the snapshot; found by a forced check", tenant.id)
+        log.info("Tenant %s was missing from the snapshot; found after a check", tenant.id)
     return tenant
 
 
+def _wait_for_newer_config() -> None:
+    """If the database's revision is not the one loaded, ask the refresher and wait (at
+    most `MISS_WAIT_SECONDS`) for it to publish. Never raises, never rebuilds here."""
+    try:
+        wanted = _read_revision()
+    except Exception as error:
+        _log_failure("miss-check", "Revision check after a lookup miss failed", error)
+        return
+    loaded = _revision
+    if wanted == loaded:
+        return
+    _request_refresh()
+    with _refresh_cv:
+        _refresh_cv.wait_for(lambda: _revision != loaded, MISS_WAIT_SECONDS)
+
+
 def tenant_by_id(tenant_id: UUID) -> LoadedTenant | None:
-    return _lookup(lambda r: r.by_id.get(tenant_id))
+    return _lookup(lambda r: r.by_id.get(tenant_id), public=False)
 
 
 def tenant_by_slug(slug: str) -> LoadedTenant | None:
-    return _lookup(lambda r: r.by_slug.get(slug))
+    return _lookup(lambda r: r.by_slug.get(slug), public=False)
 
 
 def tenant_by_public_id(kind: str, public_id: str) -> LoadedTenant | None:
-    return _lookup(lambda r: r.by_public_id.get((kind, public_id)))
+    return _lookup(lambda r: r.by_public_id.get((kind, public_id)), public=True)

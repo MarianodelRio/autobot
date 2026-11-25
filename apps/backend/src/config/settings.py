@@ -84,6 +84,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "autobot.tenancy.middleware.RegistryScopeMiddleware",
     "autobot.panel.middleware.PanelGateMiddleware",
+    "autobot.panel.middleware.PanelFreshConfigMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

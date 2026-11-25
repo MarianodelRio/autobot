@@ -31,7 +31,8 @@ class Migration(migrations.Migration):
                 ("pid", models.IntegerField()),
                 ("revision", models.BigIntegerField()),
                 ("started_at", models.DateTimeField()),
-                ("seen_at", models.DateTimeField(db_index=True)),
+                ("seen_at", models.DateTimeField()),
+                ("last_error_at", models.DateTimeField(blank=True, null=True)),
             ],
             options={"db_table": "config_follower"},
         ),
@@ -40,6 +41,11 @@ class Migration(migrations.Migration):
             constraint=models.UniqueConstraint(
                 fields=("host", "pid"), name="config_follower_host_pid"
             ),
+        ),
+        # Every process rewrites its row every 15 s: leave room in the page for HOT updates.
+        migrations.RunSQL(
+            "ALTER TABLE config_follower SET (fillfactor = 70)",
+            "ALTER TABLE config_follower RESET (fillfactor)",
         ),
         migrations.RunPython(apply_grants, migrations.RunPython.noop),
     ]

@@ -25,7 +25,7 @@ export function useApiMutation<T, V = void>({
   error,
   invalidate,
   tenant,
-  keepSetup,
+  channel = false,
   appliesConfig = true,
   onSuccess,
   onError,
@@ -38,8 +38,10 @@ export function useApiMutation<T, V = void>({
   /** Slug of the tenant this write changes: everything of it (and the lists and
    * summaries that show it) is refreshed. Every tenant mutation must pass it. */
   tenant?: Resolvable<T, V, string>;
-  /** With `tenant`: do not refetch the setup steps (see invalidateTenantEverything). */
-  keepSetup?: boolean;
+  /** With `tenant`: the write concerns the channel (credentials, webhook,
+   * activation, configuration), so the Telegram webhook status is refetched too
+   * (reading it calls Telegram, so other writes leave it alone). */
+  channel?: boolean;
   /** With `tenant`: the write changes the tenant's configuration, so the panel
    * confirms «Aplicado en N procesos» (config-applied.ts). Pass `false` for writes
    * that leave the configuration alone (a health check, forgetting a contact). */
@@ -52,11 +54,11 @@ export function useApiMutation<T, V = void>({
     mutationFn: fn,
     onSuccess: (data, variables) => {
       if (success) toast.success(resolve(success, data, variables));
-      if (tenant)
-        invalidateTenantEverything(client, resolve(tenant, data, variables), {
-          keepSetup,
-        });
-      if (tenant && appliesConfig) void confirmApplied();
+      if (tenant) {
+        const slug = resolve(tenant, data, variables);
+        invalidateTenantEverything(client, slug, { channel });
+        if (appliesConfig) void confirmApplied(client, slug);
+      }
       if (invalidate)
         invalidateKeys(client, resolve(invalidate, data, variables));
       onSuccess?.(data, variables);

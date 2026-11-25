@@ -6,6 +6,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { PageHeader } from "@/components/page-header";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { type Status, StatusBadge } from "@/components/status-badge";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
@@ -404,7 +405,7 @@ export function IncidentsPage() {
       />
       {query.isPending ? (
         <p>Cargando incidencias…</p>
-      ) : query.isError ? (
+      ) : query.isError && !query.data ? (
         <ErrorState
           message={errorMessage(
             query.error,
@@ -420,6 +421,9 @@ export function IncidentsPage() {
         </Card>
       ) : (
         <div className="space-y-4">
+          {query.isError && (
+            <RefreshWarning onRetry={() => void query.refetch()} />
+          )}
           {shown < openCount && (
             <p className="text-sm text-status-notice">
               Mostrando {shown} de {openCount}: cada lista se limita a las más

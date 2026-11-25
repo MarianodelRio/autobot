@@ -377,17 +377,25 @@ def test_a_failing_lag_query_degrades_to_a_finding(
 # --- config_stale (ADR-030) --------------------------------------------------------------
 
 
-def _follower(service: str, revision: int, *, seen_s_ago: int = 5) -> None:
+def _follower(
+    service: str,
+    revision: int,
+    *,
+    seen_s_ago: int = 5,
+    error_s_ago: int | None = None,
+    pid: int = 1,
+) -> None:
     from autobot.tenancy.models import ConfigFollower
 
     now = timezone.now()
     ConfigFollower.objects.create(
         service=service,
         host=service,
-        pid=1,
+        pid=pid,
         revision=revision,
         started_at=now - timedelta(hours=1),
         seen_at=now - timedelta(seconds=seen_s_ago),
+        last_error_at=None if error_s_ago is None else now - timedelta(seconds=error_s_ago),
     )
 
 
@@ -401,34 +409,86 @@ def _revision(value: int, changed_s_ago: int) -> None:
     )
 
 
-def test_config_stale_names_a_live_process_behind_for_over_a_minute(
-    tenants: Any, alerts: Any
+@pytest.fixture(autouse=True)
+def _clean_cache() -> None:
+    from django.core.cache import cache
+
+    cache.clear()  # the first-seen marks live in the cache, which outlives a test's flush
+
+
+def _config_kinds(now: Any) -> list[str]:
+    return [f.kind for f in _findings_at(now)]
+
+
+def _findings_at(now: Any) -> Any:
+    """The findings as of `now`, the processes having written their rows just before."""
+    from autobot.tenancy.models import ConfigFollower
+
+    ConfigFollower.objects.update(seen_at=now - timedelta(seconds=2))
+    return check._config_findings(now)
+
+
+def test_config_stale_counts_a_minute_from_when_that_process_was_first_seen_behind(
+    tenants: Any,
 ) -> None:
     tenants()
-    _revision(9, changed_s_ago=120)
+    _revision(9, changed_s_ago=3600)  # the revision is old: it is not what is measured
     _follower("web", 9)
     _follower("worker-outbound", 8)
-    check.run()
-    found = [a for a in alerts if a[0] == "config_stale"]
-    assert len(found) == 1 and found[0][1] is None  # platform-level
-    assert "worker-outbound" in found[0][2] and "web," not in found[0][2]
+    now = timezone.now()
+    assert _config_kinds(now) == []  # first time seen behind: the minute starts now
+    assert _config_kinds(now + timedelta(seconds=59)) == []
+    (finding,) = _findings_at(now + timedelta(seconds=61))
+    assert finding.kind == "config_stale" and finding.tenant_id is None
+    assert "worker-outbound" in finding.text and "web," not in finding.text
 
 
-def test_config_stale_waits_a_minute_after_the_change(tenants: Any, alerts: Any) -> None:
+def test_config_stale_does_not_restart_when_the_database_moves_again(tenants: Any) -> None:
     tenants()
-    _revision(9, changed_s_ago=20)
-    _follower("web", 8)
-    check.run()
-    assert "config_stale" not in kinds(alerts)
+    _revision(9, changed_s_ago=300)
+    _follower("worker-inbound", 8)
+    now = timezone.now()
+    assert _config_kinds(now) == []
+    _revision(10, changed_s_ago=1)  # another write: the process is still on revision 8
+    assert _config_kinds(now + timedelta(seconds=90)) == ["config_stale"]
 
 
-def test_config_stale_ignores_dead_processes_and_ones_up_to_date(tenants: Any, alerts: Any) -> None:
+def test_config_stale_also_names_a_process_ahead_of_a_database_restored_to_an_older_revision(
+    tenants: Any,
+) -> None:
+    tenants()
+    _revision(5, changed_s_ago=10)
+    _follower("web", 7)
+    now = timezone.now()
+    assert _config_kinds(now) == []
+    assert _config_kinds(now + timedelta(seconds=70)) == ["config_stale"]
+
+
+def test_config_stale_names_a_process_whose_checks_keep_failing(tenants: Any) -> None:
+    tenants()
+    _revision(9, changed_s_ago=3600)
+    _follower("web", 9, error_s_ago=30)  # failing for 30 s: not yet
+    _follower("worker-inbound", 9, error_s_ago=120, pid=2)
+    (finding,) = _findings_at(timezone.now())
+    assert "worker-inbound" in finding.text and "web," not in finding.text
+    assert "fallan" in finding.text
+
+
+def test_config_stale_ignores_dead_processes_and_ones_up_to_date(tenants: Any) -> None:
     tenants()
     _revision(9, changed_s_ago=600)
     _follower("web", 9)
-    _follower("worker-inbound", 3, seen_s_ago=300)  # gone: its row is old
-    check.run()
-    assert "config_stale" not in kinds(alerts)
+    _follower("worker-inbound", 3, seen_s_ago=300, error_s_ago=900)  # gone: its row is old
+    _follower("worker-outbound", 3, seen_s_ago=followers_alive() + 1, pid=3)
+    now = timezone.now()
+    assert check._config_findings(now) == []
+    assert check._config_findings(now + timedelta(seconds=20)) == []  # `web` is current
+
+
+def followers_alive() -> int:
+    from autobot.tenancy import followers
+
+    return followers.ALIVE_SECONDS
 
 
 def test_config_stale_resolves_when_the_process_catches_up(
@@ -446,10 +506,10 @@ def test_config_stale_resolves_when_the_process_catches_up(
     fake_disk(monkeypatch, 1)
     monkeypatch.setattr(notifications, "_send_text", lambda *a, **k: None, raising=False)
     _revision(9, changed_s_ago=120)
-    _follower("web", 8)
+    _follower("web", 8, error_s_ago=300)
     check.sync_alerts(check.collect())
     assert OpsAlert.objects.filter(kind="config_stale", resolved_at__isnull=True).count() == 1
-    ConfigFollower.objects.update(revision=9)
+    ConfigFollower.objects.update(revision=9, last_error_at=None)
     check.sync_alerts(check.collect())
     assert OpsAlert.objects.filter(kind="config_stale", resolved_at__isnull=True).count() == 0
 

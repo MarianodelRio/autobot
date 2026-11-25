@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { KpiCard } from "@/components/kpi-card";
 import { PageHeader } from "@/components/page-header";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { type Status, StatusBadge } from "@/components/status-badge";
 import { StatusDot } from "@/components/status-dot";
 import { TimeAgo } from "@/components/time-ago";
@@ -200,7 +201,9 @@ export function TenantDetailPage({
     queryFn: () => unwrap(api.GET("/tenants/{slug}", param(slug))),
   });
   if (q.isPending) return <p>Cargando cliente…</p>;
-  if (q.isError)
+  // A failed background refetch keeps the last data (and the editors with their
+  // unsaved input): the full error is only for having nothing to show.
+  if (!q.data)
     return (
       <ErrorState
         message={errorMessage(q.error, "No se pudo cargar el cliente.")}
@@ -210,6 +213,7 @@ export function TenantDetailPage({
   const d = q.data;
   return (
     <div>
+      {q.isError && <RefreshWarning onRetry={() => void q.refetch()} />}
       <PageHeader
         title={d.name}
         help="procedimientos/panel/#clientes"
@@ -227,7 +231,7 @@ export function TenantDetailPage({
             {/* "Activar" moved into the Alta tab, the natural last step of
                 onboarding; pause/resume stay here for an already-active tenant. */}
             {d.status !== "onboarding" && (
-              <StatusAction slug={slug} status={d.status} />
+              <StatusAction slug={slug} status={d.status} version={d.version} />
             )}
             <DeleteTenantAction detail={d} />
           </div>

@@ -41,7 +41,11 @@ Los secretos de plataforma se cambian en el `.env` de la VPS (0600, como `deploy
 `deploy`, en `/srv/autobot`: cambia solo la variable en `.env`, ejecuta
 `deploy/scripts/ensure-env.sh` (vuelve a derivar `DB_*_URL`), aplica la contraseña al rol con
 `deploy/scripts/compose.sh exec -T db bash /docker-entrypoint-initdb.d/init-roles.sh` y
-recrea `web`, `web-panel` y los workers. Un `deploy.sh` del mismo SHA no basta: sale antes de ejecutar
+recrea `web`, `web-panel` y los workers. Recrearlos es imprescindible, no un trámite: cada proceso
+conserva abierta una conexión `fp_app` para su hilo refrescador del registro
+([ADR-030](../arquitectura/adr/ADR-030-registro-siempre-al-dia.md)) y esa conexión sigue valiendo
+con la contraseña vieja hasta que el proceso muere; si no se recrean, la primera reconexión tras
+rotar `FP_APP_PASSWORD` fallaría con contraseña incorrecta. Un `deploy.sh` del mismo SHA no basta: sale antes de ejecutar
 `init-roles.sh`. No hay que editar las URL a mano.
 
 Coordina el cambio

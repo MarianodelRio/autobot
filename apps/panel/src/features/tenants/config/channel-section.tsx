@@ -3,6 +3,7 @@ import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
 import { CopyButton } from "@/components/copy-button";
 import { ErrorState } from "@/components/error-state";
+import { RefreshWarning } from "@/components/refresh-warning";
 import { StatusDot } from "@/components/status-dot";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/errors";
@@ -27,7 +28,8 @@ export function ChannelSection({ detail }: { detail: Detail }) {
   const isTelegram = detail.channel_type === "telegram";
   const webhookStatus = useQuery({
     queryKey: qk.tenantWebhook(detail.slug),
-    ...LIVE,
+    // Not LIVE: every read calls Telegram. Refreshed on mount, on focus and after
+    // writes about the channel.
     queryFn: () =>
       unwrap(
         api.GET("/tenants/{slug}/telegram-webhook", {
@@ -47,6 +49,7 @@ export function ChannelSection({ detail }: { detail: Detail }) {
       ),
     success: "Webhook registrado.",
     tenant: detail.slug,
+    channel: true,
     appliesConfig: false, // registers it at Telegram; the configuration is untouched
   });
   if (detail.channel_type === null) return null;
@@ -116,13 +119,16 @@ export function ChannelSection({ detail }: { detail: Detail }) {
         </h3>
         {secrets.isPending ? (
           <p className="text-sm">Cargando estado de secretos…</p>
-        ) : secrets.isError ? (
+        ) : secrets.isError && !secrets.data ? (
           <ErrorState
             message="No se pudo cargar el estado de secretos."
             onRetry={() => void secrets.refetch()}
           />
         ) : (
           <>
+            {secrets.isError && (
+              <RefreshWarning onRetry={() => void secrets.refetch()} />
+            )}
             {!secrets.data.readable && (
               <p className="text-sm text-status-warning">
                 No se pueden leer los secretos configurados.

@@ -17,8 +17,20 @@ import { errorMessage } from "@/lib/errors";
 import { formatNumber } from "@/lib/format";
 import { LIVE, qk } from "@/lib/queries";
 
+function revisionLabel(process: {
+  revision: number;
+  behind: boolean;
+  last_error_at?: string | null;
+}): string {
+  const revision = formatNumber(process.revision);
+  if (process.last_error_at) {
+    return `${revision} (error al recargar)`;
+  }
+  return process.behind ? `${revision} (atrasado)` : revision;
+}
+
 /** The configuration revision in the database and the one each alive backend process
- * has loaded (ADR-030); a process behind it is marked. */
+ * has loaded (ADR-030); a process behind it, or whose checks are failing, is marked. */
 export function ConfigCard() {
   const query = useQuery({
     queryKey: qk.systemConfig(),
@@ -48,7 +60,7 @@ export function ConfigCard() {
           <ErrorState
             message={errorMessage(
               query.error,
-              "No se pudo cargar la configuración cargada.",
+              "No se pudo leer el estado de la configuración.",
             )}
             onRetry={() => void query.refetch()}
           />
@@ -73,12 +85,14 @@ export function ConfigCard() {
                   </TableCell>
                   <TableCell>
                     <StatusDot
-                      level={process.behind ? "warning" : "ok"}
-                      label={
-                        process.behind
-                          ? `${formatNumber(process.revision)} (atrasado)`
-                          : formatNumber(process.revision)
+                      level={
+                        process.last_error_at
+                          ? "critical"
+                          : process.behind
+                            ? "warning"
+                            : "ok"
                       }
+                      label={revisionLabel(process)}
                     />
                   </TableCell>
                   <TableCell>

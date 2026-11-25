@@ -4,12 +4,19 @@ import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import type { components } from "@/api/schema";
+import { confirmApplied } from "@/lib/config-applied";
+import { qk } from "@/lib/queries";
 import { CalendarSection } from "./calendar-section";
 import { ChannelSection } from "./channel-section";
 import { DatasetSection } from "./dataset-section";
 import { OwnerSection } from "./owner-section";
 
-afterEach(() => vi.unstubAllGlobals());
+vi.mock("@/lib/config-applied", () => ({ confirmApplied: vi.fn() }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(confirmApplied).mockClear();
+});
 
 const detail = {
   slug: "demo",
@@ -106,6 +113,7 @@ test("registering the webhook refreshes its status", async () => {
   expect(button).toHaveAttribute("type", "button");
   await user.click(button);
   await screen.findByText("Registrado");
+  expect(confirmApplied).not.toHaveBeenCalled(); // registering is not configuration
   expect(
     fetcher.mock.calls.filter(
       ([r]) =>
@@ -220,6 +228,7 @@ test("shows a pending invitation and lets you disconnect it", async () => {
   await waitFor(() =>
     expect(toastSpy).toHaveBeenCalledWith("Invitación cancelada."),
   );
+  expect(confirmApplied).not.toHaveBeenCalled();
 });
 
 test("disconnecting a linked owner says so", async () => {
@@ -235,6 +244,7 @@ test("disconnecting a linked owner says so", async () => {
   await waitFor(() =>
     expect(toastSpy).toHaveBeenCalledWith("Dueño desconectado."),
   );
+  expect(confirmApplied).not.toHaveBeenCalled();
 });
 
 const busDetail = {
@@ -283,4 +293,36 @@ test("offers Aplicar when a newer library version exists", async () => {
   await waitFor(() =>
     expect(toastSpy).toHaveBeenCalledWith("Horarios actualizados."),
   );
+  expect(confirmApplied).toHaveBeenCalledWith(expect.anything(), "bus");
+});
+
+test("a failed background refresh keeps the credentials dialog open with what was typed", async () => {
+  const user = userEvent.setup();
+  let failing = false;
+  const secretsWithField = {
+    ...secrets,
+    fields: [
+      {
+        name: "bot_token",
+        set: false,
+        label: "Token del bot",
+        help: "",
+        generatable: false,
+      },
+    ],
+  };
+  const { client } = setup(<ChannelSection detail={detail} />, (url) => {
+    if (url.pathname.endsWith("/secrets") && failing) throw new Error("down");
+    return url.pathname.endsWith("/telegram-webhook")
+      ? { registered: true }
+      : secretsWithField;
+  });
+  await user.click(
+    await screen.findByRole("button", { name: "Cambiar credenciales" }),
+  );
+  await user.type(screen.getByLabelText("Token del bot"), "123:abc");
+  failing = true;
+  await client.invalidateQueries({ queryKey: qk.tenantSecrets("demo") });
+  expect(await screen.findByText(/No se pudo actualizar/)).toBeInTheDocument();
+  expect(screen.getByLabelText("Token del bot")).toHaveValue("123:abc");
 });
