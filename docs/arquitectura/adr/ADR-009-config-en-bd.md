@@ -1,6 +1,6 @@
 # ADR-009 — Config y datasets de los negocios en PostgreSQL, versionados
 
-**Estado:** vigente; los datasets los modifica el [ADR-013](ADR-013-biblioteca-de-conjuntos-de-datos.md)
+**Estado:** vigente; los datasets los modifica el [ADR-013](ADR-013-biblioteca-de-conjuntos-de-datos.md) y el comportamiento de la caché el [ADR-030](ADR-030-registro-siempre-al-dia.md)
 
 ## Contexto
 
@@ -22,7 +22,7 @@ fija las decisiones de arquitectura.
   contenido de una anterior, nunca borra las intermedias. La única excepción es la purga.
 - **`config_revision`** (una sola fila, global, sin `tenant_id`) es un contador que toda
   escritura incrementa dentro de su transacción. Cada proceso recarga su registro en
-  memoria cuando detecta un cambio, consultando como mucho cada 2 s, y lo fija durante la
+  memoria cuando detecta un cambio (sondeo propio cada 2 s en los procesos arrancados y comprobación forzada al no encontrar un negocio, [ADR-030](ADR-030-registro-siempre-al-dia.md)), y lo fija durante la
   vida de una petición o un trabajo de cola (`registry_scope`) para que un cambio de
   config nunca llegue a mitad de un trabajo.
 - **Tres tablas** (`tenant_document_version`, `tenant_dataset_version`, `tenant_secret`)
@@ -91,7 +91,8 @@ fija las decisiones de arquitectura.
 ## Consecuencias
 
 - Todo cambio de config queda versionado, auditado y se aplica sin reiniciar ningún
-  proceso, con un retraso de hasta 2 s por la recarga del registro.
+  proceso, con un retraso de unos 2 s más la recarga del registro (un negocio nuevo se
+  encuentra al instante, ADR-030).
 - Las tres tablas de config con `tenant_id`, más `config_revision`, son una excepción
   explícita y vigilada a la regla de RLS; un descuido ahí no tiene la misma red de
   seguridad que el resto de tablas con datos de cliente.

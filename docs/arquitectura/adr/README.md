@@ -14,7 +14,7 @@ La fecha es la del alta del ADR en git. Si una decisión cambia, el ADR afectado
 | [006](ADR-006-bot-de-demo.md) | Bot de demo con dos puertas y negocios de demostración | vigente | 2026-10-26 | |
 | [007](ADR-007-bot-de-duenos.md) | El bot de avisos se convierte en el asistente del dueño | vigente | 2026-10-29 | |
 | [008](ADR-008-panel.md) | Panel interno: arquitectura, acceso y observabilidad | vigente | 2026-11-03 | Actualizado por ADR-020 |
-| [009](ADR-009-config-en-bd.md) | Config y datasets de los negocios en PostgreSQL, versionados | vigente; datasets modificados | 2026-11-03 | ADR-013 (datasets) |
+| [009](ADR-009-config-en-bd.md) | Config y datasets de los negocios en PostgreSQL, versionados | vigente; datasets y caché modificados | 2026-11-03 | ADR-013 (datasets); ADR-030 (caché del registro) |
 | [010](ADR-010-estructura-del-repo.md) | Estructura del repositorio: apps autocontenidas, compose por entorno y `var/` | vigente | 2026-11-04 | |
 | [011](ADR-011-borrado-total-de-un-cliente.md) | Borrado total de un cliente | vigente | 2026-11-09 | |
 | [012](ADR-012-instalacion-y-traslado.md) | Instalación y traslado del servidor | parcialmente sustituido | 2026-11-15 | ADR-017 (instalación desde el portátil) |
@@ -35,3 +35,4 @@ La fecha es la del alta del ADR en git. Si una decisión cambia, el ADR afectado
 | [027](ADR-027-alta-y-configuracion-en-una-pestana.md) | Alta y Configuración en una sola pestaña | vigente | 2026-11-24 | Modifica el ADR-014 |
 | [028](ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md) | Aviso inicial en una línea, sin PERSONA ni BAJA | vigente | 2026-11-24 | |
 | [029](ADR-029-menu-de-operador.md) | Menú de operador en el bot de avisos, solo consulta | vigente | 2026-11-24 | Amplía el ADR-007 |
+| [030](ADR-030-registro-siempre-al-dia.md) | Registro de negocios siempre al día | vigente | 2026-11-25 | Modifica el ADR-009 (caché) |

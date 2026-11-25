@@ -27,7 +27,7 @@ from autobot.runtime.jobs import (
 )
 from autobot.runtime.models import Channel, MetricEvent, Notification, OutboundMessage
 from autobot.runtime.queue import enqueue
-from autobot.tenancy.registry import LoadedTenant, get_registry
+from autobot.tenancy.registry import LoadedTenant, get_registry, tenant_by_id
 from autobot.tenancy.tx import tenant_tx
 from core.dates import MONTHS_ES
 from core.errors import TransientError
@@ -117,7 +117,7 @@ def send_owner_summary(tenant_id: UUID, year: int, month: int) -> None:
     `summary:<tenant_id>:<year>-<month>`, checked before ever calling Calendar. A
     failed pack hook raises `TransientError` so Procrastinate retries it (sending a
     summary with no citas would be misleading)."""
-    tenant = get_registry().by_id.get(tenant_id)
+    tenant = tenant_by_id(tenant_id)
     if tenant is None:
         log.error("owner summary of unknown tenant %s", tenant_id)
         return

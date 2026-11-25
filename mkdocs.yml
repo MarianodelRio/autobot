@@ -165,4 +165,5 @@ nav:
       - arquitectura/adr/ADR-027-alta-y-configuracion-en-una-pestana.md
       - arquitectura/adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md
       - arquitectura/adr/ADR-029-menu-de-operador.md
+      - arquitectura/adr/ADR-030-registro-siempre-al-dia.md
       - arquitectura/adr/plantilla.md

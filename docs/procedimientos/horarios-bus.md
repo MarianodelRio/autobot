@@ -45,8 +45,8 @@ el servidor por SSH (como `deploy`); sin él, sobre tu BD local.
    contenido no crea versión.
 7. **Aplicar a cada cliente** que use la entrada: panel, ficha, Configuración, Horarios,
    «Aplicar» cuando avise de la versión nueva. Crea una versión auditada del dataset de ese
-   cliente; la recarga del registro la aplica en como máximo dos segundos, sin commit ni
-   despliegue.
+   cliente; los procesos la aplican en unos dos segundos (sondeo del registro, ADR-030), sin commit
+   ni despliegue.
 8. Comprueba el resultado con las consultas de prueba del negocio.
 
 Si la entrada en vigor es futura, prepara y revisa las copias locales, pero espera a esa

@@ -23,7 +23,7 @@ from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE
 from autobot.runtime.locks import send_lock
 from autobot.runtime.models import Channel, Contact, InboundEvent, OutboundMessage
 from autobot.runtime.queue import enqueue
-from autobot.tenancy.registry import get_registry
+from autobot.tenancy.registry import tenant_by_id
 from autobot.tenancy.tx import tenant_tx
 from core.conversation import APOLOGY_TEXT
 from core.proactive import ProactiveMessage
@@ -264,7 +264,7 @@ def send_message(tenant_id: UUID, outbound_id: UUID) -> None:
     A transient failure (the provider says "later", or no connection was made) retries
     until `expires_at`, with no cap on attempts; past it the message is `expired`, not
     sent (ADR-024)."""
-    tenant = get_registry().by_id.get(tenant_id)
+    tenant = tenant_by_id(tenant_id)
     if tenant is None:
         log.error("send_message of an unknown tenant %s: message left as it is", tenant_id)
         return

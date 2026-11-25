@@ -1,6 +1,7 @@
 """Revision polling and work scopes retain a consistent registry snapshot."""
 
 import threading
+import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -32,6 +33,8 @@ def state(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
 
     monkeypatch.setattr(registry, "sources_from_database", sources)
     yield state
+    registry.stop_polling()
+    assert not [t for t in threading.enumerate() if t.name == "registry-refresh"], "leaked"
     registry.reset_registry()
 
 
@@ -197,6 +200,7 @@ def test_a_forked_process_starts_its_own_refresher(state: Any) -> None:
     registry.get_registry()
     registry.wait_for_refresh()
     parent = registry._refresher
+    parent_cv = registry._refresh_cv
     assert parent is not None
     registry._after_fork_in_child()  # what os.register_at_fork runs in the child
     assert registry._refresher is None
@@ -206,6 +210,14 @@ def test_a_forked_process_starts_its_own_refresher(state: Any) -> None:
     registry.wait_for_refresh()
     assert registry._refresher is not None and registry._refresher is not parent
     assert registry.get_registry().tenants[0].version == 3
+    assert registry._poll_interval is None  # a child does not inherit running polling
+    # In a real fork the parent's thread does not exist; here it does, so stop it.
+    registry.stop_polling()
+    registry._stopping = True
+    with parent_cv:
+        parent_cv.notify_all()
+    parent.join(5)
+    registry._stopping = False
 
 
 def test_force_rebuilds_synchronously(state: Any) -> None:
@@ -313,3 +325,134 @@ def test_a_broken_kept_connection_does_not_skip_the_reload(
     second = registry.get_registry()
     assert second is not first
     assert second.tenants[0].version == 2
+
+
+# ── polling (refresh-ahead) ───────────────────────────────────────────────
+
+
+def wait_until(condition: Any, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def test_polling_follows_a_change_with_no_caller(state: Any) -> None:
+    first = registry.get_registry()
+    registry.start_polling(0.02)
+    registry.start_polling(0.02)  # idempotent
+    state.revision = 2
+    # Nobody calls get_registry: the refresher notices by itself.
+    assert wait_until(lambda: (loaded := registry.loaded_registry()) is not first and loaded)
+    loaded = registry.loaded_registry()
+    assert loaded is not None and loaded.tenants[0].version == 2
+    assert state.loads == 2
+    threads = [t for t in threading.enumerate() if t.name == "registry-refresh"]
+    assert len(threads) == 1
+
+
+def test_stop_polling_stops_and_joins_the_thread(state: Any) -> None:
+    registry.get_registry()
+    registry.start_polling(0.02)
+    assert any(t.name == "registry-refresh" for t in threading.enumerate())
+    registry.stop_polling()
+    assert not any(t.name == "registry-refresh" for t in threading.enumerate())
+    loaded = registry.loaded_registry()
+    state.revision = 5
+    time.sleep(0.1)
+    assert registry.loaded_registry() is loaded  # nobody polls any more
+    # A later lazy request still works (a new thread).
+    state.now += 2
+    registry.get_registry()
+    registry.wait_for_refresh()
+    registry.stop_polling()
+
+
+def test_polling_keeps_its_connection_and_drops_it_after_a_failed_check(
+    state: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry.get_registry()
+    checks, drops = [], []
+
+    def counting() -> int:
+        checks.append(1)
+        return int(state.revision)
+
+    monkeypatch.setattr(registry, "_read_revision", counting)
+    monkeypatch.setattr(registry, "_drop_connection", lambda: drops.append(1))
+    registry.start_polling(0.01)
+    assert wait_until(lambda: len(checks) >= 5)
+    assert drops == []  # healthy checks never reconnect
+
+    def fail() -> int:
+        raise OperationalError("private database details")
+
+    monkeypatch.setattr(registry, "_read_revision", fail)
+    assert wait_until(lambda: len(drops) >= 1)
+    registry.stop_polling()
+
+
+# ── lookups that do not trust a stale snapshot ────────────────────────────
+
+
+@pytest.fixture
+def grows(state: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Revision 2 adds tenant `b`; counts the revision checks."""
+    state.checks = 0
+
+    def counting() -> int:
+        state.checks += 1
+        return int(state.revision)
+
+    def sources(alias: str = "default") -> tuple[int, list[registry.TenantSource]]:
+        state.loads += 1
+        slugs = ["a"] + (["b"] if state.revision >= 2 else [])
+        return state.revision, [
+            registry.TenantSource(s, tenant_document(s), version=state.revision) for s in slugs
+        ]
+
+    monkeypatch.setattr(registry, "_read_revision", counting)
+    monkeypatch.setattr(registry, "sources_from_database", sources)
+    return state
+
+
+def test_a_miss_forces_one_check_and_finds_the_new_tenant(grows: Any) -> None:
+    registry.get_registry()
+    grows.revision = 2  # written by another process; this snapshot is still fresh
+    found = registry.tenant_by_slug("b")
+    assert found is not None and found.slug == "b"
+    assert grows.loads == 2
+    assert registry.tenant_by_id(found.id) is found
+    assert registry.tenant_by_public_id("whatsapp", found.document.channel.public_id) is found  # type: ignore[union-attr]
+    assert grows.checks == 1  # the one forced check; later hits do not query
+
+
+def test_misses_are_throttled_to_one_forced_check_per_second(grows: Any) -> None:
+    registry.get_registry()
+    assert registry.tenant_by_slug("nope") is None
+    assert grows.checks == 1
+    assert registry.tenant_by_slug("nope-2") is None  # inside the window: no query
+    assert registry.tenant_by_public_id("whatsapp", "zzz") is None
+    assert grows.checks == 1
+    grows.now += 1.0
+    assert registry.tenant_by_slug("nope") is None  # after the window: one more
+    assert grows.checks == 2
+
+
+def test_the_hit_path_never_queries(grows: Any) -> None:
+    registry.get_registry()
+    assert registry.tenant_by_slug("a") is not None
+    assert grows.checks == 0
+
+
+def test_a_forced_lookup_inside_a_scope_only_adds_what_was_missing(grows: Any) -> None:
+    first = registry.get_registry()
+    grows.revision = 2
+    with registry.registry_scope():
+        assert registry.get_registry() is first
+        found = registry.tenant_by_slug("b")
+        assert found is not None
+        pinned = registry.get_registry()
+        assert pinned is not first and pinned.by_slug.keys() >= {"a", "b"}

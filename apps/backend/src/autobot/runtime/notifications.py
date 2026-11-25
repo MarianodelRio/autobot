@@ -26,7 +26,7 @@ from autobot.runtime.outbound import SendRetry, backoff_s
 from autobot.runtime.queue import enqueue
 from autobot.runtime.ratelimit import SlotLimiter
 from autobot.runtime.summary import OWNER_SUMMARY_KIND
-from autobot.tenancy.registry import get_registry
+from autobot.tenancy.registry import tenant_by_id
 from autobot.tenancy.schema import TelegramSecrets
 from autobot.tenancy.tx import tenant_tx
 from core.replies import Text
@@ -75,7 +75,7 @@ def send_notification(tenant_id: UUID, notification_id: UUID, *, attempts: int =
 
     Before calling Telegram, `LIMITER` must grant a slot (global rate and one per owner
     chat); without one the notice stays `pending` and the job is deferred."""
-    tenant = get_registry().by_id.get(tenant_id)
+    tenant = tenant_by_id(tenant_id)
     if tenant is None:
         log.error("notification of unknown tenant %s", tenant_id)
         return

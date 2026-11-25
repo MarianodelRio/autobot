@@ -20,7 +20,7 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
@@ -428,32 +428,49 @@ class _RegistryScope:
     registry: Registry | None = None
 
 
+# Seconds between two revision checks of the polling refresher, and the window inside
+# which a hot-path caller does not even wake it (ADR-030).
+POLL_SECONDS = 2.0
+# At most one forced check per this many seconds and process for lookup misses.
+MISS_RETRY_SECONDS = 1.0
+
 _scope: ContextVar[_RegistryScope | None] = ContextVar("registry_scope", default=None)
 _registry: Registry | None = None
 _revision: int | None = None
 _checked_at = 0.0
 _registry_lock = threading.Lock()  # held while checking the revision and rebuilding
-# The background refresher: ONE persistent daemon thread per process, started lazily. It
-# sleeps on `_refresh_wanted` and keeps its own Django connection between checks (so the
-# web does not connect/authenticate/close every 2 s window); it closes it only when a
-# check failed or the connection is unusable/obsolete. `_refresh_state` (under
-# `_refresh_cv`) is "idle", "queued" (requested, not started) or "running".
+# The background refresher: ONE persistent daemon thread per process, started lazily (or
+# by `start_polling`). It sleeps on `_refresh_cv` until a caller queues a check; once
+# polling is on it also wakes by itself every `_poll_interval` seconds, so a process that
+# nobody calls still follows the configuration. In polling mode it keeps its own Django
+# connection between checks and drops it only after a failed check; otherwise it follows
+# Django's `CONN_MAX_AGE` rules. `_refresh_state` (under `_refresh_cv`) is "idle",
+# "queued" (requested, not started) or "running".
 _refresh_cv = threading.Condition()
 _refresh_state = "idle"
 _refresher: threading.Thread | None = None
 _refresher_pid = 0
+_poll_interval: float | None = None
+_stopping = False
 _last_reload_ok = True
+# Throttle of the forced check after a lookup miss.
+_miss_lock = threading.Lock()
+_last_forced_at = float("-inf")
 
 
 def _after_fork_in_child() -> None:
     """A forked process (gunicorn with `--preload`, a worker) has none of the parent's
     threads, and may have inherited a lock held by one: start over with fresh primitives,
-    keeping the loaded snapshot."""
+    keeping the loaded snapshot. Polling does not run in the child until it calls
+    `start_polling` itself."""
     global _registry_lock, _refresh_cv, _refresh_state, _refresher, _refresher_pid
+    global _poll_interval, _stopping, _miss_lock
     _registry_lock = threading.Lock()
     _refresh_cv = threading.Condition()
     _refresh_state = "idle"
     _refresher, _refresher_pid = None, 0
+    _poll_interval, _stopping = None, False
+    _miss_lock = threading.Lock()
 
 
 os.register_at_fork(after_in_child=_after_fork_in_child)
@@ -461,10 +478,12 @@ os.register_at_fork(after_in_child=_after_fork_in_child)
 
 def reset_registry() -> None:
     """Clear the process cache, for tests and explicit operator reloads."""
-    global _registry, _revision, _checked_at
+    global _registry, _revision, _checked_at, _last_forced_at
     wait_for_refresh()
     with _registry_lock:
         _registry, _revision, _checked_at = None, None, 0.0
+    with _miss_lock:
+        _last_forced_at = float("-inf")
 
 
 def wait_for_refresh(timeout: float | None = 30) -> None:
@@ -486,9 +505,44 @@ def warm_up() -> None:
         connections.close_all()
 
 
-def warm_up_in_background() -> None:
-    """`warm_up` on a daemon thread, for process boot that must not wait for it."""
-    threading.Thread(target=warm_up, name="registry-warm-up", daemon=True).start()
+def warm_up_in_background(*, poll: bool = False) -> None:
+    """`warm_up` on a daemon thread, for process boot that must not wait for it. With
+    `poll`, the process also starts following the configuration on its own
+    (`start_polling`): only real process boots (a web worker, a queue worker) ask for it;
+    tests, management commands and the dev chat stay lazy."""
+
+    def run() -> None:
+        warm_up()
+        if poll:
+            start_polling()
+
+    threading.Thread(target=run, name="registry-warm-up", daemon=True).start()
+
+
+def start_polling(interval: float = POLL_SECONDS) -> None:
+    """Make this process check the configuration revision every `interval` seconds on
+    its own, even with nobody calling. Idempotent; starts the refresher thread if this
+    process has none. Never raises."""
+    global _poll_interval
+    with _refresh_cv:
+        _poll_interval = interval
+    _request_refresh()  # starts the thread, or wakes it so it sees the interval
+
+
+def stop_polling() -> None:
+    """Stop the refresher thread and wait for it, closing its connection (tests and
+    shutdown). A later lazy refresh request starts a new thread."""
+    global _poll_interval, _stopping
+    with _refresh_cv:
+        _poll_interval = None
+        thread = _refresher
+        if thread is None or not thread.is_alive() or _refresher_pid != os.getpid():
+            return
+        _stopping = True
+        _refresh_cv.notify_all()
+    thread.join(timeout=30)
+    with _refresh_cv:
+        _stopping = False
 
 
 def loaded_registry() -> Registry | None:
@@ -552,25 +606,50 @@ def _reload_locked(now: float) -> Registry:
     return registry
 
 
-def _is_queued() -> bool:
-    return _refresh_state == "queued"
+def _should_run() -> bool:
+    return _refresh_state == "queued" or _stopping
+
+
+def _prepare_connection(polling: bool) -> None:
+    """The refresher's connection before a check. Lazily it follows `CONN_MAX_AGE`; when
+    polling it is kept open (a check every 2 s must not reconnect every time) and only
+    dropped if an earlier error left it unusable."""
+    connection = connections["default"]
+    try:
+        if polling:
+            if (
+                connection.connection is not None
+                and connection.errors_occurred
+                and not connection.is_usable()
+            ):
+                connection.close()
+        else:
+            connection.close_if_unusable_or_obsolete()
+            connection.close_if_health_check_failed()
+    except Exception:
+        # The kept connection is broken (or cannot even be checked): drop it and
+        # still try the reload, which opens a fresh one, rather than skip this round.
+        _drop_connection()
+
+
+def _drop_connection() -> None:
+    connections.close_all()
 
 
 def _refresher_loop(cv: threading.Condition) -> None:
-    """The refresher thread: one check/rebuild per request, on its own connection."""
+    """The refresher thread: one check/rebuild per request or, when polling, per
+    interval, on its own connection."""
     global _refresh_state
-    connection = connections["default"]
     while True:
         with cv:
-            cv.wait_for(_is_queued)
+            cv.wait_for(_should_run, timeout=_poll_interval)
+            if _stopping:
+                _refresh_state = "idle"
+                cv.notify_all()
+                break
             _refresh_state = "running"
-        try:
-            connection.close_if_unusable_or_obsolete()
-            connection.close_if_health_check_failed()
-        except Exception:
-            # The kept connection is broken (or cannot even be checked): drop it and
-            # still try the reload, which opens a fresh one, rather than skip this round.
-            connections.close_all()
+            polling = _poll_interval is not None
+        _prepare_connection(polling)
         try:
             with _registry_lock:
                 _reload_locked(time.monotonic())
@@ -579,10 +658,11 @@ def _refresher_loop(cv: threading.Condition) -> None:
             log.exception("Registry refresher failed")
             ok = False
         if not ok:
-            connections.close_all()  # never keep a connection that just failed
+            _drop_connection()  # never keep a connection that just failed
         with cv:
             _refresh_state = "idle"
             cv.notify_all()
+    _drop_connection()
 
 
 def _request_refresh() -> None:
@@ -605,20 +685,22 @@ def _request_refresh() -> None:
 
 
 def _cached_registry(*, force: bool = False) -> Registry:
-    """Stale-while-revalidate. Within 2 s of the last check the loaded snapshot is
-    returned. After that, the first caller wakes the process's single refresher thread,
-    which checks the revision and rebuilds if it changed; everyone keeps using the
-    previous snapshot until the new one is swapped in, so no request or job waits for a
-    rebuild (3.8 s at 300 tenants, 40 s at 3,000).
+    """Stale-while-revalidate for the hot path. Within 2 s of the last check the loaded
+    snapshot is returned. After that, the first caller wakes the process's single
+    refresher thread, which checks the revision and rebuilds if it changed; everyone keeps
+    using the previous snapshot until the new one is swapped in, so no request or job
+    waits for a rebuild (3.8 s at 300 tenants, 40 s at 3,000). In a booted process the
+    refresher also polls on its own (`start_polling`), so that snapshot is at most about
+    one interval old even after hours without callers.
 
     Synchronous (blocking) paths: the very first load, and `force`, which skips the
     window and re-checks the revision now. Callers that need fresh config right after
-    a write (just-created tenant not found, panel services) use `force`: with several
-    gunicorn workers this process's own cache may be behind the write."""
+    a write (panel services, lookups that missed) use `force`: with several gunicorn
+    workers this process's own cache may be behind the write."""
     global _checked_at
     now = time.monotonic()
     current = _registry
-    if not force and current is not None and now - _checked_at < 2:
+    if not force and current is not None and now - _checked_at < POLL_SECONDS:
         return current
     if not force and current is not None:
         _checked_at = now  # one check per window, whatever the rebuild takes
@@ -626,7 +708,7 @@ def _cached_registry(*, force: bool = False) -> Registry:
         return current
     with _registry_lock:
         now = time.monotonic()
-        if not force and _registry is not None and now - _checked_at < 2:
+        if not force and _registry is not None and now - _checked_at < POLL_SECONDS:
             return _registry
         return _reload_locked(now)
 
@@ -639,3 +721,36 @@ def get_registry(*, force: bool = False) -> Registry:
     if scope is not None:
         scope.registry = registry
     return registry
+
+
+def _lookup(find: Callable[[Registry], LoadedTenant | None]) -> LoadedTenant | None:
+    """`find` in the current snapshot; on a miss, ONE forced check and look again, at
+    most once per `MISS_RETRY_SECONDS` per process (concurrent misses inside the window
+    answer None without querying), so unknown ids sprayed from the internet cost about
+    one revision query per second. Inside a `registry_scope` the forced reload replaces
+    the pinned snapshot, which only adds what was missing."""
+    tenant = find(get_registry())
+    if tenant is not None:
+        return tenant
+    global _last_forced_at
+    with _miss_lock:
+        now = time.monotonic()
+        if now - _last_forced_at < MISS_RETRY_SECONDS:
+            return None
+        _last_forced_at = now
+    tenant = find(get_registry(force=True))
+    if tenant is not None:
+        log.info("Tenant %s was missing from the snapshot; found by a forced check", tenant.id)
+    return tenant
+
+
+def tenant_by_id(tenant_id: UUID) -> LoadedTenant | None:
+    return _lookup(lambda r: r.by_id.get(tenant_id))
+
+
+def tenant_by_slug(slug: str) -> LoadedTenant | None:
+    return _lookup(lambda r: r.by_slug.get(slug))
+
+
+def tenant_by_public_id(kind: str, public_id: str) -> LoadedTenant | None:
+    return _lookup(lambda r: r.by_public_id.get((kind, public_id)))

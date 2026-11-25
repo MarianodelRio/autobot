@@ -26,7 +26,7 @@ from autobot.runtime.outbound import (
 from autobot.runtime.queue import enqueue
 from autobot.runtime.queue import queue_app as _queue_app
 from autobot.tenancy.models import Tenant
-from autobot.tenancy.registry import get_registry
+from autobot.tenancy.registry import tenant_by_id
 
 OWNER = "owner"
 # Delivery failures need deliberate resolution, never a blind retry.
@@ -107,7 +107,7 @@ def _deliverable(message: OutboundMessage, *, db_tenant: Tenant) -> tuple[bool, 
         return False, "El mensaje ya no es útil: pasó su fecha límite (p. ej. la cita)."
     if message.payload is None:
         return False, "El contenido del mensaje ya no está disponible."
-    tenant = get_registry().by_id.get(message.tenant_id)
+    tenant = tenant_by_id(message.tenant_id)
     if tenant is None or tenant.ambiguous:
         return False, "El negocio no se puede resolver de forma inequívoca."
     if tenant.document.status == "offboarded" or db_tenant.status == "offboarded":

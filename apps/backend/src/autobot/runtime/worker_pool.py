@@ -32,7 +32,7 @@ def configure(app: App) -> None:
     if sys.argv[1:3] == ["procrastinate", "worker"]:
         from autobot.tenancy.registry import warm_up_in_background
 
-        warm_up_in_background()
+        warm_up_in_background(poll=True)
     connector: Any = app.connector
     if isinstance(connector, DjangoConnector):
         connector.get_worker_connector = bounded_worker_connector  # type: ignore[method-assign]

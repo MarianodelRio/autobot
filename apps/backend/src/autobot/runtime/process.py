@@ -45,7 +45,7 @@ from autobot.runtime.models import (
 )
 from autobot.runtime.outbound import create_proactive, create_replies, defer_sends
 from autobot.runtime.queue import enqueue
-from autobot.tenancy.registry import LoadedTenant, get_registry
+from autobot.tenancy.registry import LoadedTenant, tenant_by_id
 from autobot.tenancy.schema import PHONE
 from autobot.tenancy.tx import tenant_tx
 from core.actions import Action, NotifyOwner, RecordMetric, SendProactive, UpdateContact
@@ -95,7 +95,7 @@ def process_event(
     first_attempt: bool = True,
     calendars: CalendarFactory = google_calendar,
 ) -> None:
-    tenant = get_registry().by_id.get(tenant_id)
+    tenant = tenant_by_id(tenant_id)
     if tenant is None:  # removed from tenants/ after the event was saved
         log.error("process_event of an unknown tenant %s: event left pending", tenant_id)
         return
@@ -198,7 +198,7 @@ def abandon_event(tenant_id: UUID, event_id: UUID, error: str) -> None:
     same tx2 as a deterministic failure. If that cannot be done, the event is at least
     marked `failed`, so nothing leaves it `pending` and the sweep does not queue it again.
     Does nothing if the event is no longer `pending`."""
-    tenant = get_registry().by_id.get(tenant_id)
+    tenant = tenant_by_id(tenant_id)
     if tenant is None:
         return
     now = timezone.now()
@@ -492,7 +492,7 @@ def _record_metric(tenant: LoadedTenant, action: RecordMetric) -> None:
 def apply_status(tenant_id: UUID, event_id: UUID) -> None:
     """A delivery status from the provider updates its outbound_message: found by
     `outbound_ref` (our id) or by the provider's id."""
-    tenant = get_registry().by_id.get(tenant_id)
+    tenant = tenant_by_id(tenant_id)
     if tenant is None:
         log.error("apply_status of an unknown tenant %s: event left pending", tenant_id)
         return

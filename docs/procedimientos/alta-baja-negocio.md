@@ -112,7 +112,7 @@ tiene coste por mensaje.
   publican directamente sobre el cliente.
 
 Los cambios se aplican sin commit ni despliegue, en la siguiente comprobación de revisión
-(como máximo dos segundos).
+(cada proceso sondea cada dos segundos; un negocio nuevo se encuentra al instante, ADR-030).
 
 ## Baja
 

@@ -30,7 +30,7 @@ from autobot.channels.base import ParsedItem
 from autobot.channels.ratelimit import WindowLimiter, client_ip
 from autobot.ops.logging import bind
 from autobot.runtime.inbound import store
-from autobot.tenancy.registry import LoadedTenant, get_registry
+from autobot.tenancy.registry import LoadedTenant, tenant_by_public_id
 from autobot.tenancy.schema import (
     TelegramChannel,
     TelegramSecrets,
@@ -176,7 +176,7 @@ def telegram(request: HttpRequest, public_id: str) -> HttpResponse:
 def main_channel_tenant(kind: str, public_id: str) -> LoadedTenant | None:
     """The tenant whose main channel this is, if that channel is enabled (also what
     `telegram_poll` requires: the same rules as the webhook)."""
-    tenant = get_registry().by_public_id.get((kind, public_id))
+    tenant = tenant_by_public_id(kind, public_id)
     if tenant is None or not tenant.main_enabled or tenant.secrets is None:
         return None
     return tenant

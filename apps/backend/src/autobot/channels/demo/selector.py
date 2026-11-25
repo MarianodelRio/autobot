@@ -54,7 +54,7 @@ from autobot.runtime.jobs import INBOUND, ROUTE_DEMO_EVENT
 from autobot.runtime.locks import demo_user_lock
 from autobot.runtime.models import Channel, DemoEvent, DemoSession, OutboundMessage
 from autobot.runtime.queue import enqueue
-from autobot.tenancy.registry import LoadedTenant, get_registry
+from autobot.tenancy.registry import LoadedTenant, get_registry, tenant_by_id
 from autobot.tenancy.tx import tenant_tx
 from core.errors import TransientError
 from core.limits import MAX_ID_BYTES, plan_sends
@@ -341,7 +341,7 @@ def route_demo_status(item: StatusItem) -> None:
     if owner == SELECTOR_OWNER:
         return  # the selector's own message: it belongs to no tenant
     if isinstance(owner, UUID):
-        tenant = get_registry().by_id.get(owner)
+        tenant = tenant_by_id(owner)
         if tenant is not None and tenant.is_demo:
             store(tenant, [item], Channel.DEMO_WA)
             return

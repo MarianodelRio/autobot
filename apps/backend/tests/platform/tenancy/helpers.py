@@ -75,8 +75,11 @@ def seed_db(
     *docs: dict[str, Any],
     secrets: dict[str, Any] | None = None,
     datasets: dict[str, dict[str, dict[str, str]]] | None = None,
+    reset: bool = True,
 ) -> None:
-    """Publish test configuration directly, without depending on operator services."""
+    """Publish test configuration directly, without depending on operator services.
+    `reset=False` leaves the process registry as it is, like a write made by another
+    process."""
     import hashlib
     import json
 
@@ -152,4 +155,5 @@ def seed_db(
                 )
         revision.revision += 1
         revision.save(using="owner")
-    reset_registry()
+    if reset:
+        reset_registry()

@@ -24,7 +24,7 @@ from autobot.channels.demo.selector import store_event
 from autobot.channels.telegram.adapter import TelegramApiError, call
 from autobot.runtime.models import Channel
 from autobot.runtime.notifications import bot_secrets
-from autobot.tenancy.registry import get_registry
+from autobot.tenancy.registry import tenant_by_slug
 from autobot.tenancy.schema import TelegramChannel, TelegramSecrets
 
 log = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ def source(slug: str | None) -> Source:
 def tenant_source(slug: str) -> Source:
     """The own bot of a tenant whose main channel is Telegram. Never the demo nor the
     notify bot, whatever the slug is (the panel resolves through here)."""
-    found = get_registry().by_slug.get(slug)
+    found = tenant_by_slug(slug)
     if found is None:
         raise ValueError(f"no tenant {slug!r}")
     channel = found.document.channel

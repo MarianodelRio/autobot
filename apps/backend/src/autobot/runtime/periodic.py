@@ -27,7 +27,7 @@ from autobot.runtime.models import DEMO_CHANNELS, Channel
 from autobot.runtime.outbound import defer_sends
 from autobot.runtime.process import apply_actions
 from autobot.runtime.queue import enqueue
-from autobot.tenancy.registry import LoadedTenant, get_registry
+from autobot.tenancy.registry import LoadedTenant, get_registry, tenant_by_id
 from autobot.tenancy.tx import tenant_tx
 from core.pack import Pack, Periodic
 
@@ -101,7 +101,7 @@ def run_periodic(
     *,
     calendars: CalendarFactory = google_calendar,
 ) -> None:
-    tenant = get_registry().by_id.get(tenant_id)
+    tenant = tenant_by_id(tenant_id)
     periodic = _periodic(tenant.pack, name) if tenant is not None else None
     if tenant is None or periodic is None or not channels_for(tenant):
         log.info("periodic %s for tenant %s no longer applies: skipped", name, tenant_id)

@@ -13,7 +13,7 @@ from uuid import UUID
 from django.utils import timezone
 
 from autobot.runtime.models import OwnerLink
-from autobot.tenancy.registry import LoadedTenant, get_registry
+from autobot.tenancy.registry import LoadedTenant, tenant_by_id
 
 # Short on purpose: the code is a bearer secret that sits in a chat; a new one is one tap away.
 log = logging.getLogger(__name__)
@@ -36,9 +36,8 @@ def invite_pending(tenant_id: UUID) -> bool:
 def tenants_of_chat(chat_id: int) -> list[LoadedTenant]:
     """Tenants connected to this chat, excluding any no longer usable (offboarded or
     sharing an id with another tenant)."""
-    registry = get_registry()
     tenant_ids = OwnerLink.objects.filter(chat_id=chat_id).values_list("tenant_id", flat=True)
-    tenants = (registry.by_id.get(tid) for tid in tenant_ids)
+    tenants = (tenant_by_id(tid) for tid in tenant_ids)
     return [
         t
         for t in tenants
@@ -84,7 +83,7 @@ def start_link(code: str, chat_id: int) -> LinkResult:
     ).first()
     if link is None:
         return LinkResult("invalid")
-    tenant = get_registry().by_id.get(link.tenant_id)
+    tenant = tenant_by_id(link.tenant_id)
     if tenant is None or tenant.document.status == "offboarded":
         return LinkResult("invalid")
     if not tenant.is_demo and _chat_taken_by_another_real_tenant(chat_id, tenant.id):
@@ -116,14 +115,13 @@ def _release_held_notices(tenant: LoadedTenant) -> None:
 def _chat_taken_by_another_real_tenant(chat_id: int, tenant_id: UUID) -> bool:
     """ADR-007: a chat may be connected to at most one real
     business; only demo tenants may share a chat."""
-    registry = get_registry()
     other_ids = (
         OwnerLink.objects.filter(chat_id=chat_id)
         .exclude(tenant_id=tenant_id)
         .values_list("tenant_id", flat=True)
     )
     return any(
-        (other := registry.by_id.get(other_id)) is not None
+        (other := tenant_by_id(other_id)) is not None
         and not other.is_demo
         and other.document.status != "offboarded"
         for other_id in other_ids
