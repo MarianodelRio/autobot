@@ -328,10 +328,12 @@ jobs:
       - name: Compute image names
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "IMAGE=ghcr.io/$owner/autobot" >>"$GITHUB_ENV"
-          echo "PANEL_IMAGE=ghcr.io/$owner/autobot-panel" >>"$GITHUB_ENV"
-          # The Dockerfile's apt-get upgrade layer is keyed on it: rebuilt once a day.
-          echo "SECURITY_UPDATES_DATE=$(date -u +%F)" >>"$GITHUB_ENV"
+          # SECURITY_UPDATES_DATE keys the Dockerfile's apt-get upgrade layer: rebuilt once a day.
+          {
+            echo "IMAGE=ghcr.io/$owner/autobot"
+            echo "PANEL_IMAGE=ghcr.io/$owner/autobot-panel"
+            echo "SECURITY_UPDATES_DATE=$(date -u +%F)"
+          } >>"$GITHUB_ENV"
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
