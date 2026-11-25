@@ -31,8 +31,9 @@ La fecha es la del alta del ADR en git. Si una decisión cambia, el ADR afectado
 | [023](ADR-023-colas-aisladas-y-degradacion.md) | Colas aisladas y degradación ante servicios externos | vigente | 2026-11-23 | Modifica ADR-005 (workers) |
 | [024](ADR-024-envio-saliente-por-caducidad.md) | Envío saliente por caducidad | vigente | 2026-11-23 | Complementa ADR-004 |
 | [025](ADR-025-libro-de-supresiones-y-purga-vigilados.md) | Libro de supresiones y purga vigilados automáticamente | vigente | 2026-11-23 | Complementa ADR-019 y ADR-021 |
-| [026](ADR-026-conciliacion-de-envios-ambiguos.md) | Conciliación de envíos ambiguos y recuperación en bloque | vigente | 2026-11-23 | Cambia la regla de `unknown` (ADR-004, ADR-024) |
+| [026](ADR-026-conciliacion-de-envios-ambiguos.md) | Conciliación de envíos ambiguos y recuperación en bloque | vigente; modificado por el ADR-031 | 2026-11-23 | Cambia la regla de `unknown` (ADR-004, ADR-024) |
 | [027](ADR-027-alta-y-configuracion-en-una-pestana.md) | Alta y Configuración en una sola pestaña | vigente | 2026-11-24 | Modifica el ADR-014 |
 | [028](ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md) | Aviso inicial en una línea, sin PERSONA ni BAJA | vigente | 2026-11-24 | |
 | [029](ADR-029-menu-de-operador.md) | Menú de operador en el bot de avisos, solo consulta | vigente | 2026-11-24 | Amplía el ADR-007 |
 | [030](ADR-030-registro-siempre-al-dia.md) | Registro de negocios siempre al día | vigente | 2026-11-25 | Modifica el ADR-009 (caché) |
+| [031](ADR-031-incidencias-como-bandeja.md) | Incidencias como bandeja: condición y evento, «Lo he revisado» y «Descartar» | vigente | 2026-11-25 | Modifica el ADR-026 y el ADR-008 |

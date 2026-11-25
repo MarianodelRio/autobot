@@ -1,6 +1,6 @@
 # ADR-026 — Conciliación de envíos ambiguos y recuperación en bloque
 
-**Estado:** aceptada
+**Estado:** aceptada; modificada por el [ADR-031](ADR-031-incidencias-como-bandeja.md) (se retira la recuperación en bloque y se añade «Descartar»)
 
 ## Contexto
 
