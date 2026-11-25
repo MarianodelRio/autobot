@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 COMPOSE = Path(__file__).resolve().parents[4] / "deploy" / "compose" / "compose.prod.yaml"
+BASE = COMPOSE.with_name("compose.yaml")
 PUBLIC_EDGE = "caddy"  # the only service allowed to publish on every interface (80/443)
 WORKERS = ("worker-inbound", "worker-calendar", "worker-periodic", "worker-outbound")
 HARDENED = ("web", "web-panel", *WORKERS, "panel", "victorialogs")
@@ -46,6 +47,18 @@ def test_only_web_panel_holds_owner_and_readonly_urls(services: dict[str, Any]) 
         assert env["DB_READONLY_URL"] == "", name
     env = services["web-panel"]["environment"]
     assert env["DB_OWNER_URL"] and env["DB_READONLY_URL"]
+
+
+@pytest.mark.parametrize("name", ("web", "web-panel", *WORKERS))
+def test_app_services_get_the_shared_base(services: dict[str, Any], name: str) -> None:
+    # The effective environment is compose.yaml's (for the services it defines) merged
+    # with compose.prod.yaml's: web-panel, defined only in the latter, once lost the URL
+    # and the panel's Logs screen answered "no disponible".
+    base = yaml.safe_load(BASE.read_text())["services"].get(name) or {}
+    env = {**(base.get("environment") or {}), **(services[name].get("environment") or {})}
+    assert env.get("VICTORIALOGS_URL") == "http://victorialogs:9428", name
+    depends = {**(base.get("depends_on") or {}), **(services[name].get("depends_on") or {})}
+    assert depends.get("db", {}).get("condition") == "service_healthy", name
 
 
 @pytest.mark.parametrize("name", HARDENED)
