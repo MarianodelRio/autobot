@@ -71,7 +71,10 @@ análisis pasa, las publica. Se etiquetan con el SHA completo:
 
 Trivy falla con cualquier vulnerabilidad HIGH o CRITICAL que tenga arreglo disponible
 (`--ignore-unfixed`). La imagen del backend aplica al construirse las actualizaciones de
-seguridad de Debian y no lleva `pip`. Una excepción solo se admite en `.trivyignore`, con su
+seguridad de Debian y no lleva `pip`. Esa capa recibe la fecha del día como argumento de
+construcción (`SECURITY_UPDATES_DATE`), así que la caché de capas del CI la rehace una vez
+al día y recoge los parches publicados después de la imagen base; sin ella, un parche nuevo
+de Debian haría fallar Trivy hasta cambiar la imagen base. Una excepción solo se admite en `.trivyignore`, con su
 motivo y una fecha `exp:` en la que vuelve a fallar. Solo se **publican** (`docker push`) en los `push` a `main`; en un pull
 request se construyen y analizan sin subirse. Las etiquetas son inmutables: el SHA es el único identificador de una versión.
 

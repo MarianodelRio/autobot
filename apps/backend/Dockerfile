@@ -17,8 +17,13 @@ FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916
 # The base is pinned by digest, so Debian's security fixes published since then come in
 # here (Trivy fails the build on a fixable HIGH/CRITICAL). pip is not used at runtime (the
 # venv comes from uv) and its vendored urllib3/msgpack would only add vulnerabilities.
+# CI passes the build date: without it the shared layer cache would reuse this layer
+# forever (same base digest, same command) and never pick up a new Debian fix; with it
+# the layer is rebuilt at most once a day.
+ARG SECURITY_UPDATES_DATE=unset
 # hadolint ignore=DL3005
-RUN apt-get update \
+RUN echo "Debian security updates as of ${SECURITY_UPDATES_DATE}" \
+    && apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && python -m pip uninstall -y pip \
