@@ -387,6 +387,8 @@ def _cert_not_after(host: str, port: int, timeout: float) -> datetime:
     """The `notAfter` of the certificate `host:port` serves, validated like a browser
     would (chain and name): an expired or wrong one raises `ssl.SSLCertVerificationError`."""
     context = ssl.create_default_context()
+    # Already the default; explicit so no older protocol can ever be negotiated.
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     with (
         socket.create_connection((host, port), timeout=timeout) as raw,
         context.wrap_socket(raw, server_hostname=host) as tls,

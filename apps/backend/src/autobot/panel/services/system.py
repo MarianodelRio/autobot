@@ -102,6 +102,8 @@ def tls_days_left() -> int | None:
         days = None
         try:
             context = ssl.create_default_context()
+            # Already the default; explicit so no older protocol can ever be negotiated.
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
             with (
                 socket.create_connection((hostname, 443), timeout=5) as raw,
                 context.wrap_socket(raw, server_hostname=hostname) as secure,

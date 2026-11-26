@@ -195,6 +195,34 @@ def test_semicolons_inside_literals_and_comments_are_allowed() -> None:
 
 
 @pytest.mark.parametrize(
+    ("text", "blank"),
+    [
+        ("", True),
+        ("  \n\t ", True),
+        (" -- done", True),
+        ("-- a\n  /* b */\n-- c\n", True),
+        ("/* a /* nested */ still */", True),
+        ("/* never closed", False),
+        ("/* a */ */", False),
+        (" x", False),
+        ("-- a\nselect 2", False),
+    ],
+)
+def test_only_comments(text: str, blank: bool) -> None:
+    assert query._only_comments(text) is blank
+
+
+def test_trailing_text_is_checked_in_linear_time() -> None:
+    # The regular expression this replaced took minutes here (CodeQL py/redos).
+    started = time.perf_counter()
+    for tail in (" " * 19_980 + "x", "--a\n" * 4_995 + "x", "/**/" * 4_995 + "x"):
+        with pytest.raises(ApiError):
+            query._clean("select 1;" + tail)
+    assert query._clean("select 1;" + " " * 19_980) == "select 1"
+    assert time.perf_counter() - started < 1
+
+
+@pytest.mark.parametrize(
     ("sql", "expected"),
     [
         ("select 1", []),

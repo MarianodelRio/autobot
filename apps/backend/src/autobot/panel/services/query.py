@@ -172,8 +172,32 @@ def _reject_forbidden(sql: str) -> None:
         )
 
 
-def _strip_trailing_comments(sql: str) -> str:
-    return re.sub(r"(\s|--[^\n]*(\n|$)|/\*.*?\*/)+$", "", sql, flags=re.DOTALL)
+def _only_comments(text: str) -> bool:
+    """True when `text` holds nothing but whitespace and comments (`--` to the end of the
+    line, `/* */` nested as PostgreSQL does). One pass, linear in the length: a regular
+    expression with `+$` here backtracked for minutes on 20 000 spaces and a letter. An
+    unterminated block comment is content, so the query is refused."""
+    i, n = 0, len(text)
+    while i < n:
+        if text[i].isspace():
+            i += 1
+        elif text.startswith("--", i):
+            end = text.find("\n", i)
+            i = n if end < 0 else end + 1
+        elif text.startswith("/*", i):
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if text.startswith("/*", i):
+                    depth, i = depth + 1, i + 2
+                elif text.startswith("*/", i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    i += 1
+            if depth:
+                return False
+        else:
+            return False
+    return True
 
 
 def _clean(sql: str) -> str:
@@ -185,7 +209,7 @@ def _clean(sql: str) -> str:
     semicolons = _top_level_semicolons(sql)
     if semicolons:
         # Only one final `;` (optionally followed by comments) is tolerated.
-        if len(semicolons) > 1 or _strip_trailing_comments(sql[semicolons[0] + 1 :]):
+        if len(semicolons) > 1 or not _only_comments(sql[semicolons[0] + 1 :]):
             raise ApiError("bad_request", "Solo se admite una sentencia.", 400)
         sql = sql[: semicolons[0]].rstrip()
     if not sql:
