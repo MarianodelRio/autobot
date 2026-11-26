@@ -77,7 +77,7 @@ def test_the_outage_replaces_open_tenant_alerts_without_paging(
     fleet: list[LoadedTenant], monkeypatch: pytest.MonkeyPatch, settings: Any
 ) -> None:
     paged: list[str] = []
-    monkeypatch.setattr("autobot.ops.check.send_ops_alert", lambda *a: None)
+    monkeypatch.setattr("autobot.ops.check.send_ops_alert", lambda *a, **_: None)
 
     def resolve(alert: OpsAlert, *, by: str, notify: bool = False) -> None:
         if notify:
@@ -106,7 +106,7 @@ def test_a_tenant_alert_that_ends_with_the_outage_is_not_paged_either(
     """The calendars recover together: their findings vanish while `calendar_outage` is
     still open (or just closed), and their critical alerts resolve silently."""
     paged: list[str] = []
-    monkeypatch.setattr("autobot.ops.check.send_ops_alert", lambda *a: None)
+    monkeypatch.setattr("autobot.ops.check.send_ops_alert", lambda *a, **_: None)
 
     def resolve(alert: OpsAlert, *, by: str, notify: bool = False) -> None:
         if notify:
@@ -207,4 +207,4 @@ def test_a_cold_start_checks_at_most_the_budget_per_run_and_everyone_in_the_end(
 
 @pytest.fixture
 def alerts_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(check, "send_ops_alert", lambda *a: None)
+    monkeypatch.setattr(check, "send_ops_alert", lambda *a, **_: None)

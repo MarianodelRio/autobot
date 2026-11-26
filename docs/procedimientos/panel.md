@@ -15,7 +15,7 @@ en el panel, en Docs (barra lateral). Los comandos de `manage.py`
 ([../referencia/comandos.md](../referencia/comandos.md)) permiten resolver incidencias sin
 pasar por la API, con `make prod-manage CMD="..."` desde el portátil:
 
-- **Envíos ambiguos o fallidos** (ver [envíos sin confirmar](../incidencias/envios-unknown.md)): `outbound_resolve <id> (--mark-sent|--resend)
+- **Envíos ambiguos** (ver [envíos sin confirmar](../incidencias/envios-unknown.md)): `outbound_resolve <id> (--mark-sent|--resend|--discard)
   --confirm`.
 - **Trabajos fallidos** (ver [cola y latido](../incidencias/cola-y-latido.md)): `job_retry <id>`.
 
@@ -25,7 +25,9 @@ bloqueo y audita el cambio (`audit_event`) en la misma transacción.
 ## Resumen
 
 La pantalla inicial muestra el estado global, los indicadores y mensajes del mes,
-las métricas por pack, los clientes, el sistema y las últimas alertas. Se actualiza
+las métricas por pack, los clientes, el sistema y las últimas incidencias. El estado
+global sale de las incidencias abiertas y la salud de los negocios: una incidencia revisada
+o un envío fallido antiguo ya no lo suben. Se actualiza
 cada 30 segundos.
 
 ## Clientes
@@ -163,14 +165,17 @@ configurada. Detalle y límites en [demo.md](demo.md).
 
 ## Incidencias
 
-Reúne lo que requiere intervención: alertas abiertas («Resolver» solo si no se
-resuelven solas), envíos `unknown`/`failed` sin confirmar («Marcar enviado» y
-«Reenviar», con confirmación del riesgo de duplicado de [envíos sin confirmar](../incidencias/envios-unknown.md)) y trabajos
-fallidos («Reintentar» solo si son idempotentes); debajo, el historial de alertas
-resueltas, plegado. Si no hay nada abierto, una tarjeta única «Todo en orden». Cada
-fila lleva «Ver logs», que abre Logs filtrado por cliente y acotado de 15 minutos
-antes a 5 después del último suceso. El contador de la barra lateral cuenta alertas
-abiertas, envíos estancados y trabajos fallidos.
+Una bandeja de **incidencias abiertas** ([ADR-031](../arquitectura/adr/ADR-031-incidencias-como-bandeja.md)),
+de la más grave y reciente a la menos. Cada una tiene su título y consejo en español, su
+runbook y sus **casos** (envíos, trabajos o avisos afectados), con las acciones de cada uno:
+«Marcar enviado», «Reenviar» (con confirmación del riesgo de duplicado) y «Descartar» en un
+envío sin confirmar ([envíos sin confirmar](../incidencias/envios-unknown.md)), y
+«Reintentar» en un trabajo fallido idempotente. Una **condición** se cierra sola al
+corregirse la causa; un **evento** se cierra con «Lo he revisado», y un caso posterior lo
+reabre con «N nuevos desde tu revisión». Debajo, el historial de las cerradas y cómo se
+cerró cada una (sola, por una caída, revisada, informativa). Si no hay nada abierto,
+«Todo en orden». El contador de la barra lateral y el nivel del Resumen cuentan las mismas
+incidencias abiertas. Claves y cierres: [alertas](../referencia/alertas.md).
 
 ## Logs
 

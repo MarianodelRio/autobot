@@ -22,7 +22,6 @@ from autobot.runtime.models import (
     OutboundMessage,
     OwnerLink,
 )
-from autobot.runtime.notifications import _cooldown_key
 from autobot.tenancy.models import Tenant, TenantDatasetVersion, TenantSecret
 from tests.helpers.integration import demo_tenant, tg_tenant, wa_tenant
 from tests.platform.panel.conftest import HOST, get, post, step_up
@@ -452,7 +451,6 @@ def _seed_everything(tenant_id: Any, other_id: Any) -> None:
         )
         cache.set(f"health:{tid}", {"checked_at": 1})
         cache.set(f"runtime:{tid}:main", {"ok": True})
-        cache.set(_cooldown_key(f"kind-{tid}", tid), True)
     DemoEvent.objects.using("owner").create(
         channel="demo_tg", provider_event_id=f"demo-{tenant_id}", payload={}, received_at=NOW
     )
@@ -509,7 +507,6 @@ def test_delete_erases_every_table_and_cache_key_leaving_the_neighbor_intact(
 
     assert cache.get(f"health:{tenant_id}") is None
     assert cache.get(f"runtime:{tenant_id}:main") is None
-    assert cache.get(_cooldown_key(f"kind-{tenant_id}", tenant_id)) is None
     assert cache.get(f"health:{other_id}") is not None
 
     assert not Tenant.objects.using("owner").filter(pk=tenant_id).exists()

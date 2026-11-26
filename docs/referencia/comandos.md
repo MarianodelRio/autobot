@@ -24,7 +24,7 @@ sobre el servidor de producción (instalación dentro de la VM, el resto por SSH
 | `make dev-bootstrap` | Alias de `make local` |
 | `make dev-reset` | Exige escribir `RESET`, elimina el volumen local y repite `make local` |
 | `make tenant-import DIR=<dir> [SECRETS=<yaml>]` | Importa un directorio contra la BD local desde el host; acepta rutas con espacios |
-| `make dev-activity` | `manage.py seed_dev_activity`: actividad falsa y realista (mensajes, respuestas, avisos, alertas abiertas y resueltas, un `unknown`, un trabajo fallido y muestras de sistema) para ver el panel con datos; se niega fuera de `local` |
+| `make dev-activity` | `manage.py seed_dev_activity`: actividad falsa y realista (mensajes, respuestas, avisos, incidencias abiertas, reabiertas y cerradas, envíos `unknown` y rechazados, un trabajo fallido y muestras de sistema) para ver el panel con datos; se niega fuera de `local` |
 | `make ngrok` | Abre el túnel al puerto 8000 con tu dominio reservado de ngrok |
 | `make down` | Para los contenedores |
 | `make status` | `docker compose ps` |
@@ -139,7 +139,7 @@ también se puede pasar en la línea de comandos.
 | `dataset_library list <pack> <dataset>` | Lista, en JSON, la última versión de cada entrada de la biblioteca (nombre, versión, resumen, autor), nunca su contenido |
 | `dataset_library current-sha <pack> <dataset> <nombre>` | Imprime el `sha256` vigente de esa entrada, o nada si no existe; para construir `--base-sha` |
 | `seed_demos` | Crea los demos de las plantillas solo si no tienen versiones; conserva los cambios posteriores |
-| `seed_dev_activity [--days N] [--reset]` | Crea actividad falsa en local (mensajes, avisos, alertas, un trabajo fallido, muestras de sistema); sin `--days`, los transcurridos del mes en curso. Con `--reset`, borra antes lo que creó. Se niega fuera de `local` |
+| `seed_dev_activity [--days N] [--reset]` | Crea actividad falsa en local (mensajes, avisos, incidencias, un trabajo fallido, muestras de sistema); sin `--days`, los transcurridos del mes en curso. Con `--reset`, borra antes lo que creó. Se niega fuera de `local` |
 | `tenant_status <slug> pause\|resume\|offboard` | Cambia el estado y crea una versión auditada; la baja exige escribir exactamente el slug |
 | `panel_user create <usuario>` | Crea el usuario único del panel: contraseña (dos veces, con los validadores de Django) y un TOTP confirmado; muestra la URI `otpauth://` y su QR en ASCII una sola vez |
 | `panel_user reset-totp <usuario>` | Sustituye el dispositivo TOTP; lo muestra una sola vez |

@@ -1,6 +1,6 @@
 # ADR-008 — Panel interno: arquitectura, acceso y observabilidad
 
-**Estado:** vigente; actualizado por [ADR-020](ADR-020-api-del-panel-aparte.md) (la API del panel corre en `web-panel`, no en `web`)
+**Estado:** vigente; actualizado por [ADR-020](ADR-020-api-del-panel-aparte.md) (la API del panel corre en `web-panel`, no en `web`) y por [ADR-031](ADR-031-incidencias-como-bandeja.md) (el bot de avisos solo empuja lo urgente)
 
 ## Contexto
 
@@ -47,8 +47,11 @@ deshacer.
     de Docker;
   - métricas de máquina leyendo `/proc/meminfo`, `/proc/stat` y `/proc/loadavg` dentro del
     contenedor `web`, en vez de un agente externo;
-  - el bot de ops es un reflejo del panel: toda alerta que hoy manda a Telegram se
-    persiste (`ops_alert`) y se ve en el panel; el panel nunca muestra menos que el bot.
+  - toda alerta que el bot de ops manda a Telegram se persiste (`ops_alert`) y se ve en
+    el panel; el panel nunca muestra menos que el bot. Desde el
+    [ADR-031](ADR-031-incidencias-como-bandeja.md) el bot muestra **menos** que el panel: solo
+    empuja las incidencias 🔴 y 🟠 al abrirse; las 🟡 quedan en el panel y en el resumen
+    diario.
 - **Fin del Django Admin**: el panel lo sustituye por completo; no convive
   con él.
 

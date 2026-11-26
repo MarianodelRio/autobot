@@ -2,7 +2,7 @@
 menu of the notify bot and its daily summary tell. `report_text` turns it into text, so
 the figures and their wording change apart.
 
-It runs in the workers, as `fp_app`: platform tables (`ops_alert`, `system_sample`,
+It runs in the workers, as `fp_app`: platform tables (`ops_alert`, the incidents, `system_sample`,
 `procrastinate_jobs`) are read directly, and a tenant's own figures only inside its
 `tenant_tx`, one tenant at a time (RLS). No personal data leaves this module: only
 counts, states and the business names."""
@@ -17,9 +17,9 @@ from django.conf import settings
 from django.db import connection
 from django.db.models import Max
 
-from autobot.ops import containers, health, system
+from autobot.ops import containers, health, incidents, system
 from autobot.ops.check import BACKUP_STALE, PRUNE_OVERDUE, SAMPLE_MAX_AGE
-from autobot.ops.models import OpsAlert, SystemSample
+from autobot.ops.models import SystemSample
 from autobot.ops.status import tenant_status
 from autobot.runtime.models import Contact, InboundEvent, OutboundMessage
 from autobot.tenancy.registry import LoadedTenant, get_registry
@@ -45,10 +45,12 @@ def worst(levels: list[str]) -> Level:
 
 
 @dataclass(frozen=True)
-class AlertLine:
-    severity: str  # critical | warning | notice | info
-    text: str  # as the alert was sent: starts with its emoji (and the slug, per tenant)
+class IncidentLine:
+    severity: str  # critical | warning | notice
+    text: str  # as ops_check wrote it: starts with its emoji (and the slug, per tenant)
     since: datetime
+    # A reopened event: how many cases arrived after the operator's review.
+    new_since_review: int | None = None
 
 
 @dataclass(frozen=True)
@@ -95,7 +97,7 @@ class Cleanup:
 @dataclass(frozen=True)
 class PlatformStatus:
     level: Level
-    alerts: list[AlertLine]  # open ones, most severe and most recent first
+    incidents: list[IncidentLine]  # open ones, most severe and most recent first
     services: Services | None
     resources: Resources | None
     backups: Backups
@@ -104,11 +106,11 @@ class PlatformStatus:
 
 
 def platform_status(now: datetime) -> PlatformStatus:
-    alerts = open_alerts()
+    lines = open_incidents()
     tenants = tenant_lines(now, with_activity=False)
     return PlatformStatus(
-        level=worst([*(a.severity for a in alerts), *(t.level for t in tenants)]),
-        alerts=alerts,
+        level=worst([*(i.severity for i in lines), *(t.level for t in tenants)]),
+        incidents=lines,
         troubled=[t.name for t in tenants if t.level in ("warning", "critical")],
         services=_services(now),
         resources=_resources(now),
@@ -117,10 +119,12 @@ def platform_status(now: datetime) -> PlatformStatus:
     )
 
 
-def open_alerts() -> list[AlertLine]:
-    rows = OpsAlert.objects.filter(resolved_at__isnull=True)
-    lines = [AlertLine(a.severity, a.text, a.first_seen_at) for a in rows]
-    return sorted(lines, key=lambda a: (-_RANK.get(a.severity, 0), -a.since.timestamp()))
+def open_incidents() -> list[IncidentLine]:
+    """The panel's open incidents (`ops.incidents.open_incidents`), in its order."""
+    return [
+        IncidentLine(i.severity, i.row.text, i.row.first_seen_at, i.new_since_review)
+        for i in incidents.open_incidents()
+    ]
 
 
 def _services(now: datetime) -> Services | None:
@@ -196,11 +200,11 @@ def tenant_lines(now: datetime, *, with_activity: bool = True) -> list[TenantLin
     """Every tenant not offboarded, by name. `with_activity` adds the time of its last
     message, one `tenant_tx` per tenant."""
     tenants = _tenants()
-    alerts = list(OpsAlert.objects.filter(resolved_at__isnull=True, tenant_id__isnull=False))
+    open_now = incidents.open_incidents()
     snapshots = health.read_snapshots([t.id for t in tenants])
     lines = []
     for tenant in tenants:
-        status = tenant_status(tenant, open_alerts=alerts, snapshots=snapshots)
+        status = tenant_status(tenant, incidents=open_now, snapshots=snapshots)
         level: Level = "ok" if status.level == "unknown" else status.level
         lines.append(
             TenantLine(

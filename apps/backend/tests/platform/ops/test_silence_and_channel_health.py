@@ -29,7 +29,7 @@ def alerts(monkeypatch: pytest.MonkeyPatch, settings: Any) -> list[tuple[Any, ..
     settings.HEALTHCHECKS_PING_URL = ""
     settings.DEMO_TELEGRAM_TOKEN = ""
     settings.NOTIFY_BOT_TOKEN = ""
-    monkeypatch.setattr(check, "send_ops_alert", lambda *args: found.append(args))
+    monkeypatch.setattr(check, "send_ops_alert", lambda *args, **_: found.append(args))
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
     fake_disk(monkeypatch, 1)
     return found
@@ -233,7 +233,7 @@ def test_wa_findings_reach_ops_check_with_their_own_kinds_once_a_day(
     settings.DEMO_TELEGRAM_TOKEN = ""
     settings.NOTIFY_BOT_TOKEN = ""
     sent: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(check, "send_ops_alert", lambda *a: sent.append(a))
+    monkeypatch.setattr(check, "send_ops_alert", lambda *a, **_: sent.append(a))
     monkeypatch.setattr(health, "whatsapp_health", lambda channel, secrets, templates: [])
     seen = graph((200, {"data": []}), (200, {"status": "CONNECTED", "quality_rating": "YELLOW"}))
     now = timezone.now()
@@ -261,7 +261,7 @@ def test_a_failing_graph_never_breaks_ops_check(
     settings.DEMO_TELEGRAM_TOKEN = ""
     settings.NOTIFY_BOT_TOKEN = ""
     sent: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(check, "send_ops_alert", lambda *a: sent.append(a))
+    monkeypatch.setattr(check, "send_ops_alert", lambda *a, **_: sent.append(a))
     pings: list[Any] = []
 
     def ok(*args: Any, **kwargs: Any) -> httpx.Response:
@@ -299,7 +299,7 @@ def telegram_kinds(result: dict[str, Any], monkeypatch: Any, settings: Any) -> s
     settings.DEMO_TELEGRAM_TOKEN = ""
     settings.NOTIFY_BOT_TOKEN = ""
     sent: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(check, "send_ops_alert", lambda *a: sent.append(a))
+    monkeypatch.setattr(check, "send_ops_alert", lambda *a, **_: sent.append(a))
     check.run()
     return kinds(sent)
 

@@ -25,9 +25,9 @@ from autobot.channels.telegram.registration import (
     remove_bot_webhook,
     resolve_tenant_bot,
 )
-from autobot.ops import health, tenant_actions
+from autobot.ops import health, incidents, tenant_actions
 from autobot.ops.audit import record_tenant
-from autobot.ops.models import OpsAlert
+from autobot.ops.incidents import Severity
 from autobot.ops.status import tenant_status
 from autobot.owner import links as owner_links
 from autobot.panel.errors import ApiError
@@ -166,9 +166,13 @@ def _month_kpis(tenant: LoadedTenant, now: datetime) -> MonthKpis:
 
 
 class OpenAlert(Schema):
+    """One of the tenant's open incidents (ADR-031)."""
+
     id: UUID
+    kind: str
+    title: str
     text: str
-    severity: str
+    severity: Severity
 
 
 class TenantDetail(Schema):
@@ -206,7 +210,9 @@ def tenant_detail(slug: str, *, now: datetime | None = None) -> TenantDetail:
             public_link = channel_link(channel)
         except ValueError:
             public_link = None
-    status = tenant_status(tenant)
+    # The same level as the tenant list: its health plus its open incidents.
+    open_now = incidents.open_incidents(using="owner", tenant_id=tenant.id)
+    status = tenant_status(tenant, incidents=open_now)
     return TenantDetail(
         slug=tenant.slug,
         name=tenant.document.name,
@@ -221,10 +227,14 @@ def tenant_detail(slug: str, *, now: datetime | None = None) -> TenantDetail:
         health=status.level,
         health_reasons=status.reasons,
         open_alerts=[
-            OpenAlert(id=alert.id, text=alert.text, severity=alert.severity)
-            for alert in OpsAlert.objects.using("owner")
-            .filter(tenant_id=tenant.id, resolved_at__isnull=True)
-            .order_by("-last_seen_at")
+            OpenAlert(
+                id=i.row.id,
+                kind=i.row.kind,
+                title=i.title,
+                text=i.row.text,
+                severity=incidents.as_severity(i.row.severity),
+            )
+            for i in open_now
         ],
         health_checked_at=_health_checked_at(tenant.id),
         channel_type=channel.type if channel is not None else None,

@@ -205,7 +205,7 @@ restore_checkout() {
 }
 
 # One attempt only: ambiguous Telegram delivery must not be retried blindly. A third
-# argument of "informational" skips the cooldown and is saved already resolved.
+# argument of "informational" saves it already resolved (a one-off notice, ADR-031).
 alert_ops() {
   local informational=False
   [[ ${3:-} == informational ]] && informational=True

@@ -142,9 +142,10 @@ Parámetros y cuerpos:
 
 | Método | Ruta | Resumen | Respuesta |
 | --- | --- | --- | --- |
-| GET | `/api/panel/alerts` | Alerts | AlertsPage |
-| POST | `/api/panel/alerts/{id}/resolve` | Resolve | MessageOut |
-| GET | `/api/panel/incidents` | Incidents | IncidentsOut |
+| GET | `/api/panel/incidents` | Open Incidents | IncidentsOut |
+| GET | `/api/panel/incidents/history` | Closed Incidents | ClosedPage |
+| GET | `/api/panel/incidents/{id}/cases` | Incident Cases | CasesPage |
+| POST | `/api/panel/incidents/{id}/review` | Review | MessageOut |
 | POST | `/api/panel/jobs/{id}/retry` | Retry | MessageOut |
 | POST | `/api/panel/outbound/{id}/discard` | Discard | MessageOut |
 | POST | `/api/panel/outbound/{id}/mark-sent` | Mark Sent | MessageOut |
@@ -152,14 +153,15 @@ Parámetros y cuerpos:
 
 Parámetros y cuerpos:
 
-- `GET /api/panel/alerts`
+- `GET /api/panel/incidents/history`
     - Parámetro `cursor` (query): string
     - Parámetro `limit` (query): integer
-    - Parámetro `state` (query): string
-- `POST /api/panel/alerts/{id}/resolve`
+- `GET /api/panel/incidents/{id}/cases`
     - Parámetro `id` (path, obligatorio): string (uuid)
-- `GET /api/panel/incidents`
+    - Parámetro `cursor` (query): string
     - Parámetro `limit` (query): integer
+- `POST /api/panel/incidents/{id}/review`
+    - Parámetro `id` (path, obligatorio): string (uuid)
 - `POST /api/panel/jobs/{id}/retry`
     - Parámetro `id` (path, obligatorio): integer
 - `POST /api/panel/outbound/{id}/discard`

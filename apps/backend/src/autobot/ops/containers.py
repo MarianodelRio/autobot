@@ -31,7 +31,8 @@ APP_IMAGE_SERVICES = frozenset(
 )
 NON_CRITICAL = frozenset({"victorialogs"})  # same rule as deploy.sh: logs are never critical
 STALE_AFTER = timedelta(minutes=3)
-RESTART_WINDOW = timedelta(minutes=30)  # = ops_alert's cooldown: one alert per incident
+# A restart this recent shows on the service; with no incident of it yet, it opens one.
+RESTART_WINDOW = timedelta(minutes=30)
 KIND_MAX_LENGTH = 64  # ops_alert.kind is max_length=64
 
 LEVEL_RANK = {"ok": 0, "notice": 1, "warning": 2, "critical": 3}
@@ -305,17 +306,12 @@ def _row(
         and container.started_at is not None
         and container.started_at >= now - RESTART_WINDOW
     ):
+        # The `container_restarted:<service>` event is ops_check's (it compares the
+        # count with the one its incident stored); here only the service's level.
         oom = ", el último sin memoria" if container.oom_killed else ""
         consider(
             "warning",
             f"Se ha reiniciado ({container.restart_count} reinicios desde su creación{oom})",
-        )
-        findings.append(
-            (
-                f"container_restarted:{service}",
-                f"🟠 Contenedor {service}: se ha reiniciado"
-                f" ({container.restart_count} reinicios desde su creación{oom}).",
-            )
         )
     image_matches: bool | None = None
     if service in APP_IMAGE_SERVICES and release_sha:

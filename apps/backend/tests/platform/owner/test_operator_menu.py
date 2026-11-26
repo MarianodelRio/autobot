@@ -93,7 +93,7 @@ def test_other_chats_never_see_the_operator_menu(tenants: Any, providers: Provid
     ("payload", "expected"),
     [
         ("ops:status", "Todo en orden"),
-        ("ops:alerts", "Alertas abiertas"),
+        ("ops:alerts", "Incidencias abiertas"),
         ("ops:today", "Hoy"),
         ("ops:tenants", "Clientes"),
         ("ops:backups", "Copias y limpieza"),
@@ -118,7 +118,7 @@ def test_a_long_answer_goes_as_a_text_and_the_menu_after_it(
     post(press(OPS_CHAT, "ops:alerts"))
     *_, answer, follow_up = texts(providers, OPS_CHAT)
     assert MAX_INTERACTIVE_BODY < len(answer) <= MAX_TEXT
-    assert answer.startswith("🚨 <b>Alertas abiertas: 20</b>")
+    assert answer.startswith("🚨 <b>Incidencias abiertas: 20</b>")
     assert follow_up == "¿Algo más?" and titles(providers) == OPERATOR_TITLES
 
 

@@ -49,12 +49,13 @@ def test_missing_cache_degradation_and_active_disabled_channel(
 def test_alert_severity_and_tenant_filter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(health, "cache", SimpleNamespace(get=lambda key: None))
     tenant = LoadedTenant(document=TenantDocument.model_validate(tg_tenant()))
-    unrelated: Any = SimpleNamespace(tenant_id=uuid7(), severity="critical")
-    warning: Any = SimpleNamespace(tenant_id=tenant.id, severity="warning")
-    critical: Any = SimpleNamespace(tenant_id=tenant.id, severity="critical")
-    assert status.tenant_status(tenant, open_alerts=[unrelated]).level == "unknown"
-    assert status.tenant_status(tenant, open_alerts=[warning]).level == "warning"
-    assert status.tenant_status(tenant, open_alerts=[warning, critical]).level == "critical"
+    unrelated: Any = SimpleNamespace(tenant_id=uuid7(), severity="critical", title="Otro")
+    warning: Any = SimpleNamespace(tenant_id=tenant.id, severity="warning", title="Disco")
+    critical: Any = SimpleNamespace(tenant_id=tenant.id, severity="critical", title="Caído")
+    assert status.tenant_status(tenant, incidents=[unrelated]).level == "unknown"
+    assert status.tenant_status(tenant, incidents=[warning]).level == "warning"
+    both = status.tenant_status(tenant, incidents=[warning, critical])
+    assert both.level == "critical" and both.reasons == ["Caído"]  # the title is the reason
 
 
 def test_notice_alert_and_info_health(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,5 +63,5 @@ def test_notice_alert_and_info_health(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(health, "cache", SimpleNamespace(get=lambda key: cached))
     tenant = LoadedTenant(document=TenantDocument.model_validate(tg_tenant()))
     assert status.tenant_status(tenant).level == "ok"
-    alert: Any = SimpleNamespace(tenant_id=tenant.id, severity="notice")
-    assert status.tenant_status(tenant, open_alerts=[alert]).level == "notice"
+    alert: Any = SimpleNamespace(tenant_id=tenant.id, severity="notice", title="Retenidos")
+    assert status.tenant_status(tenant, incidents=[alert]).level == "notice"

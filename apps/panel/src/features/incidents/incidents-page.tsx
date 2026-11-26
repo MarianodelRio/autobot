@@ -1,3 +1,4 @@
+// Minimal screen over the ADR-031 incidents API; the full redesign comes later.
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, unwrap } from "@/api/client";
@@ -7,7 +8,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { PageHeader } from "@/components/page-header";
 import { RefreshWarning } from "@/components/refresh-warning";
-import { type Status, StatusBadge } from "@/components/status-badge";
+import { StatusBadge } from "@/components/status-badge";
 import { TimeAgo } from "@/components/time-ago";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,16 +25,26 @@ import { qk } from "@/lib/queries";
 import { useApiMutation } from "@/lib/use-api-mutation";
 import { IncidentRow } from "./incident-row";
 
-type Alert = components["schemas"]["AlertOut"];
-type Outbound = components["schemas"]["OutboundIncidentOut"];
-type Job = components["schemas"]["JobOut"];
+type Incident = components["schemas"]["IncidentOut"];
+type SendCase = components["schemas"]["SendCase"];
+type JobCase = components["schemas"]["JobCase"];
+type Case = Incident["cases"][number];
 
 const DELIVERY_LABEL: Record<string, string> = {
-  sent: "Entregada",
-  failed: "Fallida",
-  cooldown: "En espera (cooldown)",
+  sent: "Avisada",
+  failed: "Aviso fallido",
   unconfigured: "Sin bot configurado",
-  "": "Sin intentos",
+  panel: "Solo en el panel",
+  throttled: "Ya avisada hace menos de una hora",
+  cooldown: "En espera",
+  "": "Sin avisar",
+};
+
+const CLOSED_LABEL: Record<string, string> = {
+  auto: "Sola",
+  outage: "Por una caída",
+  review: "Revisada",
+  info: "Informativa",
 };
 
 function logsWindow(at: string): { start: string; end: string } {
@@ -51,88 +62,32 @@ const incidentsChanged = () => [
   qk.activityAll(),
 ];
 
-function GroupHeading({ children }: { children: string }) {
-  return (
-    <p className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-      {children}
-    </p>
-  );
-}
-
-function EmptyGroup({ message }: { message: string }) {
-  return (
-    <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-      <span aria-hidden="true">✓</span> {message}
-    </p>
-  );
-}
-
-function ResolveAction({ alert }: { alert: Alert }) {
-  const [open, setOpen] = useState(false);
+function ReviewAction({ incident }: { incident: Incident }) {
   const mutation = useApiMutation({
     fn: () =>
       unwrap(
-        api.POST("/alerts/{id}/resolve", {
-          params: { path: { id: alert.id } },
+        api.POST("/incidents/{id}/review", {
+          params: { path: { id: incident.id } },
         }),
       ),
-    success: "Alerta resuelta.",
+    success: "Incidencia revisada.",
     invalidate: incidentsChanged(),
-    onSuccess: () => setOpen(false),
   });
-  if (alert.auto_resolves) return null;
+  if (!incident.reviewable) return null;
   return (
-    <>
-      <Button size="sm" onClick={() => setOpen(true)}>
-        Resolver
-      </Button>
-      <ConfirmDialog
-        open={open}
-        onOpenChange={setOpen}
-        title="Resolver alerta"
-        description={`¿Confirmas que "${alert.text}" está resuelta?`}
-        confirmLabel="Resolver"
-        onConfirm={() => mutation.mutate()}
-      />
-      {mutation.isError && (
-        <p role="alert" className="text-sm text-destructive">
-          {errorMessage(mutation.error, "No se pudo resolver la alerta.")}
-        </p>
-      )}
-    </>
+    <Button
+      size="sm"
+      disabled={mutation.isPending}
+      onClick={() => mutation.mutate()}
+    >
+      Lo he revisado
+    </Button>
   );
 }
 
-function OpenAlerts({ alerts }: { alerts: Alert[] }) {
-  if (!alerts.length) return <EmptyGroup message="No hay alertas abiertas." />;
-  return (
-    <div>
-      {alerts.map((alert) => (
-        <IncidentRow
-          key={alert.id}
-          severity={alert.severity as Status}
-          runbook={alert.runbook}
-          text={alert.text}
-          meta={
-            <>
-              {alert.tenant ?? "—"} · <TimeAgo date={alert.last_seen_at} /> ·{" "}
-              {alert.occurrences} veces ·{" "}
-              {DELIVERY_LABEL[alert.last_delivery] ?? alert.last_delivery}
-            </>
-          }
-          logsLink={{
-            tenant: alert.tenant ?? undefined,
-            ...logsWindow(alert.last_seen_at),
-          }}
-          actions={<ResolveAction alert={alert} />}
-        />
-      ))}
-    </div>
-  );
-}
-
-function MarkSentAction({ message }: { message: Outbound }) {
-  const mutation = useApiMutation({
+function SendActions({ message }: { message: SendCase }) {
+  const [open, setOpen] = useState(false);
+  const markSent = useApiMutation({
     fn: () =>
       unwrap(
         api.POST("/outbound/{id}/mark-sent", {
@@ -142,22 +97,17 @@ function MarkSentAction({ message }: { message: Outbound }) {
     success: "Envío marcado como enviado.",
     invalidate: incidentsChanged(),
   });
-  if (!message.can_mark_sent) return null;
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={mutation.isPending}
-      onClick={() => mutation.mutate()}
-    >
-      Marcar enviado
-    </Button>
-  );
-}
-
-function ResendAction({ message }: { message: Outbound }) {
-  const [open, setOpen] = useState(false);
-  const mutation = useApiMutation({
+  const discard = useApiMutation({
+    fn: () =>
+      unwrap(
+        api.POST("/outbound/{id}/discard", {
+          params: { path: { id: message.id } },
+        }),
+      ),
+    success: "Envío descartado.",
+    invalidate: incidentsChanged(),
+  });
+  const resend = useApiMutation({
     fn: () =>
       unwrap(
         api.POST("/outbound/{id}/resend", {
@@ -169,64 +119,51 @@ function ResendAction({ message }: { message: Outbound }) {
     invalidate: incidentsChanged(),
     onSuccess: () => setOpen(false),
   });
-  if (!message.can_resend) return null;
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-        Reenviar
-      </Button>
+      {message.can_mark_sent && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={markSent.isPending}
+          onClick={() => markSent.mutate()}
+        >
+          Marcar enviado
+        </Button>
+      )}
+      {message.can_resend && (
+        <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+          Reenviar
+        </Button>
+      )}
+      {message.can_discard && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={discard.isPending}
+          onClick={() => discard.mutate()}
+        >
+          Descartar
+        </Button>
+      )}
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
         title="Reenviar mensaje"
         description="Puede que el destinatario ya lo haya recibido: reenviar puede crear un duplicado. ¿Confirmas el reenvío?"
         confirmLabel="Reenviar"
-        onConfirm={() => mutation.mutate()}
+        onConfirm={() => resend.mutate()}
       />
-      {mutation.isError && (
+      {resend.isError && (
         <p role="alert" className="text-sm text-destructive">
-          {errorMessage(mutation.error, "No se pudo reenviar el mensaje.")}
+          {errorMessage(resend.error, "No se pudo reenviar el mensaje.")}
         </p>
       )}
     </>
   );
 }
 
-function PendingSends({ sends }: { sends: Outbound[] }) {
-  if (!sends.length) return <EmptyGroup message="No hay envíos pendientes." />;
-  return (
-    <div>
-      {sends.map((message) => (
-        <IncidentRow
-          key={message.id}
-          severity="critical"
-          text={`Sin confirmar · ${message.channel} · ${message.tenant}`}
-          meta={
-            <>
-              <TimeAgo date={message.created_at} /> ·{" "}
-              {message.mark_sent_reason ||
-                message.resend_reason ||
-                message.last_error ||
-                "—"}
-            </>
-          }
-          logsLink={{
-            tenant: message.tenant,
-            ...logsWindow(message.created_at),
-          }}
-          actions={
-            <>
-              <MarkSentAction message={message} />
-              <ResendAction message={message} />
-            </>
-          }
-        />
-      ))}
-    </div>
-  );
-}
-
-function RetryAction({ job }: { job: Job }) {
+function RetryAction({ job }: { job: JobCase }) {
   const mutation = useApiMutation({
     fn: () =>
       unwrap(
@@ -248,64 +185,88 @@ function RetryAction({ job }: { job: Job }) {
   );
 }
 
-function HeldNotices({
-  held,
-}: {
-  held: components["schemas"]["HeldNoticesOut"][];
-}) {
-  if (!held.length) return null;
+function CaseLine({ item }: { item: Case }) {
+  if (item.type === "send") {
+    return (
+      <li className="flex flex-wrap items-center gap-2 text-sm">
+        <span>
+          {item.channel} · {item.status} · <TimeAgo date={item.created_at} />
+          {item.error_title ? ` · ${item.error_title}` : ""}
+        </span>
+        <SendActions message={item} />
+      </li>
+    );
+  }
+  if (item.type === "job") {
+    return (
+      <li className="flex flex-wrap items-center gap-2 text-sm">
+        <span>
+          {item.task_label} · trabajo {item.id}
+          {item.failed_at ? (
+            <>
+              {" "}
+              · <TimeAgo date={item.failed_at} />
+            </>
+          ) : null}
+          {item.retry_reason ? ` · ${item.retry_reason}` : ""}
+        </span>
+        <RetryAction job={item} />
+      </li>
+    );
+  }
+  return (
+    <li className="text-sm">
+      Aviso {item.status} · <TimeAgo date={item.created_at} />
+    </li>
+  );
+}
+
+function OpenIncident({ incident }: { incident: Incident }) {
+  const count =
+    incident.new_since_review != null
+      ? `${incident.new_since_review} nuevos desde tu revisión`
+      : `${incident.case_count} casos`;
   return (
     <div>
-      <GroupHeading>Avisos retenidos</GroupHeading>
-      {held.map((row) => (
-        <IncidentRow
-          key={row.tenant_id}
-          severity="notice"
-          runbook="/docs/incidencias/envios-unknown/#avisos-retenidos"
-          text={`${row.tenant}: ${row.count} avisos retenidos`}
-          meta="El dueño no ha conectado su chat de avisos; saldrán cuando lo haga (si tienen menos de 2 horas)."
-        />
-      ))}
+      <IncidentRow
+        severity={incident.severity}
+        runbook={incident.runbook}
+        text={
+          incident.tenant
+            ? `${incident.tenant}: ${incident.title}`
+            : incident.title
+        }
+        meta={
+          <>
+            {incident.advice} · <TimeAgo date={incident.last_seen_at} /> ·{" "}
+            {count} · {DELIVERY_LABEL[incident.delivery] ?? incident.delivery}
+          </>
+        }
+        logsLink={{
+          tenant: incident.tenant ?? undefined,
+          ...logsWindow(incident.last_seen_at),
+        }}
+        actions={<ReviewAction incident={incident} />}
+      />
+      {incident.cases.length > 0 && (
+        <ul className="space-y-1 pb-3 pl-4">
+          {incident.cases.map((item) => (
+            <CaseLine key={`${item.type}-${item.id}`} item={item} />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
-function FailedJobs({ jobs }: { jobs: Job[] }) {
-  if (!jobs.length) return <EmptyGroup message="Sin trabajos fallidos." />;
-  return (
-    <div>
-      {jobs.map((job) => (
-        <IncidentRow
-          key={job.id}
-          severity="critical"
-          text={`Trabajo ${job.task_name} falló`}
-          meta={`Intento ${job.attempts} · ${job.retry_reason || "—"}`}
-          logsLink={
-            job.at
-              ? {
-                  tenant:
-                    typeof job.ids.tenant_id === "string"
-                      ? job.ids.tenant_id
-                      : undefined,
-                  ...logsWindow(job.at),
-                }
-              : undefined
-          }
-          actions={<RetryAction job={job} />}
-        />
-      ))}
-    </div>
-  );
-}
-
-function ResolvedHistory() {
+function ClosedHistory() {
   const query = useInfiniteQuery({
     queryKey: qk.alertsResolved(),
     initialPageParam: "",
     queryFn: ({ pageParam }) =>
       unwrap(
-        api.GET("/alerts", {
-          params: { query: { state: "resolved", cursor: pageParam } },
+        api.GET("/incidents/history", {
+          params: { query: { cursor: pageParam } },
         }),
       ),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
@@ -314,18 +275,19 @@ function ResolvedHistory() {
   if (query.isError && !query.data)
     return (
       <ErrorState
-        message="No se pudo cargar el historial de alertas."
+        message="No se pudo cargar el historial de incidencias."
         onRetry={() => void query.refetch()}
       />
     );
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
-  if (!items.length) return <EmptyState message="No hay alertas resueltas." />;
+  if (!items.length)
+    return <EmptyState message="No hay incidencias cerradas." />;
   return (
     <div>
       <Table>
         <TableHeader>
           <TableRow>
-            {["Severidad", "Texto", "Cliente", "Resuelta", "Por"].map(
+            {["Severidad", "Incidencia", "Cliente", "Cerrada", "Cómo"].map(
               (label) => (
                 <TableHead key={label}>{label}</TableHead>
               ),
@@ -333,17 +295,20 @@ function ResolvedHistory() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((alert) => (
-            <TableRow key={alert.id}>
+          {items.map((row) => (
+            <TableRow key={row.id}>
               <TableCell>
-                <StatusBadge status={alert.severity as Status} />
+                <StatusBadge status={row.severity} />
               </TableCell>
-              <TableCell>{alert.text}</TableCell>
-              <TableCell>{alert.tenant ?? "—"}</TableCell>
+              <TableCell>{row.title}</TableCell>
+              <TableCell>{row.tenant ?? "—"}</TableCell>
               <TableCell>
-                {alert.resolved_at ? <TimeAgo date={alert.resolved_at} /> : "—"}
+                <TimeAgo date={row.resolved_at} />
               </TableCell>
-              <TableCell>{alert.resolved_by || "—"}</TableCell>
+              <TableCell>
+                {CLOSED_LABEL[row.closed] ?? row.closed}
+                {row.closed_by ? ` (${row.closed_by})` : ""}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -369,16 +334,6 @@ export function IncidentsPage() {
     queryFn: () => unwrap(api.GET("/incidents")),
     refetchInterval: 30_000,
   });
-  const openCount = query.data
-    ? query.data.alerts_total +
-      query.data.outbound_total +
-      query.data.jobs_total
-    : 0;
-  const shown = query.data
-    ? query.data.alerts.length +
-      query.data.outbound.length +
-      query.data.jobs.length
-    : 0;
   return (
     <div className="space-y-6">
       <PageHeader
@@ -387,7 +342,7 @@ export function IncidentsPage() {
         actions={
           query.data && (
             <span className="text-sm text-muted-foreground">
-              {openCount} abiertas
+              {query.data.total} abiertas
             </span>
           )
         }
@@ -402,39 +357,22 @@ export function IncidentsPage() {
           )}
           onRetry={() => void query.refetch()}
         />
-      ) : openCount === 0 ? (
+      ) : query.data.total === 0 ? (
         <Card>
           <CardContent className="py-6 text-center text-muted-foreground">
             Todo en orden.
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-2">
           {query.isError && (
             <RefreshWarning onRetry={() => void query.refetch()} />
           )}
-          {shown < openCount && (
-            <p className="text-sm text-status-notice">
-              Mostrando {shown} de {openCount}: cada lista se limita a las más
-              recientes; resuelve las visibles para ver el resto.
-            </p>
-          )}
-          <OpenAlerts alerts={query.data.alerts} />
-          <div>
-            <GroupHeading>
-              {query.data.outbound.length > 0
-                ? `Envíos sin confirmar (${query.data.outbound.length})`
-                : "Envíos sin confirmar"}
-            </GroupHeading>
-            <PendingSends sends={query.data.outbound} />
-          </div>
-          <div>
-            <GroupHeading>Trabajos fallidos</GroupHeading>
-            <FailedJobs jobs={query.data.jobs} />
-          </div>
+          {query.data.items.map((incident) => (
+            <OpenIncident key={incident.id} incident={incident} />
+          ))}
         </div>
       )}
-      {query.data && <HeldNotices held={query.data.held_notices} />}
       <details
         open={historyOpen}
         onToggle={(event) =>
@@ -442,11 +380,11 @@ export function IncidentsPage() {
         }
       >
         <summary className="cursor-pointer text-sm text-muted-foreground">
-          Alertas resueltas
+          Incidencias cerradas
         </summary>
         {historyOpen && (
           <div className="mt-3">
-            <ResolvedHistory />
+            <ClosedHistory />
           </div>
         )}
       </details>

@@ -81,11 +81,12 @@ El registro lo puede borrar solo la retención nocturna o `tenant_purge`
 
 Ver [envíos unknown](../incidencias/envios-unknown.md).
 
-### Alertas y actividad
+### Incidencias y actividad
 
 | Acción | Cuándo |
 |---|---|
-| `alert.resolve` | Una persona resuelve una alerta manual (ver [alertas](alertas.md)). |
+| `incident.review` | Una persona pulsa «Lo he revisado» en una incidencia de tipo evento: se cierra y guarda su marca de revisión (ADR-031, ver [alertas](alertas.md)). Detalles: la clave (`kind`) y el número de casos (`cases`). |
+| `alert.resolve` | Histórica (retirada por el ADR-031, la sustituye `incident.review`): una persona resolvía una alerta manual. |
 | `activity.view` | Se abre el contenido de un mensaje o evento en Actividad. |
 
 ### Datos y consola SQL (`data.*`)

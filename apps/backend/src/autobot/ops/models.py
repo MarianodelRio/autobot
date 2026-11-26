@@ -8,6 +8,12 @@ from django.utils import timezone
 
 
 class OpsAlert(models.Model):
+    """One incident (ADR-031): one row per open period of a (kind, tenant). Its nature
+    (condition or event) comes from the kind registry, `ops/incidents.py`; `auto_resolves`
+    is True for a condition. The cases (sends, jobs, notices) are never copied here (this
+    table has no RLS): they are computed live from their tables, and only their count and
+    newest time are kept."""
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
     kind = models.CharField(max_length=64, db_index=True)
     tenant_id = models.UUIDField(null=True, blank=True, db_index=True)  # no FK; purged, too
@@ -21,7 +27,17 @@ class OpsAlert(models.Model):
     last_delivery = models.CharField(max_length=16, blank=True, default="")
     auto_resolves = models.BooleanField(default=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
+    # A review («Lo he revisado») closes an event: `resolved_by` is then the operator
+    # (`auto`, `outage` and `info` are the platform's own closings).
     resolved_by = models.CharField(max_length=150, blank=True, default="")
+    # Events: cases at or before it count as reviewed. A new open period inherits the
+    # watermark of the latest row of the same (kind, tenant); with none, now - 24 h.
+    review_watermark = models.DateTimeField(null=True, blank=True)
+    case_count = models.PositiveIntegerField(default=0, db_default=0)
+    last_case_at = models.DateTimeField(null=True, blank=True)
+    # Kind-specific facts, NEVER personal data: the restart count seen, the month of a
+    # billing incident, the error class.
+    details = models.JSONField(default=dict, db_default={})
 
     class Meta:
         db_table = "ops_alert"

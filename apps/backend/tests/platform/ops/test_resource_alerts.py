@@ -36,7 +36,7 @@ def alerts(monkeypatch: pytest.MonkeyPatch, settings: Any) -> list[tuple[Any, ..
     settings.HEALTHCHECKS_PING_URL = ""
     settings.DEMO_TELEGRAM_TOKEN = ""
     settings.NOTIFY_BOT_TOKEN = ""
-    monkeypatch.setattr(check, "send_ops_alert", lambda *args: found.append(args))
+    monkeypatch.setattr(check, "send_ops_alert", lambda *args, **_: found.append(args))
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
     monkeypatch.setattr(system, "memory", lambda: 10.0)
     monkeypatch.setattr(system, "load", lambda: 0.1)

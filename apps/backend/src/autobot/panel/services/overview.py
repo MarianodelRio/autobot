@@ -10,20 +10,20 @@ use, not by how many tenants there are.
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.db import connections
-from django.db.models import Count, OuterRef, Q, Subquery, Sum
+from django.db.models import Count, OuterRef, Subquery, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from ninja import Schema
 
-from autobot.ops import health, system
+from autobot.ops import health, incidents, system
+from autobot.ops.incidents import Incident, Severity
 from autobot.ops.models import OpsAlert
 from autobot.ops.status import tenant_status
 from autobot.panel.services.month import MADRID, MonthAggregates, month_aggregates
@@ -33,7 +33,6 @@ from autobot.runtime.summary import month_to_date
 from autobot.tenancy.models import Tenant
 from autobot.tenancy.registry import LoadedTenant, get_registry
 
-STALE_MINUTES = 10
 MAX_PROBLEMS = 5
 MAX_RECENT_ALERTS = 5
 METRIC_LABELS: dict[str, str] = {
@@ -80,7 +79,8 @@ class ProblemBrief(Schema):
 
 
 class StatusBlock(Schema):
-    level: Literal["ok", "warning", "critical"]
+    # From the open incidents and the tenants' health: a 🟡 one gives `notice`, never more.
+    level: Literal["ok", "notice", "warning", "critical"]
     problems: list[ProblemBrief]
 
 
@@ -99,7 +99,8 @@ class AlertBrief(Schema):
     id: UUID
     kind: str
     tenant: str | None
-    severity: str
+    severity: Severity
+    title: str
     text: str
     occurred_at: datetime
     resolved: bool
@@ -135,8 +136,8 @@ def _active_tenants() -> list[LoadedTenant]:
     return [t for t in get_registry().tenants if t.document.status != "offboarded"]
 
 
-def _open_alerts() -> list[OpsAlert]:
-    return list(OpsAlert.objects.using("owner").filter(resolved_at__isnull=True))
+def _open_incidents() -> list[Incident]:
+    return incidents.open_incidents(using="owner")
 
 
 def _channel_label(tenant: LoadedTenant) -> Literal["whatsapp", "telegram", "demo"]:
@@ -145,30 +146,10 @@ def _channel_label(tenant: LoadedTenant) -> Literal["whatsapp", "telegram", "dem
     return "demo"
 
 
-# `discarded` (a person's decision, ADR-031) is neither failed nor ambiguous: not counted.
-def _stale_outbound(now: datetime, tenant_ids: list[UUID]) -> int:
-    return (
-        OutboundMessage.objects.using("owner")
-        .filter(
-            Q(status="failed")
-            | Q(status="unknown", unknown_at__lt=now - timedelta(minutes=STALE_MINUTES)),
-            tenant_id__in=tenant_ids,
-        )
-        .count()
-    )
-
-
-def _failed_jobs() -> int:
-    with connections["default"].cursor() as cursor:
-        cursor.execute("SELECT count(*) FROM procrastinate_jobs WHERE status = 'failed'")
-        (count,) = cursor.fetchone()
-        return int(count)
-
-
 def tenant_rows(now: datetime) -> list[TenantRow]:
     """One `TenantRow` per non-offboarded tenant. Reused by `GET tenants`."""
     tenants = _active_tenants()
-    open_alerts = _open_alerts()
+    open_now = _open_incidents()
     by_tz: dict[ZoneInfo, list[LoadedTenant]] = defaultdict(list)
     for tenant in tenants:
         by_tz[tenant.info.timezone].append(tenant)
@@ -206,7 +187,7 @@ def tenant_rows(now: datetime) -> list[TenantRow]:
     snapshots = health.read_snapshots(all_ids)
     rows = []
     for tenant in tenants:
-        status = tenant_status(tenant, open_alerts=open_alerts, snapshots=snapshots)
+        status = tenant_status(tenant, incidents=open_now, snapshots=snapshots)
         snapshot = snapshots[tenant.id]
         figures = month[tenant.id]
         received = latest.get(tenant.id, {}).get("received")
@@ -328,7 +309,8 @@ def _recent_alerts() -> list[AlertBrief]:
             id=alert.id,
             kind=alert.kind,
             tenant=by_id.get(alert.tenant_id) if alert.tenant_id else None,
-            severity=alert.severity,
+            severity=incidents.as_severity(alert.severity),
+            title=incidents.kind_info(alert.kind).title,
             text=alert.text,
             occurred_at=alert.last_seen_at,
             resolved=alert.resolved_at is not None,
@@ -341,7 +323,7 @@ def build_overview(now: datetime | None = None) -> Overview:
     now = now or timezone.now()
     tenants = _active_tenants()
     rows = tenant_rows(now)
-    open_alerts = _open_alerts()
+    open_now = _open_incidents()
     start, month = _global_month(now, tenants)
 
     backup = system.read_backup_status(settings.OPS_STATE_DIR)
@@ -361,33 +343,27 @@ def build_overview(now: datetime | None = None) -> Overview:
         except KeyError, ValueError:
             last_backup_at = None
 
-    stale_outbound = _stale_outbound(now, [t.id for t in tenants])
-    incidents_open = len(open_alerts) + stale_outbound + _failed_jobs()
-
+    # The same open incidents as Incidencias and the sidebar (ADR-031): a reviewed event
+    # or an old failed send no longer raises the level.
+    incidents_open = len(open_now)
     by_slug = {t.id: t.slug for t in tenants}
-    if (
-        any(a.severity == "critical" for a in open_alerts)
-        or any(r.health == "critical" for r in rows)
-        or stale_outbound > 0
-    ):
-        level: Literal["ok", "warning", "critical"] = "critical"
-    elif any(a.severity == "warning" for a in open_alerts) or any(
-        r.health == "warning" for r in rows
-    ):
-        level = "warning"
-    else:
-        level = "ok"
+    level = incidents.level(
+        [*(i.severity for i in open_now), *(r.health for r in rows if r.health != "unknown")]
+    )
 
     problems: list[ProblemBrief] = []
-    for alert in sorted(
-        open_alerts, key=lambda a: (a.severity != "critical", -a.last_seen_at.timestamp())
-    ):
-        if alert.severity not in ("critical", "warning"):
+    for incident in open_now:  # most severe and most recent first
+        if incident.severity not in ("critical", "warning"):
             continue
-        slug = by_slug.get(alert.tenant_id) if alert.tenant_id else None
+        slug = by_slug.get(incident.tenant_id) if incident.tenant_id else None
         problems.append(
-            ProblemBrief(text=alert.text, tenant=slug, link=f"/clientes/{slug}" if slug else None)
+            ProblemBrief(
+                text=incident.row.text, tenant=slug, link=f"/clientes/{slug}" if slug else None
+            )
         )
+    # A tenant's reasons include its incidents' titles, already listed above.
+    titles = {(i.tenant_id, i.title) for i in open_now}
+    ids = {t.slug: t.id for t in tenants}
     for row in rows:
         if row.health in ("critical", "warning"):
             problems.extend(
@@ -395,6 +371,7 @@ def build_overview(now: datetime | None = None) -> Overview:
                     text=f"{row.slug}: {reason}", tenant=row.slug, link=f"/clientes/{row.slug}"
                 )
                 for reason in row.health_reasons
+                if (ids.get(row.slug), reason) not in titles
             )
     problems = problems[:MAX_PROBLEMS]
 

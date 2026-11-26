@@ -6,6 +6,7 @@ export type Status =
   | "warning"
   | "critical"
   | "unknown"
+  | "info"
   | "active"
   | "paused"
   | "onboarding"
@@ -17,6 +18,7 @@ const STATUS: Record<Status, { label: string; color: string }> = {
   warning: { label: "Alerta", color: "bg-status-warning" },
   critical: { label: "Crítico", color: "bg-status-critical" },
   unknown: { label: "Desconocido", color: "bg-status-unknown" },
+  info: { label: "Info", color: "bg-status-ok" },
   active: { label: "Activo", color: "bg-status-ok" },
   paused: { label: "Pausado", color: "bg-status-unknown" },
   onboarding: { label: "En alta", color: "bg-status-notice" },
@@ -27,10 +29,11 @@ export function StatusBadge({
   status,
   className,
 }: {
-  status: Status;
+  // A value outside `Status` (a new severity the API sends) reads «Desconocido».
+  status: Status | (string & {});
   className?: string;
 }) {
-  const { label, color } = STATUS[status];
+  const { label, color } = STATUS[status as Status] ?? STATUS.unknown;
   return (
     <span
       className={cn(

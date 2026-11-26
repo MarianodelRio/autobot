@@ -1,7 +1,8 @@
 """Alert kind -> runbook page (ADR-018).
 
-Every alert `kind` raised by `autobot/ops/check.py` and `autobot/ops/containers.py` (and
-the manual `deploy_*` ones) maps to a page under `docs/`. The panel shows it as «Ver
+Every incident kind of the registry (`autobot/ops/incidents.py`), raised by
+`autobot/ops/check.py`, `autobot/ops/containers.py` and deploy.sh, maps to a page under
+`docs/`. The panel shows it as «Ver
 runbook» and links to the documentation site served at `/docs/`. The table in
 `docs/incidencias/README.md` is the human-readable twin of this one.
 
@@ -17,10 +18,9 @@ _RESOURCES = "incidencias/recursos-copias-y-certificado.md"
 # Exact kinds.
 RUNBOOKS: dict[str, str] = {
     "inbound_delay": "incidencias/cola-y-latido.md",
-    "failed_jobs": "incidencias/cola-y-latido.md",
     "inbound_stuck": "incidencias/cola-y-latido.md",
     "outbound_stuck": "incidencias/envios-unknown.md",
-    "outbound_failed": "incidencias/envios-unknown.md",
+    "outbound_ambiguous": "incidencias/envios-unknown.md",
     "notification_failed": "incidencias/envios-unknown.md",
     "owner_unlinked": "incidencias/envios-unknown.md#avisos-retenidos",
     "provider_outage": "incidencias/envios-unknown.md",
@@ -64,6 +64,8 @@ PREFIX_RUNBOOKS: dict[str, str] = {
     "sweep:": "incidencias/calendar.md",
     "container_": "incidencias/contenedor-caido.md",
     "queue_lag:": "incidencias/cola-y-latido.md",
+    "outbound_rejected:": "incidencias/envios-unknown.md#envios-rechazados",
+    "failed_job:": "incidencias/cola-y-latido.md#trabajos-fallidos",
 }
 
 # Kinds that deliberately have no runbook: a message-volume threshold, nothing to repair.

@@ -39,7 +39,7 @@ def alerts(monkeypatch: pytest.MonkeyPatch, settings: Any) -> list[tuple[Any, ..
     settings.HEALTHCHECKS_PING_URL = ""
     settings.DEMO_TELEGRAM_TOKEN = ""
     settings.NOTIFY_BOT_TOKEN = ""
-    monkeypatch.setattr(check, "send_ops_alert", lambda *args: found.append(args))
+    monkeypatch.setattr(check, "send_ops_alert", lambda *args, **_: found.append(args))
     monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
     fake_disk(monkeypatch, 1)
     return found
@@ -69,11 +69,13 @@ def kinds(alerts: list[tuple[Any, ...]]) -> set[str]:
     ("status", "age_min", "expected"),
     [
         ("failed", 0, True),
-        ("failed", 25 * 60, False),  # an old failure must not alert forever
+        # With no review yet, only the last 24 h count: an old one never surfaces.
+        ("failed", 25 * 60, False),
         ("unknown", 11, False),  # reconcile_unknown still has its turn (ADR-026)
         ("unknown", 20, False),
         ("unknown", 21, True),
-        ("unknown", 25 * 60, False),  # same 24 h cutoff as a failed message
+        ("unknown", 25 * 60, True),  # undecided: a case until a person decides (ADR-031)
+        ("discarded", 60, False),
         ("sent", 60, False),
         ("expired", 60, False),  # a lapsed message is not a failure (ADR-024)
     ],
@@ -89,7 +91,9 @@ def test_outbound_row(
         created_at=now - timedelta(minutes=age_min)
     )
     check.run()
-    assert ("outbound_failed" in kinds(alerts)) == expected
+    kind = "outbound_ambiguous" if status == "unknown" else "outbound_rejected:other"
+    assert (kind in kinds(alerts)) == expected
+    assert not {"outbound_ambiguous", "outbound_rejected:other"} - {kind} & kinds(alerts)
 
 
 def test_auth_row_separates_the_demo_bot(tenants: Any, alerts: Any) -> None:
@@ -140,7 +144,13 @@ def test_every_tenant_alert_names_its_tenant(
     message(status="failed", last_error="auth: HTTP 401")
     check.run()
     tenant_alerts = [(kind, text) for kind, tenant_id, text in alerts if tenant_id is not None]
-    assert {"auth", "outbound_failed", "health:templates"} <= {k for k, _ in tenant_alerts}
+    message(status="failed", last_error="recipient: HTTP 400, error 131026")
+    check.run()
+    tenant_alerts = [(kind, text) for kind, tenant_id, text in alerts if tenant_id is not None]
+    expected = {"auth", "outbound_rejected:undeliverable", "health:templates"}
+    assert expected <= {k for k, _ in tenant_alerts}
+    # A credential rejection is the `auth` condition, never a rejected-send event too.
+    assert "outbound_rejected:auth" not in {k for k, _ in tenant_alerts}
     assert all(text.startswith("wa: ") for _, text in tenant_alerts), tenant_alerts
 
 
@@ -289,7 +299,7 @@ def test_queue_rows(tenants: Any, alerts: Any) -> None:
             [job_id, timezone.now()],
         )
     check.run()
-    assert {"inbound_delay", "failed_jobs"} <= kinds(alerts)
+    assert {"inbound_delay", "failed_job:test"} <= kinds(alerts)
 
 
 def test_daily_health_row_retries_a_failure_at_15_min(
@@ -472,11 +482,11 @@ def test_unknown_legacy_first_observation(tenants: Any, alerts: Any, monkeypatch
         created_at=now - timedelta(days=2)
     )
     check.run()
-    assert "outbound_failed" not in kinds(alerts)
+    assert "outbound_ambiguous" not in kinds(alerts)
     assert OutboundMessage.objects.using("owner").get(id=row.id).unknown_at == now
     monkeypatch.setattr(timezone, "now", lambda: now + timedelta(minutes=21))
     check.run()
-    assert "outbound_failed" in kinds(alerts)
+    assert "outbound_ambiguous" in kinds(alerts)
 
 
 def held_notice(slug: str = "wa") -> None:
@@ -580,7 +590,7 @@ def test_sync_alerts_notifies_only_a_disappeared_critical_finding(
 
     monkeypatch.setattr(check, "resolve_alert", spy)
     check.sync_alerts([check.Finding("stuck", None, "🔴 Algo falla")])
-    check.sync_alerts([check.Finding("billing", None, "🟡 Algo menor")])
+    check.sync_alerts([check.Finding("backup_prune_overdue", None, "🟡 Algo menor")])
     check.sync_alerts([])
     assert notified == [True, False]  # the critical one notifies, the minor one does not
 

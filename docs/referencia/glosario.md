@@ -3,8 +3,8 @@
 Vocabulario de Autobot en orden alfabético, con una o dos líneas por término y un enlace a la
 página donde se explica. Léelo cuando un nombre del código o de la documentación no te suene.
 
-**Alerta.** Aviso de operación abierto por `ops_check` o por el despliegue. Se resuelve sola
-o a mano. [Alertas](alertas.md).
+**Alerta.** Nombre anterior de la incidencia; hoy, el aviso por Telegram de una incidencia
+🔴 o 🟠 al abrirse. [Alertas](alertas.md).
 
 **Auditoría.** Registro de las escrituras del panel y de los comandos de operación.
 [Auditoría](auditoria.md).
@@ -24,12 +24,18 @@ al chat de operación, y atiende su menú. También se llama bot de dueños.
 **Bot de demo.** Bot que enseña los packs por Telegram y WhatsApp sobre negocios de demo.
 [Bot de demo](../arquitectura/bot-de-demo.md).
 
+**Caso.** Envío, trabajo o aviso afectado por una incidencia. Se calcula en vivo desde su
+tabla y nunca se copia a `ops_alert`. [Alertas](alertas.md).
+
 **Canal.** Medio por el que habla un cliente final: WhatsApp o Telegram. Sus diferencias
 viven solo en los adaptadores. `main` es el canal real de un negocio; `demo_tg` y `demo_wa`
 son los de las puertas de demo. [Canales](../arquitectura/canales.md).
 
 **Cola.** Cola de trabajos Procrastinate sobre PostgreSQL, con colas `inbound`, `inbound_ext`, `outbound`,
 `periodic` y `ops`. Los trabajos solo llevan ids. [Cola y workers](../arquitectura/cola-y-workers.md).
+
+**Condición.** Incidencia que dice «está mal ahora» (un contenedor caído, una cola
+atrasada): se cierra sola cuando desaparece la causa. [Alertas](alertas.md).
 
 **Contacto.** Persona que escribe a un negocio por un canal. Un dato de cliente con
 `tenant_id` y RLS. [Tenants y RLS](../arquitectura/tenants-y-rls.md).
@@ -49,14 +55,23 @@ un solo uso (`owner_invite`). [Bot de dueños](../arquitectura/bot-de-duenos.md)
 **Efecto.** Cualquier acción hacia fuera (enviar un mensaje, escribir en Calendar). Debe ser
 idempotente y se anota en un diario. [Efectos e idempotencia](../arquitectura/efectos-e-idempotencia.md).
 
+**Evento.** Incidencia que dice «pasó algo» (un envío rechazado, un trabajo fallido): se
+cierra con «Lo he revisado» y un caso nuevo la reabre. [Alertas](alertas.md).
+
 **Escenario.** Test de conversación de un pack que recorre su flujo y comprueba los límites
 de canal. Obligatorio para cada pack. [Tests](../desarrollo/tests.md).
 
 **Estado (de negocio).** Nivel de salud calculado por el panel: `ok`, `notice`, `warning`,
 `critical` o `unknown`. [Estados de negocio](estados-de-negocio.md).
 
+**Incidencia.** Fila de `ops_alert`: un periodo abierto de una clave (`kind`) y un negocio,
+con su naturaleza (condición o evento), severidad y casos (ADR-031). [Alertas](alertas.md).
+
 **Idempotencia.** Repetir una operación no cambia su resultado. Es la base de la entrada de
 eventos y de los efectos. [Efectos e idempotencia](../arquitectura/efectos-e-idempotencia.md).
+
+**Marca de revisión.** Fecha que guarda «Lo he revisado» en un evento: los casos hasta ella
+cuentan como revisados (`review_watermark`). [Alertas](alertas.md).
 
 **Pack.** Módulo con la lógica de un tipo de negocio (`salon`, `bus`). La plataforma no sabe
 qué es una cita ni un autobús. [Packs](../arquitectura/packs.md).

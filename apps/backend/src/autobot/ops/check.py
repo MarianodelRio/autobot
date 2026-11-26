@@ -5,8 +5,10 @@ import os
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from statistics import median
+from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import httpx
 from django.conf import settings
@@ -18,7 +20,7 @@ from django.utils import timezone
 from autobot.channels.demo.doors import door
 from autobot.channels.telegram.polling import DEMO_WEBHOOK_PATH, NOTIFY_WEBHOOK_PATH
 from autobot.channels.telegram.registration import expected_webhook_url
-from autobot.ops import containers, health, queues, state, system
+from autobot.ops import cases, containers, health, incidents, queues, state, system
 from autobot.ops.models import OpsAlert, SystemSample
 from autobot.owner import links
 from autobot.runtime.cache import auth_flag_key
@@ -33,9 +35,9 @@ from autobot.runtime.notifications import (
     UNDELIVERED,
     bot_secrets,
     resolve_alert,
+    retry_undelivered,
     send_ops_alert,
 )
-from autobot.runtime.outbound import RECONCILE_WAIT
 from autobot.runtime.periodic import channels_for
 from autobot.runtime.sweeps import SweepResult, sweep_tenant
 from autobot.tenancy import followers
@@ -106,6 +108,7 @@ PROVIDER_HEALTH_KINDS = {
 }
 
 DEMO_LABELS = {Channel.DEMO_TG: "Telegram", Channel.DEMO_WA: "WhatsApp"}
+MADRID = ZoneInfo("Europe/Madrid")
 
 log = logging.getLogger(__name__)
 
@@ -161,6 +164,35 @@ class Finding:
     # Explained by a platform-wide outage that has its own alert (see `_suppress_outages`):
     # not raised, and an open alert of the same key is resolved without a message.
     suppressed: bool = False
+    # The incident's cases as computed now (ADR-031): how many and the newest one. None
+    # for a kind without cases.
+    case_count: int | None = None
+    last_case_at: datetime | None = None
+    details: dict[str, Any] | None = None
+
+
+# Event kinds whose cases come from a table, after the review watermark (ADR-031).
+TABLE_EVENTS = Q(kind__startswith="outbound_rejected:") | Q(kind="notification_failed")
+
+
+def _event_marks() -> dict[incidents.Key, datetime]:
+    return incidents.watermarks(TABLE_EVENTS | Q(kind__startswith="failed_job:"))
+
+
+def _month(now: datetime, tenant: LoadedTenant | None = None) -> tuple[datetime, str]:
+    """The start of the calendar month (the tenant's zone, else Madrid's) and its label."""
+    zone = tenant.info.timezone if tenant is not None else MADRID
+    local = now.astimezone(zone)
+    start = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return start, start.strftime("%Y-%m")
+
+
+def _billing_reviewed(kind: str, tenant_id: UUID | None, month: str) -> bool:
+    """`billing` is an event once per calendar month: reviewed this month, it stays quiet
+    until the next one."""
+    return OpsAlert.objects.filter(
+        kind=kind, tenant_id=tenant_id, resolved_at__isnull=False, details__month=month
+    ).exists()
 
 
 def _check_tenant(
@@ -168,9 +200,12 @@ def _check_tenant(
     now: datetime,
     out: list[Finding],
     budget: health.HealthBudget | None = None,
+    marks: dict[incidents.Key, datetime] | None = None,
 ) -> int:
-    """The findings of one tenant, appended to `out`; returns its demo WhatsApp billables."""
+    """The findings of one tenant, appended to `out`; returns its demo WhatsApp billables.
+    `marks`: the review watermarks of the table events (`_event_marks`), read once per run."""
     demo_wa_billable = 0
+    marks = _event_marks() if marks is None else marks
     if tenant.document.status == "offboarded":
         return 0
     pending: list[tuple[str, str]] = []
@@ -179,11 +214,13 @@ def _check_tenant(
             ("tenant_unavailable", "🔴 Tenant degradado o canal sin secretos/configuración.")
         )
     sweep = _sweep(tenant, now)
-    if sweep.outbound_unknown or sweep.outbound_stuck:
+    # A send cut while `sending` becomes `unknown` (`outbound_ambiguous` covers it); this
+    # is only the pending ones too old to queue again.
+    if sweep.outbound_stuck:
         pending.append(
             (
                 "outbound_stuck",
-                "🟠 Envíos atascados sin trabajo (ambiguos o demasiado antiguos para reencolar).",
+                "🟠 Envíos pendientes sin trabajo y demasiado antiguos para reencolarlos.",
             )
         )
     if sweep.inbound_stuck:
@@ -213,61 +250,79 @@ def _check_tenant(
         # First observation establishes a conservative lower bound, never creation.
         messages.filter(status="unknown", unknown_at__isnull=True).update(unknown_at=now)
         day_ago = now - timedelta(hours=24)
-        if messages.filter(
-            Q(status="failed", created_at__gte=day_ago)
-            | Q(
-                status="unknown",
-                # Still unknown after the wait for a status and the reconcile that follows
-                # (ADR-026): neither resolved it, a person must.
-                unknown_at__lt=now - RECONCILE_WAIT - timedelta(minutes=10),
-                unknown_at__gte=day_ago,
-            )
-        ).exists():
-            pending.append(
-                (
-                    "outbound_failed",
-                    "🟠 Hay envíos fallidos o ambiguos que la conciliación automática no resolvió.",
+        slug = tenant.slug
+        ambiguous = cases.tally(cases.ambiguous(messages, now), "unknown_at")
+        if ambiguous.count:
+            out.append(
+                Finding(
+                    "outbound_ambiguous",
+                    tenant.id,
+                    f"{slug}: 🟠 {ambiguous.count} envíos sin confirmar que la conciliación"
+                    " automática no resolvió.",
+                    case_count=ambiguous.count,
+                    last_case_at=ambiguous.last,
                 )
             )
+        # Rejected sends, one event per error class, counted after its watermark.
+        floor = min(
+            [now - incidents.BOOTSTRAP]
+            + [at for (kind, tid), at in marks.items() if tid == tenant.id]
+        )
+        for cls, pairs in cases.rejected_pairs(messages, tenant, floor).items():
+            after = incidents.bound(marks, f"outbound_rejected:{cls}", tenant.id, now)
+            rejected = cases.tally(cases.rejected(messages, pairs, after))
+            if rejected.count:
+                emoji = "🟡" if cls in incidents.REJECTED_NOTICE else "🟠"
+                title = incidents.kind_info(f"outbound_rejected:{cls}").title.lower()
+                out.append(
+                    Finding(
+                        f"outbound_rejected:{cls}",
+                        tenant.id,
+                        f"{slug}: {emoji} {title} ({rejected.count}).",
+                        case_count=rejected.count,
+                        last_case_at=rejected.last,
+                        details={"error_class": cls},
+                    )
+                )
+        notices = Notification.objects.all()
         # A notice is claimed `failed` before the provider is called and an ambiguous
         # result stays so (never resent blindly). With the owner chat and the bot
-        # configured, a recent failed one was a rejected or ambiguous delivery. An
-        # `expired` one (still undelivered after NOTICE_TTL, i.e. the bot was unreachable
-        # for hours; a rate-limit backlog drains in seconds) is a lost notice too, and
-        # rare enough not to be noise.
-        if (
-            bot_secrets() is not None
-            and links.owner_chat(tenant.id) is not None
-            and Notification.objects.filter(
-                status__in=(Notification.Status.FAILED, Notification.Status.EXPIRED),
-                created_at__gte=day_ago,
-            ).exists()
-        ):
-            pending.append(
-                (
-                    "notification_failed",
-                    "🟠 Hay avisos al dueño fallidos, ambiguos o caducados en las últimas 24 h.",
+        # configured, a failed one was a rejected or ambiguous delivery. An `expired` one
+        # (still undelivered after NOTICE_TTL, i.e. the bot was unreachable for hours; a
+        # rate-limit backlog drains in seconds) is a lost notice too.
+        if bot_secrets() is not None and links.owner_chat(tenant.id) is not None:
+            after = incidents.bound(marks, "notification_failed", tenant.id, now)
+            lost = cases.tally(cases.lost_notices(notices, after))
+            if lost.count:
+                out.append(
+                    Finding(
+                        "notification_failed",
+                        tenant.id,
+                        f"{slug}: 🟠 {lost.count} avisos al dueño fallidos, ambiguos o caducados.",
+                        case_count=lost.count,
+                        last_case_at=lost.last,
+                    )
                 )
-            )
         # Notices held because the owner never linked a chat are not failures (they go out
         # when they link), but a real business whose owner hears nothing needs a nudge.
-        # `reconcile.expire_held` turns them into `expired` after NOTICE_TTL, so those of
-        # the last 24 h count too, or the alert would resolve itself with nothing fixed.
+        # A demo's owner is the person trying it: not checked.
         if (
             not tenant.is_demo
             and tenant.document.status == "active"
             and links.owner_chat(tenant.id) is None
-            and Notification.objects.filter(
-                status__in=(Notification.Status.HELD, Notification.Status.EXPIRED),
-                created_at__gte=day_ago,
-            ).exists()
         ):
-            pending.append(
-                (
-                    "owner_unlinked",
-                    "🟡 Hay avisos retenidos: el dueño no ha conectado su chat de avisos.",
+            held = cases.tally(cases.held_notices(notices, now))
+            if held.count:
+                out.append(
+                    Finding(
+                        "owner_unlinked",
+                        tenant.id,
+                        f"{slug}: 🟡 {held.count} avisos retenidos: el dueño no ha conectado"
+                        " su chat de avisos.",
+                        case_count=held.count,
+                        last_case_at=held.last,
+                    )
                 )
-            )
         # A demo-door rejection belongs to the platform's own credentials, not the
         # tenant's configured main-channel credentials.
         # Only a recent rejection counts, and only while no send of that channel has gone
@@ -283,20 +338,23 @@ def _check_tenant(
             ).exists()
         ]
         channel = tenant.document.channel
+        start, month = _month(now, tenant)
         if channel is not None and channel.type == "whatsapp":
-            local_now = now.astimezone(tenant.info.timezone)
-            start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             count = messages.filter(channel=Channel.MAIN, billable=True, sent_at__gte=start).count()
-            if count > channel.monthly_alert_threshold:
-                pending.append(
-                    (
+            if count > channel.monthly_alert_threshold and not _billing_reviewed(
+                "billing", tenant.id, month
+            ):
+                out.append(
+                    Finding(
                         "billing",
-                        "🟡 Mensajes facturables de WhatsApp por encima del umbral mensual.",
+                        tenant.id,
+                        f"{slug}: 🟡 {count} mensajes facturables de WhatsApp este mes, por"
+                        f" encima del umbral ({channel.monthly_alert_threshold}).",
+                        case_count=1,
+                        details={"month": month},
                     )
                 )
         if tenant.is_demo:
-            local_now = now.astimezone(tenant.info.timezone)
-            start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             demo_wa_billable += messages.filter(
                 channel=Channel.DEMO_WA, billable=True, sent_at__gte=start
             ).count()
@@ -612,6 +670,75 @@ def _heartbeat(*, fail: bool) -> None:
         log.warning("healthchecks heartbeat unavailable")
 
 
+def _failed_job_findings(
+    cursor: Any, marks: dict[incidents.Key, datetime], now: datetime
+) -> list[Finding]:
+    """One `failed_job:<task>` event per task with jobs failed after its watermark."""
+    floor = min([now - incidents.BOOTSTRAP, *marks.values()])
+    out = []
+    for task, found in cases.failed_jobs(cursor, floor).items():
+        after = incidents.bound(marks, f"failed_job:{task}", None, now)
+        if found.last is None or found.last <= after:
+            continue
+        if after > floor:
+            found = cases.failed_jobs(cursor, after, task)[task]
+        out.append(
+            Finding(
+                f"failed_job:{task}",
+                None,
+                f"🟠 Trabajos fallidos: {incidents.task_label(task)} ({found.count}).",
+                case_count=found.count,
+                last_case_at=found.last,
+            )
+        )
+    return out
+
+
+def _restart_findings(services: list[containers.ServiceState], now: datetime) -> list[Finding]:
+    """`container_restarted:<service>` is an event each time its restart count grows past
+    the one stored in the latest incident of that service (`details.restart_count`). With
+    no incident yet, a restart within RESTART_WINDOW counts. A recreated container (its
+    count back to 0) only lowers the stored count."""
+    out = []
+    for row in services:
+        kind = f"container_restarted:{row.service}"
+        latest = OpsAlert.objects.filter(kind=kind).order_by("-first_seen_at").first()
+        seen = latest.details.get("restart_count") if latest is not None else None
+        count = row.restart_count
+        if latest is not None and isinstance(seen, int) and count < seen:
+            latest.details = {**latest.details, "restart_count": count}
+            latest.save(update_fields=["details"])
+            continue
+        if isinstance(seen, int):
+            if count <= seen:
+                continue
+            since = seen
+        elif (
+            count > 0
+            and row.status == "running"
+            and row.started_at is not None
+            and row.started_at >= now - containers.RESTART_WINDOW
+        ):
+            since = count - 1
+        else:
+            continue
+        if latest is not None and latest.resolved_at is None:
+            since = int(latest.details.get("since", since))
+        oom = ", el último sin memoria" if row.oom_killed else ""
+        out.append(
+            Finding(
+                f"container_restarted:{row.service}",
+                None,
+                f"🟠 Contenedor {row.service}: se ha reiniciado"
+                f" ({count} reinicios desde su creación{oom}).",
+                case_count=count - since,
+                last_case_at=now,
+                details={"restart_count": count, "since": since},
+            )
+        )
+    return out
+
+
 def collect() -> list[Finding]:
     findings: list[Finding] = []
     now = timezone.now()
@@ -633,13 +760,8 @@ def collect() -> list[Finding]:
                     " demasiado lenta): puede haber una cola muy acumulada.",
                 )
             )
-        cursor.execute(
-            """SELECT EXISTS(SELECT 1 FROM procrastinate_events e
-            JOIN procrastinate_jobs j ON j.id = e.job_id
-            WHERE e.type = 'failed' AND e.at >= %s AND j.status = 'failed')""",
-            [now - timedelta(minutes=10)],
-        )
-        (failed,) = cursor.fetchone() or (False,)
+        marks = _event_marks()
+        findings.extend(_failed_job_findings(cursor, marks, now))
     # One snapshot feeds both: `inbound_delay` (conversations; 🔴) and `queue_lag:<queue>`
     # (everything else, plus running jobs that never finish).
     if any(
@@ -652,10 +774,6 @@ def collect() -> list[Finding]:
             Finding("inbound_delay", None, "🔴 Trabajo inbound listo desde hace más de 2 minutos.")
         )
     findings.extend(_queue_lag_findings(lags, now))
-    if failed:
-        findings.append(
-            Finding("failed_jobs", None, "🟠 Hay trabajos fallidos en los últimos 10 minutos.")
-        )
     down = state.providers_down(now)
     if down:
         findings.append(
@@ -683,7 +801,7 @@ def collect() -> list[Finding]:
         # One tenant's exception must not abort the check of the others nor the heartbeat.
         tenant_findings: list[Finding] = []
         try:
-            demo_wa_billable += _check_tenant(tenant, now, tenant_findings, budget)
+            demo_wa_billable += _check_tenant(tenant, now, tenant_findings, budget, marks)
         except Exception:
             log.exception("check of tenant %s failed", tenant.id)
             tenant_findings.append(
@@ -696,13 +814,18 @@ def collect() -> list[Finding]:
         findings.extend(tenant_findings)
     if budget.skipped:
         log.info("health checks of %s tenants left for the next run (budget spent)", budget.skipped)
-    if demo_wa_billable > settings.DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD:
+    _, month = _month(now)
+    if demo_wa_billable > settings.DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD and not (
+        _billing_reviewed("billing:demo_wa", None, month)
+    ):
         findings.append(
             Finding(
                 "billing:demo_wa",
                 None,
-                "🟡 Mensajes facturables de la puerta WhatsApp de demo por encima del"
-                " umbral mensual.",
+                f"🟡 {demo_wa_billable} mensajes facturables de la puerta WhatsApp de demo este"
+                " mes, por encima del umbral mensual.",
+                case_count=1,
+                details={"month": month},
             )
         )
     for demo_channel, label in DEMO_LABELS.items():
@@ -804,10 +927,15 @@ def collect() -> list[Finding]:
             release_sha=settings.RELEASE_SHA,
         )
         findings.extend(Finding(kind, None, text) for kind, text in assessment.findings)
+        if not assessment.stale:
+            findings.extend(_restart_findings(assessment.services, now))
     return _suppress_outages(findings, registry.tenants, now)
 
 
 def sync_alerts(findings: list[Finding]) -> None:
+    """Open or update the incident of each finding; close the conditions no longer found.
+    An event is never closed here (a person reviews it): when its table cases are gone
+    (e.g. its failed jobs were retried), only its count drops to 0."""
     now = timezone.now()
     scope = outage_scope(findings, get_registry().tenants, now)
     seen: set[tuple[str, UUID | None]] = set()
@@ -816,16 +944,27 @@ def sync_alerts(findings: list[Finding]) -> None:
         if finding.suppressed:
             quiet.add((finding.kind, finding.tenant_id))
             continue
-        send_ops_alert(finding.kind, finding.tenant_id, finding.text)
+        extras: dict[str, Any] = {}
+        if finding.case_count is not None:
+            extras["case_count"] = finding.case_count
+        if finding.last_case_at is not None:
+            extras["last_case_at"] = finding.last_case_at
+        if finding.details is not None:
+            extras["details"] = finding.details
+        send_ops_alert(finding.kind, finding.tenant_id, finding.text, **extras)
         seen.add((finding.kind, finding.tenant_id))
     # A tenant whose check failed was only partly evaluated: its other open alerts stay
     # open (neither confirmed nor cleared) until a complete check of it succeeds.
     unchecked = {f.tenant_id for f in findings if f.kind == CHECK_FAILED}
-    open_alerts = OpsAlert.objects.filter(resolved_at__isnull=True, auto_resolves=True)
+    open_alerts = OpsAlert.objects.filter(resolved_at__isnull=True)
     for alert in open_alerts:
         if alert.tenant_id in unchecked:
             continue
         key = (alert.kind, alert.tenant_id)
+        if not alert.auto_resolves:
+            if key not in seen and alert.case_count and _table_event(alert.kind):
+                OpsAlert.objects.filter(id=alert.id).update(case_count=0)
+            continue
         # Explained by an outage with its own alert, even if its finding has just gone
         # (the tenants recover together): resolved without a message of its own.
         if key in quiet or (
@@ -836,6 +975,12 @@ def sync_alerts(findings: list[Finding]) -> None:
             resolve_alert(alert, by="outage", notify=False)
         elif key not in seen:
             resolve_alert(alert, by="auto", notify=alert.severity == "critical")
+    retry_undelivered(now)
+
+
+def _table_event(kind: str) -> bool:
+    info = incidents.kind_info(kind)
+    return info.nature == "event" and info.cases is not None
 
 
 def take_sample() -> None:

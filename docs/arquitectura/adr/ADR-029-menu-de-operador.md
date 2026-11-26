@@ -1,6 +1,6 @@
 # ADR-029 — Menú de operador en el bot de avisos, solo consulta
 
-**Estado:** aceptada
+**Estado:** aceptada; actualizada por [ADR-031](ADR-031-incidencias-como-bandeja.md) (el menú y el resumen diario listan incidencias, no alertas)
 
 ## Contexto
 
@@ -14,17 +14,17 @@ El bot de avisos ya atiende a los dueños con un menú declarativo ([ADR-007](AD
 ## Decisión
 
 - **Un menú de operador en el mismo bot**, solo en el chat de `OPS_TELEGRAM_CHAT_ID` (`owner.operator.is_operator_chat`). Opciones de `OPERATOR_MENU` (ids `ops:<nombre>`):
-    - 🩺 **Estado**: «Todo en orden», «Hay avisos» o «Hay problemas» (el peor nivel entre las alertas abiertas y la salud de los negocios), los servicios, el disco, la memoria y el tamaño de la base de datos, el último backup, la última limpieza nocturna, las alertas abiertas y qué negocios tienen problemas.
-    - 🚨 **Alertas**: las abiertas, de la más grave y reciente a la menos, con desde cuándo.
+    - 🩺 **Estado**: «Todo en orden», «Hay avisos» o «Hay problemas» (el peor nivel entre las incidencias abiertas y la salud de los negocios), los servicios, el disco, la memoria y el tamaño de la base de datos, el último backup, la última limpieza nocturna, las incidencias abiertas y qué negocios tienen problemas.
+    - 🚨 **Incidencias** (antes «Alertas»; el botón conserva el id `ops:alerts`): las abiertas, las mismas que el panel (`ops.incidents.open_incidents`), de la más grave y reciente a la menos, con desde cuándo y, en un evento reabierto, «N nuevos desde tu revisión».
     - 📊 **Hoy**: mensajes recibidos y enviados, fallos y contactos nuevos desde las 00:00 de Madrid, en total y por negocio. Las demos van juntas en una línea.
     - 🏪 **Clientes**: cada negocio real con su estado y salud y cuándo fue su último mensaje, primero los que tienen problemas. Las demos van en una sola línea.
     - 💾 **Backups**: el último backup, cuándo se caducaron copias por última vez y la limpieza nocturna.
 - **Un solo menú si el chat también es dueño** de algún negocio: primero las opciones de operador y después las del dueño (`owner.menu.options`). Un chat que no es el de operador nunca ve las de operador, aunque fuerce el payload.
-- **Solo consulta.** Ninguna opción cambia nada. Las acciones (resolver alertas, reintentar trabajos, pausar un negocio) siguen en el panel, que tiene túnel, contraseña y segundo factor. Las respuestas no llevan datos personales: solo cifras, estados y nombres de negocio.
+- **Solo consulta.** Ninguna opción cambia nada. Las acciones (revisar incidencias, reintentar trabajos, pausar un negocio) siguen en el panel, que tiene túnel, contraseña y segundo factor. Las respuestas no llevan datos personales: solo cifras, estados y nombres de negocio.
 - **Resumen diario** (`ops.daily`, trabajo `ops_daily_summary`, cada hora en el minuto 5): la primera pasada desde las 09:00 de Madrid manda al chat de operación el Estado y las cifras de ayer. Sale aunque no haya pasado nada, para que su ausencia se note. Una clave de caché por día (`ops:daily:<fecha>`) lo reclama antes de enviar, así que sale como mucho una vez. Solo se libera si el envío seguro que no salió (`RetryLater`), y entonces lo reintenta la hora siguiente. Un envío ambiguo no se repite.
 - **Datos y texto separados.** `ops.report` lee el estado como datos (dataclasses, sin texto) y `ops.report_text` lo convierte en mensajes, con funciones puras. Cambiar una cifra o una frase no toca lo otro, y una opción nueva es una entrada más de `OPERATOR_MENU`.
 - **Bajo RLS, como el resto de los workers.** El bot se atiende en `worker-inbound` y el resumen en `worker-periodic`, ambos como `fp_app`: las tablas de plataforma se leen directamente y las cifras de cada negocio dentro de su `tenant_tx`, de una en una. El panel, en cambio, agrupa por `tenant_id` con el rol `owner`.
-- **Dentro de los límites comunes.** Las listas que crecen (alertas, clientes) muestran como mucho 15 elementos y remiten al panel para el resto, así que un texto nunca pasa de 4.096 caracteres. Si una respuesta no cabe en el cuerpo de un interactivo (1.024), va como texto propio y el menú detrás («¿Algo más?»). Si el segundo envío falla, no se reintenta nada, para no repetir el primero.
+- **Dentro de los límites comunes.** Las listas que crecen (incidencias, clientes) muestran como mucho 15 elementos y remiten al panel para el resto, así que un texto nunca pasa de 4.096 caracteres. Si una respuesta no cabe en el cuerpo de un interactivo (1.024), va como texto propio y el menú detrás («¿Algo más?»). Si el segundo envío falla, no se reintenta nada, para no repetir el primero.
 - **El chat de operación no cuenta como desconocido** en el límite de eventos de chats sin negocio (`stranger_limiter`).
 
 ## Alternativas consideradas

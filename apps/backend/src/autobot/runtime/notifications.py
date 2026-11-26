@@ -4,13 +4,13 @@ import hashlib
 import logging
 import random
 import secrets as random_secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 from django.conf import settings
-from django.core.cache import cache
 from django.db import connection, transaction
-from django.db.models import F
+from django.db.models import F, Max, Q
 from django.utils import timezone
 from pydantic import SecretStr
 
@@ -33,16 +33,12 @@ from core.replies import Text
 from core.serialization import Outbound
 
 log = logging.getLogger(__name__)
-COOLDOWN_S = 30 * 60
 # An owner notice older than this is stale (a booking notice two hours late no longer
 # helps): it becomes `expired`, with no apology.
 NOTICE_TTL = timedelta(hours=2)
 # The notify bot's limits at Telegram: ~30 messages/s per bot, ~1/s per chat. We stay
 # under: 25/s overall and one per owner chat per second. Per process: see runtime/ratelimit.py.
 LIMITER = SlotLimiter(rate_per_s=25.0, key_interval_s=1.0)
-# Alerts that only a person resolves from the panel; every other kind self-resolves
-# once ops/check.py stops finding it.
-MANUAL_KINDS = frozenset({"deploy_aborted", "deploy_rollback"})
 _SEVERITY_BY_EMOJI = {"🔴": "critical", "🟠": "warning", "🟡": "notice", "🟢": "info"}
 
 
@@ -184,45 +180,63 @@ def _alert_digest(kind: str, tenant_id: UUID | None) -> bytes:
     return hashlib.sha256(f"{kind}:{tenant_id}".encode()).digest()
 
 
-def _cooldown_key(kind: str, tenant_id: UUID | None) -> str:
-    return f"ops:{_alert_digest(kind, tenant_id).hex()}"
-
-
-# `OpsAlert.last_delivery` values of an alert that never reached the operator.
+# `OpsAlert.last_delivery`: `sent`; `failed` and `unconfigured` never reached the
+# operator (ops_check retries them hourly and withholds its heartbeat on a critical one);
+# `panel` is a 🟡 one, never pushed; `throttled`, a reopened event already pushed within
+# the hour; `cooldown` only in rows from before ADR-031.
 UNDELIVERED = ("failed", "unconfigured")
+# A reopened event is pushed at most once per hour per (kind, tenant), and an undelivered
+# push is retried at most once per hour (ADR-031).
+REPUSH_EVERY = timedelta(hours=1)
 
 
 def send_ops_alert(
-    kind: str, tenant_id: UUID | None, text: str, *, informational: bool = False
+    kind: str,
+    tenant_id: UUID | None,
+    text: str,
+    *,
+    informational: bool = False,
+    case_count: int | None = None,
+    last_case_at: datetime | None = None,
+    details: dict[str, Any] | None = None,
 ) -> bool:
-    """Persist the alert, reserve a 30-minute cooldown, then send outside the transaction.
+    """Open or update the incident of (kind, tenant) and, when it deserves it, push it to
+    the ops chat outside the transaction. True when a push went out.
 
-    `informational` (e.g. "deployed fine") skips the cooldown and is saved already
-    resolved: it is a one-off notice, never an ongoing problem to track.
-    A failed/ambiguous send also keeps the cooldown to prevent an alert storm.
-    """
+    Pushed (ADR-031): a 🔴 or 🟠 incident when it opens, an escalation of an open one to
+    🔴/🟠, and a reopened event (a new period after a review) at most once per hour. A 🟡
+    one is never pushed (`panel`): it is in the panel and the daily summary. An incident
+    that stays open is not pushed again. `informational` (e.g. "deployed fine") is saved
+    already resolved and always pushed.
+
+    `case_count`/`last_case_at`/`details`: as ops_check computed them; an event that
+    carries no count (a deploy one) counts each call as one more case."""
+    from autobot.ops.incidents import PUSHED, SEVERITY_RANK, kind_info
+
     digest = _alert_digest(kind, tenant_id)
-    key = _cooldown_key(kind, tenant_id)
     now = timezone.now()
-    # DatabaseCache.add alone can race when replacing an expired entry.
+    severity = _severity(text)
+    info = kind_info(kind)
+    event = info.nature == "event"
     with transaction.atomic():
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT pg_advisory_xact_lock(%s)", [int.from_bytes(digest[:8], signed=True)]
             )
-        if informational:
+        if informational or info.informational:
             alert = OpsAlert.objects.create(
                 kind=kind,
                 tenant_id=tenant_id,
-                severity=_severity(text),
+                severity=severity,
                 text=text,
                 first_seen_at=now,
                 last_seen_at=now,
-                auto_resolves=kind not in MANUAL_KINDS,
+                auto_resolves=not event,
                 resolved_at=now,
                 resolved_by="info",
+                details=details or {},
             )
-            send = True
+            push = True
         else:
             existing = (
                 OpsAlert.objects.select_for_update()
@@ -230,52 +244,145 @@ def send_ops_alert(
                 .first()
             )
             if existing is None:
-                alert = OpsAlert.objects.create(
-                    kind=kind,
-                    tenant_id=tenant_id,
-                    severity=_severity(text),
-                    text=text,
-                    first_seen_at=now,
-                    last_seen_at=now,
-                    auto_resolves=kind not in MANUAL_KINDS,
+                alert, push = _open(
+                    kind,
+                    tenant_id,
+                    text,
+                    severity,
+                    event,
+                    now,
+                    case_count=case_count,
+                    last_case_at=last_case_at,
+                    details=details,
                 )
             else:
-                OpsAlert.objects.filter(id=existing.id).update(
-                    occurrences=F("occurrences") + 1, last_seen_at=now, text=text
-                )
                 alert = existing
-            send = cache.add(key, True, timeout=COOLDOWN_S)
-        if not send:
-            # A delivery that failed (or had nowhere to go) stays visible while the
-            # cooldown lasts: ops_check withholds its heartbeat on it.
-            OpsAlert.objects.filter(id=alert.id).exclude(last_delivery__in=UNDELIVERED).update(
-                last_delivery="cooldown"
-            )
+                changes: dict[str, Any] = {
+                    "occurrences": F("occurrences") + 1,
+                    "last_seen_at": now,
+                    "text": text,
+                    "severity": severity,
+                    # A row from before its kind became an event (ADR-031) turns into one.
+                    "auto_resolves": not event,
+                }
+                if case_count is not None:
+                    changes["case_count"] = case_count
+                elif event:
+                    changes["case_count"] = F("case_count") + 1
+                if last_case_at is not None or (event and case_count is None):
+                    changes["last_case_at"] = last_case_at or now
+                if details is not None:
+                    changes["details"] = details
+                OpsAlert.objects.filter(id=existing.id).update(**changes)
+                # Severity goes both ways; only an escalation to 🔴/🟠 is pushed.
+                push = severity in PUSHED and SEVERITY_RANK[severity] > SEVERITY_RANK.get(
+                    existing.severity, 0
+                )
+        if not push:
             return False
+    return _push(alert.id, text, now)
+
+
+def _open(
+    kind: str,
+    tenant_id: UUID | None,
+    text: str,
+    severity: str,
+    event: bool,
+    now: datetime,
+    *,
+    case_count: int | None,
+    last_case_at: datetime | None,
+    details: dict[str, Any] | None,
+) -> tuple[OpsAlert, bool]:
+    """A new open period of (kind, tenant): an event inherits the latest watermark. True
+    when it must be pushed."""
+    from autobot.ops.incidents import PLATFORM_CLOSINGS, PUSHED, inherited_watermark
+
+    previous = OpsAlert.objects.filter(kind=kind, tenant_id=tenant_id)
+    reopened = (
+        event
+        and previous.filter(resolved_at__isnull=False)
+        .exclude(resolved_by__in=PLATFORM_CLOSINGS)
+        .exclude(resolved_by="")
+        .exists()
+    )
+    delivery = ""
+    if severity not in PUSHED:
+        delivery = "panel"
+    elif reopened:
+        last_push = previous.aggregate(at=Max("last_sent_at"))["at"]
+        if last_push is not None and now - last_push < REPUSH_EVERY:
+            delivery = "throttled"
+    alert = OpsAlert.objects.create(
+        kind=kind,
+        tenant_id=tenant_id,
+        severity=severity,
+        text=text,
+        first_seen_at=now,
+        last_seen_at=now,
+        auto_resolves=not event,
+        review_watermark=inherited_watermark(kind, tenant_id, now) if event else None,
+        case_count=case_count if case_count is not None else (1 if event else 0),
+        last_case_at=last_case_at or (now if event else None),
+        details=details or {},
+        last_delivery=delivery,
+    )
+    return alert, delivery == ""
+
+
+def _push(alert_id: UUID, text: str, now: datetime) -> bool:
+    """Deliver an incident's text to the ops chat; never inside a transaction."""
     if not settings.OPS_TELEGRAM_CHAT_ID or bot_secrets() is None:
-        log.warning("ops alert %s only logged: recipient or bot unconfigured", kind)
+        log.warning("ops alert only logged: recipient or bot unconfigured")
         delivery, sent = "unconfigured", False
     else:
         outcome = deliver(Text(text), str(settings.OPS_TELEGRAM_CHAT_ID), uuid4())
         sent = isinstance(outcome, Sent)
         delivery = "sent" if sent else "failed"
-    OpsAlert.objects.filter(id=alert.id).update(
+    OpsAlert.objects.filter(id=alert_id).update(
         last_delivery=delivery, sent_count=F("sent_count") + 1, last_sent_at=now
     )
     return sent
 
 
+def retry_undelivered(now: datetime | None = None) -> int:
+    """Push again, at most once per hour, the open 🔴/🟠 incidents whose push never
+    reached the operator (Telegram down, revoked token): not a new notice, the same one.
+    Once Telegram answers again, `last_delivery` becomes `sent` and ops_check stops
+    withholding its heartbeat (`/fail`). Returns how many went out."""
+    from autobot.ops.incidents import PUSHED
+
+    now = now or timezone.now()
+    due = OpsAlert.objects.filter(
+        Q(last_sent_at__isnull=True) | Q(last_sent_at__lte=now - REPUSH_EVERY),
+        resolved_at__isnull=True,
+        severity__in=PUSHED,
+        last_delivery__in=UNDELIVERED,
+    )
+    sent = 0
+    for alert in due:
+        # Claimed first: a concurrent pass (never expected) does not push it twice.
+        claimed = OpsAlert.objects.filter(
+            id=alert.id, last_sent_at=alert.last_sent_at, last_delivery__in=UNDELIVERED
+        ).update(last_sent_at=now)
+        if claimed and _push(alert.id, alert.text, now):
+            sent += 1
+    return sent
+
+
 def resolve_alert(alert: OpsAlert, *, by: str, notify: bool = False) -> None:
-    """Resolve and clear the cooldown, so a problem that returns is reported at once.
+    """Close an incident: `auto` (the condition is gone) or `outage` (explained by a
+    provider-wide outage with its own incident). A review closes an event through
+    `ops.incidents.review` instead.
 
     `notify`: also tell the ops chat it is over (closes the loop on "stopping the worker
-    raises the alert and starting it again recovers it"). Used only for alerts that
+    raises the alert and starting it again recovers it"). Used only for conditions that
     resolved themselves, and only the critical ones, to avoid a message for every
-    minor flap; a person who resolves one from the panel already knows it is done.
+    minor flap.
     """
     OpsAlert.objects.using(alert._state.db or "default").filter(id=alert.id).update(
         resolved_at=timezone.now(), resolved_by=by
     )
-    cache.delete(_cooldown_key(alert.kind, alert.tenant_id))
     if notify and settings.OPS_TELEGRAM_CHAT_ID and bot_secrets() is not None:
         deliver(Text(f"✅ Resuelta: {alert.text}"), str(settings.OPS_TELEGRAM_CHAT_ID), uuid4())

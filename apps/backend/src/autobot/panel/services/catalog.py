@@ -257,10 +257,20 @@ CATALOG: dict[str, TableDoc] = {
     ),
     "ops_alert": TableDoc(
         PANEL,
-        "Alertas operativas persistidas.",
+        "Incidencias (ADR-031): una fila por periodo abierto de cada clave y negocio. Los"
+        " casos (envíos, trabajos, avisos) no se copian aquí.",
         "Worker y panel",
         "12 meses desde su resolución",
         False,
+        {
+            "auto_resolves": "Verdadero en una condición; falso en un evento.",
+            "resolved_by": "auto, outage, info o la persona que la revisó.",
+            "review_watermark": "Evento: los casos hasta esta fecha cuentan como revisados.",
+            "case_count": "Casos que cuenta la última pasada de ops_check.",
+            "last_case_at": "Fecha del caso más reciente.",
+            "details": "Datos del tipo, sin datos personales (restart_count, month…).",
+            "last_delivery": "sent, failed, unconfigured, panel (🟡) o throttled.",
+        },
     ),
     "system_sample": TableDoc(
         PANEL, "Muestras periódicas del sistema.", "Worker", "62 días", False

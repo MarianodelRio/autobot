@@ -128,6 +128,18 @@ def _alert_keys() -> dict[str, str]:
             head = _str(node.elts[0])
             if head and head.startswith("containers_"):
                 add(node.elts[0], containers)
+    # The kind registry (ADR-031): every exact key and prefix it declares.
+    registry = SRC / "autobot" / "ops" / "incidents.py"
+    for node in ast.walk(_tree(registry)):
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id in {"KINDS", "PREFIXES"}
+            and isinstance(node.value, ast.Dict)
+        ):
+            for key in node.value.keys:
+                if key is not None:
+                    add(key, registry)
     for script in (ROOT / "deploy" / "scripts").glob("*.sh"):
         for match in re.finditer(r"alert_ops\s+(deploy_[a-z_]+)", _read(script)):
             found.setdefault(match.group(1), str(script.relative_to(ROOT)))
@@ -136,7 +148,15 @@ def _alert_keys() -> dict[str, str]:
 
 def test_alert_keys_are_extracted() -> None:
     keys = _alert_keys()
-    expected = {"inbound_delay", "failed_jobs", "registry", "disk", "containers_stale"}
+    expected = {
+        "inbound_delay",
+        "failed_job:",
+        "outbound_rejected:",
+        "outbound_ambiguous",
+        "registry",
+        "disk",
+        "containers_stale",
+    }
     assert expected <= set(keys), f"alert extractor looks broken, found: {sorted(keys)}"
 
 

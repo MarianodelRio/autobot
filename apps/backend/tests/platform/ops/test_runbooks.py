@@ -4,7 +4,7 @@ import ast
 import re
 from pathlib import Path
 
-from autobot.ops.models import OpsAlert
+from autobot.ops.incidents import KINDS, PREFIXES, kind_info
 from autobot.ops.runbooks import (
     NO_RUNBOOK,
     PREFIX_RUNBOOKS,
@@ -12,8 +12,6 @@ from autobot.ops.runbooks import (
     runbook_path,
     runbook_url,
 )
-from autobot.panel.routers.incidents import alert_row
-from autobot.runtime.notifications import MANUAL_KINDS
 
 ROOT = Path(__file__).resolve().parents[5]
 OPS = ROOT / "apps" / "backend" / "src" / "autobot" / "ops"
@@ -53,7 +51,8 @@ def source_kinds() -> set[str]:
             # ("kind", "text") pairs, as appended to `pending` / `findings`
             if isinstance(node, ast.Tuple) and len(node.elts) == 2 and _is_text(node.elts[1]):
                 kinds.update(k for k in _kind(node.elts[0]) if KIND.match(k))
-    return kinds | set(MANUAL_KINDS)
+    # The deploy.sh ones and every other registry entry (informational ones need none).
+    return kinds | {k for k, spec in KINDS.items() if not spec.informational} | set(PREFIXES)
 
 
 def test_source_scan_finds_the_known_kinds() -> None:
@@ -69,7 +68,22 @@ def test_source_scan_finds_the_known_kinds() -> None:
         "bot:notify:auth",
         "disk_critical",
         "deploy_aborted",
+        "outbound_rejected:",
+        "failed_job:",
+        "container_restarted:",
     } <= kinds
+
+
+def test_every_raised_kind_is_in_the_registry() -> None:
+    """A kind missing from ops/incidents.py would be a condition titled by its key."""
+    missing = [
+        k
+        for k in sorted(source_kinds())
+        if k not in KINDS and not any(k.startswith(p) or p.startswith(k) for p in PREFIXES)
+    ]
+    assert not missing, f"declare them in autobot/ops/incidents.py: {missing}"
+    assert kind_info("outbound_rejected:outside_window").nature == "event"
+    assert kind_info("failed_job:ops_check").title == "Trabajo fallido: Comprobación de operación"
 
 
 def test_every_kind_has_a_runbook_or_is_explicitly_without() -> None:
@@ -91,7 +105,11 @@ def test_urls_follow_the_site_layout() -> None:
     assert runbook_url("unknown_kind") is None
 
 
-def test_alert_rows_carry_the_runbook() -> None:
-    row = alert_row(OpsAlert(kind="disk", severity="warning", text="x"), {})
-    assert row["runbook"] == "/docs/procedimientos/mantenimiento/#disco-lleno"
-    assert alert_row(OpsAlert(kind="billing", severity="notice", text="x"), {})["runbook"] is None
+def test_new_kinds_have_their_runbook() -> None:
+    assert runbook_url("outbound_rejected:blocked") == (
+        "/docs/incidencias/envios-unknown/#envios-rechazados"
+    )
+    assert (
+        runbook_url("failed_job:ops_check") == "/docs/incidencias/cola-y-latido/#trabajos-fallidos"
+    )
+    assert runbook_url("outbound_ambiguous") == "/docs/incidencias/envios-unknown/"

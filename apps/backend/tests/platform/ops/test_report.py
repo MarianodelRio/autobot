@@ -100,19 +100,47 @@ def test_a_day_counts_each_tenant_inside_its_own_rls(tenants: Any) -> None:
     assert day.total == report.Figures(received=3, sent=2, failed=1, new_contacts=1)
 
 
-def test_open_alerts_most_severe_and_recent_first() -> None:
+def test_open_incidents_most_severe_and_recent_first() -> None:
     now = timezone.now()
     for kind, severity, age in [
         ("a", "warning", 1),
         ("b", "critical", 5),
         ("c", "critical", 1),
+        ("f", "notice", 2),
         ("d", "info", 0),
     ]:
         OpsAlert.objects.create(
-            kind=kind, severity=severity, text=kind, first_seen_at=now - timedelta(hours=age)
+            kind=kind,
+            severity=severity,
+            text=kind,
+            first_seen_at=now - timedelta(hours=age),
+            last_seen_at=now - timedelta(hours=age),
         )
     OpsAlert.objects.create(kind="e", severity="critical", text="e", resolved_at=now)
-    assert [a.text for a in report.open_alerts()] == ["c", "b", "a", "d"]
+    assert [a.text for a in report.open_incidents()] == ["c", "b", "a", "f", "d"]
+
+
+def test_a_reopened_event_carries_its_new_cases() -> None:
+    now = timezone.now()
+    kind = "failed_job:ops_check"
+    OpsAlert.objects.create(
+        kind=kind,
+        severity="warning",
+        text="old",
+        auto_resolves=False,
+        resolved_at=now,
+        resolved_by="ana",
+        review_watermark=now,
+    )
+    OpsAlert.objects.create(
+        kind=kind, severity="warning", text="new", auto_resolves=False, case_count=2
+    )
+    OpsAlert.objects.create(
+        kind="deploy_aborted", severity="critical", text="d", auto_resolves=False, case_count=1
+    )
+    lines = {line.text: line for line in report.open_incidents()}
+    assert lines["new"].new_since_review == 2
+    assert lines["d"].new_since_review is None  # never reviewed: nothing to compare with
 
 
 def test_platform_status_from_its_tables_and_files(

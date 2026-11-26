@@ -1,6 +1,6 @@
 """The operator's menu in the notify bot (ADR-029): read-only questions about the
 platform, answered only in the operator's chat (`OPS_TELEGRAM_CHAT_ID`, the one that
-receives the ops alerts). A new option is one more entry of `OPERATOR_MENU`.
+receives the incident pushes). A new option is one more entry of `OPERATOR_MENU`.
 
 Read-only on purpose: Telegram is not the panel (SSH tunnel, password and code), so
 nothing here changes anything, and no answer carries personal data, only figures,
@@ -23,8 +23,8 @@ def status(chat: OwnerChat) -> str:
     return report_text.status_text(report.platform_status(now), now)
 
 
-def alerts(chat: OwnerChat) -> str:
-    return report_text.alerts_text(report.open_alerts(), timezone.now())
+def incidents(chat: OwnerChat) -> str:
+    return report_text.incidents_text(report.open_incidents(), timezone.now())
 
 
 def today(chat: OwnerChat) -> str:
@@ -45,7 +45,7 @@ def backups(chat: OwnerChat) -> str:
 
 OPERATOR_MENU: list[MenuOption] = [
     MenuOption("ops:status", "🩺 Estado", status),
-    MenuOption("ops:alerts", "🚨 Alertas", alerts),
+    MenuOption("ops:alerts", "🚨 Incidencias", incidents),
     MenuOption("ops:today", "📊 Hoy", today),
     MenuOption("ops:tenants", "🏪 Clientes", tenants),
     MenuOption("ops:backups", "💾 Backups", backups),

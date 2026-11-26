@@ -12,12 +12,17 @@ from autobot.ops.health import HealthSnapshot, read_snapshot
 from autobot.tenancy.registry import LoadedTenant
 
 
-class OpsAlertLike(Protocol):
+class IncidentLike(Protocol):
+    """An open incident (`ops.incidents.Incident`)."""
+
     @property
     def severity(self) -> str: ...
 
     @property
     def tenant_id(self) -> UUID | None: ...
+
+    @property
+    def title(self) -> str: ...
 
 
 type Level = Literal["ok", "notice", "warning", "critical", "unknown"]
@@ -32,11 +37,13 @@ class TenantStatus:
 def tenant_status(
     tenant: LoadedTenant,
     *,
-    open_alerts: Sequence[OpsAlertLike] = (),
+    incidents: Sequence[IncidentLike] = (),
     snapshots: Mapping[UUID | str, HealthSnapshot | None] | None = None,
 ) -> TenantStatus:
-    """`snapshots`: health snapshots already read in bulk (lists), to avoid one cache
-    query per tenant."""
+    """`incidents`: the open incidents (`ops.incidents.open_incidents`); those of this
+    tenant raise its level by their severity (a 🟡 one only to `notice`), with their title
+    as the reason. `snapshots`: health snapshots already read in bulk (lists), to avoid
+    one cache query per tenant."""
     critical: list[str] = []
     warning: list[str] = []
     notice: list[str] = []
@@ -50,14 +57,13 @@ def tenant_status(
             target = {"🔴": critical, "🟠": warning, "🟡": notice}.get(issue.severity)
             if target is not None:
                 target.append(issue.message)
-    for alert in open_alerts:
-        if alert.tenant_id == tenant.id:
-            if alert.severity == "critical":
-                critical.append("Alerta crítica abierta")
-            elif alert.severity == "warning":
-                warning.append("Alerta de aviso abierta")
-            elif alert.severity == "notice":
-                notice.append("Alerta de atención abierta")
+    for incident in incidents:
+        if incident.tenant_id == tenant.id:
+            target = {"critical": critical, "warning": warning, "notice": notice}.get(
+                incident.severity
+            )
+            if target is not None:
+                target.append(incident.title)
     ranked: list[tuple[Level, list[str]]] = [
         ("critical", critical),
         ("warning", warning),

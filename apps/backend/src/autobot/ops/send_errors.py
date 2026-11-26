@@ -70,6 +70,14 @@ _TEXTS: dict[SendErrorClass, tuple[str, str]] = {
 }
 
 
+CLASSES: frozenset[str] = frozenset(_TEXTS)
+
+
+def known(cls: str) -> SendErrorClass:
+    """`cls` if it is a class this module knows, else `other`."""
+    return cls if cls in CLASSES else "other"  # type: ignore[return-value]
+
+
 def classify(channel_type: ChannelType, last_error: str) -> SendErrorClass:
     """The class of a stored `last_error`: the platform's own texts first, then the
     adapter of the message's channel."""

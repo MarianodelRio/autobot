@@ -238,11 +238,12 @@ def test_the_worker_dies_in_the_middle_of_an_event(tenants: Any, meta: Meta) -> 
     assert {e.status for e in events()} == {"done"}
 
 
-def test_a_stalled_ops_check_colliding_with_a_queued_one_is_failed_not_stuck() -> None:
+def test_a_stalled_ops_check_colliding_with_a_queued_one_is_aborted_not_stuck() -> None:
     """A dead worker leaves `ops_check` `doing`, holding its `lock` and `queueing_lock`.
     The next tick queues behind the `queueing_lock` as `todo`. retry_stalled_jobs cannot
     put the stalled one back to `todo` (it would collide with the one already `todo`
-    under the same `queueing_lock`): it must fail it instead, so the lock is freed and
+    under the same `queueing_lock`): it must finish it as `aborted` (not `failed`: no
+    `failed_job` incident for a job the queued one replaces), so the lock is freed and
     the queued one can run."""
     with connections["owner"].cursor() as cursor:
         cursor.execute(
@@ -274,7 +275,7 @@ def test_a_stalled_ops_check_colliding_with_a_queued_one_is_failed_not_stuck() -
             [stalled_id, queued_id],
         )
         statuses = dict(cursor.fetchall())
-    assert statuses[stalled_id] == "failed"
+    assert statuses[stalled_id] == "aborted"  # superseded, not a failure (ADR-031)
     assert statuses[queued_id] == "succeeded"
 
 

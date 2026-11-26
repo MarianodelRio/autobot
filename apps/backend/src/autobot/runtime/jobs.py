@@ -22,6 +22,7 @@ from django.utils import timezone
 from procrastinate import BaseRetryStrategy, JobContext, RetryDecision, RetryStrategy
 from procrastinate.contrib.django import app as app
 from procrastinate.jobs import Job, Status
+from procrastinate.manager import QUEUEING_LOCK_CONSTRAINT
 from procrastinate.periodic import PeriodicRegistry
 from procrastinate.tasks import Task
 from psycopg import InterfaceError as PsycopgInterfaceError
@@ -296,8 +297,10 @@ async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
 
     A stalled job with a `queueing_lock` can collide with another job already queued
     under the same lock (e.g. the next `ops_check` tick): `retry_job` then fails and the
-    stalled job would keep its `lock` forever. When that happens, it is marked `failed`
-    instead, which releases the lock without retrying it.
+    stalled job would keep its `lock` forever. When that happens, it is finished as
+    `aborted`: the queued job does its work, so it is not a failure and must not open a
+    `failed_job:<task>` incident (ADR-031). Any other refusal marks it `failed`, which
+    also releases the lock without retrying it.
 
     A job already retried `STALLED_MAX_ATTEMPTS` times is not retried again: it is
     `failed` and, if it is a `process_event`, its event gets the recovery text and
@@ -311,11 +314,36 @@ async def retry_stalled_jobs(context: JobContext, timestamp: int) -> None:
         try:
             await manager.retry_job(job)
         except Exception as e:  # it changed meanwhile (e.g. retried from the panel or `job_retry`)
-            log.warning("stalled job %s not retried: %s", job.id, type(e).__name__)
+            superseded = _queueing_lock_taken(e)
+            log.warning(
+                "stalled job %s not retried: %s%s",
+                job.id,
+                type(e).__name__,
+                " (superseded by a queued job)" if superseded else "",
+            )
             try:
-                await manager.finish_job(job, status=Status.FAILED, delete_job=False)
+                await manager.finish_job(
+                    job, status=Status.ABORTED if superseded else Status.FAILED, delete_job=False
+                )
             except Exception as e2:
                 log.error("stalled job %s not failed either: %s", job.id, type(e2).__name__)
+
+
+def _queueing_lock_taken(error: BaseException) -> bool:
+    """The error (or one it wraps: Procrastinate's, Django's or psycopg's) is the unique
+    index of the queueing lock: another job with that lock is already `todo`."""
+    seen: BaseException | None = error
+    for _ in range(5):
+        if seen is None:
+            return False
+        constraint = getattr(seen, "constraint_name", None)
+        if constraint is None:
+            diag = getattr(seen, "diag", None)
+            constraint = getattr(diag, "constraint_name", None)
+        if constraint == QUEUEING_LOCK_CONSTRAINT:
+            return True
+        seen = seen.__cause__ or seen.__context__
+    return False
 
 
 async def _give_up_stalled(manager: Any, job: Job) -> None:

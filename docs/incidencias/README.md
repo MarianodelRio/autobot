@@ -21,12 +21,14 @@ Runbooks para cuando algo falla en producción. Cada uno sigue la [plantilla](pl
 
 ## Por alerta del panel
 
-Las alertas se guardan en `ops_alert` (`apps/backend/src/autobot/ops/check.py`, `collect()` y `sync_alerts()`; las de contenedores, en `apps/backend/src/autobot/ops/containers.py`). La clave es el `kind`; los sufijos `<canal>`, `<servicio>`, `<codigo>` y `<bot>` varían. El catálogo completo, con severidad y causa, está en [alertas](../referencia/alertas.md).
+Las incidencias se guardan en `ops_alert` (`apps/backend/src/autobot/ops/check.py`, `collect()` y `sync_alerts()`; las de contenedores, en `apps/backend/src/autobot/ops/containers.py`), y su naturaleza (condición o evento), título y consejo están en el registro `apps/backend/src/autobot/ops/incidents.py`. Una condición se cierra sola; un evento, con «Lo he revisado». La clave es el `kind`; los sufijos `<canal>`, `<servicio>`, `<codigo>`, `<bot>`, `<clase>` y `<tarea>` varían. El catálogo completo, con severidad, naturaleza y causa, está en [alertas](../referencia/alertas.md).
 
-| Alerta (`kind`) | Runbook |
+| Incidencia (`kind`) | Runbook |
 | --- | --- |
-| `inbound_delay`, `failed_jobs`, `inbound_stuck`, `queue_lag_unknown` | [cola-y-latido](cola-y-latido.md) |
-| `outbound_stuck`, `outbound_failed`, `notification_failed`, `owner_unlinked` | [envios-unknown](envios-unknown.md) |
+| `inbound_delay`, `inbound_stuck`, `queue_lag_unknown` | [cola-y-latido](cola-y-latido.md) |
+| `failed_job:<tarea>` | [Trabajos fallidos](cola-y-latido.md#trabajos-fallidos) |
+| `outbound_stuck`, `outbound_ambiguous`, `notification_failed`, `owner_unlinked` | [envios-unknown](envios-unknown.md) |
+| `outbound_rejected:<clase>` | [Envíos rechazados](envios-unknown.md#envios-rechazados) |
 | `registry`, `tenant_unavailable`, `errors:<canal>`, `health:<codigo>`, `config_stale` | [negocio-o-canal](negocio-o-canal.md) |
 | `tenant_silent`, `webhook_unsubscribed`, `webhook_errors`, `number_quality` | [negocio-o-canal](negocio-o-canal.md) |
 | `auth`, `auth:<canal>`, `bot:notify:auth` | [negocio-o-canal](negocio-o-canal.md) y [rotar secretos](../procedimientos/rotar-secretos.md) |

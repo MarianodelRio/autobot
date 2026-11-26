@@ -3,7 +3,6 @@ written directly, never through a channel adapter: no external service is ever c
 Everything this command creates is marked (`dev-`/`dev:` prefixes, or a procrastinate
 job argument) so `--reset` removes exactly that and nothing else."""
 
-import itertools
 import json
 import random
 from datetime import datetime, timedelta
@@ -14,6 +13,7 @@ from uuid import uuid7
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django.db import connections
+from django.db.models import Q
 from django.utils import timezone
 
 from autobot.ops.containers import EXPECTED_SERVICES
@@ -32,57 +32,57 @@ from core.replies import Text
 from core.serialization import dump_outbound
 
 CONTACT_MARKER = "dev-"
-ALERT_MARKER = "dev:"
+ALERT_MARKER = "dev:"  # the kinds of incidents seeded before ADR-031
 JOB_MARKER = "seed_dev_activity"
+# Stored `last_error` of rejected sends, as the adapters write them (ADR-031 classes).
+FAILED_ERRORS = (
+    "status failed: 131047",  # WhatsApp: outside the 24 h window
+    "recipient: HTTP 400, error 131026",  # WhatsApp: not a WhatsApp number
+    "recipient: HTTP 403, error 403",  # Telegram: the person blocked the bot
+)
 PRICING_CATEGORIES = ("utility", "service", "marketing")
 SAMPLE_INTERVAL = timedelta(minutes=5)
 SAMPLE_WINDOW = timedelta(days=2)
-# (kind, tenant-specific, severity, emoji, message, already resolved) — 3 open, 5 resolved.
-ALERT_SAMPLES: list[tuple[str, bool, str, str, str, bool]] = [
-    ("disk", False, "warning", "🟠", "Disco por encima del 80 %.", False),
+# Incidents (ADR-031) with real kinds, marked by `details.seed_dev_activity`: (kind,
+# tenant-specific, emoji, text, how it is: open | auto | review | info, case count).
+# 6 open (one reopened event after a review), 7 closed.
+ALERT_SAMPLES: list[tuple[str, bool, str, str, str, int]] = [
+    ("disk", False, "🟠", "Disco por encima del 80 %.", "open", 0),
+    ("tenant_unavailable", True, "🔴", "Tenant degradado o canal sin secretos.", "open", 0),
+    ("outbound_ambiguous", True, "🟠", "2 envíos sin confirmar.", "open", 2),
     (
-        "outbound_failed",
+        "owner_unlinked",
         True,
-        "warning",
+        "🟡",
+        "1 aviso retenido: el dueño no ha conectado su chat.",
+        "open",
+        1,
+    ),
+    (
+        "failed_job:send_message",
+        False,
         "🟠",
-        "Envíos fallidos o ambiguos hace más de 10 min.",
-        False,
+        "Trabajos fallidos: Enviar un mensaje (1).",
+        "open",
+        1,
     ),
     (
-        "tenant_unavailable",
+        "outbound_rejected:outside_window",
         True,
-        "critical",
-        "🔴",
-        "Tenant degradado o sin secretos/configuración.",
-        False,
+        "🟠",
+        "fuera de la ventana de 24 h (3).",
+        "review",
+        3,
     ),
-    ("failed_jobs", False, "warning", "🟠", "Trabajos fallidos en los últimos 10 minutos.", True),
-    (
-        "inbound_delay",
-        False,
-        "critical",
-        "🔴",
-        "Trabajo inbound listo desde hace más de 2 min.",
-        True,
-    ),
-    (
-        "health:main:calendar_unavailable",
-        True,
-        "critical",
-        "🔴",
-        "Calendar con tres errores seguidos.",
-        True,
-    ),
-    ("billing", True, "notice", "🟡", "Mensajes facturables por encima del umbral mensual.", True),
-    (
-        "auth",
-        True,
-        "critical",
-        "🔴",
-        "Envío del canal principal rechazado por autenticación.",
-        True,
-    ),
+    ("outbound_rejected:outside_window", True, "🟠", "fuera de la ventana de 24 h (2).", "open", 2),
+    ("inbound_delay", False, "🔴", "Trabajo inbound listo desde hace más de 2 minutos.", "auto", 0),
+    ("health:main:calendar_unavailable", True, "🔴", "Calendar sin acceso.", "auto", 0),
+    ("billing", True, "🟡", "Mensajes facturables por encima del umbral mensual.", "review", 1),
+    ("auth", True, "🔴", "Envío del canal principal rechazado por autenticación.", "auto", 0),
+    ("container_restarted:worker-inbound", False, "🟠", "Contenedor reiniciado.", "review", 1),
+    ("deploy_ok", False, "🟢", "Desplegado abc1234", "info", 0),
 ]
+SEVERITY = {"🔴": "critical", "🟠": "warning", "🟡": "notice", "🟢": "info"}
 
 
 def telegram_payload(text: str, at: datetime, rng: random.Random) -> dict[str, Any]:
@@ -170,7 +170,9 @@ class Command(BaseCommand):
                 MetricEvent.objects.filter(idem_key__startswith=CONTACT_MARKER).delete()
                 Contact.objects.filter(external_id__startswith=CONTACT_MARKER).delete()
         # fp_app has no DELETE on ops_alert (autobot/db/grants.py, ADR-009): bypass as fp_owner.
-        OpsAlert.objects.using("owner").filter(kind__startswith=ALERT_MARKER).delete()
+        OpsAlert.objects.using("owner").filter(
+            Q(kind__startswith=ALERT_MARKER) | Q(details__seed_dev_activity=True)
+        ).delete()
         with connections["default"].cursor() as cursor:
             cursor.execute("DELETE FROM procrastinate_jobs WHERE args->>%s = 'true'", [JOB_MARKER])
 
@@ -204,7 +206,7 @@ class Command(BaseCommand):
         if roll < 0.08:
             return OutboundMessage.Status.UNKNOWN, at + timedelta(minutes=12), ""
         if roll < 0.15:
-            return OutboundMessage.Status.FAILED, None, "HTTP 500"
+            return OutboundMessage.Status.FAILED, None, rng.choice(FAILED_ERRORS)
         return OutboundMessage.Status.SENT, None, ""
 
     def _seed_tenant(
@@ -300,26 +302,55 @@ class Command(BaseCommand):
     # ── platform-wide activity ────────────────────────────────────────────
 
     def _seed_alerts(self, tenants: list[LoadedTenant], now: datetime) -> None:
-        cycle = itertools.cycle(tenants)
-        for index, (kind, tenant_specific, severity, emoji, message, resolved) in enumerate(
-            ALERT_SAMPLES
-        ):
-            tenant = next(cycle) if tenant_specific else None
-            text = f"{tenant.slug}: {emoji} {message}" if tenant else f"{emoji} {message}"
+        from autobot.ops.incidents import BOOTSTRAP, kind_info
+
+        tenant = next((t for t in tenants if not t.is_demo), tenants[0])
+        for index, (kind, per_tenant, emoji, message, how, count) in enumerate(ALERT_SAMPLES):
+            tenant_id = tenant.id if per_tenant else None
+            text = f"{tenant.slug}: {emoji} {message}" if per_tenant else f"{emoji} {message}"
+            event = kind_info(kind).nature == "event"
+            closed = how != "open"
+            if (
+                not closed
+                and OpsAlert.objects.filter(
+                    kind=kind, tenant_id=tenant_id, resolved_at__isnull=True
+                ).exists()
+            ):
+                continue  # a real open one: the unique open constraint allows only one
+            first_seen = now - timedelta(hours=index + 1)
+            resolved_at = now - timedelta(minutes=10 * (index + 1)) if closed else None
+            details: dict[str, Any] = {"seed_dev_activity": True}
+            if kind == "billing":
+                details["month"] = now.strftime("%Y-%m")
+            if kind.startswith("container_restarted:"):
+                details.update(restart_count=1, since=0)
+            watermark = None
+            if event:
+                watermark = first_seen - BOOTSTRAP
+                if how == "review":
+                    watermark = first_seen
+                if how == "open" and kind.startswith("outbound_rejected:"):
+                    # Reopened: it inherits the watermark of the reviewed sample above.
+                    watermark = now - timedelta(hours=index)
+                    first_seen = now - timedelta(minutes=30)
             OpsAlert.objects.create(
-                kind=f"{ALERT_MARKER}{kind}",
-                tenant_id=tenant.id if tenant else None,
-                severity=severity,
+                kind=kind,
+                tenant_id=tenant_id,
+                severity=SEVERITY[emoji],
                 text=text,
-                first_seen_at=now - timedelta(hours=index + 1),
+                first_seen_at=first_seen,
                 last_seen_at=now - timedelta(minutes=5 * (index + 1)),
                 occurrences=index + 1,
-                sent_count=1,
-                last_delivery="sent",
-                last_sent_at=now - timedelta(minutes=5 * (index + 1)),
-                auto_resolves=True,
-                resolved_at=now - timedelta(minutes=10 * (index + 1)) if resolved else None,
-                resolved_by=("operador" if index == 6 else "auto") if resolved else "",
+                sent_count=0 if emoji == "🟡" else 1,
+                last_delivery="panel" if emoji == "🟡" else "sent",
+                last_sent_at=None if emoji == "🟡" else first_seen,
+                auto_resolves=not event,
+                review_watermark=watermark,
+                case_count=count,
+                last_case_at=first_seen if count else None,
+                details=details,
+                resolved_at=resolved_at,
+                resolved_by={"auto": "auto", "info": "info", "review": "operador"}.get(how, ""),
             )
 
     def _seed_failed_job(self, tenant: LoadedTenant, now: datetime) -> None:

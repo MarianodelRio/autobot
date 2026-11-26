@@ -98,10 +98,10 @@ Toda escritura del panel y de los comandos de operación deja una fila en `audit
 
 | Pantalla | Apoyo en el backend |
 |---|---|
-| Resumen | `services/overview.py`: estado global, indicadores del mes, alertas ([Observabilidad](observabilidad.md)). |
+| Resumen | `services/overview.py`: estado global (desde las incidencias abiertas), indicadores del mes, últimas incidencias ([Observabilidad](observabilidad.md)). |
 | Clientes | `services/tenants.py`: lista, ficha, versiones y vuelta atrás, secretos, exportación. Escribe con `tenancy.store`. |
 | Clientes → Configuración | `services/forms.py` (`ui_schema`: secciones `PLATFORM_SECTIONS` y `PACK_SECTIONS`, campos condicionales `SHOW_IF`) y `services/setup.py` (`tenant_setup`): pasos del alta con estado, sección, «Comprobar» y acciones de WhatsApp. `GET` solo lee la caché; `POST` hace la llamada real, fuera de cualquier transacción y auditada ([ADR-027](adr/ADR-027-alta-y-configuracion-en-una-pestana.md)). |
-| Incidencias | `routers/incidents.py`: envíos `unknown`, trabajos fallidos y alertas ([Envíos unknown](../incidencias/envios-unknown.md)). |
+| Incidencias | `routers/incidents.py` y `services/incidents.py`: las incidencias abiertas con sus casos, «Lo he revisado», las acciones sobre envíos y trabajos y el historial ([ADR-031](adr/ADR-031-incidencias-como-bandeja.md), [alertas](../referencia/alertas.md)). |
 | Logs | `services/logs.py` (consultas acotadas a VictoriaLogs), auditoría y conversaciones. |
 | Datos | `services/catalog.py` y `query.py`: catálogo de tablas y consola SQL. |
 | Sistema | `services/system.py`: contenedores, máquina, backups y despliegues. |

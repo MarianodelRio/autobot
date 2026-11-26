@@ -1,4 +1,4 @@
-"""Notification delivery and ops cooldown with PostgreSQL and simulated Telegram."""
+"""Notification delivery and incident pushes with PostgreSQL and simulated Telegram."""
 
 import json
 from datetime import timedelta
@@ -6,14 +6,13 @@ from typing import Any
 
 import httpx
 import pytest
-from django.core.cache import caches
 from django.db import connections
 from django.utils import timezone
 
 from autobot.channels.adapters import TELEGRAM
 from autobot.ops.models import OpsAlert
 from autobot.runtime import notifications, process
-from autobot.runtime.models import Notification, OwnerLink, PlatformCache
+from autobot.runtime.models import Notification, OwnerLink
 from autobot.runtime.outbound import SendRetry
 from autobot.runtime.ratelimit import SlotLimiter
 from autobot.tenancy.registry import get_registry
@@ -245,17 +244,16 @@ def test_rls_wrong_tenant_does_not_send(tenants: Any, telegram: Any) -> None:
     assert not seen and reload(row).status == "pending"
 
 
-def test_ops_cooldown_type_tenant_and_expiration(tenants: Any, telegram: Any) -> None:
+def test_an_incident_is_pushed_once_when_it_opens(tenants: Any, telegram: Any) -> None:
     tenants(owner())
-    seen = telegram(ok(), ok(), ok(), ok())
+    seen = telegram(ok(), ok(), ok())
     tenant_id = get_registry().by_slug["wa"].id
     assert notifications.send_ops_alert("stuck", tenant_id, "Alerta")
+    # Still open: never pushed again, however long it lasts (ADR-031: no 30-min repeat).
     assert not notifications.send_ops_alert("stuck", tenant_id, "Alerta")
     assert notifications.send_ops_alert("failed", tenant_id, "Alerta")
     assert notifications.send_ops_alert("stuck", None, "Alerta")
-    PlatformCache.objects.update(expires=timezone.now() - timedelta(seconds=1))
-    assert notifications.send_ops_alert("stuck", tenant_id, "Alerta")
-    assert len(seen) == 4 and not Notification.objects.using("owner").exists()
+    assert len(seen) == 3 and not Notification.objects.using("owner").exists()
 
 
 def test_unconfigured_does_not_send(tenants: Any, telegram: Any, settings: Any) -> None:
@@ -269,40 +267,30 @@ def test_unconfigured_does_not_send(tenants: Any, telegram: Any, settings: Any) 
     assert not notifications.send_ops_alert("stuck", None, "alert") and not seen
 
 
-def test_ops_cooldown_concurrent_after_expiry(telegram: Any) -> None:
+def test_two_checks_opening_the_same_incident_push_it_once(telegram: Any) -> None:
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
 
-    telegram(ok(), ok())
-    assert notifications.send_ops_alert("concurrent", None, "Alerta")
-    PlatformCache.objects.update(expires=timezone.now() - timedelta(seconds=1))
+    seen = telegram(ok(), ok())
     barrier = Barrier(2)
 
     def check() -> bool:
         try:
             barrier.wait(timeout=10)
-            return notifications.send_ops_alert("concurrent", None, "Alerta")
+            return notifications.send_ops_alert("concurrent", None, "🔴 Alerta")
         finally:
             connections.close_all()
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(lambda _: check(), range(2))) == [False, True]
-
-
-def test_ops_cooldown_survives_cache_pressure(telegram: Any, monkeypatch: Any) -> None:
-    monkeypatch.setattr(caches["default"], "_max_entries", 1)
-    seen = telegram(ok(), ok(), ok())
-    for kind in ("first", "second", "third"):
-        assert notifications.send_ops_alert(kind, None, "Alerta")
-    assert not notifications.send_ops_alert("first", None, "Alerta")
-    assert len(seen) == 3
+    assert len(seen) == 1
 
 
 def alert(kind: str = "stuck", tenant_id: Any = None) -> OpsAlert:
     return OpsAlert.objects.using("owner").get(kind=kind, tenant_id=tenant_id)
 
 
-def test_ops_alert_persists_and_tracks_cooldown(telegram: Any) -> None:
+def test_ops_alert_persists_and_is_not_repeated(telegram: Any) -> None:
     seen = telegram(ok())
     assert notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
     row = alert()
@@ -311,7 +299,7 @@ def test_ops_alert_persists_and_tracks_cooldown(telegram: Any) -> None:
     assert not notifications.send_ops_alert("stuck", None, "🔴 Algo falla, de nuevo")
     row = alert()
     assert row.occurrences == 2 and row.text == "🔴 Algo falla, de nuevo"
-    assert row.last_delivery == "cooldown" and row.sent_count == 1
+    assert row.last_delivery == "sent" and row.sent_count == 1
     assert len(seen) == 1
 
 
@@ -329,36 +317,126 @@ def test_ops_alert_telegram_failure_is_persisted(telegram: Any) -> None:
     assert row.last_delivery == "failed" and row.sent_count == 1 and row.occurrences == 1
 
 
-def test_ops_alert_informational_is_saved_already_resolved(telegram: Any) -> None:
+def test_a_notice_is_never_pushed(telegram: Any) -> None:
+    seen = telegram()
+    assert not notifications.send_ops_alert("stuck", None, "🟡 Algo menor")
+    row = alert()
+    assert row.severity == "notice" and row.last_delivery == "panel" and row.sent_count == 0
+    assert not seen
+
+
+def test_an_escalation_updates_the_severity_and_pushes_once(telegram: Any) -> None:
     seen = telegram(ok(), ok())
+    assert not notifications.send_ops_alert("stuck", None, "🟡 Algo menor")
+    assert notifications.send_ops_alert("stuck", None, "🟠 Algo peor")
+    assert alert().severity == "warning"
+    assert notifications.send_ops_alert("stuck", None, "🔴 Algo grave")
+    assert not notifications.send_ops_alert("stuck", None, "🔴 Algo grave")
+    assert alert().severity == "critical"
+    # Back down: the severity follows, without a push.
+    assert not notifications.send_ops_alert("stuck", None, "🟠 Algo peor")
+    assert alert().severity == "warning" and len(seen) == 2
+
+
+def test_ops_alert_informational_is_saved_already_resolved(telegram: Any) -> None:
+    seen = telegram(ok(), ok(), ok())
     assert notifications.send_ops_alert(
         "deploy_success", None, "🟢 Desplegado bien", informational=True
     )
     row = alert("deploy_success")
     assert row.resolved_at is not None and row.resolved_by == "info"
     assert row.severity == "info" and len(seen) == 1
-    # No cooldown: a second informational notice sends right away.
+    # A one-off notice: a second one sends right away.
     assert notifications.send_ops_alert(
         "deploy_success", None, "🟢 Desplegado bien", informational=True
     )
     assert len(seen) == 2
     assert OpsAlert.objects.using("owner").filter(kind="deploy_success").count() == 2
+    # A kind the registry declares informational is born resolved without the flag.
+    assert notifications.send_ops_alert("deploy_ok", None, "🟢 Desplegado abc")
+    assert alert("deploy_ok").resolved_by == "info"
 
 
-def test_ops_alert_manual_kind_never_auto_resolves(telegram: Any) -> None:
-    telegram(ok())
+def test_an_event_stays_open_and_counts_each_case(telegram: Any) -> None:
+    from autobot.ops.incidents import BOOTSTRAP
+
+    seen = telegram(ok())
+    before = timezone.now()
     assert notifications.send_ops_alert("deploy_aborted", None, "🔴 Despliegue abortado")
-    assert not alert("deploy_aborted").auto_resolves
+    assert not notifications.send_ops_alert("deploy_aborted", None, "🔴 Despliegue abortado")
+    row = alert("deploy_aborted")
+    assert not row.auto_resolves and row.case_count == 2 and row.last_case_at is not None
+    # No previous review: only the last 24 h count.
+    assert row.review_watermark is not None
+    assert abs((row.review_watermark - (before - BOOTSTRAP)).total_seconds()) < 60
+    assert len(seen) == 1
 
 
-def test_ops_alert_resolve_clears_cooldown_for_immediate_resend(telegram: Any) -> None:
+def test_a_reopened_event_pushes_at_most_once_an_hour(telegram: Any) -> None:
+    from autobot.ops.incidents import review
+
+    seen = telegram(ok(), ok())
+    kind = "failed_job:ops_check"
+    last = timezone.now() - timedelta(minutes=1)
+    assert notifications.send_ops_alert(
+        kind, None, "🟠 Fallos (1).", case_count=1, last_case_at=last
+    )
+    first = alert(kind)
+    assert review(first.id, actor="ana").ok
+    first.refresh_from_db(using="owner")
+    assert first.resolved_by == "ana" and first.review_watermark == last
+    # A case after the review: a new open period that inherits the watermark, not pushed
+    # again within the hour.
+    assert not notifications.send_ops_alert(kind, None, "🟠 Fallos (1).", case_count=1)
+    second = OpsAlert.objects.using("owner").get(kind=kind, resolved_at__isnull=True)
+    assert second.id != first.id and second.review_watermark == last
+    assert second.last_delivery == "throttled" and len(seen) == 1
+    # An hour later, the next reopening is pushed.
+    OpsAlert.objects.using("owner").filter(kind=kind).update(
+        last_sent_at=timezone.now() - timedelta(hours=2)
+    )
+    assert review(second.id, actor="ana").ok
+    assert notifications.send_ops_alert(kind, None, "🟠 Fallos (1).", case_count=1)
+    assert len(seen) == 2
+
+
+def test_a_review_is_only_for_an_open_event(telegram: Any) -> None:
+    from autobot.ops.incidents import review
+
+    telegram(ok(), ok())
+    notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
+    assert not review(alert().id, actor="ana").ok  # a condition closes itself
+    notifications.send_ops_alert("deploy_aborted", None, "🔴 Despliegue abortado")
+    row = alert("deploy_aborted")
+    assert review(row.id, actor="ana").ok
+    assert not review(row.id, actor="ana").ok  # already closed
+
+
+def test_an_undelivered_push_is_retried_hourly_until_it_goes_out(telegram: Any) -> None:
+    seen = telegram(httpx.Response(403), ok())
+    assert not notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
+    assert alert().last_delivery == "failed"
+    assert notifications.retry_undelivered() == 0  # tried less than an hour ago
+    OpsAlert.objects.using("owner").update(last_sent_at=timezone.now() - timedelta(hours=2))
+    assert notifications.retry_undelivered() == 1
+    row = alert()
+    assert row.last_delivery == "sent" and row.sent_count == 2 and len(seen) == 2
+    assert notifications.retry_undelivered() == 0
+
+
+def test_a_notice_is_not_retried(telegram: Any) -> None:
+    seen = telegram()
+    notifications.send_ops_alert("stuck", None, "🟡 Algo menor")
+    OpsAlert.objects.using("owner").update(last_delivery="failed", last_sent_at=None)
+    assert notifications.retry_undelivered() == 0 and not seen
+
+
+def test_a_condition_that_returns_opens_a_new_row_and_pushes(telegram: Any) -> None:
     seen = telegram(ok(), ok())
     assert notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
-    assert not notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
     notifications.resolve_alert(alert(), by="auto")
     row = alert()
     assert row.resolved_at is not None and row.resolved_by == "auto"
-    # A fresh row for the same (kind, tenant_id): the cooldown was cleared too.
     assert notifications.send_ops_alert("stuck", None, "🔴 Algo falla otra vez")
     assert len(seen) == 2
     open_rows = OpsAlert.objects.using("owner").filter(kind="stuck", resolved_at__isnull=True)

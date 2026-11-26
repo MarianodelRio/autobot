@@ -2,16 +2,16 @@
 
 ## Síntoma
 
-En el panel, Incidencias muestra mensajes sin entrega confirmada, o salta `outbound_stuck`, `outbound_failed` (envíos fallidos o ambiguos desde hace más de 10 minutos) o `notification_failed` (avisos al dueño fallidos, ambiguos o caducados en 24 h). `unknown` puede significar que el proveedor aceptó el envío aunque la conexión se cortase.
+En el panel, Incidencias muestra una incidencia con envíos como casos: `outbound_ambiguous` (envíos `unknown` sin decidir desde hace más de 20 minutos), `outbound_rejected:<clase>` (envíos `failed` rechazados por el proveedor, una incidencia por clase de error), `outbound_stuck` (pendientes demasiado antiguos para reencolarlos) o `notification_failed` (avisos al dueño fallidos, ambiguos o caducados). `unknown` puede significar que el proveedor aceptó el envío aunque la conexión se cortase.
 
-Antes de que intervenga una persona, la plataforma concilia sola ([ADR-026](../arquitectura/adr/ADR-026-conciliacion-de-envios-ambiguos.md)): un estado de entrega de Meta lo pasa a `sent` y, si a los 10 minutos no hay evidencia, `reconcile_unknown` lo **reenvía una sola vez** (respuestas, menús, disculpas y recordatorios; un duplicado es inocuo). Si el reenvío vuelve a ser ambiguo, o es una clase que no admite duplicados, se queda `unknown` y salta `outbound_failed` a los 20 minutos: ahí sí decide una persona.
+Antes de que intervenga una persona, la plataforma concilia sola ([ADR-026](../arquitectura/adr/ADR-026-conciliacion-de-envios-ambiguos.md)): un estado de entrega de Meta lo pasa a `sent` y, si a los 10 minutos no hay evidencia, `reconcile_unknown` lo **reenvía una sola vez** (respuestas, menús, disculpas y recordatorios; un duplicado es inocuo). Si el reenvío vuelve a ser ambiguo, o es una clase que no admite duplicados, se queda `unknown` y a los 20 minutos es un caso de `outbound_ambiguous`: ahí sí decide una persona. Esa incidencia es una condición: se cierra sola cuando no queda ningún envío sin decidir.
 
 ## Diagnóstico
 
-1. Busca el mensaje por su identificador interno en el panel y revisa estado, canal, intentos, `unknown_at` y el último error (solo estado y códigos del proveedor, nunca el cuerpo de su respuesta). El panel oculta el contenido y el id del proveedor por privacidad; muestra la elegibilidad y el motivo de cada acción. Cada adaptador traduce el error a una clase con su consejo en español (`ops/send_errors.py`): `outside_window` (WhatsApp 131047: fuera de la ventana de 24 h, solo con plantilla), `undeliverable` (número no válido o sin WhatsApp), `blocked` (la persona bloqueó el bot), `auth` (credencial rechazada), `rate` (límite del proveedor; se reintenta solo), `marketing_declined`, `spam_limit` y `other` (con el código).
+1. Abre la incidencia en el panel: cada caso muestra estado, canal, fecha y, si fue rechazado, la clase de error con su título y consejo (nunca el cuerpo de la respuesta del proveedor). El panel oculta el contenido y el id del proveedor por privacidad; muestra la elegibilidad y el motivo de cada acción. Cada adaptador traduce el error a una clase con su consejo en español (`ops/send_errors.py`): `outside_window` (WhatsApp 131047: fuera de la ventana de 24 h, solo con plantilla), `undeliverable` (número no válido o sin WhatsApp), `blocked` (la persona bloqueó el bot), `auth` (credencial rechazada), `rate` (límite del proveedor; se reintenta solo), `marketing_declined`, `spam_limit` y `other` (con el código).
 2. Comprueba en el panel del proveedor (Meta, Telegram) o con el destinatario si el mensaje llegó.
 3. `expired` no es un fallo: el mensaje pasó su plazo (30 minutos una respuesta, hasta 24 h un recordatorio) sin que el proveedor lo aceptara y no se envió. No hay nada que resolver; una respuesta caducada ya generó su disculpa. Si hay muchos a la vez, es una caída del proveedor: ver [caída de un proveedor](#caida-de-un-proveedor).
-4. `failed` es distinto de `unknown`: las acciones de resolución no admiten mensajes `failed`. Averigua su causa (canal, proveedor, credenciales) en [negocio o canal](negocio-o-canal.md).
+4. `failed` es distinto de `unknown`: las acciones de resolución no admiten mensajes `failed` (ver [envíos rechazados](#envios-rechazados)).
 
 ## Arreglo
 
@@ -32,6 +32,14 @@ Antes de que intervenga una persona, la plataforma concilia sola ([ADR-026](../a
 !!! warning "Prohibido"
     No reencoles el envío anterior, no edites filas SQL ni crees otra clave de idempotencia para el mismo efecto. Reenviar es una acción sobre datos de producción: requiere aprobación humana.
 
+## Envíos rechazados
+
+`outbound_rejected:<clase>` es un **evento**: el proveedor rechazó uno o más envíos (estado `failed`) y no hay nada que reintentar sobre ellos. La incidencia agrupa los rechazos del negocio por clase y dice qué significa cada una (`ops/send_errors.py`): `outside_window` (fuera de la ventana de 24 h de WhatsApp: solo con plantilla aprobada), `undeliverable`, `blocked`, `marketing_declined` (🟡: la causa es del destinatario), `spam_limit`, `expired_payload`, `channel_disabled`, `rate` y `other`. Un rechazo por credencial no abre esta incidencia: es la condición `auth` ([negocio o canal](negocio-o-canal.md)).
+
+1. Lee el consejo de la clase. Si apunta a una causa nuestra (plantilla que falta, canal desactivado, calidad del número), corrígela para los envíos futuros.
+2. Pulsa **«Lo he revisado»**: la incidencia se cierra y guarda la fecha del rechazo más reciente como marca. Solo un rechazo posterior la vuelve a abrir, con «N nuevos desde tu revisión»; avisa por Telegram como mucho una vez por hora.
+3. Los envíos revisados siguen en la actividad del negocio (filtro de envíos con error).
+
 ## Caída de un proveedor
 
 Si salta `provider_outage` (🟠), Meta o Telegram no responden. No hay que hacer nada con cada mensaje: se reintentan solos, con espera de hasta 5 minutos, mientras no caduquen (una respuesta, a los 30 minutos; un recordatorio, hasta 24 h o 30 minutos antes de la cita). Mientras el cortacircuitos está abierto no se llama al proveedor: una sonda de solo lectura cada minuto detecta la recuperación y lo cierra. Los mensajes en espera no vuelven todos a la vez: cada uno suma una espera aleatoria (una respuesta, de 0 a 30 s; un recordatorio, de 15 a 90 s) y las respuestas tienen prioridad en la cola sobre los recordatorios. Durante la caída, y 20 minutos después, no saltan las alertas `health:whatsapp_unavailable` / `health:telegram_unavailable` de cada negocio: solo `provider_outage`.
@@ -43,12 +51,12 @@ Si salta `provider_outage` (🟠), Meta o Telegram no responden. No hay que hace
 
 ## Avisos retenidos
 
-Si el dueño de un negocio no ha conectado su chat de avisos, los avisos quedan `held` (no `failed`), en Incidencias aparece «Avisos retenidos» y, si es un negocio real y activo, salta `owner_unlinked` (🟡). Genera un enlace de invitación en la ficha del negocio y pide al dueño que lo abra: al conectar, los avisos de menos de 2 horas salen solos y los más viejos caducan. No hay que resolver nada a mano.
+Si el dueño de un negocio no ha conectado su chat de avisos, los avisos quedan `held` (no `failed`) y, si es un negocio real y activo, salta `owner_unlinked` (🟡, solo en el panel y el resumen diario), con esos avisos como casos. Genera un enlace de invitación en la ficha del negocio y pide al dueño que lo abra: al conectar, los avisos de menos de 2 horas salen solos y los más viejos caducan. No hay que resolver nada a mano.
 
 ## Verificación
 
 - `unknown`: el mensaje queda en `sent` o tiene una nueva entrega confirmada, y Logs, pestaña Operador, registra la resolución.
-- `failed`: el registro permanece en ese estado y el nuevo envío autorizado confirma que la causa se corrigió.
+- `failed`: el registro permanece en ese estado, la incidencia está revisada y el nuevo envío autorizado confirma que la causa se corrigió.
 - No se crearon duplicados.
 
 ## Relacionado

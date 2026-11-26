@@ -2,7 +2,7 @@
 no database, so the wording can change without touching how the figures are read.
 `*bold*` is Telegram's own markup (the adapter turns it into `<b>`); times are Madrid's.
 
-Lists that grow with the platform (alerts, tenants) are capped, so a text never
+Lists that grow with the platform (incidents, tenants) are capped, so a text never
 outgrows the common limit (`MAX_TEXT`): the rest is in the panel."""
 
 from collections.abc import Sequence
@@ -10,18 +10,18 @@ from datetime import datetime, timedelta
 
 from autobot.ops.report import (
     MADRID,
-    AlertLine,
     Backups,
     Cleanup,
     Day,
     Figures,
+    IncidentLine,
     PlatformStatus,
     Resources,
     Services,
     TenantLine,
 )
 
-MAX_ITEMS = 15  # alerts or tenants listed one by one; past it, a count
+MAX_ITEMS = 15  # incidents or tenants listed one by one; past it, a count
 LEVEL_ICON = {"ok": "🟢", "notice": "🟡", "warning": "🟠", "critical": "🔴"}
 SEVERITY_ICON = {"critical": "🔴", "warning": "🟠", "notice": "🟡", "info": "🟢"}
 STATUS_LABEL = {"active": "activo", "onboarding": "en alta", "paused": "en pausa"}
@@ -88,7 +88,7 @@ def status_text(status: PlatformStatus, now: datetime) -> str:
     lines.append(_resources_line(status.resources))
     lines.append(_backup_line(status.backups, now))
     lines.append(_cleanup_line(status.cleanup, now))
-    lines.append(_alerts_line(status.alerts))
+    lines.append(_incidents_line(status.incidents))
     if status.troubled:
         names = ", ".join(status.troubled[:MAX_ITEMS])
         lines.append(f"Clientes con problemas: {len(status.troubled)} ({names})")
@@ -143,26 +143,33 @@ def _cleanup_line(cleanup: Cleanup, now: datetime) -> str:
     return f"Limpieza nocturna: {'✅' if cleanup.ok else '❌ falló'} {when}"
 
 
-def _alerts_line(alerts: Sequence[AlertLine]) -> str:
-    if not alerts:
-        return "Alertas abiertas: ninguna"
+def _incidents_line(incidents: Sequence[IncidentLine]) -> str:
+    if not incidents:
+        return "Incidencias abiertas: ninguna"
     counts: dict[str, int] = {}
-    for alert in alerts:
-        counts[alert.severity] = counts.get(alert.severity, 0) + 1
+    for incident in incidents:
+        counts[incident.severity] = counts.get(incident.severity, 0) + 1
     parts = [f"{counts[s]} {SEVERITY_ICON[s]}" for s in SEVERITY_ICON if s in counts]
-    return f"Alertas abiertas: {len(alerts)} ({', '.join(parts)})"
+    return f"Incidencias abiertas: {len(incidents)} ({', '.join(parts)})"
 
 
-# ── 🚨 Alertas ───────────────────────────────────────────────────────────────
+# ── 🚨 Incidencias ───────────────────────────────────────────────────────────
 
 
-def alerts_text(alerts: Sequence[AlertLine], now: datetime) -> str:
-    if not alerts:
-        return "🚨 *Alertas abiertas*\n\nNinguna. ✅"
-    shown = alerts[:MAX_ITEMS]
-    lines = [f"{alert.text}\n   desde {ago(alert.since, now)}" for alert in shown]
-    lines = _capped(lines, len(alerts) - len(shown), "alertas")
-    return f"🚨 *Alertas abiertas: {len(alerts)}*\n\n" + "\n\n".join(lines)
+def incidents_text(incidents: Sequence[IncidentLine], now: datetime) -> str:
+    if not incidents:
+        return "🚨 *Incidencias abiertas*\n\nNinguna. ✅"
+    shown = incidents[:MAX_ITEMS]
+    lines = [_incident(incident, now) for incident in shown]
+    lines = _capped(lines, len(incidents) - len(shown), "incidencias")
+    return f"🚨 *Incidencias abiertas: {len(incidents)}*\n\n" + "\n\n".join(lines)
+
+
+def _incident(incident: IncidentLine, now: datetime) -> str:
+    text = f"{incident.text}\n   desde {ago(incident.since, now)}"
+    if incident.new_since_review:
+        text += f" · {incident.new_since_review} nuevos desde tu revisión"
+    return text
 
 
 # ── 📊 Hoy ───────────────────────────────────────────────────────────────────

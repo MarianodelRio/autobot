@@ -38,7 +38,7 @@ def dev_counts() -> dict[str, int]:
         .filter(idem_key__startswith="dev-")
         .count(),
         "metrics": MetricEvent.objects.using("owner").filter(idem_key__startswith="dev-").count(),
-        "alerts": OpsAlert.objects.filter(kind__startswith="dev:").count(),
+        "alerts": OpsAlert.objects.filter(details__seed_dev_activity=True).count(),
     }
 
 
@@ -61,9 +61,15 @@ def test_creates_rows_across_every_timeline_source(
 
     counts = dev_counts()
     assert all(count > 0 for count in counts.values())
-    assert counts["alerts"] == 8
-    assert OpsAlert.objects.filter(kind__startswith="dev:", resolved_at__isnull=True).count() == 3
-    assert OpsAlert.objects.filter(kind__startswith="dev:", resolved_at__isnull=False).count() == 5
+    assert counts["alerts"] == 13
+    seeded = OpsAlert.objects.filter(details__seed_dev_activity=True)
+    assert seeded.filter(resolved_at__isnull=True).count() == 6
+    assert seeded.filter(resolved_at__isnull=False).count() == 7
+    # A reopened event: its previous period was reviewed and it inherits the watermark.
+    rejected = seeded.filter(kind="outbound_rejected:outside_window").order_by("first_seen_at")
+    reviewed, reopened = list(rejected)
+    assert reviewed.resolved_by == "operador" and reopened.resolved_at is None
+    assert reopened.review_watermark == reviewed.review_watermark
 
     with connections["default"].cursor() as cursor:
         cursor.execute(
@@ -139,7 +145,7 @@ def test_reset_leaves_a_single_fresh_batch(tenants: Any, tmp_path: Path, setting
     # a second --reset starting from the first run's data lands in the same range.
     for key in first:
         assert second[key] > 0
-    assert OpsAlert.objects.filter(kind__startswith="dev:").count() == 8
+    assert OpsAlert.objects.filter(details__seed_dev_activity=True).count() == 13
 
 
 def test_reset_without_prior_data_is_a_noop(tenants: Any, tmp_path: Path, settings: Any) -> None:

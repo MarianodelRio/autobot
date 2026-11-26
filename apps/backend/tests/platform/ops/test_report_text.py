@@ -5,11 +5,11 @@ from datetime import datetime, timedelta
 from autobot.ops import report_text
 from autobot.ops.report import (
     MADRID,
-    AlertLine,
     Backups,
     Cleanup,
     Day,
     Figures,
+    IncidentLine,
     PlatformStatus,
     Resources,
     Services,
@@ -32,7 +32,7 @@ CLEANUP = Cleanup(enabled=True, last_at=NOW.replace(hour=4, minute=0), ok=True)
 def status(**changes: object) -> PlatformStatus:
     fields: dict[str, object] = {
         "level": "ok",
-        "alerts": [],
+        "incidents": [],
         "services": Services(running=10, total=10, stale=False, failing=[]),
         "resources": Resources(NOW, disk_pct=34.2, mem_pct=51.8, db_bytes=int(1.2 * 1024**3)),
         "backups": GOOD_BACKUPS,
@@ -79,19 +79,19 @@ def test_a_healthy_status() -> None:
         "Disco 34 % · Memoria 52 % · BD 1,2 GB",
         "Último backup: hace 22 min ✅",
         "Limpieza nocturna: ✅ hoy a las 04:00",
-        "Alertas abiertas: ninguna",
+        "Incidencias abiertas: ninguna",
     ]
 
 
 def test_a_status_with_problems_says_what_and_where() -> None:
     alerts = [
-        AlertLine("critical", "🔴 wa: el canal no responde", NOW - timedelta(minutes=10)),
-        AlertLine("warning", "🟠 Disco por encima del 80 %.", NOW - timedelta(hours=1)),
+        IncidentLine("critical", "🔴 wa: el canal no responde", NOW - timedelta(minutes=10)),
+        IncidentLine("warning", "🟠 Disco por encima del 80 %.", NOW - timedelta(hours=1)),
     ]
     text = report_text.status_text(
         status(
             level="critical",
-            alerts=alerts,
+            incidents=alerts,
             services=Services(running=9, total=10, stale=False, failing=["worker-inbound"]),
             backups=Backups(NOW - timedelta(hours=2), False, True, None, True),
             cleanup=Cleanup(enabled=True, last_at=NOW - timedelta(days=1), ok=False),
@@ -103,7 +103,7 @@ def test_a_status_with_problems_says_what_and_where() -> None:
     assert "Servicios: 9/10 en marcha ⚠️ worker-inbound" in text
     assert "Último backup: ❌ falló, hace 2 h" in text
     assert "Limpieza nocturna: ❌ falló ayer a las 14:05" in text
-    assert "Alertas abiertas: 2 (1 🔴, 1 🟠)" in text
+    assert "Incidencias abiertas: 2 (1 🔴, 1 🟠)" in text
     assert "Clientes con problemas: 1 (Wa)" in text
 
 
@@ -123,14 +123,20 @@ def test_missing_data_is_said_never_invented() -> None:
     assert "Limpieza nocturna: desactivada" in text
 
 
-def test_alerts_list_the_open_ones_and_cap_the_rest() -> None:
-    assert report_text.alerts_text([], NOW) == "🚨 *Alertas abiertas*\n\nNinguna. ✅"
-    many = [AlertLine("warning", f"🟠 alerta {i}", NOW - timedelta(hours=1)) for i in range(40)]
-    text = report_text.alerts_text(many, NOW)
-    assert text.startswith("🚨 *Alertas abiertas: 40*")
-    assert "🟠 alerta 0\n   desde hace 1 h" in text
-    assert "alerta 15" not in text and "… y 25 alertas más en el panel." in text
+def test_incidents_list_the_open_ones_and_cap_the_rest() -> None:
+    assert report_text.incidents_text([], NOW) == "🚨 *Incidencias abiertas*\n\nNinguna. ✅"
+    many = [IncidentLine("warning", f"🟠 fallo {i}", NOW - timedelta(hours=1)) for i in range(40)]
+    text = report_text.incidents_text(many, NOW)
+    assert text.startswith("🚨 *Incidencias abiertas: 40*")
+    assert "🟠 fallo 0\n   desde hace 1 h" in text
+    assert "fallo 15" not in text and "… y 25 incidencias más en el panel." in text
     assert len(text) <= MAX_TEXT
+
+
+def test_a_reopened_event_says_how_many_are_new() -> None:
+    line = IncidentLine("warning", "🟠 wa: rechazados (3).", NOW - timedelta(hours=1), 3)
+    text = report_text.incidents_text([line], NOW)
+    assert "desde hace 1 h · 3 nuevos desde tu revisión" in text
 
 
 def test_a_day_with_totals_busiest_first_and_demos_together() -> None:

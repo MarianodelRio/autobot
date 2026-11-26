@@ -38,40 +38,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/alerts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Alerts */
-        get: operations["autobot_panel_routers_incidents_alerts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/alerts/{id}/resolve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Resolve */
-        post: operations["autobot_panel_routers_incidents_resolve"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/audit": {
         parameters: {
             query?: never;
@@ -383,10 +349,70 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Incidents */
-        get: operations["autobot_panel_routers_incidents_incidents"];
+        /**
+         * Open Incidents
+         * @description Every open incident, most severe and most recent first, with up to 20 cases each.
+         */
+        get: operations["autobot_panel_routers_incidents_open_incidents"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/incidents/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Closed Incidents
+         * @description The closed incidents, most recently closed first, and how each one closed.
+         */
+        get: operations["autobot_panel_routers_incidents_closed_incidents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/incidents/{id}/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Incident Cases */
+        get: operations["autobot_panel_routers_incidents_incident_cases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/incidents/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review
+         * @description «Lo he revisado»: closes an open event; a newer case reopens it.
+         */
+        post: operations["autobot_panel_routers_incidents_review"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1090,63 +1116,13 @@ export interface components {
             occurred_at: string;
             /** Resolved */
             resolved: boolean;
-            /** Severity */
-            severity: string;
+            severity: components["schemas"]["Severity"];
             /** Tenant */
             tenant: string | null;
             /** Text */
             text: string;
-        };
-        /** AlertOut */
-        AlertOut: {
-            /** Auto Resolves */
-            auto_resolves: boolean;
-            /**
-             * First Seen At
-             * Format: date-time
-             */
-            first_seen_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Kind */
-            kind: string;
-            /** Last Delivery */
-            last_delivery: string;
-            /**
-             * Last Seen At
-             * Format: date-time
-             */
-            last_seen_at: string;
-            /** Last Sent At */
-            last_sent_at: string | null;
-            /** Occurrences */
-            occurrences: number;
-            /** Resolved At */
-            resolved_at: string | null;
-            /** Resolved By */
-            resolved_by: string | null;
-            /** Runbook */
-            runbook: string | null;
-            /** Sent Count */
-            sent_count: number;
-            /** Severity */
-            severity: string;
-            /** Tenant */
-            tenant: string | null;
-            /** Tenant Id */
-            tenant_id: string | null;
-            /** Text */
-            text: string;
-        };
-        /** AlertsPage */
-        AlertsPage: {
-            /** Items */
-            items: components["schemas"]["AlertOut"][];
-            /** Next Cursor */
-            next_cursor: string | null;
+            /** Title */
+            title: string;
         };
         /** ApplyDatasetIn */
         ApplyDatasetIn: {
@@ -1193,6 +1169,14 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        CaseOut: components["schemas"]["SendCase"] | components["schemas"]["JobCase"] | components["schemas"]["NoticeCase"];
+        /** CasesPage */
+        CasesPage: {
+            /** Items */
+            items: components["schemas"]["CaseOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
         /** ChecklistItemOut */
         ChecklistItemOut: {
             /** Blocking */
@@ -1205,6 +1189,55 @@ export interface components {
             label: string;
             /** Ok */
             ok: boolean;
+        };
+        /** @enum {string} */
+        Closed: "auto" | "outage" | "review" | "info";
+        /** ClosedIncidentOut */
+        ClosedIncidentOut: {
+            /** Case Count */
+            case_count: number;
+            closed: components["schemas"]["Closed"];
+            /** Closed By */
+            closed_by: string | null;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            nature: components["schemas"]["Nature"];
+            /**
+             * Resolved At
+             * Format: date-time
+             */
+            resolved_at: string;
+            /** Runbook */
+            runbook: string | null;
+            severity: components["schemas"]["Severity"];
+            /** Tenant */
+            tenant: string | null;
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
+        };
+        /** ClosedPage */
+        ClosedPage: {
+            /** Items */
+            items: components["schemas"]["ClosedIncidentOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** ColumnOut */
         ColumnOut: {
@@ -1551,34 +1584,59 @@ export interface components {
             /** Severity */
             severity: string;
         };
-        /** HeldNoticesOut */
-        HeldNoticesOut: {
-            /** Count */
-            count: number;
-            /** Tenant */
-            tenant: string;
+        /** IncidentOut */
+        IncidentOut: {
+            /** Advice */
+            advice: string;
+            /** Case Count */
+            case_count: number;
+            /** Cases */
+            cases: components["schemas"]["CaseOut"][];
+            /** Delivery */
+            delivery: string;
             /**
-             * Tenant Id
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /**
+             * Id
              * Format: uuid
              */
-            tenant_id: string;
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Last Case At */
+            last_case_at: string | null;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            nature: components["schemas"]["Nature"];
+            /** New Since Review */
+            new_since_review: number | null;
+            /** Reviewable */
+            reviewable: boolean;
+            /** Runbook */
+            runbook: string | null;
+            severity: components["schemas"]["Severity"];
+            /** Tenant */
+            tenant: string | null;
+            /** Tenant Id */
+            tenant_id: string | null;
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
         };
         /** IncidentsOut */
         IncidentsOut: {
-            /** Alerts */
-            alerts: components["schemas"]["AlertOut"][];
-            /** Alerts Total */
-            alerts_total: number;
-            /** Held Notices */
-            held_notices: components["schemas"]["HeldNoticesOut"][];
-            /** Jobs */
-            jobs: components["schemas"]["JobOut"][];
-            /** Jobs Total */
-            jobs_total: number;
-            /** Outbound */
-            outbound: components["schemas"]["OutboundIncidentOut"][];
-            /** Outbound Total */
-            outbound_total: number;
+            by_severity: components["schemas"]["SeverityCounts"];
+            /** Items */
+            items: components["schemas"]["IncidentOut"][];
+            /** Total */
+            total: number;
         };
         /** IntegrationOut */
         IntegrationOut: {
@@ -1593,36 +1651,25 @@ export interface components {
             /** State */
             state: string;
         };
-        /** JobOut */
-        JobOut: {
-            /** At */
-            at: string | null;
-            /** Attempts */
-            attempts: number;
+        /** JobCase */
+        JobCase: {
             /** Can Retry */
             can_retry: boolean;
+            /** Failed At */
+            failed_at: string | null;
             /** Id */
             id: number;
-            /** Ids */
-            ids: {
-                [key: string]: string | number;
-            };
-            last_event: components["schemas"]["LastEventOut"];
-            /** Queue */
-            queue: string;
             /** Retry Reason */
             retry_reason: string | null;
-            /** Status */
-            status: string;
-            /** Task Name */
-            task_name: string;
-        };
-        /** LastEventOut */
-        LastEventOut: {
-            /** At */
-            at: string | null;
-            /** Type */
-            type: string | null;
+            /** Task */
+            task: string;
+            /** Task Label */
+            task_label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "job";
         };
         /** LibraryEntryOut */
         LibraryEntryOut: {
@@ -1742,6 +1789,28 @@ export interface components {
             /** Users */
             users: number;
         };
+        /** @enum {string} */
+        Nature: "condition" | "event";
+        /** NoticeCase */
+        NoticeCase: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Status */
+            status: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "notice";
+        };
         /** NotificationOut */
         NotificationOut: {
             /**
@@ -1765,51 +1834,23 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
-        /** OpenAlert */
+        /**
+         * OpenAlert
+         * @description One of the tenant's open incidents (ADR-031).
+         */
         OpenAlert: {
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Severity */
-            severity: string;
+            /** Kind */
+            kind: string;
+            severity: components["schemas"]["Severity"];
             /** Text */
             text: string;
-        };
-        /** OutboundIncidentOut */
-        OutboundIncidentOut: {
-            /** Can Mark Sent */
-            can_mark_sent: boolean;
-            /** Can Resend */
-            can_resend: boolean;
-            /** Channel */
-            channel: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Last Error */
-            last_error: string | null;
-            /** Mark Sent Reason */
-            mark_sent_reason: string | null;
-            /** Resend Reason */
-            resend_reason: string | null;
-            /** Status */
-            status: string;
-            /** Tenant */
-            tenant: string;
-            /**
-             * Tenant Id
-             * Format: uuid
-             */
-            tenant_id: string;
+            /** Title */
+            title: string;
         };
         /** Overview */
         Overview: {
@@ -1966,6 +2007,46 @@ export interface components {
             /** Telegram Webhook Registered */
             telegram_webhook_registered: boolean | null;
         };
+        /** SendCase */
+        SendCase: {
+            /** Can Discard */
+            can_discard: boolean;
+            /** Can Mark Sent */
+            can_mark_sent: boolean;
+            /** Can Resend */
+            can_resend: boolean;
+            /** Channel */
+            channel: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Discard Reason */
+            discard_reason: string | null;
+            /** Error Advice */
+            error_advice: string | null;
+            /** Error Class */
+            error_class: string | null;
+            /** Error Title */
+            error_title: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mark Sent Reason */
+            mark_sent_reason: string | null;
+            /** Resend Reason */
+            resend_reason: string | null;
+            /** Status */
+            status: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "send";
+        };
         /** ServiceAccountOut */
         ServiceAccountOut: {
             /** Configured */
@@ -2038,6 +2119,17 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** @enum {string} */
+        Severity: "critical" | "warning" | "notice" | "info";
+        /** SeverityCounts */
+        SeverityCounts: {
+            /** Critical */
+            critical: number;
+            /** Notice */
+            notice: number;
+            /** Warning */
+            warning: number;
+        };
         /** SlugAvailability */
         SlugAvailability: {
             /** Available */
@@ -2049,7 +2141,7 @@ export interface components {
              * Level
              * @enum {string}
              */
-            level: "ok" | "warning" | "critical";
+            level: "ok" | "notice" | "warning" | "critical";
             /** Problems */
             problems: components["schemas"]["ProblemBrief"][];
         };
@@ -2449,52 +2541,6 @@ export interface operations {
             };
         };
     };
-    autobot_panel_routers_incidents_alerts: {
-        parameters: {
-            query?: {
-                state?: string;
-                cursor?: string;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AlertsPage"];
-                };
-            };
-        };
-    };
-    autobot_panel_routers_incidents_resolve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageOut"];
-                };
-            };
-        };
-    };
     autobot_panel_routers_audit_audit: {
         parameters: {
             query?: {
@@ -2881,9 +2927,30 @@ export interface operations {
             };
         };
     };
-    autobot_panel_routers_incidents_incidents: {
+    autobot_panel_routers_incidents_open_incidents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentsOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_incidents_closed_incidents: {
         parameters: {
             query?: {
+                cursor?: string;
                 limit?: number;
             };
             header?: never;
@@ -2898,7 +2965,54 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IncidentsOut"];
+                    "application/json": components["schemas"]["ClosedPage"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_incidents_incident_cases: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CasesPage"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_incidents_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
                 };
             };
         };

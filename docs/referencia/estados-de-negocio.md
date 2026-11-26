@@ -15,7 +15,7 @@ tres fuentes y se queda con el nivel más grave.
 | Registro | La configuración del negocio está degradada. | `critical` |
 | Registro | El negocio está `active`, no es demo y su canal principal está desactivado. | `critical` |
 | Instantánea de salud | Cada problema de la última comprobación diaria ([alertas](alertas.md)), según su emoji: 🔴, 🟠 o 🟡. | `critical`, `warning` o `notice` |
-| Alertas abiertas del negocio | Una alerta abierta con severidad `critical`, `warning` o `notice`. | el mismo nivel |
+| Incidencias abiertas del negocio | Cada incidencia abierta del negocio ([alertas](alertas.md), `ops.incidents.open_incidents`, la misma lista que Incidencias), con su título como motivo. Una 🟡 lo deja en `notice`, nunca más alto. Un evento revisado deja de contar; un caso nuevo lo reabre y vuelve a contar. | el de su severidad (`critical`, `warning` o `notice`) |
 
 Orden de gravedad: `critical`, `warning`, `notice`. Se devuelve el primero que tenga motivos
 y la lista de motivos sin repetir.

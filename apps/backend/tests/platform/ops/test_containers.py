@@ -248,15 +248,15 @@ def test_recent_restart_is_a_warning_without_hiding_an_old_one() -> None:
     web = next(row for row in recent.services if row.service == "web")
     assert web.level == "warning"
     assert web.restart_count == 2
-    assert any(kind == "container_restarted:web" for kind, _ in recent.findings)
+    # The event itself is ops_check's (`_restart_findings`), not the assessment's.
+    assert not any(kind.startswith("container_restarted") for kind, _ in recent.findings)
 
     old = _assess(
         [container("web", restart_count=2, started_at=(NOW - timedelta(hours=2)).isoformat())]
     )
     web_old = next(row for row in old.services if row.service == "web")
-    assert web_old.level == "ok"  # still shown in the row, but no finding
+    assert web_old.level == "ok"  # still shown in the row
     assert web_old.restart_count == 2
-    assert not any(kind == "container_restarted:web" for kind, _ in old.findings)
 
 
 def test_image_mismatch_is_a_warning_only_for_app_services() -> None:

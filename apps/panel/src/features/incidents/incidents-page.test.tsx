@@ -11,51 +11,74 @@ import { routeTree } from "@/routeTree.gen";
 
 afterEach(() => vi.unstubAllGlobals());
 
-const alert = {
-  id: "a1",
-  kind: "manual",
+const base = {
   tenant_id: "t1",
   tenant: "demo",
   severity: "warning",
-  text: "Algo va mal",
+  text: "🟠 demo: algo",
   first_seen_at: "2026-11-04T09:00:00Z",
   last_seen_at: "2026-11-04T10:00:00Z",
-  occurrences: 2,
-  sent_count: 1,
-  last_sent_at: "2026-11-04T10:00:00Z",
-  last_delivery: "sent",
-  auto_resolves: false,
-  resolved_at: null,
-  resolved_by: null,
-  runbook: "/docs/incidencias/calendar/",
+  last_case_at: "2026-11-04T10:00:00Z",
+  delivery: "sent",
 };
 
-const outbound = {
+const sendCase = {
+  type: "send",
   id: "o1",
-  tenant_id: "t1",
-  tenant: "demo",
   channel: "telegram",
   status: "unknown",
   created_at: "2026-11-04T09:00:00Z",
-  last_error: null,
+  error_class: null,
+  error_title: null,
+  error_advice: null,
   can_mark_sent: true,
   mark_sent_reason: null,
   can_resend: true,
   resend_reason: null,
+  can_discard: true,
+  discard_reason: null,
 };
 
-const job = {
+const jobCase = {
+  type: "job",
   id: 1,
-  at: "2026-11-04T09:00:00Z",
-  task_name: "send_message",
-  queue: "default",
-  status: "failed",
-  attempts: 3,
-  ids: {},
-  last_event: { type: "failed", at: "2026-11-04T09:00:00Z" },
+  task: "ops_check",
+  task_label: "Comprobación de operación",
+  failed_at: "2026-11-04T09:00:00Z",
   can_retry: true,
   retry_reason: null,
 };
+
+const incidents = [
+  {
+    ...base,
+    id: "a1",
+    kind: "outbound_ambiguous",
+    nature: "condition",
+    title: "Envíos sin confirmar",
+    advice: "Decide cada uno.",
+    runbook: "/docs/incidencias/envios-unknown/",
+    case_count: 1,
+    new_since_review: null,
+    reviewable: false,
+    cases: [sendCase],
+  },
+  {
+    ...base,
+    id: "a2",
+    kind: "failed_job:ops_check",
+    tenant_id: null,
+    tenant: null,
+    nature: "event",
+    title: "Trabajo fallido: Comprobación de operación",
+    advice: "Reinténtala.",
+    runbook: null,
+    case_count: 1,
+    new_since_review: 1,
+    reviewable: true,
+    cases: [jobCase],
+  },
+];
 
 function stubFetch() {
   return vi.fn(async (request: RequestInfo | URL) => {
@@ -70,25 +93,25 @@ function stubFetch() {
         JSON.stringify({ status: { level: "ok" }, tenant_rows: [] }),
         { headers: { "Content-Type": "application/json" } },
       );
-    if (url.pathname.endsWith("/incidents"))
-      return new Response(
-        JSON.stringify({
-          alerts: [alert],
-          outbound: [outbound],
-          jobs: [job],
-          alerts_total: 1,
-          outbound_total: 1,
-          jobs_total: 1,
-          held_notices: [{ tenant_id: "t1", tenant: "demo", count: 2 }],
-        }),
-        { headers: { "Content-Type": "application/json" } },
-      );
-    if (url.pathname.endsWith("/alerts"))
+    if (url.pathname.endsWith("/incidents/history"))
       return new Response(JSON.stringify({ items: [], next_cursor: null }), {
         headers: { "Content-Type": "application/json" },
       });
-    if (url.pathname.endsWith("/resolve"))
-      return new Response(JSON.stringify({ message: "Alerta resuelta." }), {
+    if (url.pathname.endsWith("/incidents"))
+      return new Response(
+        JSON.stringify({
+          items: incidents,
+          total: 2,
+          by_severity: { critical: 0, warning: 2, notice: 0 },
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    if (url.pathname.endsWith("/incidents/history"))
+      return new Response(JSON.stringify({ items: [], next_cursor: null }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    if (url.pathname.endsWith("/review") || url.pathname.endsWith("/discard"))
+      return new Response(JSON.stringify({ message: "Hecho." }), {
         headers: { "Content-Type": "application/json" },
       });
     if (url.pathname.endsWith("/mark-sent"))
@@ -142,7 +165,7 @@ function posted(fetcher: ReturnType<typeof stubFetch>, suffix: string) {
   );
 }
 
-test("an alert with a runbook links to it in the docs", async () => {
+test("an incident with a runbook links to it in the docs", async () => {
   vi.stubGlobal("fetch", stubFetch());
   renderPage();
 
@@ -151,21 +174,28 @@ test("an alert with a runbook links to it in the docs", async () => {
     { name: "Ver runbook" },
     { timeout: 8000 },
   );
-  expect(links[0]?.getAttribute("href")).toBe("/docs/incidencias/calendar/");
+  expect(links[0]?.getAttribute("href")).toBe(
+    "/docs/incidencias/envios-unknown/",
+  );
 }, 10_000);
 
-test("resolves an alert that does not auto-resolve", async () => {
+test("an event is closed with «Lo he revisado» and says what is new", async () => {
   const user = userEvent.setup();
   const fetcher = stubFetch();
   vi.stubGlobal("fetch", fetcher);
   renderPage();
 
-  await user.click(
-    await screen.findByRole("button", { name: "Resolver" }, { timeout: 8000 }),
+  expect(
+    await screen.findByText(
+      /1 nuevos desde tu revisión/,
+      {},
+      { timeout: 8000 },
+    ),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Lo he revisado" }));
+  await waitFor(() =>
+    expect(posted(fetcher, "/incidents/a2/review")).toBe(true),
   );
-  await user.click(await screen.findByRole("button", { name: "Resolver" }));
-
-  await waitFor(() => expect(posted(fetcher, "/alerts/a1/resolve")).toBe(true));
 }, 10_000);
 
 test("marking a send as sent posts without confirmation", async () => {
@@ -228,11 +258,16 @@ test("retries a failed job", async () => {
   await waitFor(() => expect(posted(fetcher, "/jobs/1/retry")).toBe(true));
 }, 10_000);
 
-test("shows the owner notices held for lack of a linked chat", async () => {
-  vi.stubGlobal("fetch", stubFetch());
+test("discards an ambiguous send", async () => {
+  const user = userEvent.setup();
+  const fetcher = stubFetch();
+  vi.stubGlobal("fetch", fetcher);
   renderPage();
 
-  expect(
-    await screen.findByText("demo: 2 avisos retenidos", {}, { timeout: 8000 }),
-  ).toBeInTheDocument();
+  await user.click(
+    await screen.findByRole("button", { name: "Descartar" }, { timeout: 8000 }),
+  );
+  await waitFor(() =>
+    expect(posted(fetcher, "/outbound/o1/discard")).toBe(true),
+  );
 }, 10_000);

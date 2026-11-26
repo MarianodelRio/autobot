@@ -1,4 +1,5 @@
-"""Persistent operation cooldowns must survive cache capacity pressure."""
+"""Persistent operation keys (the daily summary's claim, the bots' auth flags, the demo
+routes) must survive cache capacity pressure."""
 
 from datetime import datetime
 from uuid import UUID
@@ -12,7 +13,7 @@ from autobot.channels.base import Rejected, SendOutcome, Sent
 
 
 class CooldownCache(DatabaseCache):
-    """Keep Django's database cache API, but never evict unexpired cooldowns."""
+    """Keep Django's database cache API, but never evict unexpired keys."""
 
     _table: str  # Initialized by DatabaseCache; absent from django-stubs.
 

@@ -30,7 +30,6 @@ from autobot.runtime.models import (
     OutboundMessage,
     OwnerLink,
 )
-from autobot.runtime.notifications import _cooldown_key
 from autobot.tenancy.models import (
     ConfigRevision,
     Tenant,
@@ -413,12 +412,6 @@ def _purge(tenant: Tenant, *, actor: str, ledger: bool) -> None:
             # no identity hash of an erased person outlives the tenant.
             PrivacySuppression.objects.using("owner").filter(tenant_id=tenant.id).delete()
             suppressions.record(suppressions.PURGE, tenant.id)
-        kinds = set(
-            OpsAlert.objects.using("owner")
-            .filter(tenant_id=tenant_id)
-            .values_list("kind", flat=True)
-            .distinct()
-        )
         demo_events(tenant_id).delete()
         for model in MODELS:
             model.objects.using("owner").filter(tenant_id=tenant_id).delete()
@@ -451,7 +444,5 @@ def _purge(tenant: Tenant, *, actor: str, ledger: bool) -> None:
             cache.delete(f"health:{tenant_id}")
             for channel in Channel:
                 cache.delete(runtime_state.key(tenant_id, channel))
-            for kind in kinds:
-                cache.delete(_cooldown_key(kind, tenant_id))
 
         transaction.on_commit(_clear_cache, using="owner")

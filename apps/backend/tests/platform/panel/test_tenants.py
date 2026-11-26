@@ -103,8 +103,14 @@ def test_tenant_detail_only_includes_its_open_alerts(authed_client: Any, tenants
         text="Resuelta",
         resolved_at=NOW,
     )
-    alerts = get(authed_client, "tenants/a").json()["open_alerts"]
+    body = get(authed_client, "tenants/a").json()
+    alerts = body["open_alerts"]
     assert [alert["text"] for alert in alerts] == ["Aviso del cliente"]
+    assert alerts[0]["title"] == "open" and alerts[0]["severity"] == "warning"
+    # The detail's level counts its open incidents, as the tenant list does (ADR-031).
+    listed = {row["slug"]: row for row in get(authed_client, "tenants").json()}
+    assert body["health"] == "warning" == listed["a"]["health"]
+    assert "open" in body["health_reasons"]
 
 
 def test_tenant_detail_telegram_with_bot_username(authed_client: Any, tenants: Any) -> None:

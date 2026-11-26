@@ -185,8 +185,7 @@
             "type": "boolean"
           },
           "severity": {
-            "title": "Severity",
-            "type": "string"
+            "$ref": "#/components/schemas/Severity"
           },
           "tenant": {
             "anyOf": [
@@ -202,6 +201,10 @@
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -209,175 +212,12 @@
           "kind",
           "tenant",
           "severity",
+          "title",
           "text",
           "occurred_at",
           "resolved"
         ],
         "title": "AlertBrief",
-        "type": "object"
-      },
-      "AlertOut": {
-        "properties": {
-          "auto_resolves": {
-            "title": "Auto Resolves",
-            "type": "boolean"
-          },
-          "first_seen_at": {
-            "format": "date-time",
-            "title": "First Seen At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "last_delivery": {
-            "title": "Last Delivery",
-            "type": "string"
-          },
-          "last_seen_at": {
-            "format": "date-time",
-            "title": "Last Seen At",
-            "type": "string"
-          },
-          "last_sent_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Sent At"
-          },
-          "occurrences": {
-            "title": "Occurrences",
-            "type": "integer"
-          },
-          "resolved_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resolved At"
-          },
-          "resolved_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resolved By"
-          },
-          "runbook": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Runbook"
-          },
-          "sent_count": {
-            "title": "Sent Count",
-            "type": "integer"
-          },
-          "severity": {
-            "title": "Severity",
-            "type": "string"
-          },
-          "tenant": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tenant"
-          },
-          "tenant_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tenant Id"
-          },
-          "text": {
-            "title": "Text",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "tenant_id",
-          "tenant",
-          "severity",
-          "text",
-          "first_seen_at",
-          "last_seen_at",
-          "occurrences",
-          "sent_count",
-          "last_sent_at",
-          "last_delivery",
-          "auto_resolves",
-          "resolved_at",
-          "resolved_by",
-          "runbook"
-        ],
-        "title": "AlertOut",
-        "type": "object"
-      },
-      "AlertsPage": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AlertOut"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "next_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Cursor"
-          }
-        },
-        "required": [
-          "items",
-          "next_cursor"
-        ],
-        "title": "AlertsPage",
         "type": "object"
       },
       "ApplyDatasetIn": {
@@ -510,6 +350,55 @@
         "title": "AuditPage",
         "type": "object"
       },
+      "CaseOut": {
+        "discriminator": {
+          "mapping": {
+            "job": "#/components/schemas/JobCase",
+            "notice": "#/components/schemas/NoticeCase",
+            "send": "#/components/schemas/SendCase"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SendCase"
+          },
+          {
+            "$ref": "#/components/schemas/JobCase"
+          },
+          {
+            "$ref": "#/components/schemas/NoticeCase"
+          }
+        ]
+      },
+      "CasesPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CaseOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CasesPage",
+        "type": "object"
+      },
       "ChecklistItemOut": {
         "properties": {
           "blocking": {
@@ -541,6 +430,143 @@
           "detail"
         ],
         "title": "ChecklistItemOut",
+        "type": "object"
+      },
+      "Closed": {
+        "enum": [
+          "auto",
+          "outage",
+          "review",
+          "info"
+        ],
+        "type": "string"
+      },
+      "ClosedIncidentOut": {
+        "properties": {
+          "case_count": {
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "closed": {
+            "$ref": "#/components/schemas/Closed"
+          },
+          "closed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed By"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "nature": {
+            "$ref": "#/components/schemas/Nature"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "runbook": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runbook"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "nature",
+          "severity",
+          "tenant",
+          "title",
+          "text",
+          "runbook",
+          "first_seen_at",
+          "last_seen_at",
+          "resolved_at",
+          "case_count",
+          "closed",
+          "closed_by"
+        ],
+        "title": "ClosedIncidentOut",
+        "type": "object"
+      },
+      "ClosedPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClosedIncidentOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ClosedPage",
         "type": "object"
       },
       "ColumnOut": {
@@ -1566,81 +1592,166 @@
         "title": "HealthIssueOut",
         "type": "object"
       },
-      "HeldNoticesOut": {
+      "IncidentOut": {
         "properties": {
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          },
-          "tenant": {
-            "title": "Tenant",
+          "advice": {
+            "title": "Advice",
             "type": "string"
           },
-          "tenant_id": {
+          "case_count": {
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/CaseOut"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
+          "delivery": {
+            "title": "Delivery",
+            "type": "string"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "id": {
             "format": "uuid",
-            "title": "Tenant Id",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_case_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Case At"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "nature": {
+            "$ref": "#/components/schemas/Nature"
+          },
+          "new_since_review": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Since Review"
+          },
+          "reviewable": {
+            "title": "Reviewable",
+            "type": "boolean"
+          },
+          "runbook": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runbook"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
             "type": "string"
           }
         },
         "required": [
+          "id",
+          "kind",
+          "nature",
+          "severity",
           "tenant_id",
           "tenant",
-          "count"
+          "title",
+          "advice",
+          "text",
+          "runbook",
+          "first_seen_at",
+          "last_seen_at",
+          "case_count",
+          "last_case_at",
+          "new_since_review",
+          "reviewable",
+          "delivery",
+          "cases"
         ],
-        "title": "HeldNoticesOut",
+        "title": "IncidentOut",
         "type": "object"
       },
       "IncidentsOut": {
         "properties": {
-          "alerts": {
+          "by_severity": {
+            "$ref": "#/components/schemas/SeverityCounts"
+          },
+          "items": {
             "items": {
-              "$ref": "#/components/schemas/AlertOut"
+              "$ref": "#/components/schemas/IncidentOut"
             },
-            "title": "Alerts",
+            "title": "Items",
             "type": "array"
           },
-          "alerts_total": {
-            "title": "Alerts Total",
-            "type": "integer"
-          },
-          "held_notices": {
-            "items": {
-              "$ref": "#/components/schemas/HeldNoticesOut"
-            },
-            "title": "Held Notices",
-            "type": "array"
-          },
-          "jobs": {
-            "items": {
-              "$ref": "#/components/schemas/JobOut"
-            },
-            "title": "Jobs",
-            "type": "array"
-          },
-          "jobs_total": {
-            "title": "Jobs Total",
-            "type": "integer"
-          },
-          "outbound": {
-            "items": {
-              "$ref": "#/components/schemas/OutboundIncidentOut"
-            },
-            "title": "Outbound",
-            "type": "array"
-          },
-          "outbound_total": {
-            "title": "Outbound Total",
+          "total": {
+            "title": "Total",
             "type": "integer"
           }
         },
         "required": [
-          "alerts",
-          "outbound",
-          "jobs",
-          "alerts_total",
-          "outbound_total",
-          "jobs_total",
-          "held_notices"
+          "items",
+          "total",
+          "by_severity"
         ],
         "title": "IncidentsOut",
         "type": "object"
@@ -1693,9 +1804,13 @@
         "title": "IntegrationOut",
         "type": "object"
       },
-      "JobOut": {
+      "JobCase": {
         "properties": {
-          "at": {
+          "can_retry": {
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "failed_at": {
             "anyOf": [
               {
                 "format": "date-time",
@@ -1705,40 +1820,11 @@
                 "type": "null"
               }
             ],
-            "title": "At"
-          },
-          "attempts": {
-            "title": "Attempts",
-            "type": "integer"
-          },
-          "can_retry": {
-            "title": "Can Retry",
-            "type": "boolean"
+            "title": "Failed At"
           },
           "id": {
             "title": "Id",
             "type": "integer"
-          },
-          "ids": {
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Ids",
-            "type": "object"
-          },
-          "last_event": {
-            "$ref": "#/components/schemas/LastEventOut"
-          },
-          "queue": {
-            "title": "Queue",
-            "type": "string"
           },
           "retry_reason": {
             "anyOf": [
@@ -1751,61 +1837,30 @@
             ],
             "title": "Retry Reason"
           },
-          "status": {
-            "title": "Status",
+          "task": {
+            "title": "Task",
             "type": "string"
           },
-          "task_name": {
-            "title": "Task Name",
+          "task_label": {
+            "title": "Task Label",
+            "type": "string"
+          },
+          "type": {
+            "const": "job",
+            "default": "job",
+            "title": "Type",
             "type": "string"
           }
         },
         "required": [
           "id",
-          "at",
-          "task_name",
-          "queue",
-          "status",
-          "attempts",
-          "ids",
-          "last_event",
+          "task",
+          "task_label",
+          "failed_at",
           "can_retry",
           "retry_reason"
         ],
-        "title": "JobOut",
-        "type": "object"
-      },
-      "LastEventOut": {
-        "properties": {
-          "at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "At"
-          },
-          "type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Type"
-          }
-        },
-        "required": [
-          "type",
-          "at"
-        ],
-        "title": "LastEventOut",
+        "title": "JobCase",
         "type": "object"
       },
       "LibraryEntryOut": {
@@ -2075,6 +2130,44 @@
         "title": "MonthSummary",
         "type": "object"
       },
+      "Nature": {
+        "enum": [
+          "condition",
+          "event"
+        ],
+        "type": "string"
+      },
+      "NoticeCase": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "const": "notice",
+            "default": "notice",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "created_at"
+        ],
+        "title": "NoticeCase",
+        "type": "object"
+      },
       "NotificationOut": {
         "properties": {
           "created_at": {
@@ -2146,114 +2239,37 @@
         "type": "object"
       },
       "OpenAlert": {
+        "description": "One of the tenant's open incidents (ADR-031).",
         "properties": {
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
           },
-          "severity": {
-            "title": "Severity",
+          "kind": {
+            "title": "Kind",
             "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
           },
           "text": {
             "title": "Text",
             "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
           "id",
+          "kind",
+          "title",
           "text",
           "severity"
         ],
         "title": "OpenAlert",
-        "type": "object"
-      },
-      "OutboundIncidentOut": {
-        "properties": {
-          "can_mark_sent": {
-            "title": "Can Mark Sent",
-            "type": "boolean"
-          },
-          "can_resend": {
-            "title": "Can Resend",
-            "type": "boolean"
-          },
-          "channel": {
-            "title": "Channel",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "last_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error"
-          },
-          "mark_sent_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mark Sent Reason"
-          },
-          "resend_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resend Reason"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "tenant": {
-            "title": "Tenant",
-            "type": "string"
-          },
-          "tenant_id": {
-            "format": "uuid",
-            "title": "Tenant Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "tenant_id",
-          "tenant",
-          "channel",
-          "status",
-          "created_at",
-          "last_error",
-          "can_mark_sent",
-          "mark_sent_reason",
-          "can_resend",
-          "resend_reason"
-        ],
-        "title": "OutboundIncidentOut",
         "type": "object"
       },
       "Overview": {
@@ -2689,6 +2705,129 @@
         "title": "SecretsUpdateOut",
         "type": "object"
       },
+      "SendCase": {
+        "properties": {
+          "can_discard": {
+            "title": "Can Discard",
+            "type": "boolean"
+          },
+          "can_mark_sent": {
+            "title": "Can Mark Sent",
+            "type": "boolean"
+          },
+          "can_resend": {
+            "title": "Can Resend",
+            "type": "boolean"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "discard_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discard Reason"
+          },
+          "error_advice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Advice"
+          },
+          "error_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Class"
+          },
+          "error_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Title"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mark_sent_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mark Sent Reason"
+          },
+          "resend_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resend Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "const": "send",
+            "default": "send",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "channel",
+          "status",
+          "created_at",
+          "error_class",
+          "error_title",
+          "error_advice",
+          "can_mark_sent",
+          "mark_sent_reason",
+          "can_resend",
+          "resend_reason",
+          "can_discard",
+          "discard_reason"
+        ],
+        "title": "SendCase",
+        "type": "object"
+      },
       "ServiceAccountOut": {
         "properties": {
           "configured": {
@@ -2851,6 +2990,38 @@
         "title": "SetupValue",
         "type": "object"
       },
+      "Severity": {
+        "enum": [
+          "critical",
+          "warning",
+          "notice",
+          "info"
+        ],
+        "type": "string"
+      },
+      "SeverityCounts": {
+        "properties": {
+          "critical": {
+            "title": "Critical",
+            "type": "integer"
+          },
+          "notice": {
+            "title": "Notice",
+            "type": "integer"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "critical",
+          "warning",
+          "notice"
+        ],
+        "title": "SeverityCounts",
+        "type": "object"
+      },
       "SlugAvailability": {
         "properties": {
           "available": {
@@ -2869,6 +3040,7 @@
           "level": {
             "enum": [
               "ok",
+              "notice",
               "warning",
               "critical"
             ],
@@ -4041,102 +4213,6 @@
         ]
       }
     },
-    "/alerts": {
-      "get": {
-        "operationId": "autobot_panel_routers_incidents_alerts",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "state",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "State",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Cursor",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AlertsPage"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "PanelAuth": []
-          }
-        ],
-        "summary": "Alerts",
-        "tags": [
-          "incidents"
-        ]
-      }
-    },
-    "/alerts/{id}/resolve": {
-      "post": {
-        "operationId": "autobot_panel_routers_incidents_resolve",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MessageOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "PanelAuth": []
-          }
-        ],
-        "summary": "Resolve",
-        "tags": [
-          "incidents"
-        ]
-      }
-    },
     "/audit": {
       "get": {
         "operationId": "autobot_panel_routers_audit_audit",
@@ -4764,21 +4840,9 @@
     },
     "/incidents": {
       "get": {
-        "operationId": "autobot_panel_routers_incidents_incidents",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
+        "description": "Every open incident, most severe and most recent first, with up to 20 cases each.",
+        "operationId": "autobot_panel_routers_incidents_open_incidents",
+        "parameters": [],
         "responses": {
           "200": {
             "content": {
@@ -4796,7 +4860,157 @@
             "PanelAuth": []
           }
         ],
-        "summary": "Incidents",
+        "summary": "Open Incidents",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/incidents/history": {
+      "get": {
+        "description": "The closed incidents, most recently closed first, and how each one closed.",
+        "operationId": "autobot_panel_routers_incidents_closed_incidents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosedPage"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Closed Incidents",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/incidents/{id}/cases": {
+      "get": {
+        "operationId": "autobot_panel_routers_incidents_incident_cases",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CasesPage"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Incident Cases",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/incidents/{id}/review": {
+      "post": {
+        "description": "«Lo he revisado»: closes an open event; a newer case reopens it.",
+        "operationId": "autobot_panel_routers_incidents_review",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Review",
         "tags": [
           "incidents"
         ]

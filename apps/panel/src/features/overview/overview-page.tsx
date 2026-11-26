@@ -34,11 +34,13 @@ import { useOverview } from "./use-overview";
 type Overview = components["schemas"]["Overview"];
 const colors = {
   ok: "border-status-ok",
+  notice: "border-status-notice",
   warning: "border-status-warning",
   critical: "border-status-critical",
 };
 const titles = {
   ok: "Todo bien",
+  notice: "Avisos menores",
   warning: "Atención",
   critical: "Estado crítico",
 };

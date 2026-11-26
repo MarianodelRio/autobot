@@ -157,11 +157,12 @@ def test_month_boundary_is_midnight_in_madrid(tenants: Any, at: datetime, counte
     [
         ("critical", False, "critical"),
         ("warning", False, "warning"),
-        ("notice", False, "ok"),
+        ("notice", False, "notice"),  # counted, but never above notice
+        ("info", False, "ok"),
         ("critical", True, "ok"),
     ],
 )
-def test_status_level_from_open_alerts(
+def test_status_level_from_open_incidents(
     tenants: Any, severity: str, resolved: bool, expected: str
 ) -> None:
     tenants(wa_tenant("a"))
@@ -169,23 +170,24 @@ def test_status_level_from_open_alerts(
     assert build_overview(NOW).status.level == expected
 
 
-def test_stale_outbound_also_raises_the_level_to_critical(tenants: Any) -> None:
+def test_an_old_failed_send_no_longer_raises_the_level(tenants: Any) -> None:
+    """ADR-031: only open incidents count; a failed send is a case of its incident."""
     tenants(wa_tenant("a"))
     outbound("a", contact("a"), status="failed")
-    assert build_overview(NOW).status.level == "critical"
+    outbound("a", contact("a", 2), status="unknown", unknown_at=NOW - timedelta(minutes=30))
+    overview = build_overview(NOW)
+    assert overview.status.level == "ok" and overview.incidents_open == 0
 
 
-def test_incidents_open_counts_alerts_and_stale_outbound(tenants: Any) -> None:
+def test_incidents_open_is_the_open_incidents(tenants: Any) -> None:
     tenants(wa_tenant("a"))
     alert("open-one", "warning")
     alert("open-two", "critical")
+    alert("open-three", "notice")
     alert("closed", "warning", resolved=True)
-    outbound("a", contact("a"), status="failed")
-    outbound("a", contact("a", 2), status="unknown", unknown_at=NOW - timedelta(minutes=30))
-    outbound("a", contact("a", 3), status="unknown", unknown_at=NOW - timedelta(minutes=2))
     overview = build_overview(NOW)
-    # 2 open alerts + 1 failed + 1 stale unknown (the recent unknown is not stale yet).
-    assert overview.incidents_open == 4
+    assert overview.incidents_open == 3
+    assert [p.text for p in overview.status.problems] == ["critical open-two", "warning open-one"]
 
 
 def test_metrics_are_grouped_by_pack_and_kind_with_a_known_label(tenants: Any) -> None:
