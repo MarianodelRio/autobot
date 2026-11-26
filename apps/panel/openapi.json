@@ -1692,6 +1692,17 @@
             ],
             "title": "Runbook"
           },
+          "seen_through": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen Through"
+          },
           "severity": {
             "$ref": "#/components/schemas/Severity"
           },
@@ -1743,6 +1754,7 @@
           "has_cases",
           "case_count",
           "last_case_at",
+          "seen_through",
           "new_since_review",
           "reviewable",
           "can_discard_all",
@@ -2593,17 +2605,16 @@
       },
       "ReviewIn": {
         "properties": {
-          "last_case_at": {
+          "seen_through": {
             "anyOf": [
               {
-                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Last Case At"
+            "title": "Seen Through"
           }
         },
         "title": "ReviewIn",

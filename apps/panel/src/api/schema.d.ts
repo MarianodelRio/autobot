@@ -1651,6 +1651,8 @@ export interface components {
             reviewable: boolean;
             /** Runbook */
             runbook: string | null;
+            /** Seen Through */
+            seen_through: string | null;
             severity: components["schemas"]["Severity"];
             /** Tenant */
             tenant: string | null;
@@ -1997,8 +1999,8 @@ export interface components {
         };
         /** ReviewIn */
         ReviewIn: {
-            /** Last Case At */
-            last_case_at?: string | null;
+            /** Seen Through */
+            seen_through?: string | null;
         };
         /** RollbackIn */
         RollbackIn: {

@@ -20,6 +20,7 @@ const base = {
   first_seen_at: "2026-11-04T09:00:00Z",
   last_seen_at: "2026-11-04T10:00:00Z",
   last_case_at: "2026-11-04T10:00:00Z",
+  seen_through: "token-of-the-exact-case-time",
   delivery: "sent",
   has_cases: true,
   can_discard_all: false,
@@ -297,8 +298,10 @@ test("«Lo he revisado» is one click, sends what is displayed and the card disa
   await waitFor(() =>
     expect(posted(fetcher, "/incidents/a2/review")).toBe(true),
   );
+  // The opaque token as the API sent it, never a time the browser read (it only has
+  // milliseconds of it: a cut time reopened the incident on every pass).
   expect(bodies[reviewPath()]).toEqual({
-    last_case_at: "2026-11-04T10:00:00Z",
+    seen_through: "token-of-the-exact-case-time",
   });
   await waitFor(() =>
     expect(screen.queryByText(/Trabajo fallido/)).not.toBeInTheDocument(),

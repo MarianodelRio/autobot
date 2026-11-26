@@ -17,6 +17,8 @@ from tests.platform.runtime.test_actions import message  # noqa: F401
 
 pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 
+REJ = "outbound_rejected:outside_window"
+
 
 @pytest.mark.usefixtures("clean_jobs")
 @pytest.mark.parametrize("action,status", [("mark-sent", "sent"), ("resend", "pending")])
@@ -417,20 +419,100 @@ def incidents_closed_how(row: OpsAlert) -> str:
 
 
 def test_review_never_covers_a_case_the_panel_did_not_show(authed_client: Any) -> None:
+    from autobot.panel.services.incidents import seen_token
+
     now = timezone.now()
     stored = now - timedelta(minutes=1)
     shown = now - timedelta(minutes=10)
     event = open_incident("deploy_rollback", last_case_at=stored)
-    body = {"last_case_at": shown.isoformat()}
+    body = {"seen_through": seen_token(shown)}
     assert post(authed_client, f"incidents/{event.id}/review", body).status_code == 200
     event.refresh_from_db(using="owner")
     assert event.review_watermark == shown  # min(shown, stored)
     # Shown later than stored (never expected): the stored one bounds it.
     second = open_incident("deploy_aborted", last_case_at=shown)
-    body = {"last_case_at": stored.isoformat()}
+    body = {"seen_through": seen_token(stored)}
     assert post(authed_client, f"incidents/{second.id}/review", body).status_code == 200
     second.refresh_from_db(using="owner")
     assert second.review_watermark == shown
+
+
+def test_a_malformed_review_token_is_refused(authed_client: Any) -> None:
+    event = open_incident("deploy_rollback", last_case_at=timezone.now())
+    body = {"seen_through": "not-a-token"}
+    assert post(authed_client, f"incidents/{event.id}/review", body).status_code == 400
+    event.refresh_from_db(using="owner")
+    assert event.resolved_at is None
+
+
+@pytest.fixture
+def quiet_checks(monkeypatch: pytest.MonkeyPatch, settings: Any) -> None:
+    """ops_check without network nor host readings (like tests/platform/ops)."""
+    from autobot.ops import health, system
+    from tests.helpers.disk import fake_disk
+
+    settings.HEALTHCHECKS_PING_URL = ""
+    settings.DEMO_TELEGRAM_TOKEN = ""
+    settings.NOTIFY_BOT_TOKEN = ""
+    settings.OPS_TELEGRAM_CHAT_ID = ""
+    monkeypatch.setattr(health, "tenant_health", lambda tenant: [])
+    for metric in ("memory", "load", "swap"):
+        monkeypatch.setattr(system, metric, lambda: 1.0)
+    fake_disk(monkeypatch, 1)
+
+
+def _rejected_send_with_microseconds(tenants: Any) -> OutboundMessage:
+    """The production case: a send rejected with WhatsApp 131047 whose time has
+    microseconds the browser never sees (from before `failed_at` existed)."""
+    from tests.helpers.integration import wa_tenant
+    from tests.platform.ops.test_incidents import failed_send
+
+    tenants(wa_tenant())
+    row = failed_send()
+    at = (timezone.now() - timedelta(hours=3)).replace(microsecond=776421)
+    OutboundMessage.objects.using("owner").filter(id=row.id).update(created_at=at, failed_at=None)
+    return row
+
+
+@pytest.mark.usefixtures("clean_jobs", "quiet_checks")
+def test_a_review_through_the_api_stays_closed(authed_client: Any, tenants: Any) -> None:
+    """Regression: the JSON renderer cuts datetimes to milliseconds, so a review that sent
+    back the `last_case_at` the browser read left the watermark 421 µs before the case and
+    the incident reopened on every pass. The panel now sends `seen_through` untouched."""
+    from autobot.ops import check
+
+    _rejected_send_with_microseconds(tenants)
+    check.run()
+    item = next(i for i in get(authed_client, "incidents").json()["items"] if i["kind"] == REJ)
+    # What the browser has of the time stops at the millisecond …
+    assert ".776Z" in item["last_case_at"] or item["last_case_at"].endswith(".776+00:00")
+    # … but the token it sends back carries the exact case time.
+    body = {"seen_through": item["seen_through"]}
+    assert post(authed_client, f"incidents/{item['id']}/review", body).status_code == 200
+    for _ in range(3):
+        check.run()
+    assert not OpsAlert.objects.using("owner").filter(kind=REJ, resolved_at__isnull=True).exists()
+    reviewed = OpsAlert.objects.using("owner").get(kind=REJ)
+    assert reviewed.review_watermark == reviewed.last_case_at
+    assert reviewed.review_watermark is not None and reviewed.review_watermark.microsecond == 776421
+
+
+@pytest.mark.usefixtures("clean_jobs", "quiet_checks")
+def test_a_review_from_an_old_tab_uses_the_stored_case_time(
+    authed_client: Any, tenants: Any
+) -> None:
+    """A tab loaded before `seen_through` existed sends the cut `last_case_at`: it is
+    ignored and the review uses the case time ops_check stored, so it still stays closed."""
+    from autobot.ops import check
+
+    _rejected_send_with_microseconds(tenants)
+    check.run()
+    item = next(i for i in get(authed_client, "incidents").json()["items"] if i["kind"] == REJ)
+    body = {"last_case_at": item["last_case_at"]}
+    assert post(authed_client, f"incidents/{item['id']}/review", body).status_code == 200
+    for _ in range(2):
+        check.run()
+    assert not OpsAlert.objects.using("owner").filter(kind=REJ, resolved_at__isnull=True).exists()
 
 
 def test_review_watermark_edge_cases(authed_client: Any) -> None:

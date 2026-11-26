@@ -1,7 +1,6 @@
 """The incidents (ADR-031): the open ones with their cases, their review, the actions
 on their cases and the closed ones."""
 
-from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -54,9 +53,11 @@ def incident_cases(
 
 
 class ReviewIn(Schema):
-    # The newest case time the panel showed (`last_case_at`): the review never covers a
-    # case the person did not see.
-    last_case_at: datetime | None = None
+    # The incident's `seen_through` as the panel showed it: the review never covers a case
+    # the person did not see. Absent (e.g. a tab loaded before this field existed): the
+    # newest case ops_check counted is used. Never a time: the browser only has
+    # milliseconds of it.
+    seen_through: str | None = None
 
 
 @router.post("/incidents/{id}/review", response=MessageOut)
@@ -66,7 +67,11 @@ def review(request: HttpRequest, id: UUID, payload: ReviewIn | None = None) -> d
     done = incident_kinds.review(
         id,
         actor=request.user.username,
-        last_case_at=payload.last_case_at if payload is not None else None,
+        last_case_at=(
+            incidents.seen_at(payload.seen_through)
+            if payload is not None and payload.seen_through
+            else None
+        ),
     )
     if not done.ok:
         raise ApiError("conflict", done.message, 409)

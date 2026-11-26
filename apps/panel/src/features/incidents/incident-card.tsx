@@ -28,7 +28,7 @@ function ReviewButton({ incident }: { incident: Incident }) {
       unwrap(
         api.POST("/incidents/{id}/review", {
           params: { path: { id: incident.id } },
-          body: { last_case_at: incident.last_case_at },
+          body: { seen_through: incident.seen_through },
         }),
       ),
     success: "Incidencia revisada.",

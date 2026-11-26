@@ -38,8 +38,12 @@ recuento de reinicios visto, el mes de `billing`, la clase de error).
 **Reapertura.** Un caso posterior a la marca de revisión abre una fila nueva de la misma clave
 que **hereda la marca**: solo cuentan los casos nuevos, y el panel y el bot dicen «N nuevos
 desde tu revisión». La marca es la fecha del caso más reciente que vio `ops_check` (no la hora
-del clic), y nunca posterior al caso más reciente que mostraba el panel (`last_case_at` del
-cuerpo de la revisión), así que un caso que llega mientras se lee la pantalla vuelve a abrirla.
+del clic), y nunca posterior al caso más reciente que mostraba el panel, así que un caso que
+llega mientras se lee la pantalla vuelve a abrirla. El panel no devuelve esa hora, sino el
+`seen_through` de la incidencia: una referencia opaca con la hora exacta, hasta el microsegundo,
+que el backend generó y descifra. La API recorta las horas a milisegundos, y una marca hecha con
+la hora recortada quedaba unas millonésimas antes del caso y lo reabría en cada pasada. Sin
+`seen_through` (una pestaña abierta antes de este cambio) se usa la hora guardada del caso.
 Nunca retrocede respecto a la marca anterior. Una revisión que llega mientras `ops_check` está
 en mitad de una pasada no provoca una reapertura falsa: los eventos revisados desde que empezó
 la pasada no se vuelven a abrir con sus cifras. Sin ninguna revisión previa de una clave, solo

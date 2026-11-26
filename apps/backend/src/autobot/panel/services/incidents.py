@@ -3,12 +3,15 @@ with a preview of their cases, the cases of one incident page by page, and the c
 ones. Panel service code: every query crosses tenants, so it runs `.using("owner")` and
 filters by the incident's tenant itself."""
 
+import base64
+import json
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from django.db.models import F, Max, OuterRef, QuerySet, Subquery
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from ninja import Schema
 from procrastinate.contrib.django.models import ProcrastinateEvent, ProcrastinateJob
 from pydantic import Field
@@ -18,6 +21,7 @@ from autobot.ops.incidents import Closed, Incident, Nature, Severity
 from autobot.ops.models import OpsAlert
 from autobot.ops.runbooks import runbook_url
 from autobot.ops.send_errors import describe
+from autobot.panel.errors import ApiError
 from autobot.panel.services.pagination import page
 from autobot.runtime.models import Notification, OutboundMessage
 from autobot.tenancy.models import Tenant
@@ -89,6 +93,11 @@ class IncidentOut(Schema):
     # ops_check's figure of its last pass (that one is in `text`).
     case_count: int
     last_case_at: datetime | None
+    # What the panel shows, as an opaque token with the exact time (microseconds): the
+    # panel sends it back untouched with «Lo he revisado» (`ReviewIn.seen_through`). Never
+    # a time the browser read: the JSON renderer cuts datetimes to milliseconds, and a
+    # watermark 421 µs before the case it covered reopened the incident on every pass.
+    seen_through: str | None
     # A reopened event: how many cases came after the last review («N nuevos»).
     new_since_review: int | None
     reviewable: bool
@@ -308,6 +317,7 @@ def _incident(incident: Incident, slugs: dict[UUID, str]) -> IncidentOut:
         has_cases=has_cases,
         case_count=case_count,
         last_case_at=last_case_at,
+        seen_through=seen_token(last_case_at),
         new_since_review=case_count if incident.reopened else None,
         reviewable=incident.info.nature == "event",
         can_discard_all=row.kind == "outbound_ambiguous" and row.tenant_id is not None,
@@ -355,3 +365,29 @@ def closed_page(*, cursor: str = "", limit: int = 50) -> ClosedPage:
             )
         )
     return ClosedPage(items=items, next_cursor=next_cursor)
+
+
+# ── «Hasta dónde has visto» (the review token) ───────────────────────────────
+
+
+def seen_token(at: datetime | None) -> str | None:
+    """`at` with every microsecond, as an opaque token (like the list cursors): the panel
+    gives it back as it came, so the review watermark is exactly the case time shown."""
+    if at is None:
+        return None
+    raw = json.dumps({"at": at.isoformat()}).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def seen_at(token: str) -> datetime:
+    """The exact time inside a `seen_token`; a malformed one is a 400."""
+    try:
+        data = json.loads(
+            base64.b64decode(token + "=" * (-len(token) % 4), altchars=b"-_", validate=True)
+        )
+        at = parse_datetime(data["at"])
+        if at is None or at.utcoffset() is None:
+            raise ValueError
+        return at
+    except ValueError, TypeError, KeyError, OverflowError:
+        raise ApiError("bad_request", "Referencia de revisión no válida.", 400) from None
