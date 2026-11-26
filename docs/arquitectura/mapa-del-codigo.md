@@ -2,6 +2,23 @@
 
 Una línea por carpeta o módulo relevante, para saber dónde buscar. Las capas y sus reglas de import están en la [visión general](vision-general.md); aquí solo se localiza el código. Las rutas son desde la raíz del repo.
 
+```mermaid
+flowchart LR
+    R(("repo")) --> APPS["apps/"]
+    R --> DEP["deploy/<br/>compose · scripts · systemd · caddy"]
+    R --> DOCS["docs/<br/>este sitio"]
+    R --> VAR["var/<br/>ejecución, ignorado"]
+    APPS --> BE["backend/"]
+    APPS --> PA["panel/<br/>React + TypeScript"]
+    BE --> SRC["src/"]
+    BE --> TST["tests/"]
+    SRC --> CORE["core/<br/>contratos"]
+    SRC --> INT["integrations/<br/>Google Calendar"]
+    SRC --> PK["packs/<br/>salon · bus"]
+    SRC --> AB["autobot/<br/>Django: tenancy · runtime · channels<br/>owner · ops · panel · db"]
+    SRC --> CFG["config/ · tools/"]
+```
+
 ## Backend: `apps/backend/`
 
 Contiene `pyproject.toml`, `uv.lock`, `Dockerfile`, `manage.py`, el código en `src/` y los tests en `tests/`.

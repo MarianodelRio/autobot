@@ -55,38 +55,51 @@ flowchart LR
 
 El código del backend (`apps/backend/src/`) tiene cuatro capas. `import-linter` comprueba en CI estas reglas (contratos en `apps/backend/pyproject.toml`):
 
-- **`core/`**: contratos y utilidades genéricas sin lógica de negocio. No importa Django ni nada del resto del proyecto.
-- **`integrations/`**: puertos hacia servicios externos (`google_calendar`). Solo importa `core`, sin Django.
-- **`packs/<pack>/`**: la lógica de cada negocio. Solo importa `core`: nunca Django, `integrations`, `autobot` ni otro pack. No toca la base de datos ni las APIs directamente ([ADR-003](adr/ADR-003-packs.md)).
-- **`autobot/`**: el único paquete que usa Django. Resuelve lo común (webhooks, cola, multitenancy, panel, observabilidad) y llama a cada pack solo a través de `packs.registry`.
+```mermaid
+flowchart TB
+    subgraph A["autobot/ — el único que usa Django"]
+        direction LR
+        A1[webhooks y canales] --- A2[cola y runtime] --- A3[tenants y RLS] --- A4[panel y ops]
+    end
+    R["packs.registry"]
+    subgraph P["packs/ — lógica de negocio"]
+        direction LR
+        S[salon] ~~~ B[bus]
+    end
+    I["integrations/ — Google Calendar"]
+    C["core/ — contratos puros: Pack, PackContext, Reply, límites"]
+    A -->|llama solo por| R --> P
+    A --> I
+    P --> C
+    I --> C
+    A --> C
+```
 
-`config/` contiene los settings de Django y las URLs, y `tools/` los scripts de operación. A `core/` solo sube lo que usan los dos packs.
+| Capa | Qué contiene | Puede importar |
+|---|---|---|
+| `core/` | Contratos y utilidades genéricas, sin lógica de negocio | nada del proyecto, ni Django |
+| `integrations/` | Puertos a servicios externos (`google_calendar`) | `core` |
+| `packs/<pack>/` | La lógica de cada negocio; no toca la base de datos ni las APIs ([ADR-003](adr/ADR-003-packs.md)) | solo `core`: nunca Django, `integrations` ni otro pack |
+| `autobot/` | Lo común: webhooks, cola, multitenancy, panel, observabilidad | todo; llama a los packs solo por `packs.registry` |
+
+`config/` contiene los settings y las URLs, y `tools/` los scripts de operación. A `core/` solo sube lo que usan los dos packs.
 
 ## Los conceptos
 
-**Vida de un mensaje.** Del webhook a la respuesta: se verifica, se guarda en `inbound_event`, se encola, un worker llama al pack y la respuesta sale por la cola de envíos. El webhook guarda primero y contesta 200 después ([ADR-004](adr/ADR-004-entrada-idempotente.md)). Ver [vida de un mensaje](vida-de-un-mensaje.md).
-
-**Efectos e idempotencia.** Todo efecto externo (enviar un mensaje, crear una cita) es idempotente y nunca se reintenta a ciegas un resultado ambiguo (`unknown`). Ver [efectos e idempotencia](efectos-e-idempotencia.md).
-
-**Cola y workers.** Las colas corren sobre PostgreSQL con Procrastinate; los trabajos reciben solo ids. Ver [cola y workers](cola-y-workers.md).
-
-**Tenants y RLS.** Cada dato de cliente lleva `tenant_id` y Row-Level Security; el tenant se fija con `tenant_tx`. Ver [tenants y RLS](tenants-y-rls.md).
-
-**Canales.** WhatsApp y Telegram se aíslan tras un adaptador común; sus diferencias, y las defensas de los webhooks, viven ahí. Ver [canales](canales.md).
-
-**Packs.** Cada pack trae su máquina de estados, su config y su plantilla de demo, y responde con un `PackResult`. Ver [packs](packs.md).
-
-**Config y registro.** La config y los datasets de cada negocio viven en PostgreSQL, versionados e inmutables ([ADR-009](adr/ADR-009-config-en-bd.md)); cada proceso mantiene un registro en memoria que recarga cuando cambia la revisión. Ver [config y registro](config-y-registro.md).
-
-**Bot de demo.** Dos puertas (un bot de Telegram y un número de WhatsApp de la plataforma) con un selector de negocios de demo; después la conversación es la del pack real ([ADR-006](adr/ADR-006-bot-de-demo.md)). Ver [bot de demo](bot-de-demo.md).
-
-**Bot de dueños.** El bot de avisos envía las notificaciones de cada negocio y atiende al dueño, vinculado con un enlace de un solo uso ([ADR-007](adr/ADR-007-bot-de-duenos.md)). Ver [bot de dueños](bot-de-duenos.md).
-
-**Panel.** Frontend en TypeScript más API `/api/panel/`, solo por túnel SSH. Ver [panel](panel.md).
-
-**Observabilidad.** Logs estructurados hacia VictoriaLogs, alertas de operación y comprobaciones periódicas. Ver [observabilidad](observabilidad.md).
-
-**Seguridad y secretos.** Secretos de canal cifrados en la base; secretos de la plataforma en el `.env` del servidor. Ver [seguridad y secretos](seguridad-y-secretos.md).
+| Concepto | En una frase | Página |
+|---|---|---|
+| Vida de un mensaje | Se verifica, se guarda, se encola, el pack responde y la respuesta sale por otra cola; el webhook guarda antes de contestar 200 ([ADR-004](adr/ADR-004-entrada-idempotente.md)) | [vida de un mensaje](vida-de-un-mensaje.md) |
+| Efectos e idempotencia | Todo efecto externo ocurre una sola vez; lo ambiguo (`unknown`) nunca se reintenta a ciegas | [efectos e idempotencia](efectos-e-idempotencia.md) |
+| Cola y workers | Colas sobre PostgreSQL con Procrastinate; los trabajos solo llevan ids | [cola y workers](cola-y-workers.md) |
+| Tenants y RLS | Cada dato de cliente lleva `tenant_id` y RLS; el tenant se fija con `tenant_tx` | [tenants y RLS](tenants-y-rls.md) |
+| Canales | WhatsApp y Telegram detrás de un adaptador común | [canales](canales.md) |
+| Packs | Máquina de estados, config y plantilla de demo; responde con un `PackResult` | [packs](packs.md) |
+| Config y registro | Config versionada en PostgreSQL ([ADR-009](adr/ADR-009-config-en-bd.md)) y un registro en memoria por proceso | [config y registro](config-y-registro.md) |
+| Bot de demo | Dos puertas de la plataforma con un selector de negocios de demo ([ADR-006](adr/ADR-006-bot-de-demo.md)) | [bot de demo](bot-de-demo.md) |
+| Bot de dueños | Avisos de cada negocio y asistente del dueño ([ADR-007](adr/ADR-007-bot-de-duenos.md)) | [bot de dueños](bot-de-duenos.md) |
+| Panel | SPA en TypeScript y API `/api/panel/`, solo por túnel SSH | [panel](panel.md) |
+| Observabilidad | Logs en VictoriaLogs, incidencias y comprobaciones periódicas | [observabilidad](observabilidad.md) |
+| Seguridad y secretos | Secretos de canal cifrados en la base; los de la plataforma en el `.env` | [seguridad y secretos](seguridad-y-secretos.md) |
 
 ## Relacionado
 

@@ -29,7 +29,7 @@ del mismo canal esté caído: el estado de uno tapa el de otro (trampa ya identi
 ## Decisión
 
 - **Se amplía `salon`, no se crea un pack nuevo.** Un calendario por peluquero. Con un
-  solo peluquero el flujo no cambia (incluida la demo y los tenants ya en producción:
+  solo peluquero el flujo no cambia (incluida la demo y los negocios existentes:
   ver «Migración» más abajo).
 - **Tope de 8 peluqueros** (8 filas + «me da igual» + «volver» = 10, el límite común de
   una lista de botones/filas, `core.limits`).

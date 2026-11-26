@@ -8,6 +8,12 @@ La VPS no responde, el proveedor confirma su pérdida o hay que recuperarse en o
 
 1. Confirma que no hay forma de recuperar la máquina original (reinicio, consola del proveedor) antes de tratar esto como pérdida total. Si solo necesitas más recursos en el mismo proveedor, no sigas este runbook. Para un traslado planificado, ver [traslado](../procedimientos/traslado.md).
 2. Entiende qué se pierde. El backup es horario, así que el snapshot más reciente tiene como mucho una hora, pero no cero. Lo ocurrido entre el snapshot y la pérdida puede estar duplicado o ser irrecuperable:
+
+    ```mermaid
+    flowchart LR
+        S["último snapshot<br/>(restaurable)"] --> W["ventana ≤ 1 h<br/>mensajes, citas y alertas<br/>que no están en la copia"] --> L["pérdida"]
+    ```
+
     - Un mensaje de WhatsApp o Telegram recibido después del snapshot y ya respondido no queda registrado; al reentrar (reintento del canal o del cliente) puede generar una respuesta duplicada.
     - Una cita de `salon` creada o movida en Google Calendar después del snapshot **no tiene fila en la base restaurada**: el bot puede ofrecer ese hueco a otro cliente.
     - Un aviso al dueño o una alerta resuelta antes de la pérdida puede reabrirse sin nada nuevo que resolver.

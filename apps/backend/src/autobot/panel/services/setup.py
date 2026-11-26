@@ -1,4 +1,4 @@
-"""The onboarding steps (ADR-014, ADR-027): assembled from the services already built,
+"""The onboarding steps (ADR-027): assembled from the services already built,
 instead of a new hook per pack or channel. Each step names the Configuración section it
 belongs to, where the panel shows it next to the fields it depends on.
 """
@@ -470,7 +470,7 @@ def _check_templates(tenant: LoadedTenant, current: SetupStepOut) -> SetupStepOu
     )
 
 
-# ── WhatsApp: finish connecting the number from the panel (ADR-016) ───────────
+# ── WhatsApp: finish connecting the number from the panel (ADR-027) ───────────
 
 _WHATSAPP_STEPS: dict[str, tuple[str, str, SetupAction]] = {
     "whatsapp_webhook": (

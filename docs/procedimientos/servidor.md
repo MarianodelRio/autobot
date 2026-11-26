@@ -4,7 +4,7 @@ Cómo dejar una VM Ubuntu 24.04 lista para recibir despliegues: un solo comando 
 la VM (`install-vm.sh`), las cuentas que crea y los pasos manuales que quedan. Se hace una
 vez, o para reparar o repetir la instalación. El despliegue de cada commit está en
 [despliegue.md](despliegue.md), el traslado a otra máquina en [traslado.md](traslado.md) y
-la recuperación en [restaurar.md](restaurar.md). Decisiones: ADR-012 y ADR-017.
+la recuperación en [restaurar.md](restaurar.md). Decisión: ADR-017.
 
 !!! warning "Aprobaciones"
     Es un cambio de infraestructura del servidor: requiere aprobación humana explícita, y
@@ -23,6 +23,13 @@ la recuperación en [restaurar.md](restaurar.md). Decisiones: ADR-012 y ADR-017.
   externos.
 
 ## Cuentas del servidor
+
+```mermaid
+flowchart LR
+    OP(("operador<br/>una clave SSH")) --> DE["deploy<br/>sin sudo · grupo docker<br/>contenedores, deploy.sh, timers"]
+    OP --> AD["admin<br/>sudo<br/>paquetes, sshd, bootstrap"]
+    CI(("CI de GitHub<br/>clave propia")) -->|solo deploy.sh &lt;sha&gt;| DE
+```
 
 Ambas entran **solo** con la misma clave SSH del operador (sin contraseña, sin root).
 
@@ -57,6 +64,11 @@ necesitan `sudo`, como `admin`.
 
     El instalador ejecuta estos pasos en orden; cada uno comprueba antes si ya está hecho,
     así que se puede repetir el comando entero:
+
+    ```mermaid
+    flowchart LR
+        K[ci-key] --> B[base] --> E[env] --> D[deploy] --> H[health] --> S["harden-ssh<br/>(confirmación)"] --> M[marker] --> G["github<br/>(opcional)"]
+    ```
 
     | Paso | Qué hace |
     |---|---|
@@ -146,47 +158,6 @@ necesitan `sudo`, como `admin`.
 - `https://<PUBLIC_HOST>/health` responde 200. El panel solo se alcanza con
   `make panel-tunnel`, nunca por el Caddy público.
 
-## Antes del primer cliente real
-
-Lo que debe estar comprobado antes de activar el canal real de un negocio, el primero y
-cada uno de los siguientes (activarlo
-requiere aprobación humana explícita, `CLAUDE.md`). Marca cada punto solo con la prueba
-delante, nunca por suposición.
-
-- [ ] VPS en la UE y almacenamiento de backups en otro proveedor, también en la UE
-  ([backups.md](backups.md)).
-- [ ] `HEALTHCHECKS_PING_URL` y el check de backups (`HEALTHCHECKS_BACKUP_PING_URL` en
-  `var/backup.env`, periodo 1 h, gracia 90 min) dados de alta con aviso a una persona: sin
-  ellos nadie se entera de un worker colgado ni de que los backups pararon.
-- [ ] Vigilante del host activo (`autobot-watchdog.timer`), con `NOTIFY_BOT_TOKEN` y
-  `OPS_TELEGRAM_CHAT_ID` en `.env` y un aviso de prueba recibido
-  ([despliegue.md](despliegue.md#vigilante-del-host-watchdogsh)).
-- [ ] Simulacro real de restauración desde el bucket (no solo `make restore-test`): el
-  último snapshot en una VPS desechable, con la clave de secretos guardada aparte; comprobar
-  los datos y el libro de supresiones y anotar el RTO medido en
-  [backups.md](backups.md#rpo-y-rto) ([restaurar.md](restaurar.md)).
-- [ ] Tras el primer despliegue, una pasada de la limpieza nocturna (`retention_cleanup`,
-  03:00 UTC; «Limpieza nocturna: ✅» en el menú de operador → 💾 Backups) y un snapshot
-  `autobot-ledger` tras el primer backup
-  ([retencion-rgpd.md](retencion-rgpd.md)).
-- [ ] `privacy.policy_url` en cada negocio, con su política publicada (la activación lo
-  exige), y `PLATFORM_PRIVACY_URL` para la demo.
-- [ ] Si un negocio usa recordatorios de WhatsApp (`reminders_enabled`), sus plantillas
-  aprobadas en Meta.
-- [ ] Memoria con margen para el negocio nuevo: VPS en 4 vCPU y 8 GB (el tamaño para el que
-  están calculados los `mem_limit`), o la decisión de seguir en una menor anotada con una
-  medición delante (ADR-005: en 2 vCPU y 4 GB con un cliente real desde el 2026-11-26).
-- [ ] Dominio propio en un proveedor DNS independiente del servidor (no un DNS dinámico
-  gratuito, que no da garantías): `PUBLIC_HOST` nuevo, certificado y webhooks registrados de
-  nuevo (los de la plataforma con `telegram_set_webhook`, los de cada negocio desde el panel).
-- [ ] Método de pago en la cuenta de mensajería de Meta: desde el 1-10-2026, sin él Meta deja
-  de entregar los mensajes de servicio cuando se acaban los 1.000 gratis del mes por número.
-- [ ] Retención de paquetes de GHCR que cubra el snapshot más antiguo que se conserva
-  ([restaurar.md](restaurar.md)).
-- [ ] Cuentas externas con segundo factor y sus códigos de recuperación en el gestor; `main`
-  protegida contra borrado y push forzado, y el entorno `production` limitado a `main` y con
-  aprobación ([seguridad y secretos](../arquitectura/seguridad-y-secretos.md#cuentas-externas-y-acceso)).
-
 ## Operación posterior
 
 - Operación diaria por SSH como `deploy` con `deploy/scripts/manage.sh` y
@@ -194,12 +165,11 @@ delante, nunca por suposición.
   [despliegue.md](despliegue.md#comandos-de-operacion-en-el-servidor).
 - Copia de seguridad manual: `make backup-now`, que usa la clave de operación; la de CI no
   puede. Caducar snapshots antiguos es `make backup-prune`, desde tu máquina
-  ([backups.md](backups.md#caducar-snapshots)); de momento no se hace con calendario y su
-  alerta está en pausa.
+  ([backups.md](backups.md#caducar-snapshots)); su alerta viene desactivada.
 - Memoria: los `mem_limit` de `compose.prod.yaml` suman 5,76 GB (`db` 2,5 GB con
   `shared_buffers=1GB`), calculados para la VPS objetivo de 4 vCPU y 8 GB. Se puede arrancar
-  en 2 vCPU y 4 GB con los demos y un cliente real (son topes, no reservas); se amplía al
-  sumar más clientes reales o si salta `memory_high` ([ADR-005](../arquitectura/adr/ADR-005-vps-docker-compose.md#proveedor-y-tamano-2026-11),
+  en 2 vCPU y 4 GB con los demos y los primeros clientes (son topes, no reservas); se amplía
+  al crecer o si salta `memory_high` ([ADR-005](../arquitectura/adr/ADR-005-vps-docker-compose.md#proveedor-y-tamano),
   [capacidad y crecimiento](../arquitectura/capacidad-y-crecimiento.md#servidor-y-proveedor)).
   Cada contenedor lleva `memswap_limit` igual a su `mem_limit` (sin swap: una fuga muere por
   OOM y se reinicia, en vez de hundir la VPS en swap) y cada `/tmp` en `tmpfs` tiene

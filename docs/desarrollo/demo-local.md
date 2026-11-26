@@ -5,6 +5,14 @@ Cómo probar en tu máquina las puertas del bot de demo (Telegram y WhatsApp) co
 !!! warning "Nunca uses los bots ni las apps de producción"
     Un bot de Telegram con webhook no admite polling a la vez, y un webhook apuntado a tu túnel se lo quita al servidor. Usa siempre un bot y una app de WhatsApp de desarrollo.
 
+```mermaid
+flowchart LR
+    TG["Telegram / Meta<br/>(bot y app de desarrollo)"] -->|webhook HTTPS| NG["ngrok<br/>NGROK_DOMAIN"]
+    NG -->|":8000"| WEB["web local"]
+    WEB --> DB[(db local)] --> WK["workers locales"]
+    WK -->|respuesta| TG
+```
+
 ## Requisitos
 
 - El entorno local en marcha (`make local`, [Entorno local](entorno-local.md)).

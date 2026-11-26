@@ -92,7 +92,7 @@ sobre el servidor de producción (instalación dentro de la VM, el resto por SSH
 | Comando | Qué hace |
 |---|---|
 | `make install-vm [ARGS="..."]` | Se ejecuta **dentro de la VM**: `sudo deploy/scripts/install-vm.sh` (ADR-017). Instala/repara de forma idempotente: clave de CI, paquetes y Docker, cuentas, `.env`, primer despliegue, salud, endurecimiento de SSH y marcador `bootstrap-complete`; `--only`/`--skip PASO`, `--check`, `--restore-target`, `--public-host`, `--google-sa`, `--env-file`, `--rotate-ci-key`, `--yes` |
-| `make server-migrate FROM= TO= [ONLY=paso]` | Traslada el despliegue de `FROM` a `TO` (ADR-012); `TO` ya debe tener `install-vm.sh --restore-target` ejecutado; exige `FROM` ≠ `TO` y un destino sin despliegue |
+| `make server-migrate FROM= TO= [ONLY=paso]` | Traslada el despliegue de `FROM` a `TO` (ADR-017); `TO` ya debe tener `install-vm.sh --restore-target` ejecutado; exige `FROM` ≠ `TO` y un destino sin despliegue |
 
 ### Producción
 

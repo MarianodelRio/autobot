@@ -7,7 +7,7 @@
 `tenant_purge` borraba los datos de cliente de un negocio dado de baja, pero
 conservaba su fila `tenant` y una última versión de su documento (sin testers ni
 dueño), para que un webhook tardío de su canal siguiera teniendo un negocio al
-que responder. La persona aprobó el 2026-11-08 extender el panel para ofrecer un
+que responder. Se decidió extender el panel para ofrecer un
 borrado completo desde la ficha del cliente, lo que exige decidir qué pasa con
 esa fila y esa versión, y qué queda como prueba del borrado.
 
@@ -52,7 +52,7 @@ esa fila y esa versión, y qué queda como prueba del borrado.
 ## Alternativas consideradas
 
 - **Mantener el comportamiento anterior** (fila y última versión conservadas): se
-  descartó porque la persona quiere poder reutilizar un slug y no necesita que un
+  descartó porque conviene poder reutilizar un slug y no necesita que un
   webhook tardío encuentre un negocio al que asociar el evento; 404 es una
   respuesta igual de válida y más simple de razonar.
 - **Anonimizar en vez de borrar** (conservar filas con los campos personales

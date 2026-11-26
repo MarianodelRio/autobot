@@ -6,7 +6,7 @@
 
 Hoy `tenants/<slug>/tenant.yaml` vive en git y se copia a la imagen; `secrets.yaml` vive
 en el servidor; los horarios de `bus` van en `tenants/<slug>/datasets/`. El panel necesita
-que la persona pueda cambiar la config de un negocio, pausarlo, sustituir sus secretos y
+que el operador pueda cambiar la config de un negocio, pausarlo, sustituir sus secretos y
 dar de alta uno nuevo, todo con historial y sin reiniciar nada ni tocar git. Este ADR
 fija las decisiones de arquitectura.
 

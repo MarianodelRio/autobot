@@ -8,8 +8,8 @@ canal WhatsApp, en [alta-whatsapp-meta.md](alta-whatsapp-meta.md).
 
 !!! warning "Aprobaciones"
     Actuar sobre datos de producción y activar el canal real de un negocio requieren
-    aprobación humana explícita. Las acciones sobre producción las ejecuta la persona
-    operadora; nunca un agente.
+    aprobación humana explícita. Las acciones sobre producción las ejecuta el operador;
+    nunca un agente.
 
 ## Objetivo, cuándo y requisitos
 
@@ -25,6 +25,16 @@ canal WhatsApp, en [alta-whatsapp-meta.md](alta-whatsapp-meta.md).
 
 Lo normal es el panel (todo lo que sigue se ejecuta ahí, sin terminal). El resto de la
 sección explica qué hace cada paso y cómo hacerlo por terminal.
+
+```mermaid
+flowchart LR
+    C["1 · crear<br/>(onboarding)"] --> CH["2 · canal<br/>y secretos"] --> PB["3 · publicar<br/>en el servidor"] --> X["4-6 · calendario,<br/>dueño, webhook"]
+    X --> TS["mensaje real<br/>de un tester"] --> A{"7 · activar<br/>¿checklist sin bloqueos?"}
+    A -->|sí| ON["active"]
+    A -->|no| X
+    ON -.->|pause / resume| ON
+    ON --> OFF["offboard"] --> PU["tenant_purge<br/>(≤ 30 días)"]
+```
 
 1. **Crear el negocio.** Panel: `Clientes → Nuevo cliente`, asistente de cinco pasos
    ([panel.md](panel.md#asistente-de-alta-de-un-cliente)); queda en `onboarding` y abre la
@@ -76,8 +86,14 @@ operador como administrador; una app y un número por negocio.
   `whatsapp_business_management`).
 - Método de pago en la cuenta de mensajería (sin él Meta no envía mensajes facturables).
 - Ids del canal y los tres secretos cargados en el panel.
-- Sección «Canal» de la pestaña «Configuración» (ADR-016, ADR-027), con «Comprobar» antes y
+- Sección «Canal» de la pestaña «Configuración» (ADR-027), con «Comprobar» antes y
   después (guarda antes: las comprobaciones usan lo guardado):
+
+    ```mermaid
+    flowchart LR
+        W["Configurar webhook<br/>Meta verifica la URL"] --> N["Registrar número<br/>PIN de 6 dígitos"] --> S["Suscribir app<br/>(confirmación)"] --> R(["el número entrega<br/>sus mensajes"])
+    ```
+
     - **Webhook de la app** → «Configurar webhook»: configura
       `https://api.<dominio>/webhooks/whatsapp/<public_id>` con el `verify_token` del
       negocio y el campo `messages`. Meta verifica la URL en ese momento: el servidor debe
@@ -116,7 +132,7 @@ Los cambios se aplican sin commit ni despliegue, en la siguiente comprobación d
 
 ## Baja
 
-La persona operadora registra la fecha efectiva de baja y ejecuta el borrado en un máximo de
+El operador registra la fecha efectiva de baja y ejecuta el borrado en un máximo de
 30 días; `synced_at` no es una fecha de baja. Todos los comandos, desde el portátil:
 
 1. `make prod-manage TTY=1 CMD="tenant_status <slug> offboard"` pide escribir el slug y

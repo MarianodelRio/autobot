@@ -25,3 +25,6 @@ staticfiles/
 
 # Runtime files (local and server): datasets, qr, revision, backups, deploy state...
 /var/
+
+# The operator's private notes and keys (IP, SSH alias, Google key...): never committed
+/privado/

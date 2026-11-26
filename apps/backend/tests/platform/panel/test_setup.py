@@ -1,4 +1,4 @@
-"""The "Alta" tab's endpoints (ADR-014, C12): `GET .../setup` and
+"""The onboarding endpoints (ADR-027): `GET .../setup` and
 `POST .../setup/check/{step}`."""
 
 import json
@@ -311,7 +311,7 @@ def test_setup_includes_the_whatsapp_webhook_url(authed_client: Any, tenants: An
     )
 
 
-# ── WhatsApp: acciones de alta por la Graph API (ADR-016, C18) ──────────────
+# ── WhatsApp: acciones de alta por la Graph API (ADR-027) ──────────────
 
 WA_STEPS = ("whatsapp_webhook", "whatsapp_number", "whatsapp_subscription")
 

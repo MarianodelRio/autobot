@@ -24,6 +24,18 @@ español y sus casos:
   como `incident.review`, ver [auditoría](auditoria.md)). La revisión guarda una **marca de
   revisión** (`review_watermark`): los casos hasta ella cuentan como revisados.
 
+```mermaid
+flowchart LR
+    OC["ops_check<br/>cada 5 min"] --> F{"¿hallazgo?"}
+    F -->|nuevo| OPEN["incidencia abierta<br/>en ops_alert"]
+    OPEN -->|🔴 o 🟠| TG["aviso por Telegram<br/>(máx. 1/h por clave)"]
+    OPEN -->|🟡| PAN["solo panel y<br/>resumen diario"]
+    OPEN --> K{"naturaleza"}
+    K -->|condición| AUTO["se cierra sola<br/>cuando desaparece"]
+    K -->|evento| REV["«Lo he revisado»<br/>marca de revisión"]
+    REV -->|caso posterior| OPEN
+```
+
 **Casos.** Los envíos, trabajos y avisos afectados son casos de su incidencia. Se calculan en
 vivo desde sus tablas en cada pasada (`apps/backend/src/autobot/ops/cases.py`) y nunca se
 copian a `ops_alert`, que no tiene RLS: solo se guardan su número (`case_count`) y la fecha del
@@ -192,7 +204,7 @@ demo). Los códigos son los de la tabla anterior que aplican a Telegram (`auth`,
 | `tls_expiring` | 🟠 El certificado público (host de `PUBLIC_URL`, puerto 443) caduca en menos de 14 días: Caddy debería haberlo renovado. Se comprueba una vez al día (cada 15 minutos mientras falla). Solo fuera de local. | Condición: se cierra sola al renovarse | [Certificado a punto de caducar](../incidencias/recursos-copias-y-certificado.md#certificado-a-punto-de-caducar) |
 | `tls_expiring_critical` | 🔴 El certificado caduca en menos de 3 días. | Condición: se cierra sola | [Certificado a punto de caducar](../incidencias/recursos-copias-y-certificado.md#certificado-a-punto-de-caducar) |
 | `tls_invalid` | 🔴 El certificado que sirve el proxy no valida (caducado, cadena o nombre incorrectos). Los webhooks de Meta y Telegram fallan. | Condición: se cierra sola | [Certificado a punto de caducar](../incidencias/recursos-copias-y-certificado.md#certificado-a-punto-de-caducar) |
-| `backup_prune_overdue` | 🟡 Plataforma: hace más de 10 días que el operador no purga las copias (testigo `autobot-prune`; si nunca purgó, desde el snapshot más antiguo). Lo lee `backup.sh` en `var/state/ops/backup-prune.json` (ADR-025). Solo fuera de local y con ese fichero. **En pausa desde el 2026-11-26** (`PRUNE_ALERT_ENABLED` en `ops/check.py`): no se abre. | Condición: se cierra sola al purgar y pasar el siguiente backup | [Caducar snapshots](../procedimientos/backups.md#caducar-snapshots) |
+| `backup_prune_overdue` | 🟡 Plataforma: hace más de 10 días que el operador no purga las copias (testigo `autobot-prune`; si nunca purgó, desde el snapshot más antiguo). Lo lee `backup.sh` en `var/state/ops/backup-prune.json` (ADR-025). Solo fuera de local y con ese fichero. **Desactivada por defecto** (`PRUNE_ALERT_ENABLED` en `ops/check.py`): no se abre salvo que se active. | Condición: se cierra sola al purgar y pasar el siguiente backup | [Caducar snapshots](../procedimientos/backups.md#caducar-snapshots) |
 | `containers_stale` | 🟠 Sin estado de contenedores, o sin actualizar desde hace más de 3 minutos. Solo fuera de local. | Condición: se cierra sola | [Contenedor caído](../incidencias/contenedor-caido.md) |
 | `containers_restore` | 🟠 Restauración a medias: existe `var/.restore-incomplete`. | Condición: se cierra sola al terminar la restauración | [Restaurar](../procedimientos/restaurar.md) |
 | `container_down:<servicio>` | 🔴 (🟠 si es `victorialogs`) El contenedor no existe, está parado o se reinicia en bucle. | Condición: se cierra sola | [Contenedor caído](../incidencias/contenedor-caido.md) |

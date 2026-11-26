@@ -15,6 +15,16 @@ Antes de que intervenga una persona, la plataforma concilia sola ([ADR-026](../a
 
 ## Arreglo
 
+```mermaid
+flowchart TD
+    U(["envío unknown<br/>> 10 min"]) --> Q{"¿llegó?<br/>(panel del proveedor<br/>o destinatario)"}
+    Q -->|sí| MS["Marcar enviado → sent"]
+    Q -->|no| W{"¿sigue teniendo<br/>sentido enviarlo?"}
+    W -->|sí, y un duplicado<br/>es aceptable| RS["Reenviar → pending<br/>(puede duplicar)"]
+    W -->|no| DI["Descartar → discarded"]
+    Q -->|no se puede saber| DI
+```
+
 1. **Marcar enviado**, si llegó y lleva más de diez minutos en `unknown`: da por buena la entrega y pasa a `sent`.
 2. **Reenviar**, si no llegó, lleva más de diez minutos en `unknown` y el payload y el canal siguen disponibles: confirma la posibilidad de duplicado.
 3. **Descartar**, si no hay que enviarlo ni confirmarlo (el momento ya pasó, o no se puede saber y no compensa el riesgo de duplicado): sin espera mínima, pasa al estado final `discarded` (deja de salir en Incidencias, no se reenvía y la conciliación lo ignora; no cuenta como fallo). Queda auditado (`outbound.discard`). Si más tarde llega un estado de entrega que demuestre que sí salió, pasa a `sent`. Se consulta después en la actividad del negocio, filtrando por los envíos con error.

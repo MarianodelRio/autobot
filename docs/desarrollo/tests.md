@@ -6,6 +6,17 @@ Cómo está organizada la batería de tests del backend y del panel, cómo ejecu
 
 Los tests viven en `apps/backend/tests/` y se reparten por lo que prueban, no por si son unitarios o de integración ([ADR-010](../arquitectura/adr/ADR-010-estructura-del-repo.md)).
 
+```mermaid
+flowchart TB
+    subgraph SIN["sin base de datos · make test-fast"]
+        C["core/"] ~~~ PK["packs/&lt;pack&gt;/<br/>escenarios de conversación"] ~~~ CT["contract/<br/>proveedores simulados"]
+    end
+    subgraph CON["con PostgreSQL · make test"]
+        PL["platform/<br/>channels · runtime · tenancy<br/>owner · ops · panel"] ~~~ ISO["isolation/<br/>RLS entre negocios"] ~~~ TL["tools/ · repo/"]
+    end
+    SIN ~~~ CON
+```
+
 | Carpeta | Qué prueba |
 |---|---|
 | `core/` | `core/`: contrato de packs, conversación, límites, utilidades. Sin BD. |
@@ -65,10 +76,14 @@ Los tests con BD usan `test_<nombre>`, que crea `init-roles.sh` junto con los ro
 
 Cada pack debe tener su escenario de conversación, y cada cambio de su flujo lo actualiza (`CLAUDE.md`). El arnés está en `apps/backend/src/core/testing/harness.py` (`Conversation`). Reproduce cada turno como `process_event`, pero sin base de datos ni red:
 
-1. Estado efectivo y la orden `menu`.
-2. El pack (`handle_message`).
-3. `plan_sends` en modo estricto, que **falla el test** si una respuesta excede los límites comunes.
-4. Las acciones que devuelve el pack.
+```mermaid
+flowchart LR
+    T["chat.send / chat.press"] --> E["estado efectivo<br/>+ orden «menu»"] --> H["pack.handle_message"]
+    H --> PS{"plan_sends<br/>(estricto)"}
+    PS -->|fuera de límites| F["el test falla"]
+    PS --> RN["render con WhatsApp<br/>y con Telegram"]
+    RN --> A["acciones del pack"] --> X["Turn.expect(...)"]
+```
 
 Respuestas y estado pasan por JSON, como pasarían por `outbound_message.payload` y `conversation.state`.
 
@@ -126,10 +141,10 @@ Quien escribe un escenario no comprueba los límites a mano: salen gratis al usa
 
 `tests/fixtures/whatsapp/` y `tests/fixtures/telegram/` guardan cuerpos de webhook (`text.json`, `button_reply.json`, `message.json`, `callback_query.json`…) y respuestas de los proveedores (`send_ok.json`, `error_429.json`, `graph_*.json`). Los usan los tests de `contract/` y los de integración mediante `fixture("whatsapp/text.json")` de `tests/helpers/integration.py`, que cambian el id y el texto de cada mensaje con `wa_text` o `wa_press`.
 
-Hoy **no son grabaciones reales**: siguen la forma de los ejemplos oficiales de Meta y de la Bot API, con ids, teléfonos y nombres ficticios. El `README.md` de cada carpeta indica su procedencia. Para sustituirlas por reales:
+**No son grabaciones reales**: siguen la forma de los ejemplos oficiales de Meta y de la Bot API, con ids, teléfonos y nombres ficticios. El `README.md` de cada carpeta indica su procedencia. Para sustituirlas por reales:
 
 - **Telegram:** con un bot de desarrollo sin webhook, `make telegram-poll SLUG=<slug>` recibe los updates; guarda los que interesen.
-- **WhatsApp:** cuando haya un número de pruebas, copia los cuerpos recibidos por el webhook.
+- **WhatsApp:** con un número de pruebas, copia los cuerpos recibidos por el webhook.
 
 En ambos casos hay que anonimizar teléfonos, BSUID, ids de usuario y nombres antes de guardar nada en git. Un fixture con datos reales es un dato personal en el repositorio.
 

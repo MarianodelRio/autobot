@@ -1,4 +1,4 @@
-"""Graph API calls that finish connecting a tenant's WhatsApp number (ADR-016): the
+"""Graph API calls that finish connecting a tenant's WhatsApp number (ADR-027): the
 app's webhook, the number's Cloud API registration and the app's subscription to the
 WABA. Launched from the panel's "Alta" tab, never in a loop or a job.
 

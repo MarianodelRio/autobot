@@ -6,6 +6,16 @@ Cómo se aíslan los datos de cada negocio (tenant) en una única base de datos 
 
 Toda tabla con datos de cliente lleva `tenant_id` y tiene Row-Level Security (RLS) forzada. La política compara `tenant_id` con la variable de sesión `app.tenant_id`; sin ella, no se ve ninguna fila. Así, un error de código no puede mostrar datos de un negocio a otro: la base de datos lo impide. La tabla `tenant` aplica la misma política sobre su propio `id`.
 
+```mermaid
+flowchart LR
+    C["código: InboundEvent.objects.get(id=…)<br/>(sin filtrar por tenant)"] --> TX["tenant_tx(A)<br/>set_config('app.tenant_id', A)"]
+    TX --> PG{{"PostgreSQL<br/>política tenant_isolation"}}
+    PG -->|tenant_id = A| OK["filas de A"]
+    PG -.->|tenant_id = B| NO["invisibles"]
+```
+
+Sin `tenant_tx`, `app.tenant_id` está vacío y no se ve **ninguna** fila: un olvido falla cerrado, nunca enseña datos de otro negocio.
+
 Las tablas con RLS son `tenant`, `contact`, `conversation`, `inbound_event`, `outbound_message`, `notification` y `metric_event` (lista `RLS_TABLES` en `apps/backend/src/autobot/migrations/0001_squashed_0026_dataset_library.py`). Sus hijos apuntan al padre con una clave foránea compuesta `(tenant_id, x_id)`, de modo que una fila no puede referirse a otro tenant.
 
 ## `tenant_tx`
@@ -32,6 +42,14 @@ La consulta a `InboundEvent` no filtra por tenant: no hace falta, la política y
 ## Conexiones y roles
 
 `apps/backend/src/config/settings.py` define hasta tres conexiones, con roles distintos creados por `deploy/postgres/init-roles.sh`:
+
+```mermaid
+flowchart LR
+    WEB["web y workers"] -->|default| APP["fp_app<br/>sujeto a RLS"]
+    PAN["web-panel, migraciones,<br/>comandos, tenancy.store"] -->|owner| OWN["fp_owner<br/>BYPASSRLS"]
+    SQL["consola SQL del panel"] -->|readonly| RO["fp_readonly<br/>solo SELECT, sin tablas sensibles"]
+    APP & OWN & RO --> DB[(PostgreSQL)]
+```
 
 | Alias | Rol | Uso |
 |---|---|---|

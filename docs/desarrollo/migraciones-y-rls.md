@@ -5,7 +5,7 @@ Lista de comprobación práctica para crear una tabla nueva con datos de cliente
 !!! warning "Requiere aprobación humana"
     Las migraciones que tocan RLS, roles o borrados necesitan aprobación humana explícita (`CLAUDE.md`). Una tabla nueva con políticas RLS es una de ellas: prepara el cambio, anota que espera aprobación y no lo des por cerrado sin ella.
 
-## Estado actual de las migraciones
+## Cómo están organizadas las migraciones
 
 Las migraciones están en `apps/backend/src/autobot/migrations/`. La primera, `0001_squashed_0026_dataset_library.py`, sustituye a las 26 de los primeros meses (se fusionaron antes de que existiera la base de producción); después vienen las numeradas desde `0027`. Lo que un modelo no puede expresar vive en `0001`, en SQL:
 
@@ -15,10 +15,17 @@ Las migraciones están en `apps/backend/src/autobot/migrations/`. La primera, `0
 
 Una tabla nueva va en una migración **nueva** (la siguiente al último número de la carpeta) que sigue el mismo patrón. Las funciones de ayuda de `0001` no se pueden importar (el nombre empieza por un dígito): copia su SQL a la migración nueva.
 
-!!! warning "Hay base de datos de producción"
-    Desde el 2026-11-24 las migraciones se aplican en producción. Una migración ya aplicada no se edita, no se borra y no se fusiona con otras (squash): cualquier corrección va en una migración nueva. Las migraciones solo añaden, porque un rollback devuelve el código anterior pero nunca el esquema ([volver atrás](../incidencias/volver-atras.md)). Una migración que aún no ha salido de tu máquina sí se puede rehacer.
+!!! warning "Migraciones ya aplicadas"
+    Una migración ya aplicada en una base de producción no se edita, no se borra y no se fusiona con otras (squash): cualquier corrección va en una migración nueva. Las migraciones solo añaden, porque un rollback devuelve el código anterior pero nunca el esquema ([volver atrás](../incidencias/volver-atras.md)). Una migración que aún no ha salido de tu máquina sí se puede rehacer.
 
 ## Checklist: tabla nueva con datos de cliente
+
+```mermaid
+flowchart LR
+    M["1 · modelo con<br/>tenant_id"] --> FK["2 · FK compuesta<br/>(tenant_id, x_id)"] --> R["3 · migración:<br/>ENABLE + FORCE RLS<br/>tenant_isolation + readonly_all"]
+    R --> G["4 · grants.py<br/>¿SENSITIVE_TABLES?"] --> C["6 · acceso solo<br/>con tenant_tx"] --> T["7 · fábrica en<br/>test_isolation.py"]
+    T --> AP(["aprobación humana"])
+```
 
 ### 1. El modelo lleva `tenant_id`
 

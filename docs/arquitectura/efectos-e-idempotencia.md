@@ -60,6 +60,18 @@ stateDiagram-v2
 2. Sin transacción: `adapter.send(...)`.
 3. Otra transacción corta: guarda el resultado.
 
+```mermaid
+sequenceDiagram
+    participant W as worker-outbound
+    participant DB as PostgreSQL
+    participant M as Meta / Telegram
+    W->>DB: tx: pending → sending (COMMIT)
+    W-xM: send(...) — el worker muere aquí
+    Note over W,M: ¿llegó o no? No se sabe
+    W->>DB: reintento: ve «sending»
+    DB-->>W: → unknown (nunca reenvía a ciegas)
+```
+
 Si el proceso muere entre 1 y 3, no sabemos si el proveedor llegó a recibir la petición. La fila se queda en `sending`, y cuando alguien la vuelve a encontrar (el reintento del trabajo, o una barrida) la pasa a `unknown` en lugar de enviarla otra vez. Si el estado confirmado fuese `pending`, el reintento reenviaría y el cliente recibiría el mensaje duplicado.
 
 Todo lo que puede fallar antes de la llamada (traducir el mensaje, resolver el canal) ocurre aún en `pending`: un error ahí deshace la transacción y deja el mensaje como estaba.
@@ -86,7 +98,7 @@ Cada paso a `failed` (rechazo síncrono, `status failed` asíncrono, contenido c
 3. **Una persona.** Con las acciones de `apps/backend/src/autobot/ops/actions.py`, que usan el panel y el comando `outbound_resolve`:
     - `mark_sent`: confirma que llegó (revisado en el panel del proveedor o con el destinatario). Pasa a `sent`.
     - `resend`: autoriza un reenvío **sabiendo que puede duplicarse**. Pasa a `pending` y encola `send_message` en la misma transacción.
-    - `discard`: la persona decide no enviarlo (ni confirmarlo). Pasa a `discarded`, sin espera mínima.
+    - `discard`: el operador decide no enviarlo (ni confirmarlo). Pasa a `discarded`, sin espera mínima.
     - `mark_sent` y `resend` exigen estado `unknown` y que lleve más de 10 minutos (`unknown_at`), porque uno reciente aún puede resolverse solo con un estado de entrega. `resend` exige además que el contenido siga disponible (el payload se vacía a los 30 días), que el negocio se resuelva sin ambigüedad, no esté dado de baja y su canal esté activo. Las tres acciones dejan registro de auditoría (`outbound.mark_sent`, `outbound.resend`, `outbound.discard`).
     - Ya no hay reenvío en bloque (retirado por el [ADR-031](adr/ADR-031-incidencias-como-bandeja.md)). Un reenvío de una persona fija `ambiguous_resends = 1`: la plataforma no añade el suyo.
     - `discard_all` («Descartar todos», en la incidencia `outbound_ambiguous`): descarta de una vez todos los `unknown` sin decidir del negocio (los que la incidencia muestra como casos). No envía nada, a diferencia del reenvío en bloque retirado; un solo registro `outbound.discard_all` con el número.
@@ -151,6 +163,14 @@ El contrato es mínimo (`apps/backend/src/core/effects.py`):
 - Solo es escribible mientras el evento está `pending` y en su canal (si no, `PermanentError`).
 - `put` con la misma clave y distinto valor lanza `PermanentError` («Conflicting effect authorization»): evita que un reintento «cambie de opinión».
 - La retención vacía `effect_state` a los 30 días junto con el `payload`.
+
+```mermaid
+flowchart LR
+    A["¿hay autorización<br/>guardada?"] -->|no| B["¿la cita es<br/>del contacto?"]
+    B -->|no| X["«no existe»"]
+    B -->|sí| C["guardar autorización<br/>(tx aparte, COMMIT)"] --> D["borrar en<br/>Google Calendar"] --> OK["«cancelada»"]
+    A -->|sí: es un reintento| D
+```
 
 El uso real es `Conversation.cancel` del pack `salon` (`packs/salon/conversation.py`): consulta la evidencia previa, comprueba que la cita es del contacto, **guarda la autorización** en una transacción aparte y solo entonces borra el evento. Si un reintento encuentra la cita ya borrada, la autorización guardada demuestra que la cancelación era legítima, y responde «cancelada» en vez de «no existe».
 

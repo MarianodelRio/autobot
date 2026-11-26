@@ -16,6 +16,28 @@ Lo que la plataforma aporta al pack: el canal, la cola, la base de datos, las cl
 
 ## El contrato (`core/pack.py`)
 
+```mermaid
+flowchart LR
+    subgraph CTX["PackContext (lo que recibe)"]
+        direction TB
+        c1["tenant · config · data"]
+        c2["contact · state (solo lectura)"]
+        c3["clock · calendar · lock · idem · effects"]
+    end
+    MSG["IncomingMessage"] --> H
+    CTX --> H(["handle_message"])
+    H --> RES
+    subgraph RES["PackResult (lo que devuelve)"]
+        direction TB
+        r1["replies: Text · Buttons · List"]
+        r2["state nuevo"]
+        r3["actions: SendProactive · NotifyOwner<br/>UpdateContact · RecordMetric"]
+    end
+    RES --> RT["el runtime lo guarda y lo ejecuta<br/>en una transacción (tx2)"]
+```
+
+El pack es casi una función pura: no abre transacciones, no llama a la base de datos y no sabe qué canal se usa. Lo que pide, lo hace la plataforma.
+
 El contrato entero cabe en `apps/backend/src/core/pack.py`. Estos son los tipos, en el orden en que se usan:
 
 | Tipo | Para qué sirve |
@@ -90,6 +112,17 @@ Un pack construye respuestas que caben en **los dos** canales, así que se aplic
 
 `apps/backend/src/core/conversation.py` agrupa funciones puras que el runtime y el arnés de tests llaman en el mismo orden, de modo que un escenario ejecuta el pack igual que producción:
 
+```mermaid
+flowchart LR
+    M["mensaje"] --> E["effective_state<br/>¿caducó o cambió la versión?"]
+    E --> MC{"¿«menu»,<br/>«inicio», /start?"}
+    MC -->|sí| RS["estado reiniciado"] --> PK
+    MC -->|no| PK["Pack.handle_message"]
+    PK -->|ok| N["with_notice<br/>línea de privacidad si toca"]
+    PK -->|error inesperado| REC["recovery_result<br/>disculpa y reinicio"]
+    PK -->|error temporal agotado| DEG["degraded_result<br/>conserva el estado"]
+```
+
 - `effective_state`: reinicio por caducidad (silencioso) o por cambio de `state_version` (con aviso «he tenido que empezar de nuevo»).
 - `is_menu_command`: `menu`, `menú`, `inicio` y `/start` abren el menú. Es la única orden que la plataforma atiende antes que el pack; cualquier otra palabra (también `persona` o `baja`) llega al pack como texto ([ADR-028](adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
 - `recovery_result` y `degraded_result`: disculpa tras un error inesperado o tras agotar los reintentos de un error temporal.
@@ -99,11 +132,13 @@ Un pack construye respuestas que caben en **los dos** canales, así que se aplic
 
 El aviso es igual para todos los packs; por eso vive en la plataforma y no en cada pack.
 
-Cada vez que el pack muestra su menú principal (lo marca devolviendo `PackResult(menu=True)`), y también en la primera respuesta que recibe un contacto aunque no sea el menú (`Contact.notice_sent_at` nulo; si se olvida al contacto, vuelve a nulo), el runtime añade **una línea en cursiva al final** de la respuesta del pack, separada por una línea en blanco: «_🤖 Asistente automático de {negocio} · Privacidad:_ {enlace}». Sin `privacy.policy_url` no hay enlace: queda «_🤖 Asistente automático de {negocio}_». Va al final para que lo primero que se lea sea la respuesta; si no cabe en la última respuesta (1.024 caracteres en un interactivo), va como texto aparte después. El enlace queda fuera de la cursiva para que no se le pegue el `_`; Telegram la muestra con `<i>`.
+El runtime añade **una línea en cursiva al final** de la respuesta cada vez que el pack muestra su menú principal (`PackResult(menu=True)`) y en la primera respuesta que recibe un contacto (`Contact.notice_sent_at` nulo):
 
-En el resto de pasos no sale. La primera vez se marca como enviado en la misma transacción que las respuestas (tx2), así que un reintento no lo duplica y un fallo no lo pierde. En el bot de demo lo redacta `channels/demo/notice.py` con `PLATFORM_PRIVACY_URL` como enlace.
+> _🤖 Asistente automático de {negocio} · Privacidad:_ {enlace}
 
-No hay órdenes de atención: la atención humana la cubre el teléfono del negocio que muestra el pack (en `bus`, en «ℹ️ Información»; en `salon`, en el menú), y quien no quiere recordatorios lo pide al negocio y se le olvida desde el panel ([ADR-028](adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
+Sin `privacy.policy_url` no hay enlace. Va al final para que lo primero que se lea sea la respuesta; si no cabe en la última (1.024 caracteres en un interactivo), sale como texto aparte. La primera vez se marca en la misma transacción que las respuestas, así que un reintento no lo duplica. En el bot de demo lo redacta `channels/demo/notice.py` con `PLATFORM_PRIVACY_URL`.
+
+No hay órdenes de atención («persona», «baja»): la atención humana la cubre el teléfono del negocio que muestra el pack, y quien no quiere recordatorios lo pide al negocio, que lo olvida desde el panel ([ADR-028](adr/ADR-028-aviso-en-una-linea-sin-persona-ni-baja.md)).
 
 El bot nunca adivina en silencio: o hay una respuesta única, o pregunta.
 
@@ -115,7 +150,7 @@ Cada pack lleva su plantilla en `apps/backend/src/packs/<pack>/template/`: un `d
 
 Son obligatorios para cada pack y cada cambio de su flujo. Usan el arnés `core/testing/harness.py` (`Conversation`): cada turno sigue `process_event` sin base de datos, con estado efectivo, comandos globales, el pack, `plan_sends` en modo estricto y las acciones; respuestas y estado pasan por JSON como en producción. Además cada respuesta se renderiza con los dos adaptadores de canal, de modo que un exceso de límites o un id inválido rompe el test. Los escenarios están en `apps/backend/tests/packs/<pack>/` (por ejemplo `test_escenarios.py` en `bus` y `test_booking.py` en `salon`) y se parametrizan para WhatsApp y Telegram. Cómo escribirlos: [Desarrollo: tests](../desarrollo/tests.md).
 
-## Los dos packs de hoy
+## Los dos packs
 
 **`salon`** (peluquería) gestiona reservas sobre Google Calendar: pedir, mover y cancelar citas, con huecos libres comprobados de nuevo antes de escribir e ids deterministas para que reintentar no duplique. Declara un periódico `calendar_sweep` (cada 15 minutos: recordatorios y avisos de citas manuales), una comprobación de salud del calendario, dos plantillas de WhatsApp (confirmación y recordatorio), cuatro tipos de aviso al dueño y un resumen con citas e ingresos. Su configuración: [Pack salon](../referencia/packs/salon.md).
 

@@ -33,6 +33,14 @@ planificado, [traslado.md](traslado.md).
 
 ## Pasos
 
+```mermaid
+flowchart LR
+    V["1 · VPS<br/>--restore-target"] --> C["2 · credenciales<br/>de backup"] --> R["3 · restore.sh<br/>+ clave de cifrado"]
+    R --> SUP["5 · reaplicar<br/>supresiones"] --> VER{"6 · ¿datos<br/>correctos?"}
+    VER -->|sí| W["7 · arrancar<br/>workers"] --> DNS["8 · DNS"]
+    VER -->|no| STOP(["parar: los workers<br/>enviarían mensajes"])
+```
+
 1. **Prepara la VPS** (dentro de ella, con `sudo`): `sudo deploy/scripts/install-vm.sh
    --restore-target` ([servidor.md](servidor.md)). `restore.sh` se niega sin
    `/var/lib/autobot/bootstrap-complete`, que ese instalador escribe al terminar la base y
@@ -78,7 +86,23 @@ planificado, [traslado.md](traslado.md).
 Un backup conserva lo que luego se olvidó con `contact_forget`, `tenant_purge` o el panel.
 El **libro de supresiones** (tabla `privacy_suppression`, sin datos personales: ids y
 HMAC; ADR-019) registra cada olvido o purga, pero vive en la misma base, así que el
-snapshot no incluye los posteriores a él. Desde el ADR-025 no depende de nadie:
+snapshot no incluye los posteriores a él. No depende de nadie (ADR-025):
+
+```mermaid
+sequenceDiagram
+    participant B as backup.sh (cada hora)
+    participant S as repositorio restic
+    participant R as restore.sh
+    participant DB as base restaurada
+    B->>S: snapshot de la BD (autobot)
+    B->>S: snapshot del libro (autobot-ledger)
+    Note over S: pérdida del servidor
+    R->>S: snapshot de la BD elegido
+    R->>S: libro MÁS RECIENTE
+    R->>DB: pg_restore
+    R->>DB: privacy_reapply: repite olvidos y purgas posteriores
+    Note over DB: solo entonces arrancan web y los workers
+```
 
 1. **Cada backup horario** sube el libro como snapshot propio con la etiqueta
    `autobot-ledger` (`backup.sh`), en el mismo repositorio cifrado.
@@ -88,7 +112,7 @@ snapshot no incluye los posteriores a él. Desde el ADR-025 no depende de nadie:
    solo lectura y no ve ficheros de la VPS). Une el libro con la tabla restaurada, repite
    los olvidos y purgas (idempotente) y deja un evento `privacy.reapply`. Si informa de
    purgas bloqueadas, el script falla: repítelo con `deploy/scripts/manage.sh privacy_reapply`.
-3. **Si el repositorio no tiene ningún snapshot `autobot-ledger`** (anterior al ADR-025),
+3. **Si el repositorio no tiene ningún snapshot `autobot-ledger`**,
    `restore.sh` lo avisa («WARNING: no suppression-ledger snapshot…») y reaplica solo lo que
    ya contenía la base restaurada. Entonces, si tienes una exportación manual
    (`make prod-manage CMD="privacy_ledger_export" > libro-supresiones.jsonl`, que sigue

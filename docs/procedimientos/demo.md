@@ -9,8 +9,8 @@ plantillas de cada pack. Cómo funciona por dentro: [../arquitectura/bot-de-demo
 [../desarrollo/demo-local.md](../desarrollo/demo-local.md).
 
 !!! note "Qué puerta está encendida en cada sitio"
-    Decidido el 2026-11-24: en producción solo está encendida la puerta de **Telegram**; la de
-    WhatsApp se usa en local, con una app de desarrollo propia
+    Cada puerta se enciende por separado, así que puedes tener solo una en producción (por
+    ejemplo Telegram) y probar la otra en local con una app de desarrollo propia
     ([demo en local](../desarrollo/demo-local.md)). Local y producción nunca comparten bots,
     apps ni credenciales, tampoco el bot y el chat de avisos.
 
@@ -18,6 +18,15 @@ La primera respuesta de cualquier puerta pide elegir negocio; desde ahí la conv
 del pack real de ese negocio. La persona puede cambiar de negocio escribiendo `/negocio`
 (también `/start` o `negocio`), que vuelve a mostrar la lista. Solo entra una lista cerrada
 de personas o quien canjee un código de invitación vigente.
+
+```mermaid
+flowchart LR
+    TG["puerta Telegram<br/>DEMO_TELEGRAM_*"] --> SEL["selector<br/>lista de negocios de demo"]
+    WA["puerta WhatsApp<br/>DEMO_WHATSAPP_*"] --> SEL
+    SEL --> D1["demo-autobuses"]
+    SEL --> D2["demo-peluqueria"]
+    ACC["lista cerrada<br/>o invitación"] -.acceso.-> SEL
+```
 
 ## Objetivo, cuándo y requisitos
 

@@ -1,6 +1,6 @@
 # Observabilidad
 
-Cómo se entera la persona que opera de que algo va mal, sin instalar un sistema de monitorización aparte: una comprobación periódica dentro de la propia aplicación que convierte hallazgos en incidencias persistentes, logs técnicos enviados a VictoriaLogs, un latido a Healthchecks y avisos por Telegram. Lee esta página para entender qué mira cada pieza y dónde ver el resultado. Las decisiones están en [ADR-008](adr/ADR-008-panel.md) y [ADR-005](adr/ADR-005-vps-docker-compose.md). El catálogo de claves de alerta está en [Alertas](../referencia/alertas.md) y el significado de cada estado de un negocio en [Estados de negocio](../referencia/estados-de-negocio.md); aquí no se repiten.
+Cómo se entera el operador de que algo va mal, sin instalar un sistema de monitorización aparte: una comprobación periódica dentro de la propia aplicación que convierte hallazgos en incidencias persistentes, logs técnicos enviados a VictoriaLogs, un latido a Healthchecks y avisos por Telegram. Lee esta página para entender qué mira cada pieza y dónde ver el resultado. Las decisiones están en [ADR-008](adr/ADR-008-panel.md) y [ADR-005](adr/ADR-005-vps-docker-compose.md). El catálogo de claves de alerta está en [Alertas](../referencia/alertas.md) y el significado de cada estado de un negocio en [Estados de negocio](../referencia/estados-de-negocio.md); aquí no se repiten.
 
 ## Visión de conjunto
 
@@ -30,7 +30,7 @@ El principio de ADR-008, ajustado por el [ADR-031](adr/ADR-031-incidencias-como-
 El trabajo `ops_check` (`autobot/runtime/jobs.py`) corre cada 5 minutos en la cola `ops` (solo la escucha `worker-periodic`), con un candado para que no haya dos a la vez. Ejecuta `autobot.ops.check.run`:
 
 1. `collect()` reúne los **hallazgos** (`Finding`: clave, negocio opcional y texto).
-   - **Salud diaria acotada y repartida.** Las comprobaciones de salud de cada negocio (Graph de Meta, `getWebhookInfo`, Calendar) son llamadas HTTP en serie. Cada negocio tiene un desfase estable dentro de una ventana de 2 h (hash de su id) que se resta al día de validez de un resultado correcto, y cada pasada gasta como mucho `HEALTH_BUDGET_S` (60 s) en ellas: los vencidos que no caben se comprueban en las pasadas siguientes, el más atrasado primero. Con 700 negocios, el arranque en frío pasó de 581 s a unos 60 s por pasada, y todos quedan comprobados en menos de una hora. Un resultado con problemas se reintenta a los 15 minutos como antes.
+   - **Salud diaria acotada y repartida.** Las comprobaciones de salud de cada negocio (Meta, Telegram, Calendar) se reparten en una ventana de 2 h y cada pasada gasta como mucho 60 s (`HEALTH_BUDGET_S`) en ellas; lo que no cabe sigue en la pasada siguiente. Con 700 negocios, todos quedan comprobados en menos de una hora.
    - **Caídas de proveedor.** Con una caída conocida de Meta o Telegram (señal del cortacircuitos de salida) o de Google (`calendar_outage`, derivada: al menos 5 negocios con calendario y el 30 % con problemas de Calendar en la misma pasada), se levanta una sola alerta de plataforma y se marcan como `suppressed` los hallazgos por negocio que esa caída explica; mientras dura y 20 minutos después, `sync_alerts()` no los crea y resuelve sin mensaje los que ya estaban abiertos.
 2. `sync_alerts()` registra cada uno con `send_ops_alert`, cierra las **condiciones** abiertas que ya no aparecen, deja abiertos los **eventos** hasta que una persona los revise (solo recalcula sus casos) y reintenta, como mucho una vez por hora, los avisos que no llegaron (`retry_undelivered`).
 3. `take_sample()` guarda una muestra de máquina (`system_sample`, 62 días) y borra las filas de `config_follower` de procesos que llevan un día sin latir.
@@ -44,12 +44,26 @@ El trabajo `ops_check` (`autobot/runtime/jobs.py`) corre cada 5 minutos en la co
 - Por negocio: barridos de trabajo atascado (`runtime/sweeps.py`), envíos ambiguos sin decidir y envíos rechazados por clase de error, avisos al dueño fallidos o retenidos, rechazos de autenticación, umbral mensual de mensajes facturables de WhatsApp, errores seguidos y estado de Calendar (`ops/state.py`), y barridos periódicos que no se completan.
 - La salud diaria de cada negocio y de los bots de plataforma (`ops/health.py`).
 - Disco por encima del 80 % o el 95 %.
-- Más de 10 días sin purgar las copias de seguridad (`backup_prune_overdue`; en pausa desde el 2026-11-26, ver [ADR-025](adr/ADR-025-libro-de-supresiones-y-purga-vigilados.md)).
+- Más de 10 días sin purgar las copias de seguridad (`backup_prune_overdue`; desactivada por defecto, ver [ADR-025](adr/ADR-025-libro-de-supresiones-y-purga-vigilados.md)).
 - Los contenedores (`ops/containers.py`), salvo en local.
 
 La lista completa y su significado: [Alertas](../referencia/alertas.md).
 
 ### Incidencias (`ops_alert`)
+
+```mermaid
+stateDiagram-v2
+    [*] --> abierta: ops_check la encuentra
+    state abierta {
+        [*] --> condicion
+        [*] --> evento
+        condicion: condición («está mal ahora»)
+        evento: evento («pasó algo»)
+    }
+    abierta --> cerrada: condición que ya no aparece (se cierra sola)
+    abierta --> cerrada: evento revisado («Lo he revisado»)
+    cerrada --> abierta: caso nuevo tras la marca de revisión
+```
 
 Cada incidencia es una fila de `OpsAlert` (`autobot/ops/models.py`) única por clave y negocio mientras esté abierta ([ADR-031](adr/ADR-031-incidencias-como-bandeja.md)). El registro `autobot/ops/incidents.py` declara la **naturaleza** de cada clave: una **condición** («está mal ahora») se cierra sola cuando `ops_check` deja de encontrarla (`auto_resolves`), y entonces se avisa del «Resuelta» solo si era crítica; un **evento** («pasó algo») se cierra con «Lo he revisado» desde el panel, que guarda una marca de revisión: solo cuentan los casos posteriores, y uno nuevo abre una fila nueva que hereda la marca. Los casos (envíos, trabajos, avisos) se calculan en vivo desde sus tablas (`autobot/ops/cases.py`) y no se copian a `ops_alert`, que no tiene RLS.
 
@@ -85,6 +99,22 @@ Dos rutas sin autenticación, sin llamadas externas y sin nombres de negocio:
 ## Healthchecks
 
 `ops_check` pide `HEALTHCHECKS_PING_URL` al terminar, y **solo** si no ha fallado ninguna comprobación global ni de base de datos (sin `finally`): un `ops_check` caído deja de dar latido y es Healthchecks, desde fuera, quien avisa de que el worker o la cola no corren, algo que ninguna alerta interna puede detectar. El backup tiene su propio latido (`HEALTHCHECKS_BACKUP_PING_URL`, en `deploy/scripts/backup.sh`). Qué hacer cuando salta: [Cola y latido](../incidencias/cola-y-latido.md).
+
+```mermaid
+flowchart LR
+    subgraph VPS
+        OC["ops_check<br/>cada 5 min"] -->|incidencias| BOT["bot de avisos"]
+        WD["watchdog.sh del host<br/>sin base ni Django"] -->|disco, db, timers| BOT
+    end
+    OC -->|latido solo si todo corrió| HC["Healthchecks<br/>(fuera de la VPS)"]
+    BK["backup.sh"] -->|latido| HC
+    UP["monitor HTTP externo"] -->|GET /health| VPS
+    HC -->|correo o SMS| OP(("operador"))
+    UP --> OP
+    BOT -->|Telegram| OP
+```
+
+Cada capa vigila lo que la anterior no puede: `ops_check` no se entera de que él mismo ha muerto, el vigilante del host avisa aunque la base de datos esté caída, y Healthchecks avisa aunque caiga la VPS entera.
 
 **Vigilar el propio canal de avisos.** Un latido verde no demuestra que las alertas lleguen: con el token del bot revocado o un `OPS_TELEGRAM_CHAT_ID` erróneo, `ops_check` termina bien y nadie se entera de nada. Por eso, si hay una alerta crítica abierta cuyo `last_delivery` es `failed` o `unconfigured` desde hace más de 15 minutos (`ALERT_CHANNEL_GRACE`), `ops_check` envía `HEALTHCHECKS_PING_URL` + `/fail` en lugar del ping de éxito y healthchecks.io avisa por su canal (correo o SMS). Un aviso que no llegó se reintenta como mucho una vez por hora mientras siga abierta la incidencia (`retry_undelivered`), sin contar como aviso nuevo: en cuanto Telegram lo acepta, `last_delivery` pasa a `sent` y el latido vuelve a ser de éxito sin tocar nada. Si no hay ninguna incidencia crítica abierta, el fallo del canal no se ve hasta que la haya.
 

@@ -46,17 +46,27 @@ sequenceDiagram
 
 Los puntos importantes:
 
-- **Webhook** (`views.py`): mismas comprobaciones que el de un negocio (tamaño, firma o secreto antes de parsear, JSON, límite de firmas inválidas por IP y puerta), pero solo escribe `demo_event`.
-- **`store_event`**: aplica un límite de 30 eventos por minuto y persona (`EVENTS_PER_MINUTE`, en memoria del proceso web) y otro global por puerta de 60 eventos por minuto de personas sin acceso (`STRANGER_EVENTS_PER_MINUTE`); lo que los supera se descarta sin guardar y el webhook responde 200. En WhatsApp, una persona sin acceso y sin código que canjear ni siquiera se guarda: Meta cobra cada mensaje y no hay nada que conservar. Inserta con `ON CONFLICT DO NOTHING` (idempotente ante reintentos del proveedor) y encola `route_demo_event` con un candado por puerta y persona (`demo_user_lock`, que usa un hash, nunca el id).
-- **`route_demo_event`** decide, por este orden: puerta apagada → termina; acceso (`_gate_access`); `fp_page:<n>` → otra página de la lista; `fp_select:<slug>` → elige negocio; `/start`, `/negocio` o `negocio` → lista; cualquier otra cosa → se reenvía al negocio elegido como un `inbound_event` del canal de la puerta, y lo procesa `process_event` como cualquier otro ([Vida de un mensaje](vida-de-un-mensaje.md)).
-- **Lista de negocios** (`business_list`): solo negocios de demo `active`, sin degradar ni ambiguos, ordenados por nombre, con su descripción (`demo.description`). Se pagina de 8 en 8 con `core.ui.paginate` (8 filas más «Ver más» y «Volver» = 10, el límite de lista). Un slug de más de 54 caracteres no cabe en el id de 64 bytes y se omite con un aviso.
-- **Elegir negocio** (`_pick`): guarda `DemoSession` (una por puerta y persona), envía el aviso «Demo · nombre. Escribe /negocio para cambiar.» y a continuación un `menu` sintético al negocio, para que su pack conteste con su menú. El aviso va primero y un reintento puede repetirlo, nunca repetir el menú.
-- **Mensajes propios del selector** (lista, rechazo, aviso) no pertenecen a ningún negocio y se envían directamente, una sola vez, después de marcar el evento como hecho. La excepción es un envío que seguro no salió (el proveedor pidió esperar o no hubo conexión) sin que nada más se hubiera enviado: se reabre el evento y se reintenta (`TransientError`).
-- **Estados de entrega de WhatsApp** (`route_demo_status`): se asignan al negocio dueño del mensaje saliente; si no se recuerda, se busca en cada negocio de demo con su propio `tenant_tx`, nunca saltando la RLS.
+- **Webhook** (`views.py`): las mismas defensas que el de un negocio, pero solo escribe `demo_event`.
+- **Límites** (`store_event`): 30 eventos por minuto y persona, y 60 por minuto y puerta de personas sin acceso; lo que los supera se descarta. En WhatsApp, un desconocido sin código ni se guarda (Meta cobra cada mensaje). La inserción es idempotente y el trabajo lleva un candado por persona (un hash, nunca el id).
+- **Lista de negocios**: solo demos `active` y sanos, de 8 en 8 (8 filas más «Ver más» y «Volver» = 10, el límite de lista).
+- **Elegir negocio** guarda la `DemoSession` y manda un `menu` sintético al negocio, para que conteste su pack. Un reintento puede repetir el aviso «Demo · nombre», nunca el menú.
+- **Mensajes del selector** (lista, rechazo, aviso) se envían una sola vez, después de marcar el evento como hecho; solo se reintentan si seguro que no salieron.
+- **Estados de entrega de WhatsApp** se asignan al negocio dueño del mensaje, cada uno con su `tenant_tx`, nunca saltando la RLS.
 
 ## Quién puede usar la demo
 
 El acceso es cerrado. `doors.allowed` admite a una persona si está en la **lista cerrada** de su puerta (`DEMO_TELEGRAM_USERS`, `DEMO_WHATSAPP_USERS`: acceso permanente) o si tiene una **concesión vigente** de una invitación.
+
+```mermaid
+flowchart LR
+    P["persona"] --> L{"¿en la lista cerrada<br/>de la puerta?"}
+    L -->|sí| OK["acceso"]
+    L -->|no| G{"¿concesión vigente?"}
+    G -->|sí| OK
+    G -->|no| C{"¿trae un código?"}
+    C -->|válido| GR["concesión nueva<br/>(canje idempotente)"] --> OK
+    C -->|no o inválido| NO["Telegram: «No tienes acceso» (máx. 3/h)<br/>WhatsApp: silencio<br/>el payload se vacía"]
+```
 
 - **Invitación** (`invites.py`, enmienda del 2026-11-16 de ADR-006): el panel crea un código (con nota, número de usos y caducidad opcional; `autobot/panel/services/demo_invites.py`) y entrega un enlace o QR. Se canjea con `/start <código>` en Telegram, o enviando el código como mensaje completo en WhatsApp (su enlace precarga el cuerpo). El canje es idempotente por identidad y no gasta otro uso al repetirse.
 - **Códigos difíciles de adivinar**: 12 caracteres de un alfabeto sin ambiguos (unos 59 bits). Una persona que falla `MAX_FAILED_REDEEMS` (5) veces en una hora no se vuelve a comprobar hasta que pase la hora.
@@ -85,7 +95,7 @@ Los datos de demo se conservan menos que los de un cliente real (`apps/backend/s
 | Concesiones con caducidad | al caducar |
 | Invitaciones revocadas o caducadas | 30 días después (`INVITE_RETENTION_DAYS`) |
 
-La limpieza solo actúa con `RETENTION_CLEANUP_ENABLED=true`: en producción `compose.prod.yaml` lo activa por defecto (aprobado el 2026-11-23); en local vale `false`. Ver [Retención y RGPD](../procedimientos/retencion-rgpd.md).
+La limpieza solo actúa con `RETENTION_CLEANUP_ENABLED=true`: en producción `compose.prod.yaml` lo activa por defecto; en local vale `false`. Ver [Retención y RGPD](../procedimientos/retencion-rgpd.md).
 
 ## Dónde está el código
 

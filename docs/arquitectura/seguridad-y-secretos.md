@@ -2,6 +2,20 @@
 
 Resumen de las defensas de la plataforma: dónde viven los secretos y cómo se cifran, cómo se autentican los webhooks, qué puede hacer cada rol de base de datos, qué datos personales no pueden salir de la base y qué comprueba CI. Lee esta página para saber qué protege cada capa; el aislamiento entre negocios (RLS) está en [Tenants y RLS](tenants-y-rls.md) y el procedimiento de rotación en [Rotar secretos](../procedimientos/rotar-secretos.md).
 
+```mermaid
+flowchart LR
+    I(("internet")) --> FW["UFW + DOCKER-USER<br/>solo 22 · 80 · 443"]
+    FW --> CA["Caddy<br/>lista cerrada de rutas · 256 KB"]
+    CA --> SIG["firma del webhook<br/>HMAC / secret_token"]
+    SIG --> APP["web · fp_app<br/>sin owner ni readonly"]
+    APP --> RLS["RLS forzada<br/>por tenant_id"]
+    RLS --> ENC["secretos de canal<br/>cifrados (Fernet)"]
+    OP(("operador")) --> SSH["túnel SSH"] --> PAN["panel · contraseña + TOTP<br/>TOTP nuevo en lo sensible"]
+    PAN --> RLS
+```
+
+Cada capa asume que la anterior puede fallar: aunque un bug saltara la firma, RLS sigue separando negocios; aunque alguien leyera la base, los secretos de canal siguen cifrados y la clave no está en los backups.
+
 ## Dónde vive cada secreto
 
 | Secreto | Dónde | Cómo |
@@ -20,7 +34,7 @@ Nunca hay credenciales en git ni en logs. En producción, `settings.py` rechaza 
 - Un secreto ilegible desactiva el canal principal de ese negocio sin degradarlo ni afectar a los demás ([Config y registro](config-y-registro.md)).
 - La API del panel no devuelve secretos, solo si están presentes.
 - **Re-cifrado:** `manage.py tenant_secrets_reencrypt` descifra y vuelve a cifrar todas las filas con la primera clave, en una transacción: si una fila es ilegible, se revierte todo. Cada fila deja una auditoría con `reencrypted: true`. Los backups antiguos no se re-cifran: restaurarlos exige las claves con que se hicieron.
-- **La clave no viaja con los datos (ADR-021).** El snapshot de restic lleva el `.env` sin `SECRETS_ENCRYPTION_KEY`; la custodia la persona fuera del servidor y `restore.sh` la exige explícitamente y comprueba que descifra los secretos restaurados ([Backups](../procedimientos/backups.md), [Rotar secretos](../procedimientos/rotar-secretos.md)).
+- **La clave no viaja con los datos (ADR-021).** El snapshot de restic lleva el `.env` sin `SECRETS_ENCRYPTION_KEY`; la custodia el operador fuera del servidor y `restore.sh` la exige explícitamente y comprueba que descifra los secretos restaurados ([Backups](../procedimientos/backups.md), [Rotar secretos](../procedimientos/rotar-secretos.md)).
 - Los logs protegen además los valores conocidos: `redact` sustituye por `[REDACTED]` los secretos configurados y los de los negocios del registro cargado.
 
 ## Firma de los webhooks
@@ -51,6 +65,34 @@ Toda tabla nueva con RLS lleva las políticas `tenant_isolation` y `readonly_all
 ## Aislamiento de contenedores y de red
 
 Detalle y motivos en [ADR-020](adr/ADR-020-api-del-panel-aparte.md):
+
+```mermaid
+flowchart LR
+    subgraph edge["edge"]
+        CA[caddy]
+    end
+    subgraph panel["panel"]
+        PA[panel]
+    end
+    subgraph data["data (internal: sin internet)"]
+        DB[(db)]
+    end
+    subgraph logs["logs (internal)"]
+        VL[(victorialogs)]
+    end
+    subgraph egress["egress"]
+        WK["worker-*"]
+    end
+    CA --> WEB[web]
+    PA --> WP[web-panel]
+    WEB --> DB
+    WP --> DB
+    WK --> DB
+    WEB & WP & WK --> VL
+    WK --> NET(("Meta · Telegram · Google"))
+```
+
+`caddy` y `victorialogs` no tienen camino hasta la base de datos, y la base de datos no puede salir a internet.
 
 - **Credenciales por servicio:** el `web` público y los workers solo tienen `fp_app`. La API del panel corre en `web-panel`, sin puerto publicado ni red de borde, y es el único proceso de larga vida con `fp_owner` y `fp_readonly`.
 - **Redes de Compose separadas** (`edge`, `panel`, `egress`, `data`, `logs`): Caddy solo alcanza `web`; la base de datos y VictoriaLogs están en redes `internal`, sin salida a internet.
@@ -108,7 +150,7 @@ La plataforma depende de cuentas de terceros que, si alguien entra en ellas, dan
 | healthchecks.io | Silenciar los avisos de worker colgado y de backups parados | Segundo factor |
 | Meta Business | Números de WhatsApp, apps, tokens y facturación | Segundo factor; revisar quién tiene acceso a cada app y cuenta de WhatsApp |
 | Google Cloud | La cuenta de servicio de Calendar | Segundo factor |
-| Telegram (cuenta de la persona) | BotFather (tokens de los bots) y el chat de avisos | Segundo factor (contraseña de Telegram) |
+| Telegram (cuenta del operador) | BotFather (tokens de los bots) y el chat de avisos | Segundo factor (contraseña de Telegram) |
 
 En el gestor de contraseñas, como entradas separadas: `SECRETS_ENCRYPTION_KEY`, la contraseña de restic, las dos credenciales S3, la clave SSH de operación, los tokens de los bots, las URLs de healthchecks y los códigos de recuperación de cada segundo factor. Si el TOTP del panel está en el mismo gestor que su contraseña, los dos factores caen juntos: mejor en una app de autenticación aparte. Una revisión trimestral comprueba que todo sigue así ([mantenimiento](../procedimientos/mantenimiento.md#calendario)).
 

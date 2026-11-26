@@ -147,6 +147,14 @@ cliente (ADR-013); el cliente se queda con una copia de la entrada elegida.
 `manage.py dataset_library pull bus timetable <nombre> <dir>` saca una entrada a un
 directorio con esta estructura:
 
+```mermaid
+flowchart LR
+    P["paradas.yaml<br/>localidades · paradas<br/>no_vendibles"] --> L["lineas/&lt;id&gt;.yaml<br/>temporadas · días · horarios"]
+    O["observaciones.yaml<br/>condiciones y avisos"] --> L
+    C["calendario.yaml<br/>vigencia · festivos · curso"] --> L
+    L --> Q["consulta:<br/>origen → destino + fecha<br/>= salidas del día"]
+```
+
 | Archivo | Campos y formato |
 |---|---|
 | `paradas.yaml` | `localidades: {id: {nombre, alias?}}`; `paradas: {COD: {nombre, localidad}}`, con código de tres mayúsculas; `no_vendibles` son pares de ids sin billete en ambos sentidos; `pendientes` registra códigos `Pnn`. Una localidad pendiente lleva `pendiente`, `ver`, `minutos` y, opcionalmente, `aviso`. |

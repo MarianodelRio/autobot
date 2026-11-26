@@ -206,7 +206,7 @@ install-vm: ## Instala/repara la VM de producción; ejecutar dentro de la VM (AR
 	sudo bash deploy/scripts/install-vm.sh $(ARGS)
 
 # FROM y TO son alias de ~/.ssh/config o IPs; TO ya debe tener el bootstrap hecho
-# (install-vm.sh --restore-target, dentro de TO). Ver docs/procedimientos/servidor.md y ADR-012.
+# (install-vm.sh --restore-target, dentro de TO). Ver docs/procedimientos/servidor.md y ADR-017.
 server-migrate: ## Traslada el despliegue de FROM a TO (FROM= TO= [ONLY=paso])
 	bash deploy/scripts/server-migrate.sh $(FROM) $(TO) $(if $(ONLY),--only=$(ONLY),)
 

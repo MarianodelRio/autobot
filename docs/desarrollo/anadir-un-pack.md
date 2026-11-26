@@ -7,6 +7,12 @@ Guía paso a paso para crear un pack nuevo (el código de un tipo de negocio) y 
 
 Como ejemplo mínimo y completo del contrato, mira el pack de pruebas `apps/backend/tests/fixtures/toy_pack/pack.py`. Los packs reales (`salon`, `bus`) muestran el resto.
 
+```mermaid
+flowchart LR
+    S1["1 · packs/&lt;nombre&gt;/<br/>pack.py"] --> S2["2 · registry.py"] --> S3["3 · config.py<br/>Pydantic"] --> S4["4 · template/<br/>negocio de demo"]
+    S4 --> S5["5 · escenario de<br/>conversación"] --> S6["6 · ganchos<br/>opcionales"] --> S7["7 · import-linter"] --> S8["8 · docs y nav"]
+```
+
 ## 1. Carpeta y contrato
 
 Crea `apps/backend/src/packs/<nombre>/` con un `__init__.py` y un `pack.py` que declare una instancia de `Pack` llamada `pack` (`apps/backend/src/core/pack.py`, `Pack`). Los campos obligatorios son:
@@ -20,11 +26,7 @@ Crea `apps/backend/src/packs/<nombre>/` con un `__init__.py` y un `pack.py` que 
 
 El resto es opcional y se explica en los pasos siguientes: `periodic`, `health`, `summary`, `templates`, `owner_notices`, `template`, `template_blank`, `needs_calendar`, `load_data`, `dataset_summary` y `conversation_timeout_min`.
 
-`handle_message` recibe el contexto (negocio, configuración validada, contacto, estado de la conversación, reloj, claves de idempotencia) y el mensaje entrante. Devuelve un `PackResult` con tres cosas:
-
-- `replies`: lo que ve la persona, construido con los helpers de `core/ui.py` (`buttons_msg`, `list_msg`, `section`, `row`, `paginate`).
-- `state`: el estado nuevo. `None` lo deja como está y `{}` lo reinicia.
-- `actions`: efectos para el runtime (`NotifyOwner`, `RecordMetric`, `SendProactive`, `UpdateContact`).
+`handle_message` recibe el contexto y el mensaje y devuelve un `PackResult` (respuestas, estado nuevo y acciones); el diagrama del contrato está en [Packs](../arquitectura/packs.md#el-contrato-corepackpy). Las respuestas se construyen con los helpers de `core/ui.py` (`buttons_msg`, `list_msg`, `section`, `row`, `paginate`), que ya respetan los límites.
 
 Reglas que el pack debe respetar (están en `CLAUDE.md`):
 

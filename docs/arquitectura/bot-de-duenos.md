@@ -4,6 +4,22 @@ El bot de dueños es un bot de Telegram de la plataforma (el «bot de avisos», 
 
 El mismo bot envía las alertas de operación al chat del operador (`OPS_TELEGRAM_CHAT_ID`, ver [Observabilidad](observabilidad.md#avisos-al-operador)) y, en ese chat, ofrece un menú de operador de solo consulta y un resumen diario ([Menú de operador](#menu-de-operador)).
 
+```mermaid
+flowchart LR
+    subgraph PL["plataforma"]
+        PK["packs<br/>NotifyOwner"] --> N["notification<br/>(cola outbound)"]
+        SUM["resumen mensual"] --> N
+        OPS["ops_check<br/>alertas 🔴 🟠"] --> OA["aviso de operación"]
+        DAY["resumen diario"] --> OA
+    end
+    N --> BOT(("bot de avisos<br/>Telegram"))
+    OA --> BOT
+    BOT --> D["chat del dueño<br/>avisos + menú del dueño"]
+    BOT --> OP["chat del operador<br/>alertas + menú de operador"]
+    D -->|«Cómo va el mes»…| BOT
+    OP -->|«Estado», «Backups»…| BOT
+```
+
 ## Vinculación de un chat
 
 El `chat_id` del dueño vive en `owner_link` (modelo `OwnerLink` en `apps/backend/src/autobot/runtime/models.py`), una tabla de plataforma **sin RLS**: cuando llega un mensaje solo se conoce el chat y hay que buscar el negocio a partir de él.

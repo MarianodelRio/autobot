@@ -1,34 +1,38 @@
 # Cómo se monta el canal WhatsApp de un negocio (explicación no técnica)
 
-Explica, en lenguaje sencillo, cómo se relacionan las cuentas de Meta de cada negocio con la
-persona operadora, qué hace cada parte y cómo cambiaría si la persona operadora se da de alta
-como autónoma o empresa. Es la guía para explicárselo a un negocio que no sabe nada de Meta
+Explica, en lenguaje sencillo, cómo se relacionan las cuentas de Meta de cada negocio con el
+operador, qué hace cada parte y cómo cambiaría si el operador se da de alta
+como autónomo o empresa. Es la guía para explicárselo a un negocio que no sabe nada de Meta
 ni de desarrollo. Los pasos técnicos del alta (checklist, panel, comandos) están en
 [alta-baja-negocio.md](alta-baja-negocio.md#whatsapp-checklist-del-numero).
 
-- **Objetivo:** que el negocio y la persona operadora entiendan quién es dueño de qué y qué
+- **Objetivo:** que el negocio y el operador entiendan quién es dueño de qué y qué
   tiene que hacer cada uno.
 - **Cuándo:** antes del alta de un negocio con WhatsApp, y al plantearse el modelo
   centralizado.
 - **Requisitos y aprobaciones:** ninguno técnico. Activar el canal real del negocio requiere
   aprobación humana explícita ([alta-baja-negocio.md](alta-baja-negocio.md)).
-- **Pasos:** las secciones 2 (qué hace el negocio) y 3 (qué hace la persona operadora).
+- **Pasos:** las secciones 2 (qué hace el negocio) y 3 (qué hace el operador).
 - **Verificación:** el operador entra en Meta con su cuenta y ve la app, la WABA y el número
   del negocio; el negocio no necesita volver a tocar nada.
 
-## 1. El modelo actual: una "casita" de Meta por negocio
+## 1. El modelo sin alta: una "casita" de Meta por negocio
 
 Cada negocio tiene su propia carpeta en Meta, completamente separada de las demás.
-La persona operadora no es propietaria de nada de eso: solo tiene permiso para
+El operador no es propietario de nada de eso: solo tiene permiso para
 entrar y trabajar dentro, con su propia cuenta.
 
-```
-Negocio A                                  Negocio B
-  Business Portfolio del negocio             Business Portfolio del negocio
-       └── App del negocio                        └── App del negocio
-              └── WABA del negocio                       └── WABA del negocio
-  Operador: rol de administrador             Operador: rol de administrador
-  (con su propia cuenta de Facebook)         (con su propia cuenta de Facebook)
+```mermaid
+flowchart TB
+    OP(("operador<br/>su propia cuenta<br/>de Facebook"))
+    subgraph A["Business Portfolio del negocio A"]
+        AA["App de A"] --> WA["WABA y número de A"]
+    end
+    subgraph B["Business Portfolio del negocio B"]
+        AB["App de B"] --> WB["WABA y número de B"]
+    end
+    OP -. "rol de administrador" .-> A
+    OP -. "rol de administrador" .-> B
 ```
 
 - **Business Portfolio**: una carpeta/oficina virtual de Meta donde viven los datos
@@ -40,7 +44,7 @@ Negocio A                                  Negocio B
   mensaje, etc.), dentro de esa misma App.
 
 La app, la WABA y el número están siempre en el Business Portfolio del **negocio**,
-nunca en uno de la persona operadora. Una app y un número por negocio (ver el
+nunca en uno del operador. Una app y un número por negocio (ver el
 checklist técnico en `alta-baja-negocio.md`).
 
 ## 2. Qué tiene que hacer el negocio (una vez, al darlo de alta)
@@ -51,15 +55,15 @@ checklist técnico en `alta-baja-negocio.md`).
    empresa en este punto).
 3. Crear su **App** dentro de esa carpeta y añadir el producto WhatsApp: esto le da
    automáticamente un número de pruebas para empezar.
-4. **Dar acceso a la persona operadora**: dentro de la carpeta (Configuración del
-   negocio → Personas) y dentro de la App (Roles), añadir el email de la persona
-   operadora con permiso de administrador/desarrollador.
+4. **Dar acceso al operador**: dentro de la carpeta (Configuración del
+   negocio → Personas) y dentro de la App (Roles), añadir el email del
+   operador con permiso de administrador/desarrollador.
 
 A partir de aquí, el negocio no vuelve a tocar nada de Meta. Solo hace falta estar
-con él (en persona o por videollamada) para este alta inicial; el resto lo hace la
-persona operadora en remoto.
+con él (en persona o por videollamada) para este alta inicial; el resto lo hace el
+operador en remoto.
 
-## 3. Cómo trabaja la persona operadora
+## 3. Cómo trabaja el operador
 
 - **Acceso remoto, sin volver a ver al negocio.** Una vez tiene el rol de
   administrador en la carpeta y la App del negocio, entra con su propia cuenta
@@ -73,21 +77,21 @@ persona operadora en remoto.
   configuración de ese tenant (secretos cifrados en la BD, importados desde un YAML privado, nunca en
   claro ni en git). Cada negocio tiene su propio conjunto, completamente aislado de
   los demás — igual que ya aísla sus datos de cliente con `tenant_id` y RLS.
-- **Plantillas de mensaje:** las crea la persona operadora directamente en la App
+- **Plantillas de mensaje:** las crea el operador directamente en la App
   del negocio, con su acceso de administrador. El negocio no tiene que crear ni
   aprobar nada en Meta, aunque conviene que apruebe el **texto** antes de mandarlo a
   revisión, porque habla en su nombre.
 - **No hace falta estar dado de alta como autónomo ni empresa** para montar esto.
   Solo se necesita cuando se quiere pasar al modelo centralizado del punto 4.
 
-## 4. Modelo futuro: si la persona operadora se da de alta
+## 4. Modelo futuro: si el operador se da de alta
 
-Si más adelante la persona operadora se registra como autónoma o empresa, puede
+Si más adelante el operador se registra como autónomo o empresa, puede
 pasar a un modelo centralizado: una sola carpeta (Business Portfolio) propia, y los
 negocios simplemente "comparten" su número con ella en vez de darle un rol de
 administrador dentro de su propia carpeta.
 
-### Qué necesita la persona operadora en ese momento
+### Qué necesita el operador en ese momento
 
 1. **Darse de alta** (trámite fiscal, decisión suya, no técnica).
 2. **Verificación de negocio** ante Meta: enseñar un documento (certificado de
@@ -121,12 +125,12 @@ papeleo), no el trabajo técnico de mover cosas de un sitio a otro.
 
 ## 6. Resumen
 
-| | Modelo actual (sin alta) | Modelo centralizado (con alta) |
+| | Modelo sin alta | Modelo centralizado (con alta) |
 |---|---|---|
 | Quién es dueño de la App/WABA | El negocio | El negocio (no cambia) |
-| Cómo accede la persona operadora | Rol de administrador en la carpeta del negocio | Acceso compartido desde su propia carpeta |
+| Cómo accede el operador | Rol de administrador en la carpeta del negocio | Acceso compartido desde su propia carpeta |
 | Qué hace el negocio al compartir | Darle un rol de administrador | Un clic de "compartir con socio" |
-| Requiere alta/verificación | No | Sí, de la persona operadora |
+| Requiere alta/verificación | No | Sí, del operador |
 | Visitas presenciales necesarias | Solo la primera vez (alta inicial) | Solo la primera vez (alta inicial) |
 | Pérdida de datos al pasar de uno a otro | — | Ninguna |
 

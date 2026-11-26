@@ -60,12 +60,10 @@ sueltos en la raíz, cada uno con su propia entrada en `.gitignore`.
   crea `var/` (y `var/state/{ops,caddy-data,caddy-config}`) con el dueño correcto, e
   instala los units desde `deploy/systemd/`. El comando forzado de la clave de CI es
   `deploy/scripts/deploy.sh <sha>`.
-- No hay servidor de producción desplegado todavía, así que nada de esto afecta a un
-  sistema real; se verificó con `docker compose config` en modo local y en modo
+- La reorganización se verificó con `docker compose config` en modo local y en modo
   producción (con variables de prueba), comparando los servicios resueltos, y con
   `make up`, `make dev-bootstrap` y `make check-prod-config` en local.
 
 ## Cuándo revisarla
 
-- Si se monta un servidor y los runbooks necesitan rutas o comandos distintos de los
-  que aquí se fijan.
+- Si los runbooks necesitan rutas o comandos distintos de los que aquí se fijan.

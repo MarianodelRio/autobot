@@ -1,6 +1,6 @@
 # ADR-005 — Una VPS con Docker Compose
 
-**Estado:** vigente; ampliado por [ADR-020](ADR-020-api-del-panel-aparte.md) (contenedor `web-panel`, redes separadas y contenedores endurecidos), por [ADR-021](ADR-021-backups-resistentes.md) (backups horarios) y por [ADR-023](ADR-023-colas-aisladas-y-degradacion.md) (cuatro workers: `worker-calendar` y `worker-periodic` aparte). Proveedor fijado y en producción desde 2026-11-24 (ver «Proveedor y tamaño»)
+**Estado:** vigente; ampliado por [ADR-020](ADR-020-api-del-panel-aparte.md) (contenedor `web-panel`, redes separadas y contenedores endurecidos), por [ADR-021](ADR-021-backups-resistentes.md) (backups horarios) y por [ADR-023](ADR-023-colas-aisladas-y-degradacion.md) (cuatro workers: `worker-calendar` y `worker-periodic` aparte). Proveedor y tamaño de arranque en «Proveedor y tamaño»
 
 ## Contexto
 
@@ -29,23 +29,21 @@ La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de
 - Parches del sistema, cortafuegos y backups son responsabilidad nuestra: automatizados y vigilados.
 - Nada depende del proveedor: cambiar de VPS es una restauración.
 
-## Proveedor y tamaño (2026-11)
+## Proveedor y tamaño
 
 - **Proveedor:** Hetzner Cloud, centro de datos en la UE. Los backups van a un bucket S3 de
   otro proveedor, también en la UE (ADR-021). El 2026-11-09 se compararon OVHcloud VPS-1
   (3,81 EUR/mes), Hetzner CX23 (5,99 EUR/mes) y netcup VPS 500 (8,26 EUR/mes con 12 meses);
-  como nada depende del proveedor, cambiarlo es una restauración (ADR-012).
-- **Tamaño de arranque: 2 vCPU y 4 GB, con 2 GB de swap** (2026-11-24). Las máquinas
-  mayores no tenían stock o habían subido mucho de precio. La prueba de carga en
+  como nada depende del proveedor, cambiarlo es una restauración (ADR-017).
+- **Tamaño de arranque: 2 vCPU y 4 GB, con 2 GB de swap.** La prueba de carga en
   `localprod` dio un pico de ~1,15 GiB entre todos los contenedores con 5 negocios y 1.500
   mensajes, así que basta para los negocios de demo y los primeros clientes. Los
   `mem_limit` de `compose.prod.yaml` suman 5,76 GB: son topes, no reservas, y en esta
   máquina no se pueden alcanzar todos a la vez.
-- **Con un cliente real se sigue en 2 vCPU y 4 GB** (decidido el 2026-11-26). Se amplía a
-  4 vCPU y 8 GB (Rescale del proveedor, sin reinstalar), el tamaño para el que están
+- **Cuándo ampliar:** a 4 vCPU y 8 GB (Rescale del proveedor, sin reinstalar), el tamaño para el que están
   calculados los `mem_limit` y el ajuste de PostgreSQL
   ([capacidad y crecimiento](../capacidad-y-crecimiento.md#servidor-y-proveedor)), al sumar
-  más clientes reales, o antes si salta `memory_high` (memoria por encima del 90 % de forma
+  clientes, o antes si salta `memory_high` (memoria por encima del 90 % de forma
   sostenida) o el swap se usa de forma habitual.
 - **Terraform descartado:** un script por SSH sirve en cualquier proveedor sin añadir otra
   herramienta que mantener.
@@ -55,4 +53,4 @@ La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de
 - Más de 15 negocios, o un negocio que dependa del servicio en horas críticas → PostgreSQL gestionado y varias VPS de aplicación.
 
 Cómo se instala y se traslada el servidor (cuentas de acceso, `bootstrap-server.sh`,
-`install-vm.sh` (ADR-017), `server-migrate.sh`) queda en [ADR-012](ADR-012-instalacion-y-traslado.md).
+`install-vm.sh` (ADR-017), `server-migrate.sh`) queda en el mismo [ADR-017](ADR-017-instalador-de-la-vm-y-entorno-local.md).

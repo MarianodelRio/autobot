@@ -1,22 +1,41 @@
-# ADR-017 — Instalador de la VM desde dentro y un solo comando para local
+# ADR-017 — Instalación, acceso y traslado del servidor
 
-**Estado:** vigente; sustituye la parte de `server-init.sh` del [ADR-012](ADR-012-instalacion-y-traslado.md)
+**Estado:** vigente. Reúne el antiguo ADR-012 (cuentas, bootstrap, traslado y `restic init`
+manual), cuya instalación desde el portátil (`server-init.sh`) sustituyó este ADR.
 
 ## Contexto
 
-El ADR-012 instalaba la VM desde el portátil del operador con `server-init.sh` por SSH.
-Revisándolo aparecieron tres problemas y una petición:
+El ADR-005 fija una sola VPS con Docker Compose, pero no decide quién tiene acceso de
+`root`, cómo se instala una máquina limpia de forma repetible ni cómo se traslada todo a
+otra (cambio de proveedor, ampliación o primera instalación de verdad) sin que las dos
+envíen mensajes a la vez.
 
-- `restore.sh` exigía `/var/lib/autobot/bootstrap-complete`, que ningún script creaba
-  (el bootstrap escribe `bootstrap-base-complete` y `bootstrap-sshd-complete`);
-  `restore-test.sh` y `localprod.sh` lo falsificaban con `touch`.
-- `server-init.sh` subía a GitHub (`DEPLOY_SSH_KEY`) la clave privada **del operador**,
-  con acceso de `admin` a la VM, y la clave de CI generada nunca llegaba a ningún sitio.
-- `ssh-deploy.sh` hacía `git checkout` antes de que `deploy.sh` tomara su candado.
-- La persona quiere algo simple: un comando para local y otro para la VM, ejecutado
-  dentro de la VM, no orquestado por SSH desde el portátil.
+La primera versión (ADR-012) instalaba la VM desde el portátil con `server-init.sh` por
+SSH. Al revisarla aparecieron tres problemas: `restore.sh` exigía un marcador
+(`bootstrap-complete`) que ningún script creaba y los simulacros lo falsificaban;
+`server-init.sh` subía a GitHub la clave privada **del operador**, con acceso de `admin`; y
+`ssh-deploy.sh` hacía `git checkout` antes de que `deploy.sh` tomara su candado. Además, la
+persona quería algo simple: un comando para local y otro para la VM, ejecutado dentro de
+ella.
 
 ## Decisión
+
+### Acceso al servidor
+
+- **Dos cuentas, una sola clave.** `deploy` (sin `sudo`, en el grupo `docker`, que ya
+  equivale a `root`, así que limitarle el `sudo` solo evitaría accidentes) ejecuta los
+  contenedores y acepta la clave de CI, restringida por comando forzado a
+  `deploy/scripts/deploy.sh <sha>`. `admin` (con `sudo` sin contraseña: el único control de
+  acceso es la clave) existe solo para tareas de `root`. Las dos aceptan la **misma** clave
+  del operador.
+- **Repo público, clon por HTTPS**, sin deploy key. Si el repo pasara a privado, habría que
+  añadir una de solo lectura.
+- **`bootstrap-server.sh` en dos fases.** `--base` (paquetes, Docker, swap, cuentas, clon y
+  timers) nunca toca `sshd`, así que repetirla es seguro. `--harden-ssh` (cierra `root` y
+  contraseña, activa `ufw`) va aparte y solo tras comprobar, desde una sesión nueva, que
+  `deploy@` y `admin@` aceptan la clave.
+
+### Instalación
 
 - **`deploy/scripts/install-vm.sh`** se ejecuta como root (o con `sudo`) dentro de la VM,
   desde un clon del repositorio. Es idempotente y reanudable por pasos (`ci-key`, `base`,
@@ -54,8 +73,24 @@ Revisándolo aparecieron tres problemas y una petición:
   `/health/internal` y que la clave restaurada descifra `tenant_secret`; `ensure-env.sh`
   deriva siempre `DB_*_URL` de `FP_*_PASSWORD`; un `caddy reload` fallido avisa a ops.
 
+### Traslado y copias
+
+- **`server-migrate.sh` (`make server-migrate FROM= TO=`)** ensaya la restauración en el
+  destino sin marcarlo como desplegado. En el corte congela el origen (`var/.frozen`, que
+  `deploy.sh` y `restore.sh` respetan) antes del backup final, y el destino restaura **ese
+  snapshot concreto** (nunca `latest`). Los workers del destino solo arrancan tras
+  comprobar por SSH que el origen no tiene ningún contenedor de aplicación en marcha.
+- **`restic init` siempre manual.** Un `RESTIC_REPOSITORY` mal escrito crearía un
+  repositorio nuevo y vacío que ocultaría la pérdida del bueno. `backup.sh` compara el id
+  del repositorio con `var/.restic-repo-id` y se niega si no coincide.
+
 ## Alternativas consideradas
 
+- **`sudoers` limitado para `deploy`**: más complicado de lo que parece (la copia del
+  script tiene que ser de `root` y `sudo` limpia el entorno) para una barrera que no es
+  real, porque `deploy` ya puede hacerse `root` con el grupo `docker`.
+- **Deploy key SSH para clonar**: innecesaria mientras el repo sea público.
+- **`restic init` automático**: oculta en silencio la pérdida del repositorio correcto.
 - **Reducir `server-init.sh` a un envoltorio que copie el repo y llame a `install-vm.sh`**:
   mantiene un segundo punto de entrada y `var/server.env` sin aportar nada; descartado.
 - **Subir la clave del operador como secreto de CI**: da a GitHub acceso de administrador;
@@ -65,11 +100,18 @@ Revisándolo aparecieron tres problemas y una petición:
 
 ## Consecuencias
 
+- Una cuenta más (`admin`), sin clave ni contraseña propias.
+- El primer `restic init` de cada servidor es un paso manual explícito.
 - Hay que clonar el repo en la VM y tener acceso de root/sudo ahí; el portátil ya no
   participa salvo para `gh secret set` y la clave del operador.
 - La clave privada de CI existe en `/root` hasta que se entrega: el resumen lo recuerda.
 - `restore-test.sh` y `localprod.sh` ya no ejercitan la comprobación del marcador.
+- Tiempos de corte estimados, sin medir aún en dos VMs reales: traslado planificado,
+  15-30 minutos más el TTL del DNS y sin pérdida de datos (salvo logs técnicos); pérdida de
+  la máquina, 1-2 horas y hasta una hora de datos.
 
 ## Cuándo revisarla
 
-- Si el repositorio pasa a privado (hace falta credencial de clonado) o si hay más de un operador.
+- Si el repositorio pasa a privado (hace falta credencial de clonado).
+- Si hay más de un operador con acceso de `root`: `admin` pasaría a tener una clave por
+  persona.

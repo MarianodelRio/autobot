@@ -26,6 +26,18 @@ Un SHA nuevo rompe `/health` o el flujo tras desplegar, o llega `deploy_rollback
 
 ## Arreglo
 
+```mermaid
+flowchart TD
+    R{"¿qué dice<br/>deploys.jsonl?"} -->|rolled_back| OK["ya volvió sola:<br/>arregla el commit"]
+    R -->|rollback_failed| MR["1 · make rollback"]
+    R -->|deployed, pero falla| C{"¿causa?"}
+    C -->|código| SHA["2 · make deploy SHA=…"]
+    C -->|config de un negocio| CFG["5 · versión anterior<br/>de su configuración"]
+    MR -->|sin GitHub| SSH["3 · deploy.sh por SSH"]
+```
+
+El esquema de la base nunca vuelve atrás: solo el código.
+
 1. Si la reversión automática falló, un operador autorizado, desde el portátil con la clave de operación:
 
     ```bash

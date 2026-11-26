@@ -119,6 +119,16 @@ defecto en `packs/salon/messages.py` (`SalonTexts`):
 
 El bot trata el calendario de Google como fuente de verdad. Eventos con significado especial:
 
+```mermaid
+flowchart LR
+    EV["evento del calendario"] --> CFG{"¿empieza por [CFG]?"}
+    CFG -->|"CERRADO / VACACIONES"| CL["día cerrado"]
+    CFG -->|"HORARIO HH:MM-HH:MM"| HO["horario de ese día"]
+    CFG -->|no| MINE{"¿cita del bot<br/>(metadatos privados)?"}
+    MINE -->|sí| CITA["cita: ocupa su hueco<br/>y tiene recordatorio"]
+    MINE -->|no| BL["bloquea las horas<br/>que cubre"]
+```
+
 - `[CFG] CERRADO` y `[CFG] VACACIONES` cierran el día.
 - `[CFG] HORARIO HH:MM-HH:MM` fija el horario de ese día, también si era festivo o estaba
   cerrado.

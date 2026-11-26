@@ -67,13 +67,21 @@ un mensaje de prueba responde una vez y no hay fallos de autenticación en el pa
 `SECRETS_ENCRYPTION_KEY` admite claves Fernet separadas por comas. La primera cifra;
 todas pueden descifrar. La clave fija de desarrollo nunca se usa en producción.
 
+```mermaid
+flowchart LR
+    K0["SECRETS_ENCRYPTION_KEY=vieja"] --> K1["=nueva,vieja<br/>cifra con nueva, descifra con ambas"]
+    K1 --> RE["tenant_secrets_reencrypt<br/>todo o nada"]
+    RE --> K2["=nueva"]
+    K2 --> G["gestor de contraseñas:<br/>nueva + vieja mientras haya<br/>backups que la necesiten"]
+```
+
 1. Genera una clave con `cd apps/backend && uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
    y guárdala en el gestor de contraseñas, sin enviarla a logs ni a git.
 2. En el `.env` del servidor, pon `SECRETS_ENCRYPTION_KEY=<nueva>,<anterior>`.
-   La persona recrea `web`, `web-panel` y los cuatro workers para que reciban el nuevo
+   Recrea `web`, `web-panel` y los cuatro workers para que reciban el nuevo
    entorno (en la VPS, como `deploy`: `deploy/scripts/compose.sh up -d --no-deps web
    web-panel worker-inbound worker-calendar worker-periodic worker-outbound`; ver [despliegue.md](despliegue.md#cambiar-env-sin-desplegar)).
-3. La persona ejecuta `make prod-manage CMD=tenant_secrets_reencrypt` (desde el portátil).
+3. Ejecuta `make prod-manage CMD=tenant_secrets_reencrypt` (desde el portátil).
    Recifra todas las filas de `tenant_secret` con la primera clave, en una transacción
    `owner`; cada cambio deja una auditoría `tenant.secrets` con `reencrypted: true`.
    Si alguna fila es ilegible, revierte toda la operación. Revisa las claves y repite.
@@ -84,9 +92,7 @@ todas pueden descifrar. La clave fija de desarrollo nunca se usa en producción.
    esa entrada **en cada rotación** y guarda también la anterior mientras existan backups
    que la necesiten (retención de restic: seis meses): al restaurar un snapshot hay que dar
    la clave con la que se cifraron sus secretos (varias, separadas por comas, si hace falta;
-   ver [restaurar.md](restaurar.md)). Los backups antiguos no se recifran. Los snapshots
-   anteriores al ADR-021 aún llevan la clave dentro hasta que caduquen; rotarla la deja
-   inútil para los secretos cifrados después.
+   ver [restaurar.md](restaurar.md)). Los backups antiguos no se recifran.
 
 6. **Si falta la clave en el servidor (ADR-022).** Ni `deploy.sh` ni ninguna otra orden
    genera una clave nueva: si `.env` no la tiene, el despliegue aborta. Repón la entrada del
@@ -96,4 +102,5 @@ todas pueden descifrar. La clave fija de desarrollo nunca se usa en producción.
    en ese momento.
 
 Esto rota el cifrado en reposo; no cambia los tokens en Meta o Telegram. Antes del
-primer despliegue, configura una clave propia y conserva `.env` junto con los backups.
+primer despliegue, configura una clave propia y guárdala en el gestor de contraseñas, aparte
+de los backups.

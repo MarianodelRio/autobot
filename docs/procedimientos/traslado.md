@@ -4,7 +4,7 @@ Cómo mover todo el despliegue a otra VPS con `make server-migrate`: cambiar de 
 ampliar la máquina cuando el proveedor no permite hacerlo sobre la misma (si lo permite,
 basta un reinicio y no hace falta nada de esto). Si en cambio se ha perdido la máquina
 original, ver [../incidencias/perdida-total.md](../incidencias/perdida-total.md).
-Decisión: ADR-012.
+Decisión: ADR-017.
 
 !!! warning "Aprobaciones"
     Es un cambio de infraestructura sobre datos de producción: requiere aprobación humana
@@ -44,7 +44,24 @@ Desde el portátil, en la raíz del repo:
 make server-migrate FROM=<origen> TO=<destino>
 ```
 
-Ejecuta los pasos en orden; cada uno puede repetirse sola con `ONLY=<paso>`.
+Ejecuta los pasos en orden; cada uno puede repetirse solo con `ONLY=<paso>`.
+
+```mermaid
+sequenceDiagram
+    participant F as FROM (origen)
+    participant S as bucket de backups
+    participant T as TO (destino)
+    participant D as DNS
+    Note over T: rehearse: restaura solo la BD y compara conteos
+    S->>T: último snapshot (ensayo, luego se borra)
+    Note over F: freeze: var/.frozen, deploy.yml desactivado, servicios parados
+    F->>S: backup final (id guardado)
+    Note over T: cutover: restaura ESE snapshot, todo menos workers
+    T->>T: curl /health contra TO
+    Note over T: start-destination: FROM sin contenedores → arrancan los workers
+    D->>T: cambio de DNS a mano
+    Note over T: finish: secretos de CI, deploy.yml y timer de backup
+```
 
 1. **`rehearse`** (ensayo): en `TO`, restaura el último snapshot solo con la base de datos
    (`AUTOBOT_RESTORE_DB_ONLY=true`), imprime los conteos de contactos por negocio de
@@ -84,7 +101,7 @@ Ejecuta los pasos en orden; cada uno puede repetirse sola con `ONLY=<paso>`.
 - Un despliegue de prueba por [despliegue.md](despliegue.md) llega a `TO` (con el workflow
   reactivado).
 
-Corte estimado (sin medir todavía): 15-30 minutos más el TTL del DNS. Con el mismo dominio
+Corte estimado: 15-30 minutos más el TTL del DNS. Con el mismo dominio
 no hay que tocar los webhooks.
 
 ## Dónde está el código

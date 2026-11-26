@@ -26,8 +26,8 @@ completo, con `SECRETS_ENCRYPTION_KEY`: la clave Fernet que descifra los secreto
 - `backup.sh` ya no ejecuta `forget` ni `--prune`. El `restic check --read-data-subset`
   semanal sigue en el servidor (solo lee).
 - La caducidad de snapshots (7 diarios, 4 semanales, 6 mensuales, como antes) es
-  `deploy/scripts/backup-prune.sh`, que se ejecuta **desde la máquina de la persona
-  operadora** con otra credencial (con permiso de borrado) guardada fuera del servidor y
+  `deploy/scripts/backup-prune.sh`, que se ejecuta **desde la máquina del
+  operador** con otra credencial (con permiso de borrado) guardada fuera del servidor y
   fuera de git, en `~/.config/autobot/backup-prune.env` (modo 0600). El script se niega a
   ejecutarse en el servidor (marcador de bootstrap) y fuera de la ventana `:15`–`:50` de
   cada hora: el bloqueo exclusivo de restic impide que coincidan, pero el backup horario
@@ -53,7 +53,7 @@ completo, con `SECRETS_ENCRYPTION_KEY`: la clave Fernet que descifra los secreto
 - Los snapshots anteriores a este ADR llevan el `.env` completo; `restore.sh` los acepta
   (avisando) y usa la clave que traen salvo que se indique otra.
 - `server-migrate.sh` lee la clave en el destino de `/srv/autobot/var/secrets-key` (o de
-  `AUTOBOT_MIGRATE_SECRETS_KEY_FILE`); la persona debe dejarla allí antes del ensayo.
+  `AUTOBOT_MIGRATE_SECRETS_KEY_FILE`); el operador debe dejarla allí antes del ensayo.
 - `restore-test.sh` (CI) comprueba que el snapshot no contiene la clave, que `restore.sh`
   falla sin ella y con una clave equivocada, y que la clave indicada descifra los secretos
   restaurados.
@@ -61,7 +61,7 @@ completo, con `SECRETS_ENCRYPTION_KEY`: la clave Fernet que descifra los secreto
   da acceso a los calendarios compartidos con esa cuenta de servicio, y se puede revocar y
   volver a emitir desde Google. Sacarlo añadiría una segunda pieza de custodia por poco
   beneficio.
-- La clave se custodia en el gestor de contraseñas de la persona (ver
+- La clave se custodia en el gestor de contraseñas del operador (ver
   [rotar secretos](../../procedimientos/rotar-secretos.md)), nunca en el repositorio de
   backups.
 
@@ -85,7 +85,7 @@ completo, con `SECRETS_ENCRYPTION_KEY`: la clave Fernet que descifra los secreto
   restic con su contraseña y la clave Fernet. Perder la clave equivale a perder los secretos
   de canal (hay que volver a introducirlos); los datos del resto de tablas no se ven afectados.
 - La purga deja de ser automática: si nadie ejecuta `backup-prune.sh`, el repositorio crece.
-  Conviene ejecutarlo una vez por semana (la persona decide el recordatorio).
+  Conviene ejecutarlo una vez por semana (el operador decide el recordatorio).
 - Hay que crear dos credenciales S3 distintas al configurar el bucket (documentado en
   [backups](../../procedimientos/backups.md)).
 

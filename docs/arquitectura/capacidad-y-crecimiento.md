@@ -11,23 +11,13 @@ Esta página reúne lo que se sabe de la capacidad de la plataforma, medido en p
 
 ## Cómo se midió
 
-- Una copia de la pila de producción en local (misma configuración de `web`, workers y PostgreSQL 18), con negocios sintéticos de los dos packs (`salon` y `bus`) y simuladores de Meta, Telegram y Google Calendar con latencias realistas. Nunca datos ni APIs reales.
-- Primera ronda: máquina de 4 CPU y 7 GB, con el generador de carga en un núcleo aparte. Segunda ronda: i3-7020U de 2 núcleos y 4 hilos con 7,8 GB y el generador en la misma máquina (más desfavorable). Cada escenario dura 7 minutos con un tráfico por negocio de unas 300 conversaciones al mes, con picos.
-- Escenarios: carga base, ráfaga viral, cambio de configuración, despliegue, Google degradado, caída de Meta (minutos a 12 h), tormentas de 429, 5xx sin cuerpo, `kill -9` de un worker, ráfagas de avisos al dueño.
-- Las cifras de la segunda ronda son pesimistas: el generador de carga, los simuladores y la plataforma comparten dos núcleos.
-
-### Cómo repetir la prueba
-
-El arnés no vive en el repo (es desechable); para repetirla basta con montar lo mismo:
-
-1. Un PostgreSQL 18 propio, **nunca la base de desarrollo**, con los `-c` de `compose.prod.yaml`, migraciones como `fp_owner` y `manage.py apply_grants`.
-2. `web`, `web-panel` y los cuatro workers en el host con los mismos comandos, colas, concurrencias, `WORKER_DB_POOL_MAX` y `PYTHON_CPU_COUNT` que `compose.prod.yaml`.
-3. Simuladores locales de Meta Graph, Telegram Bot API y Google Calendar (latencias de 80-300 ms, modo degradado y modo caída), con las URLs redirigidas desde un `sitecustomize.py` fuera del repo.
-4. Negocios sintéticos creados con `store.create_tenant` a partir de las plantillas de `salon` y `bus` (60/40), con secretos falsos.
-5. Un generador de webhooks firmados con conversaciones de varios turnos que siguen las opciones reales de cada respuesta, con identificadores únicos por ejecución.
-6. Medir del envío del webhook a la llegada de la respuesta al simulador (p50, p95, p99, % de más de 5 s y de 30 s, respuestas que faltan), las esperas en cola de `procrastinate_jobs`, la CPU y la memoria por proceso y las conexiones a la base.
-
-Conviene repetirla en la máquina de producción, antes de abrirla a clientes, y después de cada cambio en workers, colas o envíos.
+Sobre una copia local de la pila de producción, con negocios sintéticos de `salon` y `bus` y
+simuladores de Meta, Telegram y Google Calendar con latencias realistas (nunca datos ni APIs
+reales). Escenarios de 7 minutos con unas 300 conversaciones al mes por negocio y picos:
+carga base, ráfaga viral, despliegue, Google degradado, caída de Meta, tormentas de 429,
+`kill -9` de un worker… La segunda ronda corrió en un i3 de 2 núcleos con el generador de
+carga en la misma máquina, así que sus cifras son pesimistas. Conviene repetirla en la
+máquina de producción y tras cada cambio en workers, colas o envíos.
 
 ## Qué aguanta hoy
 
@@ -44,13 +34,19 @@ Segunda prueba de carga (noviembre de 2026), con la plataforma tal como está ho
 | 300 negocios, Meta caído 5 min | normal | n/d | 0 mensajes perdidos, 0 duplicados; entregas hasta 6 min tarde; 3 quedaron `unknown` para la conciliación (ADR-026) |
 
 - **Techo actual en esta máquina: unos 700 negocios a 14 mensajes/s.** El cuello de botella es `worker-outbound` (un solo proceso, limitado por el GIL) y, después, la CPU. El siguiente paso es separar la salida por proveedor o poner más procesos de salida (ver «Mejoras futuras»). La API del panel responde con p95 ≤ 0,6 s con la carga encima.
-- **Caída de Meta de 5 minutos:** sin pérdidas ni duplicados. La prueba destapó tres defectos, corregidos después: una alerta por negocio en vez de una sola (97 alertas `health:whatsapp_unavailable` con 300 negocios; con Google degradado, unas 150 alertas en minutos), un arranque en frío de `ops_check` de 581 s con 700 negocios (sus comprobaciones de salud corrían en el hueco de un worker de salida y todas vencían a la vez) y una avalancha al volver el proveedor (unos 200 envíos liberados en el mismo instante: durante ~100 s todas las respuestas, también las de Telegram, tardaron 10-12 s). Ver [alertas](../referencia/alertas.md), [observabilidad](observabilidad.md) y [cola y workers](cola-y-workers.md).
-- **Medida anterior (antes de ADR-023), para comparar:** con `worker-inbound` y `worker-outbound` de concurrencia 2, 100 negocios daban p95 3,2 s, 200 daban 9,6 s, 300 daban 114 s (71 % de respuestas de más de 30 s) y con 500 solo el 31 % recibía respuesta en la ventana; con Google lento, 100 negocios daban p95 387 s y 486 mensajes sin respuesta. El límite eran las ranuras de los workers, no la CPU.
+- **Caída de Meta de 5 minutos:** sin pérdidas ni duplicados. La prueba destapó tres defectos, ya corregidos: una alerta por negocio en vez de una sola, un `ops_check` en frío de casi 10 minutos ocupando un hueco de envío y una avalancha de envíos al volver el proveedor. Ver [cola y workers](cola-y-workers.md).
 - **Coste por mensaje:** unos 250 ms de CPU entre la app y PostgreSQL, 72 sentencias SQL y 20 transacciones. Con un millón de filas en las tablas calientes, las consultas siguen entre 0,1 y 0,6 ms.
 - **Base de datos:** unos 4 KB de configuración por negocio. `inbound_event` ocupa unos 412 MB por millón de filas y `outbound_message` unos 523 MB, de ahí la importancia de la retención.
 - **Lo que ya está bien:** RLS no se rompe; una caída de la base, un webhook duplicado o desordenado o un worker muerto no pierden ni duplican mensajes; no hay reservas dobles con workers concurrentes; backup, restauración y rotación de claves funcionan.
 
 ## Lo que limita al crecer, por orden de aparición
+
+```mermaid
+flowchart LR
+    A["~700 negocios · 15 msg/s<br/>worker-outbound (GIL) y CPU"] --> B["~500-1.000<br/>memoria del registro por proceso"]
+    B --> C["~1.000<br/>altas cuadráticas"]
+    C --> D["~5.000 salones<br/>cuota de Google Calendar"]
+```
 
 | A partir de | Qué se rompe | Por qué |
 |---|---|---|
@@ -76,11 +72,10 @@ Segunda prueba de carga (noviembre de 2026), con la plataforma tal como está ho
 ## Servidor y proveedor
 
 - **Proveedor:** VPS europea (Hetzner u OVH): los datos se quedan en la UE y cuesta 3-5 veces menos que GCP o AWS. Evitar instancias con CPU «a ráfagas» (t3, e2).
-- **Hoy:** producción arrancó el 2026-11-24 en 2 vCPU y 4 GB, con los negocios de demo y un cliente real (pico medido de ~1,15 GiB con 5 negocios). Se amplía a 4 vCPU y 8 GB al sumar más clientes reales, o antes si salta `memory_high` ([ADR-005](adr/ADR-005-vps-docker-compose.md#proveedor-y-tamano-2026-11)). Las cifras de memoria y de PostgreSQL de abajo son las de esa máquina objetivo.
+- **Tamaño de arranque:** 2 vCPU y 4 GB bastan para los negocios de demo y los primeros clientes (pico medido de ~1,15 GiB con 5 negocios). Se amplía a 4 vCPU y 8 GB al crecer, o antes si salta `memory_high` ([ADR-005](adr/ADR-005-vps-docker-compose.md#proveedor-y-tamano)). Las cifras de memoria y de PostgreSQL de abajo son las de esa máquina objetivo.
 - **Para clientes reales:** 4 vCPU y 8 GB (mejor 16 GB o vCPU dedicadas). La segunda prueba de carga midió 700 negocios con p95 4,3 s en una máquina de 2 núcleos y 4 hilos, así que en 4 vCPU hay margen de sobra para los primeros cientos; el siguiente paso es más procesos de salida.
 - **Memoria (8 GB):** los `mem_limit` de `compose.prod.yaml` suman **5.760 MB**: caddy 128, `web` 640, `web-panel` 512, cuatro workers a 384 (1.536), `panel` 64, `db` 2.560 y VictoriaLogs 320. Quedan unos 2,2 GB para el núcleo, la caché de páginas y el cojín de swap. 8 GB es el mínimo razonable.
-- **PostgreSQL ajustado a 4 vCPU y 8 GB:** `shared_buffers=1GB` (≈ 1/8 de la RAM; el resto lo aprovecha la caché del sistema, de ahí `effective_cache_size=4GB`), `work_mem=8MB`, `maintenance_work_mem=256MB`, `random_page_cost=1.1` y `effective_io_concurrency=200` (SSD), `wal_compression=on`, `checkpoint_completion_target=0.9`, `max_wal_size=2GB`, `max_connections=200` (el peor caso de las conexiones de la aplicación es de unas 102: 92 más la conexión fija del hilo refrescador de cada proceso que sondea la configuración, [ADR-030](adr/ADR-030-registro-siempre-al-dia.md)) y `shm_size=512mb`. El registro de consultas lentas (`log_min_duration_statement`) está **apagado**: Django enlaza los parámetros en el cliente, así que la sentencia registrada llevaría teléfonos o nombres, y los logs no pueden llevar datos personales. Para activarlo hace falta antes `server_side_binding` en la conexión de Django. Con una máquina de otro tamaño, hay que revisar estas cifras y la suma de `mem_limit`.
-- **Disco y reloj:** la alerta de disco salta al 80 % (aviso) y al 95 % (crítica) y mide `/` (donde viven Docker, el volumen de PostgreSQL y los temporales del backup) y `var/state/ops`; el reloj lo mantiene `systemd-timesyncd`, que el instalador deja activo.
+- **PostgreSQL ajustado a 4 vCPU y 8 GB** (los `-c` de `compose.prod.yaml`): `shared_buffers` en 1/8 de la RAM (el resto lo aprovecha la caché del sistema), parámetros de SSD y `max_connections=200` (la aplicación usa unas 102 en el peor caso). El registro de consultas lentas está **apagado** a propósito: Django enlaza los parámetros en el cliente, así que la sentencia registrada llevaría teléfonos o nombres. Con una máquina de otro tamaño hay que revisar estas cifras y la suma de `mem_limit`.
 - **App y base de datos juntas** hasta que una medición muestre competencia de CPU o disco entre ellas, o haga falta recuperar en minutos.
 - **GCP o AWS** solo si un cliente lo exige. Su ventaja real sería PostgreSQL gestionado, y Cloud SQL y RDS probablemente no conceden `BYPASSRLS` (sin confirmar), que necesita `fp_owner`. La alternativa sería una política por tabla `TO fp_owner USING (true)`, con su ADR y aprobación. Cloud Run no sirve para los workers y AWS cobra cada IPv4.
 
@@ -96,6 +91,15 @@ Segunda prueba de carga (noviembre de 2026), con la plataforma tal como está ho
 Para no atarse: DNS en un proveedor independiente del servidor, backups en otro proveedor (ADR-021) y un ensayo de restauración en un proveedor distinto al menos una vez.
 
 ## Etapas de crecimiento
+
+```mermaid
+flowchart LR
+    E1["1 · hasta 50<br/>1 VPS 4 vCPU / 8 GB"] --> E2["2 · 50-100<br/>PITR, menos SQL"]
+    E2 --> E3["3 · 100-400<br/>más procesos de salida"]
+    E3 --> E4["4 · 400-1.000<br/>8 vCPU, BD aparte,<br/>registro bajo demanda"]
+    E4 --> E5["5 · 1.000-5.000<br/>varias VPS"]
+    E5 --> E6["6 · miles<br/>Kubernetes + KEDA"]
+```
 
 | Etapa | Negocios | Infraestructura | Cambios |
 |---|---|---|---|
@@ -126,7 +130,7 @@ El número de negocios es solo orientativo: dos negocios pueden diferir mucho en
 | Peticiones a Google Calendar | > 300/min sostenido (la cuota es 600/min) | Notificaciones push (`events.watch`) u OAuth por negocio |
 | Altas de WhatsApp | > 10 números por semana | Verificar el negocio en Meta Business |
 
-Antes de cada salto de etapa: repetir la prueba de carga (ver [Cómo repetir la prueba](#como-repetir-la-prueba)) con el doble del tráfico real medido.
+Antes de cada salto de etapa: repetir la prueba de carga (ver [Cómo se midió](#como-se-midio)) con el doble del tráfico real medido.
 
 ## Mejoras futuras
 

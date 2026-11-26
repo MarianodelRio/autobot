@@ -7,6 +7,21 @@ Runbooks para cuando algo falla en producción. Cada uno sigue la [plantilla](pl
 
 ## Por síntoma
 
+```mermaid
+flowchart TD
+    S(["algo va mal"]) --> H{"¿responde<br/>https://…/health?"}
+    H -->|no, y la VPS tampoco| PT["pérdida total"]
+    H -->|no o 502/503| BN["el bot no responde a nadie"]
+    H -->|sí| ALL{"¿fallan todos<br/>los negocios?"}
+    ALL -->|sí| CQ["cola acumulada<br/>o latido ausente"]
+    ALL -->|uno solo| ONE{"¿es salon y<br/>falla el calendario?"}
+    ONE -->|sí| CAL["Google Calendar"]
+    ONE -->|no| NC["un negocio o canal<br/>no responde"]
+    H -->|sí, pero hay envíos<br/>sin confirmar| EU["envíos unknown<br/>o failed"]
+    S --> DEP{"¿justo después<br/>de desplegar?"}
+    DEP -->|sí| VA["volver atrás"]
+```
+
 | Síntoma | Runbook |
 | --- | --- |
 | Ningún negocio responde; `/health` falla o da 502/503 | [El bot no responde a nadie](bot-no-responde.md) |

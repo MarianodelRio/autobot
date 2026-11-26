@@ -3,10 +3,20 @@
 Cómo calcula el panel el nivel de salud de un negocio (`ok`, `notice`, `warning`, `critical`
 o `unknown`) y qué lo provoca. Léelo cuando una tarjeta de cliente aparezca en ámbar o rojo.
 No confundir con el **estado del ciclo de vida** del negocio (`onboarding`, `active`,
-`paused`, `offboarded`), que cambia la persona con `tenant_status`.
+`paused`, `offboarded`), que cambia el operador con `tenant_status`.
 
 La regla está en `apps/backend/src/autobot/ops/status.py` (`tenant_status`). Reúne motivos de
 tres fuentes y se queda con el nivel más grave.
+
+```mermaid
+flowchart LR
+    R["registro<br/>¿degradado? ¿canal desactivado?"] --> MAX{"el más grave"}
+    H["salud diaria<br/>🔴 🟠 🟡"] --> MAX
+    I["incidencias abiertas<br/>del negocio"] --> MAX
+    MAX -->|hay motivos| L["critical · warning · notice"]
+    MAX -->|sin motivos y salud < 24 h| OK["ok"]
+    MAX -->|sin motivos ni salud reciente| UK["unknown"]
+```
 
 ## Qué los dispara
 

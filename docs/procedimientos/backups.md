@@ -11,6 +11,26 @@ bucket por primera vez, al rotar credenciales o al caducar snapshots. Para resta
 
 ## Qué hace cada parte
 
+```mermaid
+flowchart LR
+    subgraph VPS["servidor (puede estar comprometido)"]
+        BK["backup.sh · cada hora<br/>credencial de SUBIDA<br/>sin permiso de borrado"]
+        KEY["SECRETS_ENCRYPTION_KEY<br/>en .env"]
+    end
+    subgraph S3["bucket en otro proveedor<br/>versionado 30 días"]
+        R[("repositorio restic<br/>cifrado")]
+    end
+    subgraph YOU["tu máquina"]
+        PR["backup-prune.sh<br/>credencial de PURGA"]
+    end
+    G[("gestor de contraseñas<br/>clave de cifrado + contraseña restic")]
+    BK -->|"BD + libro de supresiones<br/>(sin la clave de cifrado)"| R
+    PR -->|forget --prune| R
+    KEY -. copia .-> G
+```
+
+Quien entre en el servidor puede leer las copias, pero no borrarlas; y aunque se lleve un snapshot, no puede descifrar los secretos de canal sin la clave, que no viaja en él.
+
 | Pieza | Dónde vive | Qué puede |
 |---|---|---|
 | `autobot-backup.timer` → `deploy/scripts/backup.sh` | El servidor, cada hora, como `deploy` | **Subir** snapshots (la base y el libro de supresiones, etiquetas `autobot` y `autobot-ledger`) y leer el repositorio (`restic check`, fecha de la última purga). No puede borrar |
@@ -67,9 +87,10 @@ se haya subido.
 La política (7 diarios, 4 semanales, 6 mensuales, etiqueta `autobot`; el libro, 7 diarios y
 4 semanales) vive en `deploy/scripts/backup-prune.sh`. Se ejecuta desde tu portátil, a mano.
 
-!!! note "Sin calendario de momento"
-    Desde el 2026-11-26 la purga no se hace con calendario y la alerta `backup_prune_overdue`
-    está en pausa (`PRUNE_ALERT_ENABLED = False` en `autobot/ops/check.py`, ADR-025). Sin
+!!! note "Purga sin calendario"
+    La purga no tiene calendario y la alerta `backup_prune_overdue` viene desactivada
+    (`PRUNE_ALERT_ENABLED = False` en `autobot/ops/check.py`, ADR-025); actívala si purgas con
+    calendario. Sin
     purgar, el repositorio solo crece: con la deduplicación de restic y una base pequeña el
     coste es bajo, pero se conservan todos los snapshots horarios, y restaurar uno muy viejo
     necesita que GHCR conserve aún su imagen ([restaurar.md](restaurar.md)). Para volver a
@@ -120,8 +141,8 @@ esa cuenta de servicio y se puede revocar y reemitir desde Google.
   caso es una caída justo antes de la siguiente copia. Los olvidos del libro de supresiones se
   reaplican al restaurar (ADR-025).
 - **RTO (cuánto se tarda en volver): no medido.** Es el tiempo de una VPS nueva con
-  `install-vm.sh` más una restauración (`restaurar.md`); la cifra real sale del simulacro
-  contra el bucket de verdad ([Servidor](servidor.md#antes-del-primer-cliente-real)) y debe anotarse aquí cuando exista.
+  `install-vm.sh` más una restauración (`restaurar.md`); la cifra real sale de un simulacro
+  contra el bucket de verdad ([restaurar.md](restaurar.md)) y debe anotarse aquí cuando exista.
 
 ## Configurar un servidor nuevo
 

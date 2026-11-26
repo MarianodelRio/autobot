@@ -87,8 +87,8 @@ enseñando la plataforma, y exigía conocer su id de Telegram de antemano.
 - **Retención de los datos de demo (2026-11-16):** el código distingue el plazo corto de un
   negocio de demo (30 días para contactos, conversaciones y avisos al dueño; las
   invitaciones y concesiones caducadas o revocadas se purgan también a los 30 días) del
-  anual de un cliente real. Se activa con `RETENTION_CLEANUP_ENABLED`: desde el 2026-11-23 es
-  `true` por defecto en `compose.prod.yaml` (aprobado por la persona); en local sigue `false`.
+  anual de un cliente real. Se activa con `RETENTION_CLEANUP_ENABLED`: `true` por defecto en
+  `compose.prod.yaml`; en local, `false`.
 
 ## Cuándo revisarla
 

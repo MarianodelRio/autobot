@@ -51,7 +51,7 @@ conocerlo todavía.
   pedírselo al operador; avisa si sustituirá al chat ya conectado). Hasta 3 opciones
   van como botones; de 4 a 10, como lista.
 
-### Resumen del dueño (decidido con la persona el 2026-10-29)
+### Resumen del dueño
 
 - **Dos periodos de calendario**, en la zona horaria del negocio:
   - **Automático:** el mes anterior completo. Sale el día 1 a partir de las 12:00
@@ -110,4 +110,4 @@ conocerlo todavía.
 ## Cuándo revisarla
 
 - Si un negocio necesitara varios dueños (varios chats) a la vez, `owner_link` tendría
-  que dejar de ser una fila por tenant; de momento ningún negocio lo ha pedido.
+  que dejar de ser una fila por tenant; no compensa mientras ningún negocio lo pida.

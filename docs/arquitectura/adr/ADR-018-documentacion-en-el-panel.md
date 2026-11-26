@@ -6,7 +6,7 @@
 
 La documentación vive en `docs/` como Markdown y solo se lee en GitHub o en el editor. Quien
 opera el panel no la tiene a mano cuando salta una alerta, y el repo no se puede navegar
-como un sitio (búsqueda, navegación por secciones, diagramas). La persona quiere que se lea
+como un sitio (búsqueda, navegación por secciones, diagramas). Se quiere que se lea
 entera, que cada pantalla del panel enlace a su procedimiento y que cada alerta apunte a su
 runbook.
 

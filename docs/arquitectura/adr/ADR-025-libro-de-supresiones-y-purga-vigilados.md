@@ -1,6 +1,6 @@
 # ADR-025 — Libro de supresiones y purga vigilados automáticamente
 
-**Estado:** aceptada; la alerta `backup_prune_overdue` está en pausa desde el 2026-11-26 (`PRUNE_ALERT_ENABLED = False` en `autobot/ops/check.py`): de momento la purga no se hace con calendario. El testigo y su lectura siguen funcionando, y el resumen diario sigue mostrando la fecha de la última purga, sin aviso. Para reactivarla basta con volver a poner `True`.
+**Estado:** aceptada; la alerta `backup_prune_overdue` viene desactivada (`PRUNE_ALERT_ENABLED = False` en `autobot/ops/check.py`) para instalaciones que purgan sin calendario. El testigo y su lectura siguen funcionando, y el resumen diario sigue mostrando la fecha de la última purga, sin aviso. Para reactivarla basta con volver a poner `True`.
 
 ## Contexto
 

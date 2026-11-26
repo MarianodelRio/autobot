@@ -55,6 +55,18 @@ y el despliegue no puede descargar imágenes.
 **Pasos** (en la VPS, como `deploy`, en `/srv/autobot`; nada de esto toca datos de
 clientes):
 
+```mermaid
+flowchart LR
+    A["disk 🟠 ≥ 80 %<br/>disk_critical 🔴 ≥ 95 %"] --> M["1 · medir<br/>df · docker system df · du"]
+    M --> I["2 · prune.sh<br/>imágenes > 24 h"]
+    I --> V["3 · volcados en<br/>var/backups"]
+    V --> L["4-5 · logs<br/>VictoriaLogs y contenedores"]
+    L --> C["6 · caché de restic"]
+    C --> X{"¿< 80 %?"}
+    X -->|no| G["7 · ampliar disco<br/>(aprobación)"]
+    X -->|sí| OK["la alerta se cierra sola"]
+```
+
 1. Mide qué ocupa: `df -h /`, `docker system df` y `du -sh var/* var/backups/* 2>/dev/null`.
 2. **Imágenes Docker viejas:** `deploy/scripts/prune.sh` (lo mismo que el timer diario:
    `docker image prune --all --force --filter 'until=24h'`). Conserva las que usa algún

@@ -98,124 +98,57 @@ análisis pasa, las publica. Se etiquetan con el SHA completo:
 - `ghcr.io/<propietario>/autobot-panel:<sha>` desde `apps/panel/Dockerfile`: la SPA y su
   Caddy.
 
-Trivy falla con cualquier vulnerabilidad HIGH o CRITICAL que tenga arreglo disponible
-(`--ignore-unfixed`). La imagen del backend aplica al construirse las actualizaciones de
-seguridad de Debian y no lleva `pip`. Esa capa recibe la fecha del día como argumento de
-construcción (`SECURITY_UPDATES_DATE`), así que la caché de capas del CI la rehace una vez
-al día y recoge los parches publicados después de la imagen base; sin ella, un parche nuevo
-de Debian haría fallar Trivy hasta cambiar la imagen base. Una excepción solo se admite en `.trivyignore`, con su
-motivo y una fecha `exp:` en la que vuelve a fallar. Solo se **publican** (`docker push`) en los `push` a `main`; en un pull
-request se construyen y analizan sin subirse. Las etiquetas son inmutables: el SHA es el único identificador de una versión.
+Trivy falla con cualquier vulnerabilidad HIGH o CRITICAL con arreglo disponible. La capa de
+parches de Debian se rehace a diario (`SECURITY_UPDATES_DATE`), y una excepción solo se
+admite en `.trivyignore`, con su motivo y una fecha de caducidad. Solo se publican en los
+`push` a `main`, y las etiquetas son inmutables: el SHA es el único identificador de una
+versión.
 
-## 2. `make deploy`
+## 2. De `make deploy` a la VPS
 
-Desde el portátil, tras `git fetch`:
+1. **`make deploy`** (desde el portátil, tras `git fetch`; `SHA=<sha>` para uno concreto)
+   comprueba que el CI de ese SHA terminó en `success` y lanza `gh workflow run deploy.yml`.
+2. **Workflow `deploy.yml`:** espera la aprobación del entorno `production` (restringido a
+   `main`); un segundo despliegue espera al primero; comprueba que el SHA es ancestro de
+   `origin/main` y que sus dos imágenes existen en GHCR (si no, no toca la VPS); y entra por
+   SSH como `deploy` con `DEPLOY_SSH_KEY`.
+3. **`ssh-deploy.sh`:** la clave de CI va en `authorized_keys` con
+   `restrict,command=".../ssh-deploy.sh"`, así que solo puede ejecutar `deploy.sh <sha>`.
+   Antes toma el candado `var/.deploy.lock`, exige un árbol limpio y hace
+   `git checkout --detach <sha>`, para que scripts, compose y Caddyfile sean los del SHA.
 
-```bash
-make deploy              # despliega origin/main
-make deploy SHA=<sha>    # un SHA concreto de 40 caracteres
-```
+## 3. Qué hace `deploy.sh`
 
-El `Makefile` hace dos cosas:
+Se ejecuta en `/srv/autobot` como `deploy` (nunca root) y sobrevive a un corte de SSH. Las
+ideas importantes:
 
-1. Comprueba con `gh run list --workflow ci.yml --commit <sha>` que el CI de ese SHA
-   terminó en `success`; si no, se niega.
-2. Lanza `gh workflow run deploy.yml -f sha=<sha>`.
-
-## 3. Workflow `deploy.yml`
-
-1. **Entorno `production`:** el job se queda esperando la aprobación del revisor. Debe
-   estar restringido a `main` (ver [servidor.md](servidor.md)).
-2. **Concurrencia:** el grupo `production-deploy` no cancela nada; un segundo despliegue
-   espera al primero.
-3. **Comprobación del SHA:** 40 hex y ancestro de `origin/main` (`git merge-base
-   --is-ancestor`).
-4. **Comprobación de las imágenes:** `docker manifest inspect` de `autobot:<sha>` y
-   `autobot-panel:<sha>` en GHCR. Si el job `image` no llegó a publicar, falla aquí y no
-   toca la VPS.
-5. **SSH:** instala `DEPLOY_SSH_KEY` y `DEPLOY_KNOWN_HOSTS` (host fijado) y ejecuta
-   `deploy/scripts/deploy.sh <sha>` en `DEPLOY_HOST` como `deploy`.
-
-### Qué puede hacer la clave de CI: `ssh-deploy.sh`
-
-En `authorized_keys` de `deploy`, la clave de CI va con `restrict,command=".../ssh-deploy.sh"`.
-Esa orden forzada solo deja pasar `deploy/scripts/deploy.sh <sha de 40 hex>` y, antes de
-ejecutarlo:
-
-1. Toma el candado `var/.deploy.lock` (espera 10 s) y se lo pasa a `deploy.sh`
-   (`AUTOBOT_DEPLOY_LOCK_HELD=1`).
-2. Exige un árbol de trabajo limpio, hace `git fetch origin main`, comprueba que el SHA es
-   ancestro de `origin/main` y que contiene `deploy.sh` y `compose.prod.yaml`.
-3. Hace `git checkout --detach <sha>`: así los scripts, compose y Caddyfile en disco son
-   los del SHA que se despliega.
-
-## 4. `deploy.sh`, paso a paso
-
-Se ejecuta en `/srv/autobot` como `deploy` (nunca como root). Un corte de la conexión SSH
-no lo mata (ignora `SIGHUP`).
-
-1. **Candado:** `var/.deploy.lock`, `flock` con espera de 10 s. Si hay otro despliegue,
-   sale.
-2. **`var/.frozen`:** si existe (lo crea [traslado.md](traslado.md) en el origen), se
-   niega a desplegar.
-3. **`ensure-env.sh`:** prepara `.env`. Genera los secretos internos que falten
-   (contraseñas de PostgreSQL, `DJANGO_SECRET_KEY`, secretos de webhook), vuelve a derivar `DB_*_URL` de las contraseñas, fija `COMPOSE_FILE`,
-   `COMPOSE_PROJECT_NAME`, `DEPLOY_UID` y `PUBLIC_URL`, y **nunca inventa** credenciales
-   externas: aborta y lista las variables que faltan. `SECRETS_ENCRYPTION_KEY` **no** se genera
-   aquí: si falta, aborta (ADR-022). También exige `var/google_sa.json`.
-4. **Estado previo:** lee `var/.deployed-sha` (el SHA que corre) y, si el último despliegue
-   correcto de `deploys.jsonl` tuvo como `previous` el SHA actual, marca este como
-   `via: rollback`. Anota cuántos negocios estaban ya degradados (`/health/internal`),
-   para que uno ya enfermo no bloquee el despliegue.
-5. **Mismo SHA:** si ya es el desplegado y está sano, registra `already` y sale; si no,
-   recrea `web`, `web-panel`, los cuatro workers (`worker-inbound`, `worker-calendar`,
-   `worker-periodic`, `worker-outbound`) y `panel`.
-6. **Descarga:** `pull db caddy`, `up -d --wait db`, `init-roles.sh` dentro de `db`,
-   `pull web web-panel worker-inbound worker-calendar worker-periodic worker-outbound panel`. VictoriaLogs se actualiza aparte: si
-   falla, solo avisa por consola. Un fallo en cualquiera de los demás pasos va a
-   **abort**.
-7. **Volcado previo a migrar:** si `migrate --check` dice que hay migraciones pendientes,
-   `pg_dump -Fc` a `var/backups/pre-migrate.dump` (0600, solo en el servidor; no entra en
-   restic; `prune.sh` lo borra a las 48 h). Antes de volcar comprueba el espacio libre
-   (como `backup.sh`: el tamaño de la base o 512 MiB, el mayor) y escribe en
-   `pre-migrate.dump.tmp`; solo si `pg_restore --list` lee el índice del volcado lo renombra.
-   Un fallo (o cualquier salida del script) borra el `.tmp` y va a **abort**. Es una copia
-   en claro de todos los clientes: solo vive el tiempo en que aún se notaría una
-   migración mala; el backup cifrado horario es la copia que debe existir. Por eso las migraciones solo pueden
-   **expandir** el esquema (`CLAUDE.md`; ver [../desarrollo/migraciones-y-rls.md](../desarrollo/migraciones-y-rls.md)).
-8. **Esquema y datos:** `migrate` (con `PGOPTIONS='-c lock_timeout=5s'`, ajustable con
-   `AUTOBOT_MIGRATE_LOCK_TIMEOUT`: una migración que tendría que esperar un candado de
-   tráfico vivo falla en vez de bloquear todas las escrituras, y el despliegue va a
-   **abort**; se reintenta en un momento más tranquilo), `apply_grants` (permisos de `fp_app`, `fp_readonly`),
-   `tenant_config validate --all` (todas las configuraciones válidas) y `seed_demos`.
-   Todo con `docker compose run --rm web-panel`, el servicio con la conexión `owner`
-   ([ADR-020](../arquitectura/adr/ADR-020-api-del-panel-aparte.md)): el `web` público no la tiene.
-9. **Cambio de imagen:** `up --no-deps --remove-orphans -d web web-panel
-   worker-inbound worker-calendar worker-periodic worker-outbound panel`.
-   La lista sale del compose desplegado: un rollback a un commit sin `worker-calendar` ni
-   `worker-periodic` no los pide.
-10. **Comprobación de salud:**
-    - `web` (hasta 60 s): `/health/internal` con `status: ok`, negocios degradados no
-      mayores que la línea base y ninguno ilegible.
-    - Workers: cada uno debe seguir en marcha y sin reinicios durante ~10 s.
-    - `panel` y `web-panel` (hasta 60 s): `/healthz` del panel y el healthcheck de Docker de
-      `web-panel` (que no publica puerto) en `healthy`.
-11. **Caddy:** `up --no-deps -d caddy` y recarga (`caddy reload`) si cambió
-    `deploy/caddy/Caddyfile` respecto a `var/.caddy-config-sha`: `up` no recrea un
-    contenedor porque cambie el contenido de un fichero montado.
-12. **Registro:** escribe `var/.deployed-sha`, añade `{at, sha, previous, result, via}` a
-    `var/state/ops/deploys.jsonl` (lo lee el panel, Sistema) y manda el aviso
-    `deploy_ok` a ops.
-13. **HTTPS:** comprueba `https://$PUBLIC_HOST/health` por loopback con `--resolve` hasta
-    un minuto. Si falla, solo avisa (`deploy_https_check`); no revierte, porque el DNS o el
-    certificado pueden tardar en el primer despliegue.
+- **Un solo despliegue a la vez** (`flock` sobre `var/.deploy.lock`) y ninguno si existe
+  `var/.frozen` (lo pone [traslado.md](traslado.md) en el servidor de origen).
+- **`ensure-env.sh`** genera los secretos internos que falten y **nunca inventa**
+  credenciales externas: si falta una, aborta y la nombra. `SECRETS_ENCRYPTION_KEY` nunca
+  se genera (ADR-022).
+- **Volcado previo a migrar:** si hay migraciones pendientes, `pg_dump` a
+  `var/backups/pre-migrate.dump` (se borra a las 48 h).
+- **Migrar sin bloquear el tráfico:** `migrate` con `lock_timeout=5s`; si una migración
+  tendría que esperar un candado, falla y el despliegue aborta. Después, `apply_grants`,
+  `tenant_config validate --all` y `seed_demos`, todo desde `web-panel`, el único servicio
+  con la conexión `owner` ([ADR-020](../arquitectura/adr/ADR-020-api-del-panel-aparte.md)).
+- **Cambio de imagen** de `web`, `web-panel`, los cuatro workers y `panel`, y
+  **comprobación de salud**: `/health/internal` sin más negocios degradados que antes,
+  workers sin reinicios durante ~10 s y `panel`/`web-panel` sanos.
+- **Caddy** se recarga solo si cambió `deploy/caddy/Caddyfile`. Ese Caddy público solo
+  reenvía una lista cerrada de rutas (los webhooks y `/health`); el panel tiene su propio
+  Caddy y solo se alcanza por túnel ([ADR-020](../arquitectura/adr/ADR-020-api-del-panel-aparte.md)).
+- **Registro:** `var/.deployed-sha`, una línea en `var/state/ops/deploys.jsonl` (la que
+  muestra el panel en Sistema) y el aviso `deploy_ok`. Por último comprueba
+  `https://$PUBLIC_HOST/health`; si falla, solo avisa.
 
 ### Si algo falla
 
 | Dónde falla | Qué pasa | `result` en `deploys.jsonl` |
 |---|---|---|
-| Pasos 6 a 8, antes de cambiar la imagen | `abort`: sigue la imagen anterior; devuelve el checkout al SHA previo; reaplica `apply_grants`; aviso `deploy_aborted` | `aborted` |
-| Pasos 9 y 10, tras cambiar la imagen | `rollback`: vuelve a la imagen y checkout previos, repite las comprobaciones, aviso `deploy_rollback` | `rolled_back`, o `rollback_failed` si tampoco arranca |
+| Antes de cambiar la imagen (descarga, volcado, migración) | `abort`: sigue la imagen anterior; devuelve el checkout al SHA previo; reaplica `apply_grants`; aviso `deploy_aborted` | `aborted` |
+| Tras cambiar la imagen (salud) | `rollback`: vuelve a la imagen y checkout previos, repite las comprobaciones, aviso `deploy_rollback` | `rolled_back`, o `rollback_failed` si tampoco arranca |
 | Mismo SHA y sin recuperar salud | Sale con error | `rollback_failed` |
 
 !!! warning "El esquema no se revierte"
@@ -228,7 +161,7 @@ no lo mata (ignora `SIGHUP`).
 La primera vez (sin SHA previo) un fallo tras cambiar la imagen no tiene a qué volver:
 exige actuación del operador.
 
-## 5. Después del despliegue
+## 4. Después del despliegue
 
 Verificación:
 
@@ -265,16 +198,7 @@ Nunca `docker compose ...` a pelo: sin `SHA` ni `--env-file` falla.
 Ambos usan el SHA de `var/.deployed-sha` y el `.env` de la raíz (`deploy/scripts/lib.sh`).
 `manage.sh` ejecuta `python manage.py <comando>` en `web-panel`, que tiene la conexión `owner`.
 
-## 6. Los dos Caddyfile
-
-| Fichero | Quién lo usa | Qué hace |
-|---|---|---|
-| `deploy/caddy/Caddyfile` | Contenedor `caddy` de producción (público, 80/443, TLS automático) | Sirve `{$PUBLIC_HOST}`. Solo reenvía a `web:8000` las rutas de una lista cerrada: `/webhooks/whatsapp/*`, `/webhooks/telegram/*`, `/webhooks/telegram-demo`, `/webhooks/whatsapp-demo`, `/webhooks/telegram-notify` y `/health`; todo lo demás, 404 (`/health/internal` incluido). Añade `X-Autobot-Edge: public`, limita el cuerpo a 256 KB, pone cabeceras de seguridad y escribe el log de acceso sin query string ni cabeceras. Lo monta como fichero y `deploy.sh` lo recarga si cambia |
-| `apps/panel/Caddyfile` | Contenedor `panel` (imagen `autobot-panel`) | Escucha en `:8080`, sin TLS ni API de administración. Sirve la SPA (`/srv`, con vuelta a `index.html`), `/healthz` y reenvía `/api/*` a `web-panel:8000` **quitando** `X-Autobot-Edge`, de modo que el panel solo funciona por túnel (`make panel-tunnel`, ADR-008), nunca por el Caddy público |
-
-`make check-prod-config` prueba la lista de rutas del primero contra un upstream local, y comprueba sobre el compose de producción renderizado el reparto de credenciales (`web` sin `owner`; `web-panel` sin puerto), el endurecimiento de los contenedores, las redes y que el Caddy del panel apunta a `web-panel`.
-
-## 7. Timers de systemd
+## 5. Timers de systemd
 
 Instalados por `bootstrap-server.sh`; los servicios se ejecutan como `deploy` en
 `/srv/autobot`.
@@ -309,7 +233,7 @@ Nada en disco registra la última pasada de `ops_check` (su latido va directo a
 Healthchecks), así que un worker colgado lo sigue detectando el check externo
 (`HEALTHCHECKS_PING_URL`).
 
-## 8. Dónde están los logs
+## 6. Dónde están los logs
 
 | Qué | Dónde |
 |---|---|
@@ -320,39 +244,7 @@ Healthchecks), así que un worker colgado lo sigue detectando el check externo
 | Timers | `journalctl -u autobot-backup.service` (o `-containers`, `-prune`) en la VPS |
 | Trazas de excepciones | Sentry, si `SENTRY_DSN` está puesto |
 
-## Inventario de `deploy/`
-
-| Fichero | Para qué |
-|---|---|
-| `deploy/scripts/deploy.sh` | Despliega un SHA en la VPS (sección 4) |
-| `deploy/scripts/watchdog.sh` | Vigilante del host con aviso directo a Telegram (sección 7) |
-| `deploy/scripts/ssh-deploy.sh` | Orden forzada de la clave de CI: solo permite `deploy.sh <sha>` |
-| `deploy/scripts/ensure-env.sh` | Genera y valida `.env` antes de cada despliegue o restauración |
-| `deploy/scripts/lib.sh` | Compartido por los scripts de producción: no root, raíz del repo, proyecto compose, `SHA` por defecto y el array `compose`; con `AUTOBOT_LIB_FUNCTIONS_ONLY=1`, solo funciones (`compose_in`, `ensure_state_dirs`) para los simulacros |
-| `deploy/scripts/compose.sh` | `docker compose` contra producción con `SHA` y `.env` ya resueltos |
-| `deploy/scripts/manage.sh` | `manage.py` en un contenedor `web-panel` efímero |
-| `deploy/scripts/rollback_target.py` | Calcula el SHA de `make rollback` a partir de `deploys.jsonl`; se niega a encadenar dos rollbacks |
-| `deploy/scripts/backup.sh` | Copia cifrada a restic (timer horario) |
-| `deploy/scripts/restore.sh` | Restaura un snapshot en un destino vacío ([restaurar.md](restaurar.md)) |
-| `deploy/scripts/restore-test.sh` | Simulacro local y de CI de copia y restauración (`make restore-test`) |
-| `deploy/scripts/prune.sh` | Limpieza de disco (timer diario) |
-| `deploy/scripts/containers.sh` | Instantánea de contenedores (timer por minuto) |
-| `deploy/scripts/install-vm.sh` | Instalador de la VM, dentro de ella ([servidor.md](servidor.md)) |
-| `deploy/scripts/bootstrap-server.sh` | Base del sistema (paquetes, Docker, cuentas, timers) y endurecimiento de SSH; lo llama `install-vm.sh` |
-| `deploy/scripts/server-migrate.sh` | Traslado a otra VPS ([traslado.md](traslado.md)) |
-| `deploy/scripts/install-local.sh` | `make local`: entorno de desarrollo completo ([../desarrollo/entorno-local.md](../desarrollo/entorno-local.md)) |
-| `deploy/scripts/localprod.sh` | `make localprod-*`: reproduce producción en local (Caddy con TLS, `deploy.sh` real, registro Docker local, puertos y volúmenes aparte) |
-| `deploy/scripts/check-forbidden-terms.py` | Puerta del CI contra nombres de clientes reales |
-| `deploy/ci/forbidden-terms.sha256` | Hashes de esos nombres (nunca el texto) |
-| `deploy/postgres/init-roles.sh` | Crea `fp_owner`, `fp_app` y `fp_readonly` y sus contraseñas; idempotente; lo ejecuta la imagen en el primer arranque, `deploy.sh` en cada despliegue y el CI. Los permisos de tablas los aplica `apply_grants` |
-| `deploy/compose/compose.yaml` | Base común de local y producción |
-| `deploy/compose/compose.prod.yaml` | Producción: Caddy, imágenes de GHCR, límites y reinicios |
-| `deploy/compose/compose.local.yaml`, `dev-worker.py` | Desarrollo: contraseñas locales, recarga de workers |
-| `deploy/caddy/Caddyfile` | Caddy público (sección 6) |
-| `deploy/systemd/` | Unidades `autobot-backup`, `autobot-containers` y `autobot-prune` (servicio y timer) |
-| `deploy/env/backup.env.example` | Plantilla de `var/backup.env` (restic, S3, ping de Healthchecks) |
-| `deploy/env/server.env.example` | Plantilla de `var/server.env` en el portátil: solo `PUBLIC_HOST`, para `server-migrate.sh` |
-
+Qué hay en cada fichero de `deploy/`: [mapa del código](../arquitectura/mapa-del-codigo.md#despliegue-deploy).
 Variables de entorno: [../referencia/variables-entorno.md](../referencia/variables-entorno.md).
 Comandos: [../referencia/comandos.md](../referencia/comandos.md).
 

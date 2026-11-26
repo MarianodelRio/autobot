@@ -28,6 +28,20 @@ horarios de ningún cliente**; cada uno la aplica por separado. Los datasets viv
 Todos los `make` se ejecutan en el portátil, en la raíz del repo. Con `PROD=1` operan sobre
 el servidor por SSH (como `deploy`); sin él, sobre tu BD local.
 
+```mermaid
+flowchart LR
+    subgraph PT["portátil · var/datos/&lt;nombre&gt;/"]
+        B["1 · bus-bajar"] --> E["2 · editar"] --> V["3 · formatear<br/>+ validar"] --> R["4 · bus-revision<br/>HTML + PDF con diff"]
+    end
+    R --> AP{"5 · ¿la empresa<br/>lo aprueba?"}
+    AP -->|no| E
+    AP -->|sí| S["6 · bus-subir<br/>versión nueva en la biblioteca"]
+    S --> C1["7 · cliente A: «Aplicar»"]
+    S --> C2["7 · cliente B: «Aplicar»"]
+```
+
+Subir a la biblioteca **no cambia ningún cliente**: cada uno se queda con su copia hasta que se aplica la versión nueva (ADR-013).
+
 1. **Bajar la versión vigente:** `make bus-bajar NOMBRE=<nombre> [PROD=1] [VERSION=<n>]`
    descarga la entrada a `var/datos/<nombre>/timetable/` (y a `.publicado/timetable/`, la
    base del diff). Si la entrada no existe todavía, parte de una copia conocida y salta este

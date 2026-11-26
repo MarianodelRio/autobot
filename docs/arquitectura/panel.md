@@ -1,6 +1,6 @@
 # Panel
 
-El panel es la herramienta interna de la persona que opera Autobot: ver de un vistazo si todo va bien, dar de alta y configurar negocios, resolver incidencias y consultar datos y logs sin entrar por SSH. Esta página describe cómo está construido y por qué es seguro; para usarlo, ver [Panel (uso)](../procedimientos/panel.md), y para desarrollarlo, [Panel (desarrollo)](../desarrollo/panel.md). Las decisiones están en [ADR-008](adr/ADR-008-panel.md), [ADR-014](adr/ADR-014-pestana-de-alta.md) y [ADR-016](adr/ADR-016-acciones-de-alta-whatsapp.md).
+El panel es la herramienta interna del operador de Autobot: ver de un vistazo si todo va bien, dar de alta y configurar negocios, resolver incidencias y consultar datos y logs sin entrar por SSH. Esta página describe cómo está construido y por qué es seguro; para usarlo, ver [Panel (uso)](../procedimientos/panel.md), y para desarrollarlo, [Panel (desarrollo)](../desarrollo/panel.md). Las decisiones están en [ADR-008](adr/ADR-008-panel.md) y [ADR-027](adr/ADR-027-alta-y-configuracion-en-una-pestana.md).
 
 ## Visión de conjunto
 
@@ -11,7 +11,7 @@ El panel son dos piezas que comparten origen:
 
 ```mermaid
 flowchart LR
-    P["Persona<br/>(navegador)"] -->|"túnel SSH<br/>127.0.0.1:18000"| PC["contenedor panel<br/>(Caddy interno :8080)"]
+    P["Operador<br/>(navegador)"] -->|"túnel SSH<br/>127.0.0.1:18000"| PC["contenedor panel<br/>(Caddy interno :8080)"]
     PC -->|"/ → SPA estática"| P
     PC -->|"/api/* (sin X-Autobot-Edge)"| WP["web-panel:8000<br/>PanelGateMiddleware → API ninja"]
     WP -->|"conexión owner<br/>(fp_owner)"| DB[("PostgreSQL")]
@@ -63,6 +63,19 @@ La referencia completa de endpoints, generada del esquema OpenAPI, está en [API
 
 ### Sesión y TOTP (`panel/auth.py`)
 
+```mermaid
+sequenceDiagram
+    participant O as Operador
+    participant A as API del panel
+    O->>A: POST /auth/login (usuario + contraseña + TOTP)
+    A-->>O: sesión (12 h, 30 min de inactividad) + CSRF
+    O->>A: lecturas y escrituras normales (X-CSRFToken)
+    O->>A: acción sensible (borrar, exportar, secretos…)
+    A-->>O: pide un TOTP nuevo
+    O->>A: TOTP de la siguiente ventana de 30 s
+    A-->>O: acción permitida durante 5 min
+```
+
 - Un único rol: el operador. `manage.py panel_user create <usuario>` crea un usuario con `is_staff` y un `TOTPDevice` confirmado.
 - `POST /auth/login` pide usuario, contraseña **y** código TOTP. `PanelAuth` solo acepta una sesión con usuario autenticado, `is_staff` y `is_verified()` (OTP superado). Todas las rutas lo exigen salvo `auth/csrf` y `auth/login` (que solo exige CSRF).
 - Límite de intentos: 5 por usuario y 20 por dirección en 15 minutos. Se reserva un hueco **antes** de comprobar (`cache.add` atómico), de modo que intentos concurrentes no pasan juntos el límite. Cada bloqueo, fallo y acceso queda auditado. El mensaje de error es siempre el mismo.
@@ -94,6 +107,17 @@ La API usa tres roles de PostgreSQL ([Seguridad y secretos](seguridad-y-secretos
 
 Toda escritura del panel y de los comandos de operación deja una fila en `audit_event` (`autobot/ops/audit.py`, `record` y `record_tenant`): quién (`actor`), qué (`action`), sobre qué negocio y un resumen. Los `details` rechazan claves con forma de secreto (`token`, `password`, `otp`…). Se escribe con la conexión `owner` y `fp_app` no tiene ningún permiso sobre la tabla (`autobot/db/grants.py`). La pantalla Logs la muestra (`GET /audit`). También se auditan las lecturas de datos personales: listado y búsqueda de contactos (sin guardar el término) y avisos del dueño. `panel_user` anota sus acciones y cierra las sesiones del usuario al cambiar la contraseña o el TOTP. Catálogo completo en [Auditoría](../referencia/auditoria.md). El esquema OpenAPI no se sirve (`openapi_url=None`); se genera con `make api`. La contraseña del operador exige al menos 12 caracteres.
 
+### Listas largas
+
+Ninguna lista del panel lee la tabla entera. Contactos, actividad, auditoría, avisos,
+invitaciones e incidencias se piden por **cursor** (`next_cursor`, opaco: la marca de tiempo
+y el id de la última fila), en páginas de 50 y como mucho 100. Así no se repiten ni se saltan
+filas aunque entren otras nuevas, y la página 100 cuesta lo mismo que la 1; cada orden tiene
+su índice (`contact_panel_list_idx`, `inbound_feed_idx`, `outbound_feed_idx`…). Las listas de
+negocios no se paginan: el registro vive en memoria y el número de consultas no depende de
+cuántos negocios haya. Los logs se piden siempre con un rango de tiempo (máximo 31 días) y
+como mucho 1.000 líneas.
+
 ## Cómo se organiza el trabajo por pantallas
 
 | Pantalla | Apoyo en el backend |
@@ -117,6 +141,6 @@ Toda escritura del panel y de los comandos de operación deja una fila en `audit
 
 ## Relacionado
 
-- [ADR-008](adr/ADR-008-panel.md), [ADR-014](adr/ADR-014-pestana-de-alta.md), [ADR-016](adr/ADR-016-acciones-de-alta-whatsapp.md), [ADR-027](adr/ADR-027-alta-y-configuracion-en-una-pestana.md).
+- [ADR-008](adr/ADR-008-panel.md), [ADR-027](adr/ADR-027-alta-y-configuracion-en-una-pestana.md).
 - [Panel (uso)](../procedimientos/panel.md), [Panel (desarrollo)](../desarrollo/panel.md), [API del panel](../referencia/api-panel.md).
 - [Tenants y RLS](tenants-y-rls.md) y [Seguridad y secretos](seguridad-y-secretos.md).

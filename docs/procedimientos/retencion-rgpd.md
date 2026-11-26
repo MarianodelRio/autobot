@@ -22,8 +22,8 @@ antes de tocar la limpieza automática.
 ## Cómo se ejecutan los comandos en producción
 
 Los comandos de `manage.py` de esta página usan la conexión `owner` (`fp_owner`, con
-`BYPASSRLS`), que solo tiene el contenedor `web`. Se ejecutan con `manage.sh`, que lanza
-un contenedor `web` efímero con la imagen desplegada:
+`BYPASSRLS`), que solo tiene `web-panel`. Se ejecutan con `manage.sh`, que lanza
+un contenedor `web-panel` efímero con la imagen desplegada:
 
 ```bash
 # desde el portátil (TTY=1 si el comando pide escribir el slug)
@@ -41,22 +41,33 @@ deploy/scripts/manage.sh contact_forget <slug> <external_id> --channel main
 ## Limpieza automática
 
 La limpieza nocturna se programa a las 03:00 UTC. En **producción está activada por
-defecto** (`compose.prod.yaml` pasa `RETENTION_CLEANUP_ENABLED=true`; la persona lo aprobó el
-2026-11-23 y `check_prod_config.py` lo exige en el compose renderizado); en local vale
+defecto** (`compose.prod.yaml` pasa `RETENTION_CLEANUP_ENABLED=true` y `check_prod_config.py` lo exige en el compose renderizado); en local vale
 `false`. Para pararla en un servidor, `RETENTION_CLEANUP_ENABLED=false` en su `.env` y
 reiniciar `worker-periodic` (ejecuta la cola `periodic`): el permiso se comprueba al ejecutar
 el trabajo, incluidos los trabajos ya encolados. Los plazos (`runtime/retention.py`):
-`inbound_event` vaciado a los 30 días y borrado a los 90;
-`outbound_message` con `payload` vaciado a los 30 días y fila a los 12 meses; `notification`,
-`metric_event` y contactos a los 12 meses de inactividad; negocios de demo, 30 días;
-`demo_event` y `owner_event`, 7 días; `demo_session`, 30; `audit_event` y `ops_alert`, 1 año.
-Las excepciones: los eventos de entrada de un negocio de demo siguen los 90 días generales.
+
+```mermaid
+flowchart LR
+    D7["7 días<br/>demo_event · owner_event"] --> D30["30 días<br/>se vacía el contenido de<br/>inbound_event y outbound_message<br/>negocios de demo · demo_session"]
+    D30 --> D90["90 días<br/>se borra inbound_event"]
+    D90 --> M12["12 meses<br/>outbound_message · notification<br/>metric_event · contactos inactivos<br/>audit_event · ops_alert"]
+```
+
+| Qué | Contenido vaciado | Fila borrada |
+|---|---|---|
+| `inbound_event` (también de los demos) | 30 días | 90 días |
+| `outbound_message` | 30 días (`payload`) | 12 meses |
+| `notification`, `metric_event`, contactos | — | 12 meses de inactividad |
+| Contactos y conversaciones de un negocio de demo | — | 30 días |
+| `demo_event`, `owner_event` | — | 7 días |
+| `demo_session` | — | 30 días |
+| `audit_event`, `ops_alert` | — | 1 año |
 
 La limpieza usa lotes de hasta 1.000 filas padre y una transacción corta por lote y
 negocio bajo RLS. Los borrados en cascada de un contacto pueden afectar a más filas
 hijas. Aplica los plazos de retención también a negocios pausados y dados de
 baja que sigan en el registro. Los doce meses se calculan por calendario; para contactos
-sin actividad registrada se usa la fecha de creación. `test_session.selected_at`
+sin actividad registrada se usa la fecha de creación. `demo_session.selected_at`
 registra la selección o el último mensaje remitido al negocio. Los estados se vacían
 cuando superan el tiempo de conversación del pack o carecen de fecha de entrada.
 
@@ -148,6 +159,15 @@ WhatsApp (`messages[].from`, `contacts[].wa_id`, `statuses[].recipient_id`). El 
 toca sus accesos de demo (es otra identidad en otra puerta: olvida también el contacto de
 demo). `tenant_purge` no puede borrar accesos de demo porque no pertenecen a un negocio.
 
+```mermaid
+flowchart LR
+    F(["contact_forget"]) --> Y["✅ se borra<br/>contacto · conversación · mensajes<br/>avisos al dueño · eventos de entrada<br/>sesión y accesos de demo"]
+    F --> L["📒 se anota en el libro de supresiones<br/>(ids y HMAC, sin datos en claro)"]
+    F -.-> N["❌ fuera de la plataforma<br/>Google Calendar · Meta · Telegram"]
+    F -.-> B["⏳ caduca solo<br/>logs (31 días) · backups (6 meses)"]
+    L -->|al restaurar un backup| RE["privacy_reapply<br/>vuelve a olvidarlo"]
+```
+
 **No lo cubre:**
 
 - **Google Calendar:** las citas son del calendario del negocio; el olvido no las borra.
@@ -171,7 +191,7 @@ que sacarlo del servidor: lo hace solo el backup. Copia manual opcional:
 make prod-manage CMD="privacy_ledger_export" > libro-supresiones.jsonl   # acumulativo
 ```
 
-Desde el ADR-025 no hace falta exportarlo a mano: `backup.sh` lo sube cada hora a restic
+No hace falta exportarlo a mano (ADR-025): `backup.sh` lo sube cada hora a restic
 (etiqueta `autobot-ledger`) y `restore.sh` reaplica el último con `privacy_reapply --ledger -`
 **antes de arrancar los workers** ([restaurar.md](restaurar.md)). El comando es idempotente
 y no necesita aprobación adicional más allá de la de la propia restauración. La exportación
@@ -195,7 +215,7 @@ backups corresponde a restic (`deploy/scripts/backup.sh`); estos comandos no mod
   datasets.
 - El libro de supresiones llega al repositorio de backups con el siguiente backup horario
   (snapshot `autobot-ledger`; `restic snapshots --tag autobot-ledger`).
-- La limpieza nocturna está activa en producción (`RETENTION_CLEANUP_ENABLED=true`) y pasa cada noche: en el bot de avisos, menú de operador → 💾 Backups, «Limpieza nocturna: ✅» con la hora de esa madrugada; «⚠️ sin pasar desde…» si lleva más de 26 h sin ejecutarse.
+- La limpieza nocturna (`RETENTION_CLEANUP_ENABLED=true`) pasa cada noche. Para comprobarlo: en el bot de avisos, menú de operador → 💾 Backups, «Limpieza nocturna: ✅» con la hora de esa madrugada; «⚠️ sin pasar desde…» si lleva más de 26 h sin ejecutarse.
 
 ## Dónde está el código
 

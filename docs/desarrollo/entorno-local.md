@@ -22,11 +22,15 @@ make local
 
 `make local` (alias `make dev-bootstrap`) ejecuta `deploy/scripts/install-local.sh` ([ADR-017](../arquitectura/adr/ADR-017-instalador-de-la-vm-y-entorno-local.md)). En orden:
 
-1. Comprueba los requisitos y crea `.env` desde `.env.example` si falta, solo con valores locales y sin credenciales de terceros.
-2. Levanta `db`, reaplica los roles de PostgreSQL y construye la imagen de `web`.
-3. Aplica las migraciones como `fp_owner`, ejecuta `apply_grants` y siembra los negocios de demo (`seed_demos`).
-4. Si no existe el usuario `panel`, pide crearlo (`panel_user create`). Sin terminal interactivo, lo deja anotado.
-5. Levanta `web`, los cuatro workers (`worker-inbound`, `worker-calendar`, `worker-periodic` y `worker-outbound`) y `victorialogs`, y espera hasta 60 s a que `/health/internal` responda bien y los workers estén en marcha.
+```mermaid
+flowchart LR
+    R["requisitos<br/>+ .env local"] --> D["db + roles<br/>+ imagen web"]
+    D --> M["migraciones<br/>+ apply_grants<br/>+ seed_demos"]
+    M --> U["usuario del panel<br/>(si falta)"]
+    U --> S["web + 4 workers<br/>+ victorialogs"]
+    S --> H{"/health/internal<br/>≤ 60 s"}
+    H -->|ok| OK["http://127.0.0.1:8000"]
+```
 
 Se puede repetir sin miedo: conserva las versiones de configuración existentes y los cambios hechos en los demos. Cuando termina, `web` escucha en `http://127.0.0.1:8000`.
 
@@ -83,6 +87,20 @@ make qr FILE=var/datos/<slug>/document.yaml ARGS="--output /ruta/qr.svg"
 El canal debe declarar `display_phone` internacional (WhatsApp) o `bot_username` (Telegram). El QR apunta al canal del negocio y se guarda como SVG con fondo blanco, apto para imprimir. Lo generado en `var/qr/` no se sube a git. `var/tenants/` y `var/datos/` tampoco.
 
 ## Reproducir producción en local (`localprod`)
+
+```mermaid
+flowchart LR
+    subgraph L["make local / make up"]
+        l1["código montado · gunicorn --reload<br/>sin Caddy ni TLS"]
+    end
+    subgraph LP["make localprod-*"]
+        lp1["imágenes reales · deploy.sh real<br/>Caddy con TLS interno · read_only"]
+    end
+    subgraph P["servidor"]
+        p1["imágenes de GHCR · deploy.sh<br/>Caddy con Let's Encrypt"]
+    end
+    L -->|"¿funcionan los scripts del servidor?"| LP -->|"misma receta"| P
+```
 
 `make up` y `make local` son para desarrollar: código montado, gunicorn con recarga, sin Caddy ni TLS. Para probar tal cual los scripts que corren en el servidor (`deploy.sh`, `backup.sh`, `restore.sh`, con Caddy y TLS, `read_only` y tu UID real) existen los objetivos `localprod-*`:
 

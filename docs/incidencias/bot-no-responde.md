@@ -8,6 +8,19 @@ Los dos packs dejan de contestar en todos los negocios. Un 502 público suele in
 
 Anota hora y SHA sin copiar payloads ni ids de clientes.
 
+```mermaid
+flowchart TD
+    A["1 · curl /health"] -->|falla| C["3 · compose.sh ps<br/>¿web o caddy caídos?"]
+    A -->|ok| B["2 · /health/internal<br/>desde la VPS"]
+    B -->|503 o status ≠ ok| D["5 · df -h · pg_isready<br/>¿disco o BD?"]
+    B -->|ok| E["4 · logs de workers<br/>¿la cola no avanza?"]
+    C --> L["4 · logs del servicio"]
+    D --> L
+    E --> CQ["→ cola y latido"]
+    L --> DEP{"7 · ¿empezó con<br/>un despliegue?"}
+    DEP -->|sí| VA["→ volver atrás"]
+```
+
 1. Salud pública. Desde el portátil, sin usuario:
 
     ```bash

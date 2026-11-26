@@ -40,7 +40,7 @@ avisos por Telegram) eso producía:
     se cierra sola cuando la causa desaparece, como hasta ahora.
   - **Evento** («pasó algo»: envío rechazado, aviso al dueño perdido, trabajo fallido,
     contenedor reiniciado, umbral de coste superado, despliegue abortado o revertido):
-    la cierra la persona con **«Lo he revisado»**, que guarda una **marca de revisión**
+    la cierra el operador con **«Lo he revisado»**, que guarda una **marca de revisión**
     (fecha). Solo cuentan los casos posteriores a la marca; uno nuevo **reabre** la
     incidencia con «N nuevos desde tu revisión». Cada periodo abierto es una fila nueva
     que hereda la marca de la última revisión de la misma clave. La hora de un caso es cuándo
@@ -67,8 +67,8 @@ avisos por Telegram) eso producía:
   `--discard`. **«Descartar todos»** en la incidencia `outbound_ambiguous` descarta de una vez
   todos los envíos sin decidir del negocio: se permite porque no envía nada (a diferencia del
   reenvío en bloque retirado); un solo registro de auditoría con el número.
-- **Se retira la recuperación en bloque** (endpoints, acciones, pantalla): la persona
-  operadora no la usa; solo queda «Descartar todos», que no envía nada. Los recordatorios caducados durante una caída no se reenvían.
+- **Se retira la recuperación en bloque** (endpoints, acciones, pantalla): el
+  operador no la usa; solo queda «Descartar todos», que no envía nada. Los recordatorios caducados durante una caída no se reenvían.
 - **Avisos por Telegram:** solo 🔴 y 🟠 avisan al abrirse; 🟡 queda en el panel y en el
   resumen diario. Cada apertura (condición o evento, también una reapertura) avisa como
   mucho una vez por hora por clave y negocio. Nada de repetir cada 30 min. Si la severidad
@@ -90,7 +90,7 @@ avisos por Telegram) eso producía:
 
 ## Alternativas consideradas
 
-- **«Silenciar» con fecha de fin:** descartada por la persona operadora: prefiere ver lo
+- **«Silenciar» con fecha de fin:** descartada: se prefiere ver lo
   que falla también durante un mantenimiento.
 - **Marcar cada envío como revisado** (columna en `outbound_message`): una marca de
   revisión por incidencia basta para los eventos y no toca la tabla de datos de cliente.

@@ -34,6 +34,24 @@ sequenceDiagram
 
 `apps/backend/src/autobot/channels/views.py` tiene una vista por canal (`whatsapp`, `telegram`), con ruta `…/<public_id>`. No hace ninguna llamada externa: solo usa el registro de negocios en memoria y la base de datos. El orden es fijo (`receive`):
 
+```mermaid
+flowchart LR
+    IN([POST]) --> N{¿negocio<br/>activo?}
+    N -->|no| E404[404]
+    N -->|sí| T{¿≤ 256 KiB?}
+    T -->|no| E400a[400]
+    T -->|sí| F{¿firma<br/>válida?}
+    F -->|no| RL{¿> 20 fallos<br/>por minuto?}
+    RL -->|no| E401[401]
+    RL -->|sí| E429[429]
+    F -->|sí| J{¿JSON?}
+    J -->|no| E400b[400]
+    J -->|sí| ST["guardar + encolar<br/>(una transacción)"]
+    ST -->|ok| OK[200]
+    ST -->|fallo de BD| E503["503: el proveedor reintenta"]
+```
+
+
 1. **Negocio.** `main_channel_tenant` busca el negocio por `(tipo de canal, public_id)`. Si no existe, su canal principal no está activo o no tiene secretos: `404`. Si el registro no se puede leer: `503`.
 2. **Tamaño.** `body_too_large` rechaza con `400` un cuerpo de más de 256 KiB (`MAX_BODY`), según la cabecera `Content-Length` o el cuerpo real.
 3. **Firma.** El adaptador del canal comprueba la autenticidad (`verify`) **antes** de interpretar el cuerpo. WhatsApp: HMAC-SHA256 del cuerpo en `X-Hub-Signature-256` con el secreto de la app. Telegram: el `secret_token` de `setWebhook` que vuelve en una cabecera. Ambas comparaciones son en tiempo constante (`hmac.compare_digest`). Una firma mala da `401`.
@@ -62,6 +80,21 @@ Esta entrada la comparten los webhooks, el sondeo de Telegram (`telegram_poll`) 
 ## 3. `process_event`: tres fases
 
 `apps/backend/src/autobot/runtime/process.py` (`process_event`) lo ejecuta un worker (`worker-calendar` para los packs que usan Calendar, `worker-inbound` para el resto). Está partido en tres para que no haya transacción abierta mientras el pack llama a Google Calendar ni mientras el adaptador habla con el proveedor.
+
+```mermaid
+flowchart LR
+    subgraph T1["tx1 · corta"]
+        L["cargar evento,<br/>contacto y conversación"]
+    end
+    subgraph NT["sin transacción"]
+        direction TB
+        K["acknowledge"] --> LIM["límite por contacto<br/>y orden «menu»"] --> PK["Pack.handle_message<br/>(≤ 8 s para Google)"]
+    end
+    subgraph T2["tx2 · corta"]
+        S["estado + outbound_message<br/>+ acciones + evento done<br/>+ trabajos send_message"]
+    end
+    T1 --> NT --> T2
+```
 
 **tx1: cargar.** Con `tenant_tx` (ver [tenants y RLS](tenants-y-rls.md)): lee el evento (si ya no está `pending`, termina: es un reintento tras un tx2 confirmado), reconstruye el mensaje desde el `payload` guardado, crea o actualiza el contacto y carga su conversación con el estado efectivo (caducidad y versión del estado).
 

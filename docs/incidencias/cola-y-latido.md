@@ -8,6 +8,15 @@ healthchecks.io avisa del worker, la cola tarda más de 30 s o el panel muestra 
 
 `worker-inbound` procesa los mensajes de los packs sin Calendar, el bot de demo y los estados de entrega; `worker-calendar` procesa los de los packs con Calendar (cola `inbound_ext`); `worker-periodic` ejecuta las tareas periódicas, las barridas y el rescate de trabajos; `worker-outbound` envía.
 
+```mermaid
+flowchart LR
+    A{"¿qué cola<br/>se atrasa?"} -->|inbound| WI["worker-inbound<br/>bus · demo · dueños"]
+    A -->|inbound_ext| WC["worker-calendar<br/>¿Google lento? → calendar"]
+    A -->|outbound| WO["worker-outbound<br/>¿Meta o Telegram caídos?"]
+    A -->|periodic · ops| WP["worker-periodic<br/>sin él, no hay latido"]
+    WI & WC & WO & WP --> CHK["ps + logs<br/>¿parado, reiniciando o<br/>esperando a la BD?"]
+```
+
 1. Estado de los workers. En la VPS, como `deploy`, en `/srv/autobot`:
 
     ```bash

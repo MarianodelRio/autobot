@@ -2,7 +2,7 @@
 
 Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de demo, por WhatsApp y Telegram, para enseñar los packs. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). Este fichero resume las reglas para trabajar en el repo.
 
-**Estado:** en producción desde 2026-11-24 con los negocios de demo y un cliente real (pack `bus`). Lo que se comprueba antes de activar cada cliente real está en [`docs/procedimientos/servidor.md`](docs/procedimientos/servidor.md#antes-del-primer-cliente-real). Los datos concretos de la instalación (IP, dominio, cuentas) no van al repo, que es público.
+Los datos concretos de la instalación (IP, dominio, cuentas) no van al repo, que es público.
 
 ## Idioma
 
@@ -23,7 +23,7 @@ Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un
 
 Visión completa en [`docs/arquitectura/vision-general.md`](docs/arquitectura/vision-general.md); aquí solo las reglas.
 
-- Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `web-panel`, `worker-inbound`, `worker-calendar`, `worker-periodic`, `worker-outbound`, `db`, `panel`, `victorialogs`). Dos apps autocontenidas en `apps/` (`backend/`, `panel/`); el despliegue vive en `deploy/` (ADR-010). Los ficheros de ejecución, locales y del servidor, van en `var/` (ignorado por git). Mapa del código: [`docs/arquitectura/mapa-del-codigo.md`](docs/arquitectura/mapa-del-codigo.md).
+- Monolito modular Django 5.2 + PostgreSQL 18 + Procrastinate, en una VPS con Docker Compose (`caddy`, `web`, `web-panel`, `worker-inbound`, `worker-calendar`, `worker-periodic`, `worker-outbound`, `db`, `panel`, `victorialogs`). Dos apps autocontenidas en `apps/` (`backend/`, `panel/`); el despliegue vive en `deploy/` (ADR-010). Los ficheros de ejecución, locales y del servidor, van en `var/` (ignorado por git). Las notas y claves personales de la persona (datos de la instalación, clave de Google…) van en `privado/`, también ignorado: nunca se citan en `docs/` ni en commits y no entran en ninguna imagen. Mapa del código: [`docs/arquitectura/mapa-del-codigo.md`](docs/arquitectura/mapa-del-codigo.md).
 - `core/` e `integrations/` no importan Django; `packs/*` solo importan `core` (nunca Django, `integrations` ni otro pack). Lo comprueba `import-linter`.
 - Lógica de cada negocio en `packs/<nombre>/`; la plataforma no sabe qué es una cita ni un autobús, y los packs no saben qué canal se usa. Las diferencias entre WhatsApp y Telegram viven solo en sus adaptadores, y el selector del bot de demo solo en `channels/demo/`. A `core/` solo sube lo que usan los dos packs y las utilidades genéricas sin lógica de negocio.
 - Config y datasets de cada negocio en PostgreSQL, versionados (ADR-009); nada en git ni en la imagen. Los datasets de un pack se suben por terminal a una biblioteca independiente de cualquier cliente y el cliente se queda con una copia, nunca una referencia viva (ADR-013); `var/tenants/` y `var/datos/` están ignorados. Secretos de canal cifrados en la base de datos; secretos de la plataforma en `.env` del servidor. Nunca en git.

@@ -6,6 +6,23 @@ La plataforma reparte su trabajo asíncrono con Procrastinate, una cola que vive
 
 El webhook debe contestar rápido y no puede llamar a Meta, Google ni Telegram. Por eso solo guarda y encola; el resto lo hace un worker. Procrastinate guarda los trabajos en `procrastinate_jobs`, así que **un trabajo puede insertarse en la misma transacción que la fila que procesa**: aparece con el commit y desaparece con un rollback. No hay broker aparte que sincronizar. Ver la decisión en [ADR-001](adr/ADR-001-monolito-modular.md) y [ADR-004](adr/ADR-004-entrada-idempotente.md).
 
+```mermaid
+sequenceDiagram
+    participant W as web
+    participant DB as PostgreSQL
+    participant K as worker
+    W->>DB: BEGIN
+    W->>DB: INSERT inbound_event
+    W->>DB: INSERT procrastinate_jobs (status todo)
+    W->>DB: COMMIT → NOTIFY
+    DB-->>K: LISTEN: hay trabajo
+    K->>DB: SELECT … FOR UPDATE SKIP LOCKED → doing
+    K->>K: ejecuta la tarea (solo ids)
+    K->>DB: succeeded / failed / reprogramado
+```
+
+Si el `COMMIT` falla, no existe ni la fila ni el trabajo: no hay mensajes huérfanos ni trabajos fantasma.
+
 ## Colas y trabajos
 
 Los trabajos se declaran todos en `apps/backend/src/autobot/runtime/jobs.py` (Procrastinate descubre ese módulo con `PROCRASTINATE_AUTODISCOVER_MODULE_NAME = "runtime.jobs"`). Hay cinco colas, para ver de un vistazo qué se atasca:
@@ -40,6 +57,26 @@ Por eso todo el código síncrono encola con `enqueue` (`apps/backend/src/autobo
 ## Qué worker escucha qué
 
 Se despliegan cuatro workers (`deploy/compose/compose.yaml`), cada uno con su concurrencia ([ADR-023](adr/ADR-023-colas-aisladas-y-degradacion.md)):
+
+```mermaid
+flowchart LR
+    subgraph Q["colas (procrastinate_jobs)"]
+        QI[inbound]
+        QE[inbound_ext]
+        QP[periodic]
+        QO[ops]
+        QS[outbound]
+    end
+    QI --> WI["worker-inbound · 4 huecos<br/>bus, demo, dueños, estados"]
+    QE --> WC["worker-calendar · 8 huecos<br/>salon → Google Calendar"]
+    QP --> WP["worker-periodic · 2 huecos<br/>cron, barridas, salud"]
+    QO --> WP
+    QS --> WO["worker-outbound · 8 huecos<br/>solo envía"]
+    WC -.lento.-> G[(Google)]
+    WO -.-> M[(Meta / Telegram)]
+```
+
+Cada worker es un proceso aparte: si Google va lento, solo se llenan los huecos de `worker-calendar`.
 
 | Servicio | Colas | Concurrencia | Para qué |
 |---|---|---|---|
@@ -125,13 +162,23 @@ Las medidas del [ADR-023](adr/ADR-023-colas-aisladas-y-degradacion.md) acotan lo
 - **Cortacircuitos por proceso** (`breaker.py`): se abre tras 5 fallos seguidos, o con al menos la mitad de las llamadas de 30 s fallidas o más lentas de 1,5 s (mínimo 10 llamadas). Abierto, falla al instante con el mismo `TransientError`; cada 8 s deja pasar una llamada de prueba.
 - **Respuesta degradada**: en el último intento, un `TransientError` del pack responde con `DEGRADED_TEXT` (`core/conversation.py`) y **conserva el estado de la conversación**, en lugar de reiniciarla con el texto de recuperación. El evento queda `failed` y las señales de error de Calendar (`ops/state.py`) cuentan igual.
 
-### Trabajos fallidos
+### Vida de un trabajo
 
-Un trabajo que agota sus reintentos queda `failed` en `procrastinate_jobs`. `ops_check` abre por cada tarea un evento `failed_job:<tarea>` con los trabajos fallidos posteriores a su marca de revisión como casos ([ADR-031](adr/ADR-031-incidencias-como-bandeja.md)); en el panel se ven en Incidencias y se cierran con «Lo he revisado». Reintentarlo es una decisión humana: `retry_job` en `apps/backend/src/autobot/ops/actions.py` (que usan el panel y el comando `job_retry`) solo acepta trabajos `failed` cuya tarea siga existiendo y **rechaza `send_message` y `send_notification`**: un envío no se reencola a ciegas, se resuelve con [envíos unknown](../incidencias/envios-unknown.md). La acción deja registro de auditoría. El comando es `python manage.py job_retry <id>`; cómo ejecutarlo en el servidor está en [cola y latido](../incidencias/cola-y-latido.md).
+```mermaid
+stateDiagram-v2
+    [*] --> todo: enqueue (en la transacción)
+    todo --> doing: un worker lo toma
+    doing --> succeeded
+    doing --> todo: error reintentable (con espera)
+    doing --> failed: agota reintentos o error de programación
+    doing --> todo: worker muerto, 30 s sin latido (retry_stalled_jobs)
+    doing --> failed: muerto 3 veces (STALLED_MAX_ATTEMPTS)
+    failed --> todo: «Reintentar» de una persona (nunca envíos)
+```
 
-### Trabajos de un worker que murió
+**Trabajos fallidos.** Un trabajo que agota sus reintentos queda `failed` y `ops_check` abre la incidencia `failed_job:<tarea>` ([ADR-031](adr/ADR-031-incidencias-como-bandeja.md)). Reintentarlo es una decisión humana (`retry_job` en `autobot/ops/actions.py`, desde el panel o con `job_retry <id>`), auditada, y **nunca** para `send_message` ni `send_notification`: un envío no se reencola a ciegas, se resuelve con [envíos unknown](../incidencias/envios-unknown.md).
 
-Un trabajo `doing` cuyo worker murió conserva su candado y bloquearía al contacto para siempre; Procrastinate no lo reintenta solo. `retry_stalled_jobs` (cada minuto, en `worker-periodic`) recoge los que llevan 30 s sin latido y los devuelve a `todo`. Es seguro: todo trabajo es idempotente, y un `send_message` cortado en `sending` termina `unknown` (nunca se reenvía). Con tope: un trabajo que ya se ha reintentado `STALLED_MAX_ATTEMPTS` (3) veces no se reencola otra vez (un mensaje que mata al worker, por ejemplo por falta de memoria, entraría en bucle cada minuto): se marca `failed`, se registra un error con solo el id y el nombre de la tarea y, si era un `process_event`, su evento pasa a `failed` con el texto de recuperación para el contacto (`process.abandon_event`, el mismo tx2 que un fallo determinista; si no puede crearse, al menos queda `failed`), de modo que ni queda `pending` ni la barrida lo reencola. `retry_stalled_jobs` y `ops_check` se encolan con prioridad alta (`HOUSEKEEPING_PRIORITY`, 100) para no esperar detrás de `run_periodic` en los dos huecos de `worker-periodic` (el deferidor periódico usa `task.configure`, que respeta la prioridad de la tarea). Si el trabajo rescatado choca con otro ya encolado bajo el mismo `queueing_lock` (por ejemplo el siguiente `ops_check`), no se puede reencolar: se termina como `aborted` para liberar el candado. No es `failed` a propósito: el trabajo de la cola hace lo mismo, así que no es un fallo y no debe abrir `failed_job:<tarea>`. El choque se reconoce por el índice único del `queueing_lock` (`procrastinate_jobs_queueing_lock_idx_v1`) en el error; cualquier otro motivo para no reencolarlo sí lo marca `failed`.
+**Trabajos de un worker que murió.** Un trabajo `doing` cuyo worker murió conserva su candado y bloquearía al contacto para siempre. `retry_stalled_jobs` (cada minuto, con prioridad alta) devuelve a `todo` los que llevan 30 s sin latido; es seguro porque todo es idempotente, y un `send_message` cortado en `sending` termina `unknown`. Tras 3 rescates el trabajo se marca `failed` (un mensaje que mata al worker entraría en bucle) y, si era un `process_event`, el contacto recibe el texto de recuperación. Si el rescate choca con otro trabajo del mismo `queueing_lock`, se cierra como `aborted`, que no abre incidencia.
 
 ## Conexiones del worker
 
@@ -140,6 +187,14 @@ El `procrastinate worker` crea un pool psycopg propio, fuera del control de `CON
 ## Cortacircuitos del proveedor
 
 `worker-outbound` lleva en memoria un cortacircuitos por proveedor, WhatsApp y Telegram (`apps/backend/src/autobot/runtime/breaker.py`, instancia `BREAKER` en `runtime/outbound.py`). Se abre tras 5 fallos de transporte seguidos (5xx, red, tiempo agotado; no 4xx ni autenticación) de **al menos 2 negocios distintos**. Abierto, `send_message` no llama al proveedor: aplaza el mensaje, y como mucho una vez cada 60 s uno de ellos ejecuta una sonda de solo lectura (`adapter.probe()`: `GET` del nodo del número en WhatsApp, `getMe` en Telegram); si responde, se cierra. Al abrirse y cerrarse escribe una señal en la caché de base de datos (`ops/state.py`), de la que `ops_check` deriva **una** alerta `provider_outage` ([alertas](../referencia/alertas.md)). Un reinicio del worker lo deja cerrado. Al recuperarse el proveedor los mensajes en espera no salen todos juntos: cada uno espera hasta la siguiente sonda más un azar (respuestas 0-30 s, recordatorios y demás 15-90 s) y los `send_message` se encolan con prioridad de Procrastinate (respuestas 10, recordatorios 0), de modo que una respuesta nunca espera detrás de un recordatorio y un atasco de WhatsApp retrasa lo mínimo a Telegram. Decisión en [ADR-024](adr/ADR-024-envio-saliente-por-caducidad.md).
+
+```mermaid
+stateDiagram-v2
+    [*] --> cerrado
+    cerrado --> abierto: 5 fallos de transporte seguidos, de 2 negocios o más
+    abierto --> abierto: los envíos se aplazan sin llamar
+    abierto --> cerrado: responde la sonda de solo lectura (cada 60 s)
+```
 
 ## Barridas de `ops_check`
 
