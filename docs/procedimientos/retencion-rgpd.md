@@ -195,7 +195,7 @@ backups corresponde a restic (`deploy/scripts/backup.sh`); estos comandos no mod
   datasets.
 - El libro de supresiones llega al repositorio de backups con el siguiente backup horario
   (snapshot `autobot-ledger`; `restic snapshots --tag autobot-ledger`).
-- La limpieza nocturna está activa en producción (`RETENTION_CLEANUP_ENABLED=true`).
+- La limpieza nocturna está activa en producción (`RETENTION_CLEANUP_ENABLED=true`) y pasa cada noche: en el bot de avisos, menú de operador → 💾 Backups, «Limpieza nocturna: ✅» con la hora de esa madrugada; «⚠️ sin pasar desde…» si lleva más de 26 h sin ejecutarse.
 
 ## Dónde está el código
 

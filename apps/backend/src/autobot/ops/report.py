@@ -92,6 +92,7 @@ class Cleanup:
     enabled: bool
     last_at: datetime | None
     ok: bool | None  # None: queued or running
+    stale: bool = False  # enabled, but no run for longer than CLEANUP_STALE
 
 
 @dataclass(frozen=True)
@@ -115,7 +116,7 @@ def platform_status(now: datetime) -> PlatformStatus:
         services=_services(now),
         resources=_resources(now),
         backups=backups(now),
-        cleanup=cleanup(),
+        cleanup=cleanup(now),
     )
 
 
@@ -168,18 +169,34 @@ def backups(now: datetime) -> Backups:
     )
 
 
-def cleanup() -> Cleanup:
+# The nightly run is at 03:00 UTC: a day plus a margin for a slow run or a late worker.
+CLEANUP_STALE = timedelta(hours=26)
+
+# Periodic jobs are deferred without `scheduled_at` (Procrastinate ignores it for them), so
+# the time comes from the job's events: the latest one, which is when it finished, started
+# or was queued depending on its status. A `scheduled` event carries a future time: skipped.
+_CLEANUP_SQL = """
+SELECT j.status, COALESCE(
+    (SELECT max(e.at) FROM procrastinate_events e
+        WHERE e.job_id = j.id AND e.type <> 'scheduled'),
+    j.scheduled_at)
+FROM procrastinate_jobs j
+WHERE j.task_name = 'retention_cleanup'
+ORDER BY j.id DESC LIMIT 1
+"""
+
+
+def cleanup(now: datetime) -> Cleanup:
+    enabled = settings.RETENTION_CLEANUP_ENABLED
     with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT status, scheduled_at FROM procrastinate_jobs"
-            " WHERE task_name = 'retention_cleanup' ORDER BY id DESC LIMIT 1"
-        )
+        cursor.execute(_CLEANUP_SQL)
         row = cursor.fetchone()
     if row is None:
-        return Cleanup(enabled=settings.RETENTION_CLEANUP_ENABLED, last_at=None, ok=None)
-    status, scheduled_at = row
+        return Cleanup(enabled=enabled, last_at=None, ok=None)
+    status, last_at = row
     ok = {"succeeded": True, "failed": False}.get(status)
-    return Cleanup(enabled=settings.RETENTION_CLEANUP_ENABLED, last_at=scheduled_at, ok=ok)
+    stale = enabled and ok is not None and last_at is not None and now - last_at > CLEANUP_STALE
+    return Cleanup(enabled=enabled, last_at=last_at, ok=ok, stale=stale)
 
 
 # ── Tenants ─────────────────────────────────────────────────────────────────

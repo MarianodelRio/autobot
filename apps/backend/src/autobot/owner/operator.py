@@ -40,7 +40,7 @@ def tenants(chat: OwnerChat) -> str:
 
 def backups(chat: OwnerChat) -> str:
     now = timezone.now()
-    return report_text.backups_text(report.backups(now), report.cleanup(), now)
+    return report_text.backups_text(report.backups(now), report.cleanup(now), now)
 
 
 OPERATOR_MENU: list[MenuOption] = [

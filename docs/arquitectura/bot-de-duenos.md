@@ -64,6 +64,8 @@ En el chat de `OPS_TELEGRAM_CHAT_ID`, el bot responde aunque ese chat no esté v
 | `ops:tenants` | 🏪 Clientes | Cada negocio real con su estado, salud y último mensaje, primero los que tienen problemas; las demos, en una línea. |
 | `ops:backups` | 💾 Backups | Último backup, última vez que se caducaron copias y limpieza nocturna. |
 
+La línea de la limpieza nocturna (en 🩺 Estado, 💾 Backups y el resumen diario) sale del último trabajo `retention_cleanup` de la cola: su estado y la hora de su último evento en `procrastinate_events`, porque Procrastinate encola las tareas periódicas sin `scheduled_at`. Dice «✅» o «❌ falló» con esa hora, «en curso», «sin pasadas todavía» si la cola no guarda ninguno, o «⚠️ sin pasar desde…» si está activada y la última pasada terminó hace más de 26 h (`CLEANUP_STALE` en `ops/report.py`).
+
 Todo es de solo consulta y sin datos personales. `autobot/ops/report.py` lee el estado como datos, cada negocio dentro de su `tenant_tx` porque el bot corre en un worker como `fp_app`, y `autobot/ops/report_text.py` lo redacta. Las listas muestran como mucho 15 elementos. Una respuesta de más de 1.024 caracteres va como texto propio y el menú detrás, con «¿Algo más?».
 
 **Resumen diario.** `ops_daily_summary` corre cada hora en el minuto 5 (`autobot/ops/daily.py`). La primera pasada desde las 09:00 de Madrid manda el Estado y las cifras de ayer, aunque no haya pasado nada. La clave `ops:daily:<fecha>` de la caché evita repetirlo en el mismo día. Si el envío seguro que no salió, lo intenta la hora siguiente; uno ambiguo no se repite.

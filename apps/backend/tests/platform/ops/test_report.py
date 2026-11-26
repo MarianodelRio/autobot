@@ -160,18 +160,81 @@ def test_platform_status_from_its_tables_and_files(
     (tmp_path / "backup.json").write_text(
         json.dumps({"finished_at": (now - timedelta(hours=4)).isoformat(), "ok": True})
     )
+    failed_at = now - timedelta(hours=8)
     with connections["owner"].cursor() as cursor:
+        # As a periodic job is: no scheduled_at; its time is in its events.
         cursor.execute(
-            "INSERT INTO procrastinate_jobs (queue_name, task_name, status, args, scheduled_at)"
-            " VALUES ('periodic', 'retention_cleanup', 'failed', '{}', %s)",
-            [now - timedelta(hours=8)],
+            "INSERT INTO procrastinate_jobs (queue_name, task_name, status, args)"
+            " VALUES ('periodic', 'retention_cleanup', 'failed', '{}') RETURNING id"
+        )
+        (job_id,) = cursor.fetchone()
+        cursor.execute(
+            "INSERT INTO procrastinate_events (job_id, type, at) VALUES (%s, 'failed', %s)",
+            [job_id, failed_at],
         )
     OpsAlert.objects.create(kind="disk", severity="warning", text="🟠 Disco")
     status = report.platform_status(now)
     assert status.level == "warning"
     assert status.resources is not None and status.resources.disk_pct == 40.0
     assert status.backups.ok is True and status.backups.stale  # more than 3 hours ago
-    assert status.cleanup.ok is False
+    assert status.cleanup == report.Cleanup(
+        enabled=settings.RETENTION_CLEANUP_ENABLED, last_at=failed_at, ok=False
+    )
+
+
+def _nightly_cleanup(status: str) -> int:
+    """A retention_cleanup job deferred exactly as Procrastinate's periodic deferrer does
+    (its SQL function, so without scheduled_at), then moved through its statuses so the
+    triggers write the real events."""
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "SELECT procrastinate_defer_periodic_job_v2("
+            "'periodic', NULL, 'retention_cleanup', 'retention_cleanup', 0,"
+            " 'retention_cleanup', %s, %s::jsonb)",
+            [int(timezone.now().timestamp()), json.dumps({"timestamp": 0})],
+        )
+        (job_id,) = cursor.fetchone()
+        for step in ("doing", status) if status != "todo" else ():
+            cursor.execute(
+                "UPDATE procrastinate_jobs SET status = %s WHERE id = %s", [step, job_id]
+            )
+    return job_id
+
+
+def _age_events(job_id: int, by: timedelta) -> None:
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "UPDATE procrastinate_events SET at = at - %s WHERE job_id = %s", [by, job_id]
+        )
+
+
+@pytest.mark.parametrize(
+    ("status", "ok"), [("succeeded", True), ("failed", False), ("doing", None)]
+)
+def test_cleanup_reads_a_real_periodic_job(
+    settings: Settings, status: str, ok: bool | None
+) -> None:
+    settings.RETENTION_CLEANUP_ENABLED = True
+    job_id = _nightly_cleanup(status)
+    with connections["owner"].cursor() as cursor:
+        cursor.execute("SELECT scheduled_at FROM procrastinate_jobs WHERE id = %s", [job_id])
+        assert cursor.fetchone() == (None,)  # what hid every run before
+    _age_events(job_id, timedelta(hours=5))
+    now = timezone.now()
+    cleanup = report.cleanup(now)
+    assert cleanup.ok is ok and not cleanup.stale
+    assert cleanup.last_at is not None
+    assert timedelta(hours=5) <= now - cleanup.last_at < timedelta(hours=5, minutes=1)
+
+
+def test_cleanup_is_stale_after_a_day_without_a_run(settings: Settings) -> None:
+    settings.RETENTION_CLEANUP_ENABLED = True
+    job_id = _nightly_cleanup("succeeded")
+    _age_events(job_id, timedelta(hours=27))
+    assert report.cleanup(timezone.now()).stale
+    # Switched off on purpose: an old run is expected, not a warning.
+    settings.RETENTION_CLEANUP_ENABLED = False
+    assert not report.cleanup(timezone.now()).stale
 
 
 def test_tenant_lines_carry_health_and_last_activity(tenants: Any) -> None:

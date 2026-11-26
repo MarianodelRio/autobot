@@ -138,6 +138,9 @@ def _cleanup_line(cleanup: Cleanup, now: datetime) -> str:
     if cleanup.last_at is None:
         return "Limpieza nocturna: sin pasadas todavía"
     when = clock(cleanup.last_at, now)
+    if cleanup.stale:
+        failed = "" if cleanup.ok else " (la última falló)"
+        return f"Limpieza nocturna: ⚠️ sin pasar desde {when}{failed}"
     if cleanup.ok is None:
         return f"Limpieza nocturna: en curso ({when})"
     return f"Limpieza nocturna: {'✅' if cleanup.ok else '❌ falló'} {when}"

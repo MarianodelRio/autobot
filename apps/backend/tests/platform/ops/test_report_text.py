@@ -214,3 +214,16 @@ def test_the_daily_summary_is_status_and_yesterday() -> None:
     assert text.startswith("☀️ *Resumen diario*\n\n✅ *Todo en orden*")
     assert "📊 *Ayer*, lunes 23/11\n\nRecibidos 5 · Enviados 5" in text
     assert len(text) <= MAX_TEXT
+
+
+def test_a_cleanup_that_stopped_running_is_a_warning() -> None:
+    old = NOW - timedelta(days=3)
+    line = report_text.backups_text(
+        GOOD_BACKUPS, Cleanup(enabled=True, last_at=old, ok=True, stale=True), NOW
+    ).splitlines()[-1]
+    assert line.startswith("Limpieza nocturna: ⚠️ sin pasar desde el ")
+    assert not line.endswith("(la última falló)")
+    failed = report_text.backups_text(
+        GOOD_BACKUPS, Cleanup(enabled=True, last_at=old, ok=False, stale=True), NOW
+    )
+    assert failed.endswith("(la última falló)")
