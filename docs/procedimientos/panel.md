@@ -43,8 +43,9 @@ puede consultar Calendar.
 
 Actividad usa la misma lista que Logs → Conversaciones, limitada a
 este cliente. El botón «Envíos con error» la reduce a las respuestas rechazadas, sin
-confirmar o descartadas (cada fila dice «Rechazado», «Sin confirmar» o «Descartado»): ahí
-se ven los envíos que ya se revisaron en Incidencias. Cada consulta de una conversación desde Contactos queda auditada, y
+confirmar o descartadas (cada fila dice «Rechazado», «Sin confirmar» o «Descartado»; «Rechazado»
+se llama igual con el filtro apagado y en Incidencias): ahí
+se ven los envíos que ya se revisaron en Incidencias. Sin ninguno, dice «No hay envíos con error.». Cada consulta de una conversación desde Contactos queda auditada, y
 desde ahí también se puede «Exportar datos» (descarga un JSON) u «Olvidar contacto»
 (borrado irreversible, con confirmación) de ese contacto; «Exportar datos del
 negocio» (`POST`, pues audita), en el menú «⋯» de la ficha, hace lo mismo a nivel de
@@ -176,28 +177,39 @@ incidencias abiertas.
 
 **Qué muestra una tarjeta:** la gravedad, el ámbito (el cliente, que enlaza a su ficha, o
 «Plataforma»), el título y el consejo en español, desde cuándo y la última vez, cuántos casos
-tiene y si el aviso a Telegram salió («Aviso enviado», «Solo en el panel», «Aviso pendiente de
-reintento»). Los botones «Ver logs» (ese cliente, un margen de tiempo alrededor de la última vez)
+tiene, cuántos «nuevos desde tu revisión» (solo si hay) y cómo se avisó por Telegram («Avisado por
+Telegram», «Solo en el panel», «Aviso pendiente de reintento», «Avisos por Telegram sin
+configurar»). Debajo del consejo, las cifras de la incidencia (disco al N %, cuántos envíos, cuántos
+reinicios) cuando aportan algo al título. Las que no tienen lista de casos (facturación, un
+contenedor reiniciado, el disco) no muestran «Ver N casos»: solo esas cifras. Los botones «Ver logs» (ese cliente, un margen de tiempo alrededor de la última vez)
 y «Ver runbook» (la página de [incidencias](../incidencias/envios-unknown.md) que explica qué hacer).
 
 **Condición o evento.** Una **condición** («está mal ahora»: un contenedor caído, el disco, una cola
 atrasada, envíos sin decidir) dice «Se cierra sola cuando se arregle» y no tiene botón. Un
 **evento** («pasó algo»: un envío rechazado, un trabajo fallido, un aviso al dueño perdido) se
-cierra con **«Lo he revisado»** (pide una confirmación breve y la tarjeta desaparece). Si después
+cierra con **«Lo he revisado»** (un solo clic, sin confirmación: la tarjeta desaparece; solo da por
+revisado lo que ves, y si mientras tanto entra otro caso, la incidencia sigue abierta). Si después
 ocurre otro caso, la incidencia vuelve a abrirse con «N nuevos desde tu revisión» y solo cuenta
 lo posterior. Claves y cierres: [alertas](../referencia/alertas.md).
 
-**Casos.** Cada tarjeta los trae plegados: «Ver N casos» los despliega y «Ver más» pide los
-siguientes (paginados). Según su tipo:
+**Casos.** Cada tarjeta los trae plegados, salvo los de «Envíos sin confirmar», que salen abiertos
+(actuar sobre ellos es la única forma de cerrarla): «Ver N casos» los despliega y «Ver más» pide los
+siguientes (paginados). En «Envíos sin confirmar», **«Descartar todos»** (una confirmación: «Se
+descartarán N envíos ambiguos: no se reenviarán») los descarta de una vez. Según su tipo:
 
 - **Envío** (canal, fecha, estado en español —«Rechazado», «Sin confirmar»— y el error con su
   consejo): «Marcar enviado», «Reenviar» (confirma el riesgo de duplicado) y **«Descartar»**
-  (confirma; el envío no se reenvía ni vuelve a salir). Un botón desactivado explica el motivo al
-  pasar el ratón. Detalle en [envíos sin confirmar](../incidencias/envios-unknown.md).
+  (confirma; el envío no se reenvía ni vuelve a salir). Un botón desactivado dice el motivo en texto pequeño debajo. Un envío
+  rechazado (no ambiguo) no tiene nada que decidir y no muestra botones; mientras una acción de un
+  envío se ejecuta, sus botones quedan desactivados. Detalle en [envíos sin confirmar](../incidencias/envios-unknown.md).
 - **Trabajo** (tarea en español y cuándo falló): «Reintentar» si es seguro repetirlo
-  ([cola y latido](../incidencias/cola-y-latido.md)).
-- **Aviso al dueño** (retenido o caducado): «Invitar al dueño» abre la sección del dueño en la
-  Configuración del cliente.
+  ([cola y latido](../incidencias/cola-y-latido.md)); si el backend lo rechaza (409), el motivo sale
+  junto al botón.
+- **Aviso al dueño** (retenido o caducado): solo informa.
+
+**Invitar al dueño.** En la tarjeta «Dueño sin chat de avisos» (`owner_unlinked`) hay un enlace
+«Invitar al dueño» que abre la sección del dueño en la Configuración del cliente; no aparece en los
+casos ni en otras incidencias.
 
 La mayoría de las veces basta con mirar y pulsar «Lo he revisado» o «Descartar». Todas estas
 acciones quedan auditadas y refrescan la bandeja, la barra lateral y el cliente. Los envíos ya
@@ -205,7 +217,7 @@ revisados se siguen viendo en Actividad del cliente con «Envíos con error».
 
 **Historial** (plegado): las incidencias cerradas, con su gravedad (también «Info»), cuántos casos
 tuvo y cómo se cerró: «Se cerró sola», «Se cerró por una caída», «Revisada por <usuario>» o
-«Informativa». Se pagina con «Cargar más».
+«Informativa»; el cliente enlaza a su ficha. Se pagina con «Cargar más».
 
 ## Logs
 

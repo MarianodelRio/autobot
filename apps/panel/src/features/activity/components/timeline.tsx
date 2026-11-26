@@ -32,18 +32,20 @@ export const STATUS_LABEL: Record<string, string> = {
   sending: "Enviando",
   sent: "Enviado",
   done: "Hecho",
-  failed: "Fallido",
+  // A rejected send: the one label of «failed» across the panel.
+  failed: "Rechazado",
   ignored: "Ignorado",
   unknown: "Sin confirmar",
   expired: "Caducado",
   discarded: "Descartado",
 };
 
-/** The status of a send as the operator reads it: a rejected send is «Rechazado». */
-export const SEND_STATUS_LABEL: Record<string, string> = {
-  ...STATUS_LABEL,
-  failed: "Rechazado",
-};
+/** The status of an activity row: a `failed` inbound event was not rejected by anyone, the
+ * platform could not process it. */
+export function statusLabel(status: string, kind?: string): string {
+  if (kind === "inbound" && status === "failed") return "Fallido";
+  return STATUS_LABEL[status] ?? status;
+}
 
 function ActivityDetailBody({ kind, id }: { kind: string; id: string }) {
   const query = useQuery({
@@ -123,7 +125,14 @@ export function Timeline({
       />
     );
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
-  if (!items.length) return <EmptyState message="No hay actividad." />;
+  if (!items.length)
+    return (
+      <EmptyState
+        message={
+          status === "errors" ? "No hay envíos con error." : "No hay actividad."
+        }
+      />
+    );
   return (
     <div>
       <ul className="space-y-2">
@@ -166,9 +175,7 @@ export function Timeline({
                 )}
                 {item.status && (
                   <Badge variant="secondary">
-                    {(status === "errors" ? SEND_STATUS_LABEL : STATUS_LABEL)[
-                      item.status
-                    ] ?? item.status}
+                    {statusLabel(item.status, item.kind)}
                   </Badge>
                 )}
                 <span className="text-sm text-muted-foreground">

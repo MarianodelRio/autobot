@@ -28,9 +28,10 @@ export function logsWindow(at: string): { start: string; end: string } {
 
 /** How the operator was told, only when it says something. */
 export const DELIVERY_HINT: Record<string, string> = {
-  sent: "Aviso enviado",
+  sent: "Avisado por Telegram",
   panel: "Solo en el panel",
   failed: "Aviso pendiente de reintento",
+  unconfigured: "Avisos por Telegram sin configurar",
 };
 
 export const CLOSED_LABEL: Record<string, string> = {
@@ -46,3 +47,9 @@ export const NOTICE_STATUS_LABEL: Record<string, string> = {
   pending: "Pendiente",
   failed: "No se pudo entregar",
 };
+
+/** «1 nuevo» / «N nuevos desde tu revisión»; nothing when there are none. */
+export function newSinceReview(count: number | null): string | null {
+  if (!count || count < 1) return null;
+  return `${count} ${count === 1 ? "nuevo" : "nuevos"} desde tu revisión`;
+}

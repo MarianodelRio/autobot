@@ -52,7 +52,9 @@ export function ConversationsTab({
           <option value="">Todos los estados</option>
           {STATUSES.map((status) => (
             <option key={status} value={status}>
-              {STATUS_LABEL[status] ?? status}
+              {status === "failed"
+                ? "Fallido o rechazado"
+                : (STATUS_LABEL[status] ?? status)}
             </option>
           ))}
         </select>

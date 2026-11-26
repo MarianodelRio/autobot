@@ -7,6 +7,7 @@ import { qk } from "@/lib/queries";
 import { TenantDetailPage } from "./detail-page";
 
 vi.mock("@/lib/config-applied", () => ({ confirmApplied: vi.fn() }));
+let errorsEmpty = false;
 let failTenant = false;
 
 const tenant = {
@@ -70,7 +71,7 @@ function setup(status = "active", initialTab?: string) {
       };
     else if (url.pathname.endsWith("/activity"))
       value =
-        url.searchParams.get("status") === "errors"
+        url.searchParams.get("status") === "errors" && !errorsEmpty
           ? {
               items: [
                 {
@@ -294,4 +295,21 @@ test("the Actividad tab filters the sends with an error and names their status",
     String((call[0] as Request).url).includes("status=errors"),
   );
   expect(asked).toBe(true);
+});
+
+test("the errors filter with nothing to show says so", async () => {
+  const user = userEvent.setup();
+  errorsEmpty = true;
+  try {
+    setup("active", "actividad");
+    expect(await screen.findByText("No hay actividad.")).toBeInTheDocument();
+    await user.click(
+      await screen.findByRole("button", { name: "Envíos con error" }),
+    );
+    expect(
+      await screen.findByText("No hay envíos con error."),
+    ).toBeInTheDocument();
+  } finally {
+    errorsEmpty = false;
+  }
 });

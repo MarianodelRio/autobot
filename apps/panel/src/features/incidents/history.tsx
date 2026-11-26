@@ -1,4 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { api, unwrap } from "@/api/client";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -44,9 +45,19 @@ export function ClosedHistory() {
           <li key={row.id} className="space-y-1 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={row.severity} />
-              <span className="text-sm text-muted-foreground">
-                {row.tenant ?? "Plataforma"}
-              </span>
+              {row.tenant ? (
+                <Link
+                  className="text-sm underline"
+                  to="/clientes/$slug"
+                  params={{ slug: row.tenant }}
+                >
+                  {row.tenant}
+                </Link>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  Plataforma
+                </span>
+              )}
               <span>{row.title}</span>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -57,7 +68,11 @@ export function ClosedHistory() {
           </li>
         ))}
       </ul>
-      {query.isFetchNextPageError && <p>No se pudo cargar más historial.</p>}
+      {query.isFetchNextPageError && (
+        <p role="alert" className="text-sm text-destructive">
+          No se pudo cargar más historial.
+        </p>
+      )}
       {query.hasNextPage && (
         <Button
           variant="outline"

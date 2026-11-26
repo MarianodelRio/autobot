@@ -24,7 +24,7 @@ export function IncidentsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Incidencias"
-        help="incidencias/"
+        help="procedimientos/panel/#incidencias"
         actions={
           query.data && query.data.total > 0 ? (
             <div className="flex flex-wrap items-center gap-3 text-sm">

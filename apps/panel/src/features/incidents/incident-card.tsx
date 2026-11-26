@@ -17,42 +17,36 @@ import {
   type Incident,
   incidentsChanged,
   logsWindow,
+  newSinceReview,
 } from "./shared";
 
 function ReviewButton({ incident }: { incident: Incident }) {
-  const [open, setOpen] = useState(false);
+  // One click: the review is cheap to undo (a new case reopens the incident). It
+  // carries the last case the card displays, so a later case is not swallowed.
   const mutation = useApiMutation({
     fn: () =>
       unwrap(
         api.POST("/incidents/{id}/review", {
           params: { path: { id: incident.id } },
+          body: { last_case_at: incident.last_case_at },
         }),
       ),
     success: "Incidencia revisada.",
     invalidate: incidentsChanged(),
     tenant: incident.tenant ?? undefined,
     appliesConfig: false,
-    onSuccess: () => setOpen(false),
   });
   return (
     <>
       <Button
         size="sm"
         disabled={mutation.isPending}
-        onClick={() => setOpen(true)}
+        onClick={() => mutation.mutate()}
       >
         Lo he revisado
       </Button>
-      <ConfirmDialog
-        open={open}
-        onOpenChange={setOpen}
-        title="Marcar como revisada"
-        description="Dejará de aparecer aquí. Si ocurre algo nuevo del mismo tipo, volverá a abrirse."
-        confirmLabel="Lo he revisado"
-        onConfirm={() => mutation.mutate()}
-      />
       {mutation.isError && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="basis-full text-sm text-destructive">
           {errorMessage(mutation.error, "No se pudo marcar como revisada.")}
         </p>
       )}
@@ -60,26 +54,82 @@ function ReviewButton({ incident }: { incident: Incident }) {
   );
 }
 
-/** The embedded cases, or — after «Ver más» — the whole paginated list. */
+function DiscardAllButton({ incident }: { incident: Incident }) {
+  const [open, setOpen] = useState(false);
+  const mutation = useApiMutation({
+    fn: () =>
+      unwrap(
+        api.POST("/incidents/{id}/discard-all", {
+          params: { path: { id: incident.id } },
+        }),
+      ),
+    success: "Envíos descartados.",
+    invalidate: incidentsChanged(),
+    tenant: incident.tenant ?? undefined,
+    appliesConfig: false,
+    onSuccess: () => setOpen(false),
+    onError: () => setOpen(false),
+  });
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={mutation.isPending || mutation.isSuccess}
+        onClick={() => setOpen(true)}
+      >
+        Descartar todos
+      </Button>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Descartar todos"
+        description={`Se descartarán ${incident.case_count} envíos ambiguos: no se reenviarán.`}
+        confirmLabel="Descartar todos"
+        onConfirm={() => mutation.mutate()}
+      />
+      {mutation.isError && (
+        <p role="alert" className="basis-full text-sm text-destructive">
+          {errorMessage(mutation.error, "No se pudieron descartar los envíos.")}
+        </p>
+      )}
+    </>
+  );
+}
+
+const PAGE_SIZE = 20;
+
+/** The embedded preview, or — after «Ver más» — the whole paginated list. The
+ * query is seeded with the preview, so «Ver más» continues from its cursor. */
 function Cases({ incident }: { incident: Incident }) {
-  const [all, setAll] = useState(false);
   const query = useInfiniteQuery({
-    queryKey: qk.incidentCases(incident.id),
-    enabled: all,
+    // The cursor in the key: a refreshed preview seeds a fresh query.
+    queryKey: [...qk.incidentCases(incident.id), incident.cases_next_cursor],
     initialPageParam: "",
+    initialData: {
+      pages: [
+        { items: incident.cases, next_cursor: incident.cases_next_cursor },
+      ],
+      pageParams: [""],
+    },
+    staleTime: Number.POSITIVE_INFINITY,
     queryFn: ({ pageParam }) =>
       unwrap(
         api.GET("/incidents/{id}/cases", {
-          params: { path: { id: incident.id }, query: { cursor: pageParam } },
+          params: {
+            path: { id: incident.id },
+            query: { cursor: pageParam, limit: PAGE_SIZE },
+          },
         }),
       ),
     getNextPageParam: (page) => page.next_cursor ?? undefined,
   });
-  const loaded: Case[] | undefined = query.data?.pages.flatMap(
-    (page) => page.items,
-  );
-  const cases = loaded ?? incident.cases;
-  const more = all ? query.hasNextPage : cases.length < incident.case_count;
+  const paged = (query.data?.pages.length ?? 1) > 1;
+  // Until paged, the live preview wins (the open list refreshes every 30 s).
+  const cases: Case[] = paged
+    ? (query.data?.pages.flatMap((page) => page.items) ?? [])
+    : incident.cases;
+  const more = paged ? query.hasNextPage : incident.cases_next_cursor != null;
   const tenant = incident.tenant ?? undefined;
   return (
     <div className="space-y-2">
@@ -102,10 +152,7 @@ function Cases({ incident }: { incident: Incident }) {
           size="sm"
           variant="outline"
           disabled={query.isFetching}
-          onClick={() => {
-            if (all) void query.fetchNextPage();
-            else setAll(true);
-          }}
+          onClick={() => void query.fetchNextPage()}
         >
           Ver más
         </Button>
@@ -114,13 +161,20 @@ function Cases({ incident }: { incident: Incident }) {
   );
 }
 
+/** The figures of the incident (disk %, counts, restarts), when they add to the title. */
+function showText(incident: Incident): boolean {
+  const text = incident.text.trim();
+  if (!text) return false;
+  if (!incident.has_cases) return text !== incident.title;
+  return !text.includes(incident.title) && !incident.title.includes(text);
+}
+
 export function IncidentCard({ incident }: { incident: Incident }) {
-  const [open, setOpen] = useState(false);
+  // The only way to close an ambiguous-sends incident is acting on them.
+  const [open, setOpen] = useState(incident.kind === "outbound_ambiguous");
   const delivery = DELIVERY_HINT[incident.delivery];
-  const count =
-    incident.new_since_review != null
-      ? `${incident.new_since_review} nuevos desde tu revisión`
-      : null;
+  const count = newSinceReview(incident.new_since_review);
+  const withCases = incident.has_cases && incident.case_count > 0;
   return (
     <Card>
       <CardContent className="space-y-3">
@@ -144,10 +198,13 @@ export function IncidentCard({ incident }: { incident: Incident }) {
               <h2 className="font-medium">{incident.title}</h2>
             </div>
             <p className="text-sm">{incident.advice}</p>
+            {showText(incident) && (
+              <p className="text-sm text-muted-foreground">{incident.text}</p>
+            )}
             <p className="text-sm text-muted-foreground">
               Desde hace <TimeAgo date={incident.first_seen_at} /> · última vez{" "}
               <TimeAgo date={incident.last_seen_at} />
-              {incident.case_count > 0 &&
+              {withCases &&
                 ` · ${incident.case_count} ${incident.case_count === 1 ? "caso" : "casos"}`}
               {count && ` · ${count}`}
               {delivery && ` · ${delivery}`}
@@ -173,6 +230,21 @@ export function IncidentCard({ incident }: { incident: Incident }) {
                 </a>
               </Button>
             )}
+            {incident.kind === "owner_unlinked" && incident.tenant && (
+              <Button size="sm" variant="outline" asChild>
+                <Link
+                  to="/clientes/$slug"
+                  params={{ slug: incident.tenant }}
+                  search={{ tab: "configuracion", section: "personas" }}
+                >
+                  Invitar al dueño
+                </Link>
+              </Button>
+            )}
+            {incident.kind === "outbound_ambiguous" &&
+              incident.can_discard_all && (
+                <DiscardAllButton incident={incident} />
+              )}
             {incident.reviewable && <ReviewButton incident={incident} />}
           </div>
         </div>
@@ -181,7 +253,7 @@ export function IncidentCard({ incident }: { incident: Incident }) {
             Se cierra sola cuando se arregle.
           </p>
         )}
-        {incident.case_count > 0 && (
+        {withCases && (
           <div className="space-y-2">
             <Button
               size="sm"

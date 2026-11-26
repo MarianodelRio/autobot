@@ -18,7 +18,7 @@ const STATUS: Record<Status, { label: string; color: string }> = {
   warning: { label: "Alerta", color: "bg-status-warning" },
   critical: { label: "Crítico", color: "bg-status-critical" },
   unknown: { label: "Desconocido", color: "bg-status-unknown" },
-  info: { label: "Info", color: "bg-status-ok" },
+  info: { label: "Informativa", color: "bg-status-ok" },
   active: { label: "Activo", color: "bg-status-ok" },
   paused: { label: "Pausado", color: "bg-status-unknown" },
   onboarding: { label: "En alta", color: "bg-status-notice" },

@@ -4,7 +4,7 @@ import { StatusBadge } from "./status-badge";
 
 test("knows the info severity", () => {
   render(<StatusBadge status="info" />);
-  expect(screen.getByText("Info")).toBeInTheDocument();
+  expect(screen.getByText("Informativa")).toBeInTheDocument();
 });
 
 test("an unknown value reads «Desconocido» instead of breaking the screen", () => {
