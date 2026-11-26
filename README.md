@@ -2,7 +2,7 @@
 
 Plataforma de automatización para pequeños negocios: atiende a sus clientes por WhatsApp o Telegram, gestiona reservas sobre la agenda que ya usan (peluquerías) o responde consultas de horarios (autobuses), y avisa al dueño por Telegram. Una sola plataforma para todos los negocios, en una VPS con Docker Compose (dimensionado en [capacidad y crecimiento](docs/arquitectura/capacidad-y-crecimiento.md)). Visión de conjunto en [docs/arquitectura/vision-general.md](docs/arquitectura/vision-general.md).
 
-**Estado:** en producción con los negocios de demo y un negocio en pruebas; sin clientes reales todavía. Lo que falta antes del primer cliente real, en [docs/procedimientos/servidor.md](docs/procedimientos/servidor.md#antes-del-primer-cliente-real).
+**Estado:** en producción con los negocios de demo y un cliente real (pack `bus`). Lo que se comprueba antes de activar cada cliente real, en [docs/procedimientos/servidor.md](docs/procedimientos/servidor.md#antes-del-primer-cliente-real).
 
 ## Requisitos
 

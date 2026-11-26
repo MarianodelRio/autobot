@@ -38,14 +38,15 @@ La plataforma atiende a 5–10 negocios (15 como máximo previsto), con picos de
 - **Tamaño de arranque: 2 vCPU y 4 GB, con 2 GB de swap** (2026-11-24). Las máquinas
   mayores no tenían stock o habían subido mucho de precio. La prueba de carga en
   `localprod` dio un pico de ~1,15 GiB entre todos los contenedores con 5 negocios y 1.500
-  mensajes, así que basta para los negocios de demo y un negocio en pruebas. Los
+  mensajes, así que basta para los negocios de demo y los primeros clientes. Los
   `mem_limit` de `compose.prod.yaml` suman 5,76 GB: son topes, no reservas, y en esta
   máquina no se pueden alcanzar todos a la vez.
-- **Antes del primer cliente real se amplía a 4 vCPU y 8 GB** (Rescale del proveedor, sin
-  reinstalar), el tamaño para el que están calculados los `mem_limit` y el ajuste de
-  PostgreSQL ([capacidad y crecimiento](../capacidad-y-crecimiento.md#servidor-y-proveedor)).
-  También si antes salta `memory_high` (memoria por encima del 90 % de forma sostenida) o
-  el swap se usa de forma habitual.
+- **Con un cliente real se sigue en 2 vCPU y 4 GB** (decidido el 2026-11-26). Se amplía a
+  4 vCPU y 8 GB (Rescale del proveedor, sin reinstalar), el tamaño para el que están
+  calculados los `mem_limit` y el ajuste de PostgreSQL
+  ([capacidad y crecimiento](../capacidad-y-crecimiento.md#servidor-y-proveedor)), al sumar
+  más clientes reales, o antes si salta `memory_high` (memoria por encima del 90 % de forma
+  sostenida) o el swap se usa de forma habitual.
 - **Terraform descartado:** un script por SSH sirve en cualquier proveedor sin añadir otra
   herramienta que mantener.
 

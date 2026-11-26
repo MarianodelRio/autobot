@@ -2,7 +2,7 @@
 
 Autobot es una plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram). Cada tipo de negocio es un pack: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). Hay además un bot de demo, por WhatsApp y Telegram, para enseñar los packs.
 
-**Estado:** en producción con los negocios de demo y un negocio en pruebas; sin clientes reales todavía. Lo que falta antes del primer cliente real está en [Servidor](procedimientos/servidor.md#antes-del-primer-cliente-real).
+**Estado:** en producción con los negocios de demo y un cliente real (pack `bus`). Lo que se comprueba antes de activar cada cliente real está en [Servidor](procedimientos/servidor.md#antes-del-primer-cliente-real).
 
 ## Ruta de lectura para quien llega nuevo
 

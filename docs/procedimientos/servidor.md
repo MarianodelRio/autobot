@@ -148,7 +148,8 @@ necesitan `sudo`, como `admin`.
 
 ## Antes del primer cliente real
 
-Lo que debe estar comprobado antes de activar el canal real de un negocio (activarlo
+Lo que debe estar comprobado antes de activar el canal real de un negocio, el primero y
+cada uno de los siguientes (activarlo
 requiere aprobación humana explícita, `CLAUDE.md`). Marca cada punto solo con la prueba
 delante, nunca por suposición.
 
@@ -165,14 +166,16 @@ delante, nunca por suposición.
   los datos y el libro de supresiones y anotar el RTO medido en
   [backups.md](backups.md#rpo-y-rto) ([restaurar.md](restaurar.md)).
 - [ ] Tras el primer despliegue, una pasada de la limpieza nocturna (`retention_cleanup`,
-  03:00 UTC) y un snapshot `autobot-ledger` tras el primer backup
+  03:00 UTC; «Limpieza nocturna: ✅» en el menú de operador → 💾 Backups) y un snapshot
+  `autobot-ledger` tras el primer backup
   ([retencion-rgpd.md](retencion-rgpd.md)).
 - [ ] `privacy.policy_url` en cada negocio, con su política publicada (la activación lo
   exige), y `PLATFORM_PRIVACY_URL` para la demo.
 - [ ] Si un negocio usa recordatorios de WhatsApp (`reminders_enabled`), sus plantillas
   aprobadas en Meta.
-- [ ] VPS ampliada a 4 vCPU y 8 GB, el tamaño para el que están calculados los `mem_limit`
-  (ADR-005), o la decisión de no hacerlo anotada con una medición delante.
+- [ ] Memoria con margen para el negocio nuevo: VPS en 4 vCPU y 8 GB (el tamaño para el que
+  están calculados los `mem_limit`), o la decisión de seguir en una menor anotada con una
+  medición delante (ADR-005: en 2 vCPU y 4 GB con un cliente real desde el 2026-11-26).
 - [ ] Dominio propio en un proveedor DNS independiente del servidor (no un DNS dinámico
   gratuito, que no da garantías): `PUBLIC_HOST` nuevo, certificado y webhooks registrados de
   nuevo (los de la plataforma con `telegram_set_webhook`, los de cada negocio desde el panel).
@@ -195,8 +198,8 @@ delante, nunca por suposición.
   alerta está en pausa.
 - Memoria: los `mem_limit` de `compose.prod.yaml` suman 5,76 GB (`db` 2,5 GB con
   `shared_buffers=1GB`), calculados para la VPS objetivo de 4 vCPU y 8 GB. Se puede arrancar
-  en 2 vCPU y 4 GB mientras solo haya demos (son topes, no reservas), pero se amplía antes
-  del primer cliente real ([ADR-005](../arquitectura/adr/ADR-005-vps-docker-compose.md#proveedor-y-tamano-2026-11),
+  en 2 vCPU y 4 GB con los demos y un cliente real (son topes, no reservas); se amplía al
+  sumar más clientes reales o si salta `memory_high` ([ADR-005](../arquitectura/adr/ADR-005-vps-docker-compose.md#proveedor-y-tamano-2026-11),
   [capacidad y crecimiento](../arquitectura/capacidad-y-crecimiento.md#servidor-y-proveedor)).
   Cada contenedor lleva `memswap_limit` igual a su `mem_limit` (sin swap: una fuga muere por
   OOM y se reinicia, en vez de hundir la VPS en swap) y cada `/tmp` en `tmpfs` tiene
