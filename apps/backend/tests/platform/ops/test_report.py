@@ -198,13 +198,14 @@ def _nightly_cleanup(status: str) -> int:
             cursor.execute(
                 "UPDATE procrastinate_jobs SET status = %s WHERE id = %s", [step, job_id]
             )
-    return job_id
+    return int(job_id)
 
 
 def _age_events(job_id: int, by: timedelta) -> None:
     with connections["owner"].cursor() as cursor:
         cursor.execute(
-            "UPDATE procrastinate_events SET at = at - %s WHERE job_id = %s", [by, job_id]
+            "UPDATE procrastinate_events SET at = at - make_interval(secs => %s) WHERE job_id = %s",
+            [by.total_seconds(), job_id],
         )
 
 
