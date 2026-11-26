@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { components } from "@/api/schema";
+import { renderWithRouter } from "@/lib/test-router";
 import { OverviewContent, OverviewPage } from "./overview-page";
 
 type Overview = components["schemas"]["Overview"];
@@ -38,8 +39,8 @@ test.each([
   ["ok", "Todo bien"],
   ["warning", "Atención"],
   ["critical", "Estado crítico"],
-] as const)("shows %s status and linked problems", (level, title) => {
-  render(
+] as const)("shows %s status and linked problems", async (level, title) => {
+  await renderWithRouter(
     <OverviewContent
       data={{
         ...data,
@@ -62,8 +63,8 @@ test.each([
   ).toHaveAttribute("href", "/clientes/demo");
 });
 
-test("formats KPIs and shows empty states", () => {
-  render(<OverviewContent data={data} />);
+test("formats KPIs and shows empty states", async () => {
+  await renderWithRouter(<OverviewContent data={data} />);
   expect(screen.getByText("1.240 entrada")).toBeInTheDocument();
   expect(screen.getByText("1.310 salida")).toBeInTheDocument();
   expect(screen.getByText("87")).toBeInTheDocument();
@@ -83,7 +84,7 @@ test("shows an error and allows retry", async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  render(
+  await renderWithRouter(
     <QueryClientProvider client={client}>
       <OverviewPage />
     </QueryClientProvider>,

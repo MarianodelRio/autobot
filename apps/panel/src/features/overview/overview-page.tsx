@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import {
   Bar,
   BarChart,
@@ -9,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import type { components } from "@/api/schema";
+import { AppLink } from "@/components/app-link";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { KpiCard } from "@/components/kpi-card";
@@ -80,9 +82,9 @@ export function OverviewContent({ data }: { data: Overview }) {
             {status.problems.map((problem) => (
               <li key={`${problem.text}-${problem.link}`}>
                 {problem.link ? (
-                  <a className="underline" href={problem.link}>
+                  <AppLink className="underline" href={problem.link}>
                     {problem.text}
-                  </a>
+                  </AppLink>
                 ) : (
                   problem.text
                 )}
@@ -91,9 +93,9 @@ export function OverviewContent({ data }: { data: Overview }) {
           </ul>
         )}
         {status.level !== "ok" && (
-          <a className="underline" href="/incidencias">
+          <Link className="underline" to="/incidencias">
             Ver incidencias
-          </a>
+          </Link>
         )}
       </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -199,12 +201,13 @@ export function OverviewContent({ data }: { data: Overview }) {
                 {data.tenant_rows.map((row) => (
                   <TableRow key={row.slug}>
                     <TableCell>
-                      <a
+                      <Link
                         className="underline"
-                        href={`/clientes/${encodeURIComponent(row.slug)}`}
+                        to="/clientes/$slug"
+                        params={{ slug: row.slug }}
                       >
                         {row.name}
-                      </a>
+                      </Link>
                     </TableCell>
                     <TableCell>{row.pack}</TableCell>
                     <TableCell>{row.channel}</TableCell>
@@ -237,9 +240,9 @@ export function OverviewContent({ data }: { data: Overview }) {
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle>Sistema</CardTitle>
-            <a className="text-sm underline" href="/sistema">
+            <Link className="text-sm underline" to="/sistema">
               Ver sistema
-            </a>
+            </Link>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1.5">

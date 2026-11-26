@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { renderWithRouter } from "@/lib/test-router";
 import { TenantListPage } from "./list-page";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -39,10 +40,11 @@ test("filters clients by search, pack and status", async () => {
         ),
     ),
   );
-  render(
+  const router = await renderWithRouter(
     <QueryClientProvider client={new QueryClient()}>
       <TenantListPage />
     </QueryClientProvider>,
+    "/clientes",
   );
   const user = userEvent.setup();
   await screen.findByRole("link", { name: "Ana" });
@@ -59,4 +61,7 @@ test("filters clients by search, pack and status", async () => {
   await user.selectOptions(screen.getByLabelText("Pack"), "");
   await user.type(screen.getByLabelText("Buscar clientes"), "ana");
   expect(screen.getByRole("link", { name: "Ana" })).toBeInTheDocument();
+  // Opening a client stays inside the SPA (a router link, not a full page load).
+  await user.click(screen.getByRole("link", { name: "Ana" }));
+  expect(router.history.location.pathname).toBe("/clientes/ana");
 });

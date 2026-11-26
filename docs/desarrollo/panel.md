@@ -32,11 +32,12 @@ Las rutas de `routes/` son finas: solo declaran la ruta y apuntan al componente 
 
 ## Convenciones
 
-- **Claves de react-query:** viven en `src/lib/queries.ts` (`qk.*`), junto a los helpers de invalidación (`tenantChanged`, `tenantLifecycleChanged`, `tenantRemoved`) y las `queryOptions` compartidas (`tenantsQueryOptions`, `packsQueryOptions`, `packSchemaQueryOptions`). No se escriben claves literales en los componentes: una errata dejaría de invalidar en silencio.
+- **Claves de react-query:** viven en `src/lib/queries.ts` (`qk.*`), junto a los helpers de invalidación (`invalidateTenantEverything`, `removeTenantQueries`, `tenantRemoved`; ver «Refresco de datos») y las `queryOptions` compartidas (`tenantsQueryOptions`, `packsQueryOptions`, `packSchemaQueryOptions`). No se escriben claves literales en los componentes: una errata dejaría de invalidar en silencio.
 - **Mutaciones:** las que avisan al usuario usan `useApiMutation` (`src/lib/use-api-mutation.ts`): toast de éxito, toast de error con el detalle del backend e invalidación de las consultas afectadas. Sin `success` ni `error`, no hay toast y el llamador muestra el error en línea.
 - **Llamadas a la API:** `unwrap(api.GET(...))` lanza un `ApiError` normalizado (`code`, `message`, `details`, `status`), así que react-query solo ve el dato.
 - **Estados:** la correspondencia entre estados del backend y niveles de `StatusDot` está en `src/lib/status-levels.ts`; un nivel desconocido se muestra como `unknown`.
 - **shadcn:** los componentes de `components/ui/` se dejan tal cual, sin podar exports sin uso, para poder actualizarlos con el CLI.
+- **Enlaces:** a una pantalla del panel siempre con `<Link>` de TanStack Router (`to="/clientes/$slug"` con `params`), nunca `<a href>`: un `<a>` interno sale de la SPA y recarga la página entera (vuelve a cargar el JavaScript y la sesión y pierde la caché de react-query y la precarga al pasar el ratón). Si la ruta llega del backend como texto, `AppLink` (`src/components/app-link.tsx`) navega con el router dentro del panel y deja un `<a>` normal para lo demás. Solo son `<a>` la documentación (`/docs/`, en pestaña nueva) y las páginas externas. En los tests, `renderWithRouter` (`src/lib/test-router.tsx`) monta el componente dentro de un router.
 - **Estilo:** Biome formatea y lintea (`pnpm -C apps/panel check`); `make fix` lo aplica.
 
 ## Refresco de datos

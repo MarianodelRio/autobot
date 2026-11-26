@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { renderWithRouter } from "@/lib/test-router";
 import { Timeline } from "./timeline";
 
 afterEach(() => {
@@ -27,9 +28,9 @@ const detail = {
   contact_link: "/clientes/demo?tab=contactos",
 };
 
-function renderTimeline() {
+async function renderTimeline() {
   const client = new QueryClient();
-  render(
+  await renderWithRouter(
     <QueryClientProvider client={client}>
       <Timeline tenant="demo" />
     </QueryClientProvider>,
@@ -54,7 +55,7 @@ function stubFetch() {
 test("expands and collapses an item to fetch and show its detail", async () => {
   const user = userEvent.setup();
   vi.stubGlobal("fetch", stubFetch());
-  renderTimeline();
+  await renderTimeline();
 
   const toggle = await screen.findByRole("button", { name: /Respuesta/ });
   expect(screen.queryByText("Hola Ana")).not.toBeInTheDocument();
@@ -69,7 +70,7 @@ test("expands and collapses an item to fetch and show its detail", async () => {
 
 test("the feed never shows the message text or contact name", async () => {
   vi.stubGlobal("fetch", stubFetch());
-  renderTimeline();
+  await renderTimeline();
 
   await screen.findByRole("button", { name: /Respuesta/ });
   expect(screen.queryByText("Hola Ana")).not.toBeInTheDocument();
@@ -80,7 +81,7 @@ test("refetches the first page every 15s while only one page is loaded", async (
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const fetcher = stubFetch();
   vi.stubGlobal("fetch", fetcher);
-  renderTimeline();
+  await renderTimeline();
 
   await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
   await vi.advanceTimersByTimeAsync(15_000);

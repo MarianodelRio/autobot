@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { api, unwrap } from "@/api/client";
+import { AppLink } from "@/components/app-link";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { TimeAgo } from "@/components/time-ago";
@@ -84,9 +85,9 @@ function ActivityDetailBody({ kind, id }: { kind: string; id: string }) {
         <p className="text-muted-foreground">Contacto: {detail.contact}</p>
       )}
       {detail.contact_link && (
-        <a className="underline" href={detail.contact_link}>
+        <AppLink className="underline" href={detail.contact_link}>
           Ver cliente
-        </a>
+        </AppLink>
       )}
     </div>
   );

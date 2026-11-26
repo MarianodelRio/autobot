@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
@@ -46,12 +47,12 @@ export function TenantListPage() {
         title="Clientes"
         help="procedimientos/panel/#clientes"
         actions={
-          <a
+          <Link
             className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"
-            href="/clientes/nuevo"
+            to="/clientes/nuevo"
           >
             Nuevo cliente
-          </a>
+          </Link>
         }
       />
       <div className="mb-4 flex flex-wrap gap-3">
@@ -127,12 +128,13 @@ export function TenantListPage() {
               {filtered.map((row) => (
                 <TableRow key={row.slug}>
                   <TableCell>
-                    <a
+                    <Link
                       className="underline"
-                      href={`/clientes/${encodeURIComponent(row.slug)}`}
+                      to="/clientes/$slug"
+                      params={{ slug: row.slug }}
                     >
                       {row.name}
-                    </a>
+                    </Link>
                   </TableCell>
                   <TableCell>{row.pack}</TableCell>
                   <TableCell>{row.channel}</TableCell>
