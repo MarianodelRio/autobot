@@ -1,8 +1,8 @@
 # Autobot
 
-Plataforma de automatización para pequeños negocios: atiende a sus clientes por WhatsApp o Telegram, gestiona reservas sobre la agenda que ya usan (peluquerías) o responde consultas de horarios (autobuses), y avisa al dueño por Telegram. Una sola plataforma para 5-15 negocios, en una VPS con Docker Compose. Visión de conjunto en [docs/arquitectura/vision-general.md](docs/arquitectura/vision-general.md).
+Plataforma de automatización para pequeños negocios: atiende a sus clientes por WhatsApp o Telegram, gestiona reservas sobre la agenda que ya usan (peluquerías) o responde consultas de horarios (autobuses), y avisa al dueño por Telegram. Una sola plataforma para todos los negocios, en una VPS con Docker Compose (dimensionado en [capacidad y crecimiento](docs/arquitectura/capacidad-y-crecimiento.md)). Visión de conjunto en [docs/arquitectura/vision-general.md](docs/arquitectura/vision-general.md).
 
-**Estado:** probada en local contra servicios reales (demo por Telegram y WhatsApp, bot de avisos, panel, Google Calendar); nada está desplegado todavía en producción. Pasos para ponerla en marcha en [docs/procedimientos/servidor.md](docs/procedimientos/servidor.md).
+**Estado:** en producción con los negocios de demo y un negocio en pruebas; sin clientes reales todavía. Lo que falta antes del primer cliente real, en [docs/procedimientos/servidor.md](docs/procedimientos/servidor.md#antes-del-primer-cliente-real).
 
 ## Requisitos
 

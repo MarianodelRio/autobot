@@ -44,7 +44,7 @@ El trabajo `ops_check` (`autobot/runtime/jobs.py`) corre cada 5 minutos en la co
 - Por negocio: barridos de trabajo atascado (`runtime/sweeps.py`), envíos ambiguos sin decidir y envíos rechazados por clase de error, avisos al dueño fallidos o retenidos, rechazos de autenticación, umbral mensual de mensajes facturables de WhatsApp, errores seguidos y estado de Calendar (`ops/state.py`), y barridos periódicos que no se completan.
 - La salud diaria de cada negocio y de los bots de plataforma (`ops/health.py`).
 - Disco por encima del 80 % o el 95 %.
-- Más de 10 días sin purgar las copias de seguridad (`backup_prune_overdue`).
+- Más de 10 días sin purgar las copias de seguridad (`backup_prune_overdue`; en pausa desde el 2026-11-26, ver [ADR-025](adr/ADR-025-libro-de-supresiones-y-purga-vigilados.md)).
 - Los contenedores (`ops/containers.py`), salvo en local.
 
 La lista completa y su significado: [Alertas](../referencia/alertas.md).

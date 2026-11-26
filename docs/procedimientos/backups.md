@@ -65,9 +65,17 @@ se haya subido.
 ## Caducar snapshots
 
 La política (7 diarios, 4 semanales, 6 mensuales, etiqueta `autobot`; el libro, 7 diarios y
-4 semanales) vive en `deploy/scripts/backup-prune.sh`. Ejecútalo desde tu portátil, más o
-menos una vez por semana (si no lo haces, el repositorio solo crece y `ops_check` abre
-`backup_prune_overdue` 🟡 a los 10 días):
+4 semanales) vive en `deploy/scripts/backup-prune.sh`. Se ejecuta desde tu portátil, a mano.
+
+!!! note "Sin calendario de momento"
+    Desde el 2026-11-26 la purga no se hace con calendario y la alerta `backup_prune_overdue`
+    está en pausa (`PRUNE_ALERT_ENABLED = False` en `autobot/ops/check.py`, ADR-025). Sin
+    purgar, el repositorio solo crece: con la deduplicación de restic y una base pequeña el
+    coste es bajo, pero se conservan todos los snapshots horarios, y restaurar uno muy viejo
+    necesita que GHCR conserve aún su imagen ([restaurar.md](restaurar.md)). Para volver a
+    purgar hace falta restic y `~/.config/autobot/backup-prune.env` en tu máquina.
+
+Para purgar:
 
 ```bash
 make backup-prune ARGS="--dry-run"   # qué borraría
@@ -85,7 +93,7 @@ make backup-prune
 - Al terminar sube un snapshot diminuto con la etiqueta `autobot-prune` (el testigo, en
   `--dry-run` no) y caduca los anteriores, dejando los tres últimos. El siguiente backup del
   servidor lee su fecha (solo lectura) y la escribe en `var/state/ops/backup-prune.json`; la
-  alerta `backup_prune_overdue` se resuelve sola en cuanto el servidor la ve (hasta una hora).
+  alerta `backup_prune_overdue` (si está activa) se resuelve sola en cuanto el servidor la ve (hasta una hora).
   En un repositorio sin testigo (anterior al ADR-025) la alerta salta una vez, hasta la
   primera purga.
 - Tras purgar, comprueba que el siguiente backup termina bien (`var/state/ops/backup.json`,
@@ -126,6 +134,6 @@ esa cuenta de servicio y se puede revocar y reemitir desde Google.
 
 ## Dónde está el código
 
-`deploy/scripts/backup.sh`, `deploy/scripts/backup-prune.sh`, `autobot/ops/check.py` (`PRUNE_OVERDUE`), `deploy/env/backup.env.example`,
+`deploy/scripts/backup.sh`, `deploy/scripts/backup-prune.sh`, `autobot/ops/check.py` (`PRUNE_OVERDUE`, `PRUNE_ALERT_ENABLED`), `deploy/env/backup.env.example`,
 `deploy/systemd/autobot-backup.*`; pruebas en `apps/backend/tests/tools/test_backup.py` y
 `make restore-test`.

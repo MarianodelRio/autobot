@@ -21,6 +21,35 @@ antes del primer despliegue o cuando uno falle. Preparar la VPS (una sola vez) e
   (alias `autobot` en `~/.ssh/config`, o `HOST=<alias>`) solo para `make rollback`,
   `make backup-now` y `make prod-*`.
 
+## Chuleta: sacar una versión
+
+Todo desde el portátil, en el clon del repo. El detalle de cada paso está en las secciones
+siguientes.
+
+1. **Revisar y subir:** `git status`, `git diff`, commit en `main` y `git push origin main`.
+2. **Esperar al CI** (15-20 min):
+
+    ```bash
+    gh run watch $(gh run list --workflow ci.yml --branch main --limit 1 --json databaseId -q '.[0].databaseId') --exit-status
+    ```
+
+3. **Lanzar:** `git fetch && make deploy` (se niega si el CI de `origin/main` no está en verde).
+4. **Aprobar** en GitHub: «Review deployments» → `production` → «Approve and deploy».
+
+    ```bash
+    gh run view --web $(gh run list --workflow deploy.yml --limit 1 --json databaseId -q '.[0].databaseId')
+    ```
+
+5. **Seguir** el despliegue (1-3 min) con el mismo `gh run watch` sobre `deploy.yml`.
+6. **Comprobar:** llega «🟢 Desplegado <sha>» al chat de avisos; en el panel, Sistema muestra el
+   SHA nuevo con una línea `deployed`; `curl https://<PUBLIC_HOST>/health` da 200; y lo que
+   arreglaba el cambio funciona.
+
+Si falla antes de cambiar la imagen, sigue la anterior (🔴 `deploy_aborted`); si falla después,
+vuelve sola a la anterior (🔴 `deploy_rollback`). Para volver tú: `make rollback`
+([volver atrás](../incidencias/volver-atras.md)). El esquema de la base nunca vuelve atrás: por
+eso las migraciones solo añaden.
+
 ## Visión de conjunto
 
 ```mermaid
@@ -58,7 +87,7 @@ a todos:
 !!! note
     La versión de `uv` del CI sale de la línea `FROM ghcr.io/astral-sh/uv:…` de
     `apps/backend/Dockerfile`, y las de Caddy salen de `compose.prod.yaml` y de
-    `apps/panel/Dockerfile`: una subida de Dependabot se valida sola.
+    `apps/panel/Dockerfile`: al subir una de esas versiones, el CI la valida sola.
 
 ### Job `image`
 

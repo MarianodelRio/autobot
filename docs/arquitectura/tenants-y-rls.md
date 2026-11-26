@@ -61,10 +61,11 @@ Los permisos de base de datos se declaran en `apps/backend/src/autobot/db/grants
 
 ## Tablas de plataforma sin RLS
 
-Llevan `tenant_id` pero no RLS por diseño, porque son configuración u operación de la plataforma, no datos de cliente ([ADR-009](adr/ADR-009-config-en-bd.md), [ADR-006](adr/ADR-006-bot-de-demo.md), [ADR-007](adr/ADR-007-bot-de-duenos.md)):
+Llevan `tenant_id` pero no RLS por diseño, porque son configuración u operación de la plataforma, no datos de cliente ([ADR-009](adr/ADR-009-config-en-bd.md), [ADR-006](adr/ADR-006-bot-de-demo.md), [ADR-007](adr/ADR-007-bot-de-duenos.md), [ADR-019](adr/ADR-019-libro-de-supresiones.md)):
 
 - `tenant_document_version`, `tenant_dataset_version`, `tenant_secret` (`autobot/tenancy/models.py`): config versionada y secretos. `fp_app` no puede escribirlas.
 - `audit_event`, `ops_alert` (`autobot/ops/models.py`): operación y auditoría.
+- `privacy_suppression`: el libro de supresiones (ids y HMAC, sin datos personales), que debe sobrevivir al borrado de los datos del negocio; `fp_app` no tiene acceso ([ADR-019](adr/ADR-019-libro-de-supresiones.md)).
 - `demo_session`, `owner_link` (`autobot/runtime/models.py`): se consultan antes de saber el tenant (el selector de demo y el bot de avisos buscan el tenant *desde* el chat).
 
 También sin RLS y sin `tenant_id` propio: `config_revision` y `dataset_library_version` (`tenancy/models.py`) y las tablas de demo y de dueños (`demo_event`, `owner_event`, `demo_invite`, `demo_access_grant`, `platform_cache`). El test `apps/backend/tests/isolation/test_isolation.py` comprueba que ningún modelo con `tenant_id` queda fuera de RLS salvo los de esta lista.

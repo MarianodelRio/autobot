@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The same uv as the image: its version is read from the Dockerfile, so a
-      # Dependabot bump of the image's uv updates CI too.
+      # bump of the image's uv updates CI too.
       - id: uv
         run: |
           version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\)@sha256:[0-9a-f]\{64\} AS uv$|\1|p' apps/backend/Dockerfile)
@@ -107,7 +107,7 @@ jobs:
           FP_APP_PASSWORD: fp_app
           FP_READONLY_PASSWORD: fp_readonly
       # The same uv as the image: its version is read from the Dockerfile, so a
-      # Dependabot bump of the image's uv updates CI too.
+      # bump of the image's uv updates CI too.
       - id: uv
         run: |
           version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\)@sha256:[0-9a-f]\{64\} AS uv$|\1|p' apps/backend/Dockerfile)
@@ -139,7 +139,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The same uv as the image: its version is read from the Dockerfile, so a
-      # Dependabot bump of the image's uv updates CI too.
+      # bump of the image's uv updates CI too.
       - id: uv
         run: |
           version=$(sed -n 's|^FROM ghcr.io/astral-sh/uv:\([0-9.]*\)@sha256:[0-9a-f]\{64\} AS uv$|\1|p' apps/backend/Dockerfile)
@@ -288,7 +288,7 @@ jobs:
           docker compose -f deploy/compose/compose.yaml -f deploy/compose/compose.local.yaml --profile panel config -q
       - name: Caddyfiles are valid
         # The same Caddy images as production: the server's one is read from the compose
-        # file and the panel's from its Dockerfile, so a Dependabot bump is validated too.
+        # file and the panel's from its Dockerfile, so a bump is validated too.
         run: |
           server_image=$(sed -n 's|^    image: \(caddy:.*\)$|\1|p' deploy/compose/compose.prod.yaml)
           panel_image=$(sed -n 's|^FROM \(caddy:[^ ]*\) AS runtime$|\1|p' apps/panel/Dockerfile)

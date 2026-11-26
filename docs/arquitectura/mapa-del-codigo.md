@@ -52,7 +52,7 @@ El único paquete que importa Django.
 - `db/`: `router.py` (enrutado a `owner` de las tablas de auth) y `grants.py` (permisos de BD).
 - `panel/`: API del panel: `api.py`, `auth.py`, `routers/` (HTTP) y `services/` (lógica).
 - `management/commands/`: comandos de `manage.py` (`tenant_config`, `apply_grants`, `owner_invite`, `telegram_set_webhook`, `dataset_library`…).
-- `migrations/`: una única migración, `0001_squashed_0026_dataset_library.py`.
+- `migrations/`: `0001_squashed_0026_dataset_library.py` (las 26 primeras fusionadas, con las políticas RLS y las claves compuestas) y las siguientes desde `0027`; las aplicadas en producción no se editan.
 
 ### `apps/backend/tests/`
 

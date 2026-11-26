@@ -171,6 +171,18 @@ delante, nunca por suposición.
   exige), y `PLATFORM_PRIVACY_URL` para la demo.
 - [ ] Si un negocio usa recordatorios de WhatsApp (`reminders_enabled`), sus plantillas
   aprobadas en Meta.
+- [ ] VPS ampliada a 4 vCPU y 8 GB, el tamaño para el que están calculados los `mem_limit`
+  (ADR-005), o la decisión de no hacerlo anotada con una medición delante.
+- [ ] Dominio propio en un proveedor DNS independiente del servidor (no un DNS dinámico
+  gratuito, que no da garantías): `PUBLIC_HOST` nuevo, certificado y webhooks registrados de
+  nuevo (los de la plataforma con `telegram_set_webhook`, los de cada negocio desde el panel).
+- [ ] Método de pago en la cuenta de mensajería de Meta: desde el 1-10-2026, sin él Meta deja
+  de entregar los mensajes de servicio cuando se acaban los 1.000 gratis del mes por número.
+- [ ] Retención de paquetes de GHCR que cubra el snapshot más antiguo que se conserva
+  ([restaurar.md](restaurar.md)).
+- [ ] Cuentas externas con segundo factor y sus códigos de recuperación en el gestor; `main`
+  protegida contra borrado y push forzado, y el entorno `production` limitado a `main` y con
+  aprobación ([seguridad y secretos](../arquitectura/seguridad-y-secretos.md#cuentas-externas-y-acceso)).
 
 ## Operación posterior
 
@@ -179,10 +191,13 @@ delante, nunca por suposición.
   [despliegue.md](despliegue.md#comandos-de-operacion-en-el-servidor).
 - Copia de seguridad manual: `make backup-now`, que usa la clave de operación; la de CI no
   puede. Caducar snapshots antiguos es `make backup-prune`, desde tu máquina
-  ([backups.md](backups.md)); si pasan 10 días sin hacerlo, salta `backup_prune_overdue`.
-- Memoria de la VPS objetivo (4 vCPU, 8 GB): los `mem_limit` de `compose.prod.yaml` suman
-  5,6 GB (`db` 2,5 GB con `shared_buffers=1GB`); ver
-  [capacidad y crecimiento](../arquitectura/capacidad-y-crecimiento.md#servidor-y-proveedor).
+  ([backups.md](backups.md#caducar-snapshots)); de momento no se hace con calendario y su
+  alerta está en pausa.
+- Memoria: los `mem_limit` de `compose.prod.yaml` suman 5,76 GB (`db` 2,5 GB con
+  `shared_buffers=1GB`), calculados para la VPS objetivo de 4 vCPU y 8 GB. Se puede arrancar
+  en 2 vCPU y 4 GB mientras solo haya demos (son topes, no reservas), pero se amplía antes
+  del primer cliente real ([ADR-005](../arquitectura/adr/ADR-005-vps-docker-compose.md#proveedor-y-tamano-2026-11),
+  [capacidad y crecimiento](../arquitectura/capacidad-y-crecimiento.md#servidor-y-proveedor)).
   Cada contenedor lleva `memswap_limit` igual a su `mem_limit` (sin swap: una fuga muere por
   OOM y se reinicia, en vez de hundir la VPS en swap) y cada `/tmp` en `tmpfs` tiene
   `size=` (64 MB en `web`, `web-panel` y workers; 16 MB en `panel` y `victorialogs`).

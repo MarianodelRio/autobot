@@ -79,8 +79,8 @@ CI no usa secretos propios: todos los jobs corren con `contents: read` y solo `i
 
 | Control | Qué hace | Si falla |
 |---|---|---|
-| Acciones fijadas por SHA | Toda `uses:` lleva el SHA de 40 caracteres y un comentario con la versión; Dependabot (`github-actions`) propone las subidas | Para subir una acción, resuelve el SHA real del tag (`git ls-remote https://github.com/<propietario>/<repo> 'refs/tags/<tag>^{}'`) y conserva el comentario |
-| Imágenes base por digest | Los `FROM` de `apps/backend/Dockerfile` y `apps/panel/Dockerfile` llevan `tag@sha256:…`; Dependabot (`docker`) actualiza tag y digest a la vez | No edites el digest a mano: deja que lo suba Dependabot, o resuélvelo con `docker buildx imagetools inspect <imagen:tag>` |
+| Acciones fijadas por SHA | Toda `uses:` lleva el SHA de 40 caracteres y un comentario con la versión; las subidas se hacen a mano (no se usa Dependabot) | Para subir una acción, resuelve el SHA real del tag (`git ls-remote https://github.com/<propietario>/<repo> 'refs/tags/<tag>^{}'`) y conserva el comentario |
+| Imágenes base por digest | Los `FROM` de `apps/backend/Dockerfile` y `apps/panel/Dockerfile` llevan `tag@sha256:…`; al subir una imagen se cambian tag y digest a la vez | No inventes el digest: resuélvelo con `docker buildx imagetools inspect <imagen:tag>` |
 | `secrets-scan` (gitleaks) | Busca credenciales en todo el historial. `.gitleaks.toml` solo permite, por ruta concreta, la clave Fernet de ejemplo, tokens falsos de tests y el bundle de Mermaid | Un secreto real: revócalo y rótalo primero ([Rotar secretos](../procedimientos/rotar-secretos.md)); borrarlo del historial no basta. Un valor de ejemplo: añade una excepción por ruta, nunca global |
 | `pnpm audit` | Dependencias de producción del panel, falla desde severidad alta | Actualiza la dependencia; si no hay arreglo, decláralo en el PR con la justificación antes de ignorarlo |
 | `pip-audit` | Dependencias bloqueadas del backend | Igual que el anterior |
@@ -94,6 +94,23 @@ Los binarios de gitleaks, hadolint, actionlint y Trivy se descargan con versión
 
 - Toda escritura del panel y de los comandos de operación se registra en `audit_event` (`autobot/ops/audit.py`), que rechaza claves con forma de secreto en sus `details`.
 - El panel solo es accesible por túnel SSH, con contraseña más TOTP, límite de intentos y CSRF; la API devuelve 404 a cualquier petición que llegue del Caddy público. Detalle en [Panel](panel.md).
+
+## Cuentas externas y acceso
+
+La plataforma depende de cuentas de terceros que, si alguien entra en ellas, dan acceso a producción o a los datos aunque el servidor esté bien protegido. Este repo es público: aquí solo va la lista de tipos de cuenta y las reglas; los datos concretos (usuarios, ids, URLs) viven en el gestor de contraseñas de la persona que opera.
+
+| Cuenta | Qué permite | Regla |
+|---|---|---|
+| GitHub | Cambiar el código, aprobar despliegues (entorno `production`) y leer los secretos de CI | Segundo factor. `main` con un ruleset que impide borrarla y forzar pushes; `production` limitado a `main` y con aprobación |
+| Proveedor de la VPS | Consola de emergencia, reinstalar, borrar la máquina y sus backups | Segundo factor |
+| Proveedor de los backups (S3) | Leer o borrar los snapshots | Segundo factor en la cuenta raíz; el servidor usa una credencial sin borrado y la purga otra distinta (ADR-021) |
+| Proveedor DNS | Redirigir los webhooks a otra máquina | Segundo factor |
+| healthchecks.io | Silenciar los avisos de worker colgado y de backups parados | Segundo factor |
+| Meta Business | Números de WhatsApp, apps, tokens y facturación | Segundo factor; revisar quién tiene acceso a cada app y cuenta de WhatsApp |
+| Google Cloud | La cuenta de servicio de Calendar | Segundo factor |
+| Telegram (cuenta de la persona) | BotFather (tokens de los bots) y el chat de avisos | Segundo factor (contraseña de Telegram) |
+
+En el gestor de contraseñas, como entradas separadas: `SECRETS_ENCRYPTION_KEY`, la contraseña de restic, las dos credenciales S3, la clave SSH de operación, los tokens de los bots, las URLs de healthchecks y los códigos de recuperación de cada segundo factor. Si el TOTP del panel está en el mismo gestor que su contraseña, los dos factores caen juntos: mejor en una app de autenticación aparte. Una revisión trimestral comprueba que todo sigue así ([mantenimiento](../procedimientos/mantenimiento.md#calendario)).
 
 ## Dónde está el código
 

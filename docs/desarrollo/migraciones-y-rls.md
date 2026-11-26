@@ -7,13 +7,16 @@ Lista de comprobación práctica para crear una tabla nueva con datos de cliente
 
 ## Estado actual de las migraciones
 
-Hay una sola migración, `apps/backend/src/autobot/migrations/0001_squashed_0026_dataset_library.py`, que sustituye a las 26 de los primeros meses (aún no hay BD de producción). Lo que un modelo no puede expresar vive ahí, en SQL:
+Las migraciones están en `apps/backend/src/autobot/migrations/`. La primera, `0001_squashed_0026_dataset_library.py`, sustituye a las 26 de los primeros meses (se fusionaron antes de que existiera la base de producción); después vienen las numeradas desde `0027`. Lo que un modelo no puede expresar vive en `0001`, en SQL:
 
 - Las claves foráneas compuestas `(tenant_id, x_id)` (`composite_fk`, lista `COMPOSITE_FKS`).
 - Las políticas RLS de cada tabla (`rls(table, column)`, lista `RLS_TABLES`).
 - La función `purge_platform_history`, la fila de `config_revision` y, al final, `db_grants.apply`.
 
-Una tabla nueva va en una migración **nueva** (`0002_...`) que sigue el mismo patrón. Las funciones de ayuda de `0001` no se pueden importar (el nombre empieza por un dígito): copia su SQL a la migración nueva.
+Una tabla nueva va en una migración **nueva** (la siguiente al último número de la carpeta) que sigue el mismo patrón. Las funciones de ayuda de `0001` no se pueden importar (el nombre empieza por un dígito): copia su SQL a la migración nueva.
+
+!!! warning "Hay base de datos de producción"
+    Desde el 2026-11-24 las migraciones se aplican en producción. Una migración ya aplicada no se edita, no se borra y no se fusiona con otras (squash): cualquier corrección va en una migración nueva. Las migraciones solo añaden, porque un rollback devuelve el código anterior pero nunca el esquema ([volver atrás](../incidencias/volver-atras.md)). Una migración que aún no ha salido de tu máquina sí se puede rehacer.
 
 ## Checklist: tabla nueva con datos de cliente
 
@@ -79,7 +82,7 @@ Los permisos se declaran en `apps/backend/src/autobot/db/grants.py`, **nunca sol
 
 ### 5. Tablas sin RLS por diseño
 
-Solo hay unas pocas y están documentadas: `tenant_document_version`, `tenant_dataset_version`, `tenant_secret`, `audit_event`, `ops_alert`, `demo_session` y `owner_link` llevan `tenant_id` sin RLS (ADR-009, ADR-006, ADR-007), porque son configuración u operación de la plataforma. Una tabla nueva **no** entra en esa lista por comodidad. Si crees que debe, es una decisión de arquitectura: ADR nuevo o pregunta antes. Los datos de cliente siempre llevan RLS.
+Solo hay unas pocas y están documentadas: `tenant_document_version`, `tenant_dataset_version`, `tenant_secret`, `audit_event`, `ops_alert`, `privacy_suppression`, `demo_session` y `owner_link` llevan `tenant_id` sin RLS (ADR-009, ADR-006, ADR-007, ADR-019), porque son configuración u operación de la plataforma. Una tabla nueva **no** entra en esa lista por comodidad. Si crees que debe, es una decisión de arquitectura: ADR nuevo o pregunta antes. Los datos de cliente siempre llevan RLS.
 
 ### 6. El código accede con `tenant_tx`
 

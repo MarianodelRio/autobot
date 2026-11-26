@@ -17,7 +17,7 @@ from django.conf import settings
 from django.db import connection
 from django.db.models import Max
 
-from autobot.ops import containers, health, incidents, system
+from autobot.ops import check, containers, health, incidents, system
 from autobot.ops.check import BACKUP_STALE, PRUNE_OVERDUE, SAMPLE_MAX_AGE
 from autobot.ops.models import SystemSample
 from autobot.ops.status import tenant_status
@@ -164,7 +164,7 @@ def backups(now: datetime) -> Backups:
         stale=status is not None
         and (ok is False or finished is None or now - finished > BACKUP_STALE),
         last_prune_at=system.parse_time(prune.get("last_prune_at")) if prune else None,
-        prune_overdue=system.prune_overdue(prune, now, PRUNE_OVERDUE),
+        prune_overdue=check.PRUNE_ALERT_ENABLED and system.prune_overdue(prune, now, PRUNE_OVERDUE),
     )
 
 

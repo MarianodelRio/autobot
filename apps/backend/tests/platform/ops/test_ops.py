@@ -703,8 +703,9 @@ def _write_prune_status(state_dir: Path, **fields: Any) -> None:
 
 
 def test_backup_prune_overdue_raises_and_resolves(
-    tenants: Any, alerts: Any, settings: Any, tmp_path: Path
+    tenants: Any, alerts: Any, settings: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(check, "PRUNE_ALERT_ENABLED", True)
     tenants()
     settings.OPS_STATE_DIR = tmp_path
     settings.IS_LOCAL = False
@@ -725,8 +726,9 @@ def test_backup_prune_overdue_raises_and_resolves(
 
 
 def test_backup_prune_never_done_falls_back_to_the_oldest_snapshot(
-    tenants: Any, alerts: Any, settings: Any, tmp_path: Path
+    tenants: Any, alerts: Any, settings: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(check, "PRUNE_ALERT_ENABLED", True)
     tenants()
     settings.OPS_STATE_DIR = tmp_path
     settings.IS_LOCAL = False
@@ -745,8 +747,9 @@ def test_backup_prune_never_done_falls_back_to_the_oldest_snapshot(
 
 
 def test_backup_prune_without_a_state_file_or_in_local_does_not_alert(
-    tenants: Any, alerts: Any, settings: Any, tmp_path: Path
+    tenants: Any, alerts: Any, settings: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(check, "PRUNE_ALERT_ENABLED", True)
     tenants()
     settings.OPS_STATE_DIR = tmp_path
     settings.IS_LOCAL = False
@@ -755,6 +758,19 @@ def test_backup_prune_without_a_state_file_or_in_local_does_not_alert(
     assert "backup_prune_overdue" not in kinds(alerts)
     _write_prune_status(tmp_path, last_prune_at="2020-01-01T00:00:00+00:00")
     settings.IS_LOCAL = True
+    check.run()
+    assert "backup_prune_overdue" not in kinds(alerts)
+
+
+def test_backup_prune_alert_is_paused(
+    tenants: Any, alerts: Any, settings: Any, tmp_path: Path
+) -> None:
+    # Paused on purpose (check.PRUNE_ALERT_ENABLED): an old prune raises nothing.
+    tenants()
+    settings.OPS_STATE_DIR = tmp_path
+    settings.IS_LOCAL = False
+    _write_containers_snapshot(tmp_path)
+    _write_prune_status(tmp_path, last_prune_at="2020-01-01T00:00:00+00:00")
     check.run()
     assert "backup_prune_overdue" not in kinds(alerts)
 

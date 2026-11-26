@@ -2,7 +2,7 @@
 
 Plataforma multi-negocio que atiende a los clientes de pequeños negocios por un canal por negocio (WhatsApp o Telegram), con un bot de demo, por WhatsApp y Telegram, para enseñar los packs. Packs iniciales: `salon` (peluquería, reservas sobre Google Calendar) y `bus` (horarios de autobús). Este fichero resume las reglas para trabajar en el repo.
 
-**Estado:** la plataforma está probada en local contra servicios reales (demo por Telegram y WhatsApp, bot de avisos, panel, Google Calendar); nada está desplegado todavía en producción. Los pasos para ponerla en marcha están en [`docs/procedimientos/servidor.md`](docs/procedimientos/servidor.md).
+**Estado:** en producción desde 2026-11-24 con los negocios de demo y un negocio en pruebas; sin clientes reales todavía. Lo que falta antes del primer cliente real está en [`docs/procedimientos/servidor.md`](docs/procedimientos/servidor.md#antes-del-primer-cliente-real). Los datos concretos de la instalación (IP, dominio, cuentas) no van al repo, que es público.
 
 ## Idioma
 
@@ -34,7 +34,8 @@ Visión completa en [`docs/arquitectura/vision-general.md`](docs/arquitectura/vi
 
 - Todo dato de cliente lleva `tenant_id` y RLS; el tenant se fija solo con `tenant_tx`. Nunca se salta RLS en código de aplicación (el rol `fp_owner`, con `BYPASSRLS`, solo lo usan migraciones, comandos de operación, `tenancy.store` y los servicios del panel, siempre con `.using("owner")` explícito).
 - Toda tabla nueva con RLS lleva las dos políticas: `tenant_isolation` y `readonly_all` (para la consola SQL del panel, rol `fp_readonly`). Toda tabla nueva sensible se añade a `SENSITIVE_TABLES` en `autobot/db/grants.py`. Los permisos de base de datos se declaran en `autobot/db/grants.py`, nunca solo en una migración; `apply_grants` los reaplica tras cada despliegue y restauración.
-- `tenant_document_version`, `tenant_dataset_version`, `tenant_secret`, `audit_event`, `ops_alert`, `demo_session` y `owner_link` llevan `tenant_id` sin RLS por diseño (ADR-009, ADR-006, ADR-007): son configuración u operación de la plataforma, no datos de cliente.
+- `tenant_document_version`, `tenant_dataset_version`, `tenant_secret`, `audit_event`, `ops_alert`, `privacy_suppression`, `demo_session` y `owner_link` llevan `tenant_id` sin RLS por diseño (ADR-009, ADR-006, ADR-007, ADR-019): son configuración u operación de la plataforma, no datos de cliente.
+- Una migración aplicada en producción no se edita, no se borra y no entra en un squash: cualquier cambio va en una migración nueva. Las migraciones solo añaden (el esquema nunca vuelve atrás en un rollback).
 - Todo efecto externo es idempotente. Un envío ambiguo (`unknown`) no se reintenta a ciegas: primero se concilia con el estado del proveedor y, si pasado el plazo no hay evidencia, solo se reenvía una vez y solo si su clase declara que un duplicado es inocuo; si no, queda para un humano (ADR-026).
 - Ninguna transacción abierta durante llamadas a Meta, Google o Telegram.
 - Los trabajos de la cola reciben solo ids; nunca teléfonos, ids de usuario ni datos personales en argumentos, candados o logs.

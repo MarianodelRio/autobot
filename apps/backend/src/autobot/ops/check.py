@@ -64,6 +64,9 @@ ALERT_CHANNEL_GRACE = timedelta(minutes=15)
 # The operator prunes the backup repository by hand (ADR-021); ops_check alerts when the
 # last prune (a marker snapshot, read by backup.sh into backup-prune.json) is older.
 PRUNE_OVERDUE = timedelta(days=10)
+# Paused (2026-11-26): the operator does not prune on a schedule for now, so an overdue
+# prune is neither an alert nor a warning in the daily summary. Set to True to restore it.
+PRUNE_ALERT_ENABLED = False
 
 CHECK_FAILED = "check_failed"
 
@@ -919,8 +922,12 @@ def collect(now: datetime | None = None) -> list[Finding]:
     if not settings.IS_LOCAL:
         findings.extend(_backup_findings(now))
         findings.extend(_tls_findings())
-    if not settings.IS_LOCAL and system.prune_overdue(
-        system.read_prune_status(settings.OPS_STATE_DIR), now, PRUNE_OVERDUE
+    if (
+        PRUNE_ALERT_ENABLED
+        and not settings.IS_LOCAL
+        and system.prune_overdue(
+            system.read_prune_status(settings.OPS_STATE_DIR), now, PRUNE_OVERDUE
+        )
     ):
         findings.append(
             Finding(

@@ -18,10 +18,9 @@ aquí: ver [despliegue.md](despliegue.md).
 
 | Cuándo | Qué |
 |---|---|
-| Semanal | Purgar las copias de seguridad desde tu máquina: `make backup-prune` ([backups.md](backups.md#caducar-snapshots)); si pasan 10 días salta `backup_prune_overdue` 🟡 |
-| Mensual | Mirar en el panel (Sistema) la fecha del último backup, disco, TLS y despliegues. Comprobar `timedatectl` (reloj sincronizado) y que la limpieza de retención de las 03:00 UTC deja rastro (`retention_cleanup`). Aceptar o rechazar las PR de Dependabot (imagen base, Actions, dependencias). Si hubo parches de kernel, planificar un reinicio de la VPS como `admin` |
+| Mensual | Mirar en el panel (Sistema) la fecha del último backup, disco, TLS y despliegues. Comprobar `timedatectl` (reloj sincronizado) y que la limpieza de retención de las 03:00 UTC deja rastro (`retention_cleanup`). Subir dependencias a mano (no se usa Dependabot): ver [dependencias](#dependencias). Si hubo parches de kernel, planificar un reinicio de la VPS como `admin` |
 | Cada seis meses | Verificar la versión soportada de Graph API antes de cambiar `WHATSAPP_GRAPH_VERSION` |
-| Trimestral | Calidad del número y plantillas de WhatsApp en Meta; simulacro de restauración ([restaurar.md](restaurar.md)) anotando el RTO; revisar la retención de paquetes de GHCR |
+| Trimestral | Calidad del número y plantillas de WhatsApp en Meta; simulacro de restauración ([restaurar.md](restaurar.md)) anotando el RTO; revisar la retención de paquetes de GHCR; revisar las cuentas externas: segundo factor activo, códigos de recuperación en el gestor, quién tiene acceso en Meta y GitHub, claves SSH autorizadas en `admin` y `deploy` ([cuentas externas](../arquitectura/seguridad-y-secretos.md#cuentas-externas-y-acceso)) |
 
 **Backups:** cada backup valida el volcado (`pg_restore --list`) antes de subirlo y
 comprueba el espacio libre; el primero de cada semana ISO ejecuta `restic check
@@ -30,6 +29,16 @@ haz un `restic check` completo antes de fiarte del repositorio.
 
 **Verificación:** CI verde, alertas resueltas, backup reciente (`ok`) en el panel y
 `make tenant-health SLUG=<slug>` sin degradaciones tras el mantenimiento.
+
+## Dependencias
+
+No hay Dependabot: las subidas se hacen a mano, en un commit con CI en verde. Las auditorías (`pip-audit`, `pnpm audit`, Trivy sobre la imagen) solo se ejecutan con cada push a `main`, así que un mes sin commits es un mes sin revisar vulnerabilidades nuevas.
+
+- **Backend:** `uv lock --upgrade` en `apps/backend/` (o `--upgrade-package <nombre>`) y `make check`.
+- **Panel:** `pnpm -C apps/panel outdated` y `pnpm -C apps/panel update`, con sus tests.
+- **Imágenes base** (`FROM` de los Dockerfile, imágenes de `compose.prod.yaml`): cambia tag y digest a la vez, resolviendo el digest con `docker buildx imagetools inspect <imagen:tag>`.
+- **Acciones de GitHub:** el SHA real del tag con `git ls-remote` y el comentario con la versión ([seguridad y secretos](../arquitectura/seguridad-y-secretos.md#cadena-de-suministro-y-analisis-en-ci)).
+- Una versión mayor de Python, Node o PostgreSQL es un cambio aparte, nunca junto a otras subidas ([PostgreSQL](#subir-de-version-mayor-de-postgresql) tiene su procedimiento).
 
 ## Disco lleno
 
