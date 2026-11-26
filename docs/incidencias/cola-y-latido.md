@@ -54,7 +54,7 @@ healthchecks.io avisa del worker, la cola tarda más de 30 s o el panel muestra 
     ```
 
     Rechaza los trabajos de envío (`send_message`, `send_notification`): no se reintentan a ciegas.
-3. Pulsa **«Lo he revisado»**. Un fallo posterior la reabre con «N nuevos desde tu revisión».
+3. Pulsa **«Lo he revisado»**. Un fallo posterior la reabre con «N nuevos desde tu revisión». Si reintentas todos sus trabajos fallidos, la incidencia se cierra sola (sin revisión).
 
 Un trabajo parado (su worker murió) que no se pudo reencolar porque otro igual ya estaba en cola con el mismo `queueing_lock` (el siguiente `ops_check`, por ejemplo) se cierra como `aborted`, no `failed`: el de la cola hace su trabajo, así que no abre incidencia.
 

@@ -27,16 +27,32 @@ español y sus casos:
 **Casos.** Los envíos, trabajos y avisos afectados son casos de su incidencia. Se calculan en
 vivo desde sus tablas en cada pasada (`apps/backend/src/autobot/ops/cases.py`) y nunca se
 copian a `ops_alert`, que no tiene RLS: solo se guardan su número (`case_count`) y la fecha del
-más reciente (`last_case_at`). `details` guarda datos del tipo sin datos personales (el
+más reciente (`last_case_at`). La hora de un caso es **cuándo se convirtió en fallo**
+(`failed_at` de un envío rechazado o de un aviso perdido, `unknown_at` de un envío ambiguo, el
+último evento `failed` de un trabajo), no cuándo se creó la fila: un reenvío de un envío
+antiguo que luego falla es un caso nuevo. Las filas anteriores a `failed_at` usan su
+`created_at`. En Incidencias el recuento de cada incidencia con casos se calcula en vivo al
+abrir la pantalla; el texto (`text`) conserva las cifras de la última pasada. `details` guarda datos del tipo sin datos personales (el
 recuento de reinicios visto, el mes de `billing`, la clase de error).
 
 **Reapertura.** Un caso posterior a la marca de revisión abre una fila nueva de la misma clave
 que **hereda la marca**: solo cuentan los casos nuevos, y el panel y el bot dicen «N nuevos
 desde tu revisión». La marca es la fecha del caso más reciente que vio `ops_check` (no la hora
-del clic), así que un caso que llega mientras se lee la pantalla vuelve a abrirla. Sin ninguna
-revisión previa de una clave, solo cuentan los casos de las **últimas 24 h**: una primera
-pasada nunca saca meses de historia a la vez. Si los casos de un evento desaparecen (p. ej. se
-reintentaron sus trabajos) su recuento baja a 0, pero sigue abierto hasta revisarlo.
+del clic), y nunca posterior al caso más reciente que mostraba el panel (`last_case_at` del
+cuerpo de la revisión), así que un caso que llega mientras se lee la pantalla vuelve a abrirla.
+Nunca retrocede respecto a la marca anterior. Una revisión que llega mientras `ops_check` está
+en mitad de una pasada no provoca una reapertura falsa: los eventos revisados desde que empezó
+la pasada no se vuelven a abrir con sus cifras. Sin ninguna revisión previa de una clave, solo
+cuentan los casos de las **últimas 24 h**: una primera pasada nunca saca meses de historia a la
+vez.
+
+**Eventos vacíos.** Un evento con casos en tabla (`outbound_rejected:<clase>`,
+`notification_failed`, `failed_job:<tarea>`) que se queda sin ningún caso vivo (se reintentó
+bien el trabajo, un envío rechazado resultó entregado) **se cierra solo** como cierre de la
+plataforma (`resolved_by = auto`): sin mensaje, sin tocar la marca y sin contar como revisión.
+Un caso posterior abre un periodo nuevo. Del mismo modo, tras «Marcar enviado», «Reenviar»,
+«Descartar» o «Descartar todos» se reevalúa en el acto `outbound_ambiguous` del negocio, y tras
+«Reintentar» un trabajo, su `failed_job:<tarea>`: se cierran si no queda ningún caso.
 
 **Severidad.** Sale del emoji inicial del texto: 🔴 `critical`, 🟠 `warning`, 🟡 `notice`,
 🟢 `info`. Se actualiza en cada pasada (sube o baja dentro de la misma incidencia). El nivel de
@@ -48,10 +64,14 @@ al chat `OPS_TELEGRAM_CHAT_ID` por el bot de avisos:
 
 - Solo 🔴 y 🟠 avisan, y solo **al abrirse**. Una incidencia que sigue abierta no se repite.
 - 🟡 no avisa nunca (`last_delivery = panel`): queda en el panel y en el resumen diario.
-- Una **reapertura** de un evento avisa como mucho una vez por hora por clave y negocio
-  (`last_delivery = throttled` si no toca).
-- Si la severidad **sube** dentro de una incidencia abierta (🟡 → 🟠, 🟠 → 🔴), se actualiza y
-  avisa una vez.
+- Cada **apertura**, sea condición o evento (una condición que va y viene, una reapertura tras
+  una revisión), avisa como mucho una vez por hora por clave y negocio, contando desde el último
+  aviso de esa clave (`last_delivery = throttled` si no toca). Si su apertura no avisó, su cierre
+  tampoco manda «✅ Resuelta».
+- Si la severidad **sube** dentro de una incidencia abierta, se actualiza y avisa: a 🔴
+  **siempre** (una crítica nunca espera) y a 🟠 como mucho una vez por hora por clave.
+- Excepción: `deploy_aborted` y `deploy_rollback` avisan **en cada caso nuevo** (cada despliegue
+  fallido importa), sin límite horario.
 - Una revisión no manda nada. Las informativas (`deploy_ok`…) nacen cerradas y avisan siempre.
 - Un aviso que **no llegó** (`last_delivery` `failed` o `unconfigured`) se reintenta como mucho
   una vez por hora mientras la incidencia siga abierta, sin contar como aviso nuevo
@@ -79,11 +99,11 @@ En las tablas, «Cierre» dice la naturaleza y cuándo se cierra.
 | `inbound_stuck` | 🔴 Por negocio: eventos entrantes `pending` sin trabajo vivo desde hace más de 5 minutos. El barrido los reencola si tienen menos de 1 hora. | Condición: se cierra sola | [Cola y latido](../incidencias/cola-y-latido.md) |
 | `outbound_stuck` | 🟠 Por negocio: envíos `pending` sin trabajo vivo y demasiado antiguos (más de 24 h) para reencolarlos. Los `pending` más recientes se reencolan solos; un `sending` sin trabajo pasa a `unknown` y lo cubre `outbound_ambiguous`. | Condición: se cierra sola | [Envíos unknown](../incidencias/envios-unknown.md) |
 | `outbound_ambiguous` | 🟠 Por negocio: envíos `unknown` desde hace más de 20 minutos (la espera de un estado y la conciliación automática del ADR-026 no lo resolvieron), sin límite de antigüedad. Casos: esos envíos, con «Marcar enviado», «Reenviar» y «Descartar». | Condición: se cierra sola cuando no queda ninguno sin decidir | [Envíos unknown](../incidencias/envios-unknown.md) |
-| `outbound_rejected:<clase>` | 🟠 Por negocio y clase de error (🟡 si la causa es del destinatario: `blocked`, `undeliverable`, `marketing_declined`): envíos `failed` creados después de la marca de revisión. La clase la da el adaptador del canal (`outside_window`, `undeliverable`, `blocked`, `rate`, `marketing_declined`, `spam_limit`, `other`) o la plataforma (`expired_payload`, `channel_disabled`); el título y el consejo, `apps/backend/src/autobot/ops/send_errors.py`. `auth` no abre esta incidencia: es la condición `auth`. Un envío `expired` o `discarded` no cuenta. Casos: esos envíos, con su motivo. | Evento: «Lo he revisado»; un rechazo nuevo la reabre | [Envíos rechazados](../incidencias/envios-unknown.md#envios-rechazados) |
+| `outbound_rejected:<clase>` | 🟠 Por negocio y clase de error (🟡 si la causa es del destinatario: `blocked`, `undeliverable`, `marketing_declined`): envíos que pasaron a `failed` después de la marca de revisión. La clase la da el adaptador del canal (`outside_window`, `undeliverable`, `blocked`, `rate`, `marketing_declined`, `spam_limit`, `other`) o la plataforma (`expired_payload`, `channel_disabled`); el título y el consejo, `apps/backend/src/autobot/ops/send_errors.py`. `auth` no abre esta incidencia: es la condición `auth`. Un envío `expired` o `discarded` no cuenta. Casos: esos envíos, con su motivo. | Evento: «Lo he revisado»; un rechazo nuevo la reabre | [Envíos rechazados](../incidencias/envios-unknown.md#envios-rechazados) |
 | `provider_outage` | 🟠 Plataforma: el cortacircuitos de WhatsApp o Telegram del worker de salida está abierto (5 fallos de transporte seguidos de al menos 2 negocios distintos). Una sola alerta con los proveedores afectados, en lugar de una por mensaje. Los envíos esperan y se reintentan solos; los que caducan quedan `expired` (las respuestas, con una disculpa). Si la señal no se refresca en 10 minutos, se da por cerrada. Mientras dura, y 20 minutos después, no se crean las alertas `health:whatsapp_unavailable` o `health:telegram_unavailable` de cada negocio (las que ya estaban abiertas se resuelven sin mensaje): una caída de Meta con 300 negocios llegó a abrir 97. | Condición: se cierra sola al cerrarse el cortacircuitos (una sonda correcta) | [Envíos unknown](../incidencias/envios-unknown.md#caida-de-un-proveedor) |
 | `calendar_outage` | 🔴 Plataforma: Google Calendar falla a la vez en al menos 5 negocios con calendario y en el 30 % o más de ellos (`calendar:<canal>` o `health:<canal>:calendar_unavailable` en la misma pasada). Una sola alerta con el recuento. Mientras dura, y 20 minutos después, **no se crean** las alertas por negocio que la misma caída provoca (`calendar:<canal>`, `health:<canal>:calendar_unavailable`, `errors:<canal>`), y las que ya estaban abiertas se resuelven sin mensaje. Con pocos negocios afectados (un calendario sin compartir) cada uno alerta por separado. | Condición: se cierra sola cuando deja de cumplirse (solo ella avisa de la recuperación) | [Calendar](../incidencias/calendar.md#caida-general-de-google) |
 | `owner_unlinked` | 🟡 Por negocio real y activo (no de demo): el negocio no tiene chat de avisos conectado y hay avisos al dueño `held`, o `expired` en las últimas 24 h (`reconcile.expire_held` pasa los `held` a `expired` a las 2 h; contarlos evita que se cierre sola sin arreglar nada). Casos: esos avisos (sin su texto). Salen solos al conectarlo (los de menos de 2 h). | Condición: se cierra sola al conectar el chat o caducar los avisos | [Envíos unknown](../incidencias/envios-unknown.md#avisos-retenidos) |
-| `notification_failed` | 🟠 Por negocio, con el chat del dueño y el bot de avisos configurados: avisos al dueño `failed` (rechazados o ambiguos, nunca se reenvían a ciegas) o `expired` (más de 2 h sin entregarse) creados después de la marca de revisión. Casos: esos avisos. | Evento: «Lo he revisado» | [Envíos unknown](../incidencias/envios-unknown.md) |
+| `notification_failed` | 🟠 Por negocio, con el chat del dueño y el bot de avisos configurados: avisos al dueño `failed` (rechazados o ambiguos, nunca se reenvían a ciegas) o `expired` (más de 2 h sin entregarse) que pasaron a ese estado después de la marca de revisión. Casos: esos avisos. | Evento: «Lo he revisado» | [Envíos unknown](../incidencias/envios-unknown.md) |
 
 Detalles de los barridos de trabajo atascado en `apps/backend/src/autobot/runtime/sweeps.py`.
 
@@ -173,11 +193,11 @@ demo). Los códigos son los de la tabla anterior que aplican a Telegram (`auth`,
 | `containers_restore` | 🟠 Restauración a medias: existe `var/.restore-incomplete`. | Condición: se cierra sola al terminar la restauración | [Restaurar](../procedimientos/restaurar.md) |
 | `container_down:<servicio>` | 🔴 (🟠 si es `victorialogs`) El contenedor no existe, está parado o se reinicia en bucle. | Condición: se cierra sola | [Contenedor caído](../incidencias/contenedor-caido.md) |
 | `container_unhealthy:<servicio>` | 🔴 El contenedor está en marcha pero su healthcheck falla. | Condición: se cierra sola | [Contenedor caído](../incidencias/contenedor-caido.md) |
-| `container_restarted:<servicio>` | 🟠 El número de reinicios del contenedor creció respecto al que guardó su última incidencia (`details.restart_count`); sin incidencia previa, un reinicio en los últimos 30 minutos. Un contenedor recreado (recuento a 0) solo baja el número guardado. | Evento: «Lo he revisado»; un reinicio nuevo la reabre | [Contenedor caído](../incidencias/contenedor-caido.md) |
+| `container_restarted:<servicio>` | 🟠 El número de reinicios del contenedor creció respecto al que guardó su última incidencia (`details.restart_count`); sin incidencia previa, un reinicio en los últimos 30 minutos. Un contenedor recreado (recuento a 0) solo baja el número guardado; si su incidencia sigue abierta, conserva los reinicios ya contados. | Evento: «Lo he revisado»; un reinicio nuevo la reabre | [Contenedor caído](../incidencias/contenedor-caido.md) |
 | `container_image:<servicio>` | 🟠 La imagen de `web`, `web-panel`, de cualquiera de los cuatro workers o de `panel` no es la del SHA desplegado. | Condición: se cierra sola | [Contenedor caído](../incidencias/contenedor-caido.md) |
 | `container_unexpected:<servicio>` | 🟠 Hay un contenedor que no debería existir (¿huérfano de un despliegue?). | Condición: se cierra sola | [Contenedor caído](../incidencias/contenedor-caido.md) |
-| `deploy_aborted` | 🔴 El despliegue se abortó antes de cambiar la imagen. Lo emite `deploy/scripts/deploy.sh`; cada llamada es un caso más. | Evento: «Lo he revisado» | [Volver atrás un despliegue](../incidencias/volver-atras.md) |
-| `deploy_rollback` | 🔴 El despliegue falló y se revirtió automáticamente. Lo emite `deploy/scripts/deploy.sh`; cada llamada es un caso más. | Evento: «Lo he revisado» | [Volver atrás un despliegue](../incidencias/volver-atras.md) |
+| `deploy_aborted` | 🔴 El despliegue se abortó antes de cambiar la imagen. Lo emite `deploy/scripts/deploy.sh`; cada llamada es un caso más y avisa por Telegram. | Evento: «Lo he revisado» | [Volver atrás un despliegue](../incidencias/volver-atras.md) |
+| `deploy_rollback` | 🔴 El despliegue falló y se revirtió automáticamente. Lo emite `deploy/scripts/deploy.sh`; cada llamada es un caso más y avisa por Telegram. | Evento: «Lo he revisado» | [Volver atrás un despliegue](../incidencias/volver-atras.md) |
 | `deploy_ok`, `deploy_caddy_reload`, `deploy_https_check` | Avisos informativos de `deploy.sh` (desplegado, recarga de Caddy fallida, HTTPS sin respuesta). Nacen cerradas (`resolved_by = info`) y siempre avisan. | Informativa | [Volver atrás un despliegue](../incidencias/volver-atras.md) |
 
 Mientras hay un despliegue en curso (`maintenance = deploy`) no se generan incidencias de

@@ -136,3 +136,46 @@ def test_the_housekeeping_tasks_have_a_high_priority() -> None:
         assert task.priority == HOUSEKEEPING_PRIORITY > 0
         assert task.configure().job.priority == HOUSEKEEPING_PRIORITY
     assert app.tasks["run_periodic"].priority == 0
+
+
+@pytest.mark.parametrize(
+    "error,status",
+    [
+        (RuntimeError("the job changed meanwhile"), "failed"),
+        ("superseded", "aborted"),
+    ],
+)
+def test_a_stalled_job_not_retried_is_failed_unless_superseded(
+    error: Exception | str, status: str
+) -> None:
+    """Only the queueing-lock collision is `aborted` (no `failed_job:<task>` incident);
+    any other refusal still marks the stalled job `failed` (ADR-031)."""
+    import asyncio
+    from types import SimpleNamespace
+    from typing import Any
+
+    from autobot.runtime import jobs
+
+    finished: list[str] = []
+    if error == "superseded":
+        error = RuntimeError("duplicate key")
+        error.constraint_name = jobs.QUEUEING_LOCK_CONSTRAINT  # type: ignore[attr-defined]
+
+    class Manager:
+        async def get_stalled_jobs(self) -> list[Job]:
+            return [job()]
+
+        async def retry_job(self, _: Job) -> None:
+            assert isinstance(error, Exception)
+            raise error
+
+        async def finish_job(self, _: Job, *, status: Any, delete_job: bool) -> None:
+            finished.append(status.value)
+
+    context: Any = SimpleNamespace(app=SimpleNamespace(job_manager=Manager()))
+
+    async def run() -> None:
+        await jobs.retry_stalled_jobs.func(context, 0)
+
+    asyncio.run(run())
+    assert finished == [status]

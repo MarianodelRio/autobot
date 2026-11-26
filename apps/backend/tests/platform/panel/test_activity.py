@@ -208,3 +208,39 @@ def test_descriptions_from_fixtures() -> None:
         )
         == "Elige · Sí · Mañana"
     )
+
+
+@pytest.mark.django_db(databases=["default", "owner"])
+def test_a_rejected_send_says_what_its_error_means() -> None:
+    tenant = Tenant.objects.using("owner").create(
+        id=uuid.uuid7(),
+        slug="test",
+        name="Test",
+        pack="toy",
+        status="active",
+        timezone="UTC",
+        synced_at=timezone.now(),
+    )
+    contact = Contact.objects.using("owner").create(tenant=tenant, channel="main", external_id="1")
+    rejected = OutboundMessage.objects.using("owner").create(
+        tenant=tenant,
+        contact=contact,
+        channel="main",
+        kind="proactive",
+        idem_key="r",
+        status="failed",
+        last_error="status failed: 131047",
+    )
+    facts = activity_detail("outbound", str(rejected.pk), actor="operador").facts
+    # The raw error, then what it means and what to do (as in Incidencias).
+    assert facts[:3] == [
+        "Error: status failed: 131047",
+        "Motivo: Fuera de la ventana de 24 h",
+        "Qué hacer: Fuera de la ventana de 24 h de WhatsApp: solo se puede escribir con una"
+        " plantilla aprobada. Reintentar no sirve.",
+    ]
+    OutboundMessage.objects.using("owner").filter(pk=rejected.pk).update(
+        status="unknown", last_error="interrupted while sending"
+    )
+    facts = activity_detail("outbound", str(rejected.pk), actor="operador").facts
+    assert facts == ["Error: interrupted while sending"]  # ambiguous: no rejection to explain

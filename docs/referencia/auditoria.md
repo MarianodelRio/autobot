@@ -75,6 +75,7 @@ El registro lo puede borrar solo la retención nocturna o `tenant_purge`
 | `outbound.mark_sent` | El operador marca como enviado un envío `unknown`. | |
 | `outbound.resend` | El operador autoriza reenviar con riesgo de duplicado. | |
 | `outbound.discard` | El operador descarta un envío `unknown`: pasa al estado final `discarded` y no se reenvía (ADR-031). | |
+| `outbound.discard_all` | El operador pulsa «Descartar todos» en la incidencia `outbound_ambiguous` de un negocio: todos sus `unknown` sin decidir pasan a `discarded`; no se envía nada (ADR-031). | Solo el número de envíos descartados (`count`); ni ids ni datos personales. |
 | `outbound.resend_bulk_start` | Histórica (reenvío en bloque, retirado por el ADR-031): se escribía al iniciar un reenvío en bloque. | Solo el número de mensajes seleccionados. |
 | `outbound.resend_bulk` | Histórica (reenvío en bloque, retirado por el ADR-031): reenvío en bloque de mensajes fallidos, sin confirmar o caducados. | Solo cifras: seleccionados, reenviados y omitidos; ni ids ni datos personales. |
 | `job.retry` | El operador reintenta un trabajo fallido idempotente. | |

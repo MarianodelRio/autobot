@@ -147,6 +147,9 @@ class OutboundMessage(TenantScoped):
         max_length=10, choices=Status, default=Status.PENDING, db_default=Status.PENDING
     )
     unknown_at = models.DateTimeField(null=True, blank=True)
+    # When it became `failed` (ADR-031: an incident's case time is when it became a
+    # failure, not when it was created). NULL on rows from before it existed.
+    failed_at = models.DateTimeField(null=True, blank=True)
     # Until when it may still be sent (ADR-024); NULL on rows from before it existed, which
     # never expire. Past it, the message is left `expired` instead of delivered.
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -237,6 +240,9 @@ class Notification(TenantScoped):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+    # When it became `failed` or `expired` (ADR-031: the case time of `notification_failed`).
+    # NULL on rows from before it existed and while it is not one of those.
+    failed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "notification"

@@ -307,7 +307,8 @@ def send_message(tenant_id: UUID, outbound_id: UUID) -> None:
             return
         if message.payload is None:
             message.status, message.last_error = Status.FAILED, "other: payload expired"
-            message.save(update_fields=["status", "last_error", "unknown_at"])
+            message.failed_at = now
+            message.save(update_fields=["status", "last_error", "unknown_at", "failed_at"])
             return
         # Everything that may fail before the call happens while still `pending`: an error
         # here rolls back and leaves the message as it was (the job fails, ops sees it).
@@ -433,7 +434,9 @@ def _record(slug: str, message: OutboundMessage, outcome: SendOutcome) -> SendRe
             )
         case Rejected():
             message.status = Status.FAILED
+            message.failed_at = timezone.now()
             message.last_error = f"{outcome.kind}: {outcome.reason}"
+            fields.append("failed_at")
             if outcome.kind == "recipient":
                 Contact.objects.filter(id=message.contact_id).update(unreachable=True)
             elif outcome.kind == "auth":

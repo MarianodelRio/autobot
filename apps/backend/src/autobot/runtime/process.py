@@ -541,6 +541,7 @@ def _update_from_status(message: OutboundMessage, item: StatusItem) -> None:
     if item.status == "failed":
         if message.status in (Sent.SENT, Sent.UNKNOWN, Sent.SENDING):
             message.status = Sent.FAILED
+            message.failed_at = timezone.now()
             message.last_error = f"status failed: {item.error or '?'}"
     elif message.status != Sent.FAILED:
         if message.status != Sent.SENT:
@@ -559,6 +560,7 @@ def _update_from_status(message: OutboundMessage, item: StatusItem) -> None:
             "status",
             "last_error",
             "unknown_at",
+            "failed_at",
             "sent_at",
             "provider_message_id",
             "pricing_category",

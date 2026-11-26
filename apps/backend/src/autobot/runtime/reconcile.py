@@ -114,7 +114,7 @@ def expire_held(tenant_id: UUID, now: datetime | None = None) -> int:
     with tenant_tx(tenant_id):
         return Notification.objects.filter(
             status=Notification.Status.HELD, created_at__lt=now - NOTICE_TTL
-        ).update(status=Notification.Status.EXPIRED)
+        ).update(status=Notification.Status.EXPIRED, failed_at=now)
 
 
 def reconcile_all(now: datetime | None = None) -> ReconcileResult:

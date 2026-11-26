@@ -416,3 +416,25 @@ def test_a_5xx_or_a_timeout_is_a_transport_failure() -> None:
         adapter = TelegramAdapter(client_answering(answer))
         outcome = adapter.send({"text": "x"}, "1", None, SECRETS, OUTBOUND_ID)
         assert isinstance(outcome, Ambiguous) and outcome.transport
+
+
+@pytest.mark.parametrize(
+    "description,kept",
+    [
+        ("Bad Request: chat not found Ana +34600111222", "(chat not found)"),
+        ("Forbidden: bot was blocked by the user", "(bot was blocked by the user)"),
+        ("Bad Request: message text is empty, hola Ana", None),
+    ],
+)
+def test_a_rejection_keeps_only_a_known_phrase_of_the_description(
+    description: str, kept: str | None
+) -> None:
+    """The stored reason (`Rejected.reason`, then `last_error`) never carries free text
+    from Telegram's description, which may echo the customer's data."""
+    answer = httpx.Response(400, json={"ok": False, "error_code": 400, "description": description})
+    outcome = TelegramAdapter(client_answering(answer)).send(
+        {"text": "x"}, "1", None, SECRETS, OUTBOUND_ID
+    )
+    assert isinstance(outcome, Rejected)
+    assert "Ana" not in outcome.reason and "+34" not in outcome.reason
+    assert outcome.reason == "HTTP 400, error 400" + (f" {kept}" if kept else "")

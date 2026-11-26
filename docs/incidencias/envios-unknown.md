@@ -18,7 +18,11 @@ Antes de que intervenga una persona, la plataforma concilia sola ([ADR-026](../a
 1. **Marcar enviado**, si llegó y lleva más de diez minutos en `unknown`: da por buena la entrega y pasa a `sent`.
 2. **Reenviar**, si no llegó, lleva más de diez minutos en `unknown` y el payload y el canal siguen disponibles: confirma la posibilidad de duplicado.
 3. **Descartar**, si no hay que enviarlo ni confirmarlo (el momento ya pasó, o no se puede saber y no compensa el riesgo de duplicado): sin espera mínima, pasa al estado final `discarded` (deja de salir en Incidencias, no se reenvía y la conciliación lo ignora; no cuenta como fallo). Queda auditado (`outbound.discard`). Si más tarde llega un estado de entrega que demuestre que sí salió, pasa a `sent`. Se consulta después en la actividad del negocio, filtrando por los envíos con error.
-4. Si el panel no es accesible, en la VPS como `deploy`, en `/srv/autobot`:
+4. **Descartar todos**, en la propia incidencia `outbound_ambiguous`: descarta de una vez todos los envíos sin decidir del negocio (los que la incidencia muestra como casos; uno de menos de 20 minutos aún no lo es y no se toca). No envía nada, a diferencia del reenvío en bloque retirado. Un solo registro de auditoría `outbound.discard_all` con el número de envíos.
+
+Tras cada decisión la incidencia se reevalúa en el acto: si no queda ningún envío sin decidir, se cierra sin esperar a la siguiente comprobación.
+
+5. Si el panel no es accesible, en la VPS como `deploy`, en `/srv/autobot`:
 
     ```bash
     deploy/scripts/manage.sh outbound_resolve <id> --mark-sent --confirm
@@ -27,17 +31,17 @@ Antes de que intervenga una persona, la plataforma concilia sola ([ADR-026](../a
     ```
 
     Sin `--confirm` el comando explica el riesgo y no hace nada. Desde el portátil: `make prod-manage HOST=<host> CMD="outbound_resolve <id> --mark-sent --confirm"`.
-5. Para un `failed` permanente: queda registrado; corrige la causa para envíos futuros y comprueba con un **nuevo envío autorizado** que el canal funciona.
+6. Para un `failed` permanente: queda registrado; corrige la causa para envíos futuros y comprueba con un **nuevo envío autorizado** que el canal funciona.
 
 !!! warning "Prohibido"
     No reencoles el envío anterior, no edites filas SQL ni crees otra clave de idempotencia para el mismo efecto. Reenviar es una acción sobre datos de producción: requiere aprobación humana.
 
 ## Envíos rechazados
 
-`outbound_rejected:<clase>` es un **evento**: el proveedor rechazó uno o más envíos (estado `failed`) y no hay nada que reintentar sobre ellos. La incidencia agrupa los rechazos del negocio por clase y dice qué significa cada una (`ops/send_errors.py`): `outside_window` (fuera de la ventana de 24 h de WhatsApp: solo con plantilla aprobada), `undeliverable`, `blocked`, `marketing_declined` (🟡: la causa es del destinatario), `spam_limit`, `expired_payload`, `channel_disabled`, `rate` y `other`. Un rechazo por credencial no abre esta incidencia: es la condición `auth` ([negocio o canal](negocio-o-canal.md)).
+`outbound_rejected:<clase>` es un **evento**: el proveedor rechazó uno o más envíos (estado `failed`) y no hay nada que reintentar sobre ellos. La incidencia agrupa los rechazos del negocio por clase y dice qué significa cada una (`ops/send_errors.py`): `outside_window` (fuera de la ventana de 24 h de WhatsApp: solo con plantilla aprobada), `undeliverable` (🟡), `blocked` (🟡), `marketing_declined` (🟡) —estas tres son causas del destinatario: solo en el panel y el resumen diario, sin aviso por Telegram—, `spam_limit`, `expired_payload`, `channel_disabled`, `rate` y `other`. Un rechazo por credencial no abre esta incidencia: es la condición `auth` ([negocio o canal](negocio-o-canal.md)).
 
 1. Lee el consejo de la clase. Si apunta a una causa nuestra (plantilla que falta, canal desactivado, calidad del número), corrígela para los envíos futuros.
-2. Pulsa **«Lo he revisado»**: la incidencia se cierra y guarda la fecha del rechazo más reciente como marca. Solo un rechazo posterior la vuelve a abrir, con «N nuevos desde tu revisión»; avisa por Telegram como mucho una vez por hora.
+2. Pulsa **«Lo he revisado»**: la incidencia se cierra y guarda como marca la fecha del rechazo más reciente que el panel mostraba. Solo un rechazo posterior la vuelve a abrir, con «N nuevos desde tu revisión»; avisa por Telegram como mucho una vez por hora. La hora de cada caso es cuándo pasó a `failed`, no cuándo se creó el envío. Si los casos desaparecen solos (p. ej. un estado posterior confirma que llegó), la incidencia se cierra sola.
 3. Los envíos revisados siguen en la actividad del negocio (filtro de envíos con error).
 
 ## Caída de un proveedor
@@ -55,7 +59,7 @@ Si el dueño de un negocio no ha conectado su chat de avisos, los avisos quedan 
 
 ## Verificación
 
-- `unknown`: el mensaje queda en `sent` o tiene una nueva entrega confirmada, y Logs, pestaña Operador, registra la resolución.
+- `unknown`: el mensaje queda en `sent`, `discarded` (descartado, también con «Descartar todos») o tiene una nueva entrega confirmada, y Logs, pestaña Operador, registra la resolución.
 - `failed`: el registro permanece en ese estado, la incidencia está revisada y el nuevo envío autorizado confirma que la causa se corrigió.
 - No se crearon duplicados.
 

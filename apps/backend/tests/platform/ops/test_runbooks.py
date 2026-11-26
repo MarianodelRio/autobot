@@ -15,7 +15,10 @@ from autobot.ops.runbooks import (
 
 ROOT = Path(__file__).resolve().parents[5]
 OPS = ROOT / "apps" / "backend" / "src" / "autobot" / "ops"
+DEPLOY = ROOT / "deploy" / "scripts" / "deploy.sh"
 KIND = re.compile(r"^[a-z_]+(:|$)")
+# `alert_ops <kind> '<text>' [informational]` in deploy.sh.
+DEPLOY_ALERT = re.compile(r"^\s*alert_ops (\w+) (['\"]).*?\2( informational)?\s*$", re.M)
 
 
 def _kind(node: ast.expr) -> list[str]:
@@ -41,6 +44,8 @@ def _is_text(node: ast.expr) -> bool:
 
 
 def source_kinds() -> set[str]:
+    """The kinds the sources raise, found by scanning them (never the registry: the guards
+    below would then compare the registry with itself)."""
     kinds: set[str] = set()
     for name in ("check.py", "containers.py"):
         tree = ast.parse((OPS / name).read_text())
@@ -51,8 +56,9 @@ def source_kinds() -> set[str]:
             # ("kind", "text") pairs, as appended to `pending` / `findings`
             if isinstance(node, ast.Tuple) and len(node.elts) == 2 and _is_text(node.elts[1]):
                 kinds.update(k for k in _kind(node.elts[0]) if KIND.match(k))
-    # The deploy.sh ones and every other registry entry (informational ones need none).
-    return kinds | {k for k, spec in KINDS.items() if not spec.informational} | set(PREFIXES)
+    # deploy.sh's; the informational ones (born closed) need no runbook.
+    kinds.update(m[0] for m in DEPLOY_ALERT.findall(DEPLOY.read_text()) if not m[2])
+    return kinds
 
 
 def test_source_scan_finds_the_known_kinds() -> None:
@@ -68,10 +74,12 @@ def test_source_scan_finds_the_known_kinds() -> None:
         "bot:notify:auth",
         "disk_critical",
         "deploy_aborted",
+        "deploy_rollback",
         "outbound_rejected:",
         "failed_job:",
         "container_restarted:",
     } <= kinds
+    assert "deploy_ok" not in kinds  # informational
 
 
 def test_every_raised_kind_is_in_the_registry() -> None:
@@ -79,7 +87,7 @@ def test_every_raised_kind_is_in_the_registry() -> None:
     missing = [
         k
         for k in sorted(source_kinds())
-        if k not in KINDS and not any(k.startswith(p) or p.startswith(k) for p in PREFIXES)
+        if k not in KINDS and not any(k.startswith(p) for p in PREFIXES)
     ]
     assert not missing, f"declare them in autobot/ops/incidents.py: {missing}"
     assert kind_info("outbound_rejected:outside_window").nature == "event"
@@ -88,6 +96,13 @@ def test_every_raised_kind_is_in_the_registry() -> None:
 
 def test_every_kind_has_a_runbook_or_is_explicitly_without() -> None:
     missing = [k for k in sorted(source_kinds()) if runbook_path(k) is None and k not in NO_RUNBOOK]
+    assert not missing, f"add them to autobot/ops/runbooks.py: {missing}"
+
+
+def test_every_registry_entry_has_a_runbook_or_is_explicitly_without() -> None:
+    """Also the kinds no scanned source raises yet (informational ones need none)."""
+    declared = {k for k, spec in KINDS.items() if not spec.informational} | set(PREFIXES)
+    missing = [k for k in sorted(declared) if runbook_path(k) is None and k not in NO_RUNBOOK]
     assert not missing, f"add them to autobot/ops/runbooks.py: {missing}"
 
 

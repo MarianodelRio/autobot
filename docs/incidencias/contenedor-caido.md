@@ -65,7 +65,7 @@ Todo en la VPS, como `deploy`, en `/srv/autobot`.
 
 ## Verificación
 
-`deploy/scripts/compose.sh ps` muestra el servicio `running` y sin reinicios recientes, la alerta se resuelve sola en el panel y la tarjeta Contenedores vuelve a verde en el siguiente minuto.
+`deploy/scripts/compose.sh ps` muestra el servicio `running` y sin reinicios recientes, la incidencia de contenedor caído o sin salud se cierra sola en el panel y la tarjeta Contenedores vuelve a verde en el siguiente minuto. `container_restarted:<servicio>` es un evento (ADR-031): no se cierra solo; ciérralo con «Lo he revisado» cuando sepas por qué se reinició (un reinicio nuevo lo vuelve a abrir).
 
 ## Relacionado
 

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from django.db.models import Max, OuterRef, QuerySet, Subquery
+from django.db.models import F, Max, OuterRef, QuerySet, Subquery
 from django.utils import timezone
 from ninja import Schema
 from procrastinate.contrib.django.models import ProcrastinateEvent, ProcrastinateJob
@@ -33,6 +33,9 @@ class SendCase(Schema):
     channel: str
     status: str
     created_at: datetime
+    # When it became a case: `failed_at` (rejected), `unknown_at` (ambiguous), else
+    # `created_at` (rows from before `failed_at` existed). The cases are sorted by it.
+    case_at: datetime
     error_class: str | None
     error_title: str | None
     error_advice: str | None
@@ -59,6 +62,7 @@ class NoticeCase(Schema):
     id: UUID
     status: str
     created_at: datetime
+    case_at: datetime
 
 
 type CaseOut = Annotated[SendCase | JobCase | NoticeCase, Field(discriminator="type")]
@@ -79,15 +83,23 @@ class IncidentOut(Schema):
     runbook: str | None
     first_seen_at: datetime
     last_seen_at: datetime
+    # Its kind has cases computed from a table (sends, jobs, notices).
+    has_cases: bool
+    # With `has_cases`, counted live from the tables now (what the preview shows), not
+    # ops_check's figure of its last pass (that one is in `text`).
     case_count: int
     last_case_at: datetime | None
     # A reopened event: how many cases came after the last review («N nuevos»).
     new_since_review: int | None
     reviewable: bool
+    # Only `outbound_ambiguous`: «Descartar todos» (`POST incidents/{id}/discard-all`).
+    can_discard_all: bool
     # sent | failed | unconfigured | panel (🟡, never pushed) | throttled | "" | cooldown
     delivery: str
-    # Up to PREVIEW cases, newest first; the rest through `GET incidents/{id}/cases`.
+    # Up to PREVIEW cases, newest first; the rest through `GET incidents/{id}/cases`
+    # starting at `cases_next_cursor` (None: there are no more).
     cases: list[CaseOut]
+    cases_next_cursor: str | None
 
 
 class SeverityCounts(Schema):
@@ -203,6 +215,7 @@ def _send_case(message: OutboundMessage, db_tenant: Tenant | None) -> SendCase:
         channel=message.channel,
         status=message.status,
         created_at=message.created_at,
+        case_at=getattr(message, "case_at", message.created_at),
         error_class=error.cls if error else None,
         error_title=error.title if error else None,
         error_advice=error.advice if error else None,
@@ -232,13 +245,16 @@ def case_page(alert: OpsAlert, *, cursor: str = "", limit: int = PREVIEW) -> Cas
     sends = _sends(alert)
     if sends is not None:
         db_tenant = Tenant.objects.using(OWNER).filter(pk=alert.tenant_id or "").first()
-        rows, next_cursor = page(sends, field="created_at", cursor=cursor, limit=limit)
+        rows, next_cursor = page(sends, field="case_at", cursor=cursor, limit=limit)
         return CasesPage(items=[_send_case(m, db_tenant) for m in rows], next_cursor=next_cursor)
     notices = _notices(alert)
     if notices is not None:
-        rows, next_cursor = page(notices, field="created_at", cursor=cursor, limit=limit)
+        rows, next_cursor = page(notices, field="case_at", cursor=cursor, limit=limit)
         return CasesPage(
-            items=[NoticeCase(id=n.id, status=n.status, created_at=n.created_at) for n in rows],
+            items=[
+                NoticeCase(id=n.id, status=n.status, created_at=n.created_at, case_at=n.case_at)
+                for n in rows
+            ],
             next_cursor=next_cursor,
         )
     jobs = _jobs(alert)
@@ -248,11 +264,34 @@ def case_page(alert: OpsAlert, *, cursor: str = "", limit: int = PREVIEW) -> Cas
     return CasesPage(items=[], next_cursor=None)
 
 
+def _case_rows(alert: OpsAlert) -> QuerySet[Any] | None:
+    sends = _sends(alert)
+    if sends is not None:
+        return sends
+    notices = _notices(alert)
+    if notices is not None:
+        return notices
+    jobs = _jobs(alert)
+    return jobs.annotate(case_at=F("failed_at")) if jobs is not None else None
+
+
+def live_tally(alert: OpsAlert) -> cases.Tally | None:
+    """How many cases the incident has now and the newest case time, from the same
+    queries as its case list; None for a kind without cases."""
+    rows = _case_rows(alert)
+    return cases.tally(rows) if rows is not None else None
+
+
 # ── Open and closed incidents ───────────────────────────────────────────────
 
 
 def _incident(incident: Incident, slugs: dict[UUID, str]) -> IncidentOut:
     row = incident.row
+    has_cases = incident.info.cases is not None
+    preview = case_page(row) if has_cases else CasesPage(items=[], next_cursor=None)
+    live = live_tally(row) if has_cases else None
+    case_count = live.count if live is not None else row.case_count
+    last_case_at = live.last if live is not None else row.last_case_at
     return IncidentOut(
         id=row.id,
         kind=row.kind,
@@ -266,12 +305,15 @@ def _incident(incident: Incident, slugs: dict[UUID, str]) -> IncidentOut:
         runbook=runbook_url(row.kind),
         first_seen_at=row.first_seen_at,
         last_seen_at=row.last_seen_at,
-        case_count=row.case_count,
-        last_case_at=row.last_case_at,
-        new_since_review=incident.new_since_review,
+        has_cases=has_cases,
+        case_count=case_count,
+        last_case_at=last_case_at,
+        new_since_review=case_count if incident.reopened else None,
         reviewable=incident.info.nature == "event",
+        can_discard_all=row.kind == "outbound_ambiguous" and row.tenant_id is not None,
         delivery=row.last_delivery,
-        cases=case_page(row).items if incident.info.cases else [],
+        cases=preview.items,
+        cases_next_cursor=preview.next_cursor,
     )
 
 

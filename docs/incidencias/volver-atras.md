@@ -2,7 +2,7 @@
 
 ## Síntoma
 
-Un SHA nuevo rompe `/health` o el flujo tras desplegar, o llega `deploy_rollback` (la reversión automática se ejecutó) o `deploy_aborted` (el despliegue se abortó antes de cambiar la imagen). Estas dos alertas no se resuelven solas: se cierran a mano desde el panel.
+Un SHA nuevo rompe `/health` o el flujo tras desplegar, o llega `deploy_rollback` (la reversión automática se ejecutó) o `deploy_aborted` (el despliegue se abortó antes de cambiar la imagen). Las dos son eventos (ADR-031): no se cierran solas; se cierran con «Lo he revisado» en Incidencias. Cada despliegue fallido avisa por Telegram, aunque haya otro en la misma hora.
 
 ## Diagnóstico
 
@@ -68,7 +68,7 @@ Un SHA nuevo rompe `/health` o el flujo tras desplegar, o llega `deploy_rollback
 
 ## Verificación
 
-`var/.deployed-sha` coincide con el SHA sano, `curl -s http://127.0.0.1:8000/health/internal` (en la VPS) devuelve `status: ok`, la cola continúa y una consulta por el bot de demo funciona. Resuelve a mano `deploy_aborted` o `deploy_rollback` en el panel.
+`var/.deployed-sha` coincide con el SHA sano, `curl -s http://127.0.0.1:8000/health/internal` (en la VPS) devuelve `status: ok`, la cola continúa y una consulta por el bot de demo funciona. Cierra `deploy_aborted` o `deploy_rollback` con «Lo he revisado» en Incidencias.
 
 ## Relacionado
 

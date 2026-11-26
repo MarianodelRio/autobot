@@ -146,10 +146,11 @@ def _channel_label(tenant: LoadedTenant) -> Literal["whatsapp", "telegram", "dem
     return "demo"
 
 
-def tenant_rows(now: datetime) -> list[TenantRow]:
-    """One `TenantRow` per non-offboarded tenant. Reused by `GET tenants`."""
+def tenant_rows(now: datetime, open_now: list[Incident] | None = None) -> list[TenantRow]:
+    """One `TenantRow` per non-offboarded tenant. Reused by `GET tenants`. `open_now`: the
+    open incidents, when the caller already read them."""
     tenants = _active_tenants()
-    open_now = _open_incidents()
+    open_now = _open_incidents() if open_now is None else open_now
     by_tz: dict[ZoneInfo, list[LoadedTenant]] = defaultdict(list)
     for tenant in tenants:
         by_tz[tenant.info.timezone].append(tenant)
@@ -322,8 +323,9 @@ def _recent_alerts() -> list[AlertBrief]:
 def build_overview(now: datetime | None = None) -> Overview:
     now = now or timezone.now()
     tenants = _active_tenants()
-    rows = tenant_rows(now)
+    # One read of the open incidents feeds the tenant levels, the count and the problems.
     open_now = _open_incidents()
+    rows = tenant_rows(now, open_now)
     start, month = _global_month(now, tenants)
 
     backup = system.read_backup_status(settings.OPS_STATE_DIR)

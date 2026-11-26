@@ -11,13 +11,15 @@ import pytest
 from django.db import connections
 from django.utils import timezone
 
+from autobot.channels.base import Rejected
 from autobot.ops import check, containers, health, incidents, system
 from autobot.ops.models import OpsAlert
-from autobot.runtime.models import Contact, OutboundMessage
+from autobot.runtime import outbound
+from autobot.runtime.models import Channel, Contact, Notification, OutboundMessage, OwnerLink
 from autobot.tenancy.registry import get_registry
 from autobot.tenancy.tx import tenant_tx
 from tests.helpers.disk import fake_disk
-from tests.helpers.integration import wa_tenant
+from tests.helpers.integration import demo_tenant, wa_tenant
 
 pytestmark = [
     pytest.mark.django_db(transaction=True, databases=["default", "owner"]),
@@ -39,23 +41,33 @@ def quiet(monkeypatch: pytest.MonkeyPatch, settings: Any) -> None:
     fake_disk(monkeypatch, 1)
 
 
-def failed_send(created_at: datetime | None = None) -> OutboundMessage:
-    tenant = get_registry().by_slug["wa"]
+def failed_send(
+    created_at: datetime | None = None,
+    *,
+    last_error: str = "status failed: 131047",
+    status: str = "failed",
+    channel: str = "main",
+    slug: str = "wa",
+) -> OutboundMessage:
+    tenant = get_registry().by_slug[slug]
     with tenant_tx(tenant.id):
         contact, _ = Contact.objects.get_or_create(
-            tenant_id=tenant.id, channel="main", external_id="ES.test"
+            tenant_id=tenant.id, channel=channel, external_id="ES.test"
         )
         row = OutboundMessage.objects.create(
             tenant_id=tenant.id,
             contact=contact,
             idem_key=str(uuid7()),
-            channel="main",
+            channel=channel,
             kind="proactive",
-            status="failed",
-            last_error="status failed: 131047",
+            status=status,
+            last_error=last_error,
+            failed_at=timezone.now() if status == "failed" else None,
         )
     if created_at is not None:
-        OutboundMessage.objects.using("owner").filter(id=row.id).update(created_at=created_at)
+        OutboundMessage.objects.using("owner").filter(id=row.id).update(
+            created_at=created_at, failed_at=created_at if status == "failed" else None
+        )
     return row
 
 
@@ -91,14 +103,160 @@ def test_with_no_review_only_the_last_24_hours_count(tenants: Any) -> None:
     assert not OpsAlert.objects.using("owner").filter(kind=REJECTED).exists()
 
 
-def test_an_event_whose_cases_are_gone_stays_open_with_no_cases(tenants: Any) -> None:
+def test_an_event_whose_cases_are_gone_closes_itself(tenants: Any) -> None:
+    """A rejected send later confirmed sent: no live case left, so the platform closes
+    the event (`auto`, no review, watermark unchanged); a later case opens a new period."""
     tenants(wa_tenant())
     row = failed_send()
     check.run()
-    assert incident().case_count == 1
+    first = incident()
+    assert first.case_count == 1
     OutboundMessage.objects.using("owner").filter(id=row.id).update(status="sent")
     check.run()
-    assert incident().case_count == 0  # a person still closes it
+    first.refresh_from_db(using="owner")
+    assert first.resolved_at is not None and first.resolved_by == "auto"
+    assert first.case_count == 0 and incidents.closed_how(first) == "auto"
+    assert first.review_watermark is not None
+    failed_send()
+    check.run()
+    second = incident()
+    assert second.id != first.id and second.case_count == 1
+    assert second.review_watermark == first.review_watermark
+    (found,) = [i for i in incidents.open_incidents(using="owner") if i.row.kind == REJECTED]
+    assert not found.reopened and found.new_since_review is None  # not a review
+
+
+def test_a_just_reviewed_event_is_neither_zeroed_nor_closed_again(tenants: Any) -> None:
+    tenants(wa_tenant())
+    row = failed_send()
+    check.run()
+    first = incident()
+    started = timezone.now()
+    findings = check.collect(started)
+    OutboundMessage.objects.using("owner").filter(id=row.id).update(status="sent")
+    assert incidents.review(first.id, actor="ana").ok
+    check.sync_alerts(findings, collected_at=started)
+    first.refresh_from_db(using="owner")
+    assert first.resolved_by == "ana" and first.case_count == 1
+
+
+def test_a_review_between_collect_and_sync_does_not_reopen(tenants: Any) -> None:
+    doc = wa_tenant()
+    doc["channel"]["monthly_alert_threshold"] = 1
+    tenants(doc)
+    failed_send()
+    billable_send()
+    billable_send()
+    check.run()
+    started = timezone.now()
+    findings = check.collect(started)  # counted before the review lands
+    for kind in (REJECTED, "billing"):
+        assert incidents.review(incident(kind).id, actor="ana").ok
+    check.sync_alerts(findings, collected_at=started)
+    assert not OpsAlert.objects.using("owner").filter(
+        kind__in=(REJECTED, "billing"), resolved_at__isnull=True
+    )
+
+
+def billable_send(slug: str = "wa", channel: str = "main") -> None:
+    tenant = get_registry().by_slug[slug]
+    with tenant_tx(tenant.id):
+        contact, _ = Contact.objects.get_or_create(
+            tenant_id=tenant.id, channel=channel, external_id="ES.bill"
+        )
+        OutboundMessage.objects.create(
+            tenant_id=tenant.id,
+            contact=contact,
+            idem_key=str(uuid7()),
+            channel=channel,
+            kind="reply",
+            status="sent",
+            billable=True,
+            sent_at=timezone.now(),
+        )
+
+
+def test_a_resend_of_an_old_ambiguous_send_that_fails_is_a_new_case(tenants: Any) -> None:
+    """Its case time is when it failed, not when its row was created days ago."""
+    tenants(wa_tenant())
+    tenant = get_registry().by_slug["wa"]
+    old = timezone.now() - timedelta(days=3)
+    row = failed_send(old, status="unknown", last_error="interrupted while sending")
+    OpsAlert.objects.create(
+        kind=REJECTED,
+        tenant_id=tenant.id,
+        severity="warning",
+        text="old",
+        auto_resolves=False,
+        first_seen_at=old,
+        review_watermark=timezone.now() - timedelta(hours=1),
+        resolved_at=timezone.now() - timedelta(hours=1),
+        resolved_by="ana",
+    )
+    with tenant_tx(tenant.id):
+        message = OutboundMessage.objects.select_for_update().get(id=row.id)
+        message.status = "sending"  # a person resent it
+        outbound._record("wa", message, Rejected("HTTP 400, error 131047", "other"))
+    stored = OutboundMessage.objects.using("owner").get(id=row.id)
+    assert stored.status == "failed" and stored.failed_at is not None
+    check.run()
+    reopened = incident()
+    assert reopened.case_count == 1 and reopened.last_case_at == stored.failed_at
+
+
+def test_notice_classes_stay_in_the_panel_and_each_class_is_its_own_incident(
+    tenants: Any,
+) -> None:
+    tenants(wa_tenant())
+    failed_send()  # 131047: outside_window, 🟠
+    failed_send(last_error="status failed: 131026")  # undeliverable, 🟡
+    failed_send(last_error="auth: HTTP 401")  # the `auth` condition, not a rejected class
+    check.run()
+    assert incident(REJECTED).severity == "warning"
+    undeliverable = incident("outbound_rejected:undeliverable")
+    assert undeliverable.severity == "notice" and undeliverable.last_delivery == "panel"
+    assert undeliverable.sent_count == 0
+    assert not OpsAlert.objects.using("owner").filter(kind="outbound_rejected:auth").exists()
+    assert incident("auth").auto_resolves
+
+
+def test_a_lost_owner_notice_is_an_event_reviewed_then_reopened(
+    tenants: Any, settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenants(wa_tenant())
+    settings.NOTIFY_BOT_TOKEN = "notification-token"
+    monkeypatch.setattr(health, "telegram_health", lambda *a, **k: [])
+    tenant = get_registry().by_slug["wa"]
+    OwnerLink.objects.create(tenant_id=tenant.id, chat_id=100, linked_at=timezone.now())
+
+    def lost(idem: str) -> None:
+        with tenant_tx(tenant.id):
+            Notification.objects.create(
+                tenant_id=tenant.id,
+                idem_key=idem,
+                kind="booking",
+                text="x",
+                status="failed",
+                failed_at=timezone.now(),
+            )
+
+    lost("n1")
+    check.run()
+    first = incident("notification_failed")
+    assert not first.auto_resolves and first.case_count == 1
+    assert incidents.review(first.id, actor="ana").ok
+    check.run()
+    assert not OpsAlert.objects.using("owner").filter(
+        kind="notification_failed", resolved_at__isnull=True
+    )
+    lost("n2")
+    check.run()
+    second = incident("notification_failed")
+    assert second.id != first.id and second.case_count == 1
+    (found,) = [
+        i for i in incidents.open_incidents(using="owner") if i.row.kind == "notification_failed"
+    ]
+    assert found.reopened and found.new_since_review == 1
 
 
 def job(task: str, status: str, event: str | None, at: datetime) -> int:
@@ -139,6 +297,19 @@ def test_failed_jobs_are_one_event_per_task_and_aborted_ones_are_not(tenants: An
     assert incident("failed_job:ops_check").case_count == 1
 
 
+def test_a_failed_job_retried_successfully_closes_its_event(tenants: Any) -> None:
+    tenants()
+    job_id = job("retention_cleanup", "failed", "failed", timezone.now() - timedelta(minutes=2))
+    check.run()
+    row = incident("failed_job:retention_cleanup")
+    assert row.text == "🟠 Trabajos fallidos: Limpieza nocturna (1)."
+    with connections["owner"].cursor() as cursor:
+        cursor.execute("UPDATE procrastinate_jobs SET status = 'succeeded' WHERE id = %s", [job_id])
+    check.run()
+    row.refresh_from_db(using="owner")
+    assert row.resolved_by == "auto" and row.case_count == 0
+
+
 def test_billing_is_an_event_once_a_month(tenants: Any) -> None:
     doc = wa_tenant()
     doc["channel"]["monthly_alert_threshold"] = 1
@@ -164,6 +335,26 @@ def test_billing_is_an_event_once_a_month(tenants: Any) -> None:
     assert incidents.review(row.id, actor="ana").ok
     check.run()
     assert not OpsAlert.objects.using("owner").filter(kind="billing", resolved_at__isnull=True)
+    # Next month: reviewed only for its own month, so it opens again.
+    OpsAlert.objects.using("owner").filter(id=row.id).update(details={"month": "2000-01"})
+    check.run()
+    assert incident("billing").id != row.id
+
+
+def test_the_demo_whatsapp_door_billing_is_a_monthly_event(tenants: Any, settings: Any) -> None:
+    tenants(demo_tenant())
+    settings.DEMO_WHATSAPP_MONTHLY_ALERT_THRESHOLD = 1
+    billable_send("demo-toy", Channel.DEMO_WA)
+    billable_send("demo-toy", Channel.DEMO_WA)
+    check.run()
+    row = incident("billing:demo_wa")
+    assert row.tenant_id is None and row.severity == "notice" and not row.auto_resolves
+    assert row.details["month"] == timezone.now().astimezone(check.MADRID).strftime("%Y-%m")
+    assert incidents.review(row.id, actor="ana").ok
+    check.run()
+    assert not OpsAlert.objects.using("owner").filter(
+        kind="billing:demo_wa", resolved_at__isnull=True
+    )
 
 
 def service(count: int, started_minutes_ago: float = 5) -> containers.ServiceState:
@@ -204,6 +395,21 @@ def test_a_container_restart_is_an_event_when_its_count_grows(tenants: Any) -> N
     assert row.details["restart_count"] == 0
     (again,) = check._restart_findings([service(1)], now)
     assert again.case_count == 1
+
+
+def test_a_container_recreated_while_its_incident_is_open_keeps_counting(tenants: Any) -> None:
+    tenants()
+    now = timezone.now()
+    for count in (1, 3):
+        (found,) = check._restart_findings([service(count)], now)
+        check.sync_alerts([found])
+    assert incident("container_restarted:web").case_count == 3
+    # Recreated (count back to 0) while open: `since` follows, nothing is lost.
+    assert check._restart_findings([service(0)], now) == []
+    (again,) = check._restart_findings([service(1)], now)
+    assert again.case_count == 4 and again.details == {"restart_count": 1, "since": -3}
+    check.sync_alerts([again])  # a negative count would break the CHECK constraint
+    assert incident("container_restarted:web").case_count == 4
 
 
 def test_a_failed_push_recovers_the_heartbeat_once_telegram_answers(

@@ -50,7 +50,7 @@ Los avisos del bot de avisos (`send_notification`) seguían con cinco intentos y
 - **Sin cortacircuitos**: el bot de avisos es uno solo de la plataforma, no un proveedor compartido por negocios; el `BREAKER` de `send_message` (que exige fallos de al menos 2 negocios) no aplica, y la caducidad ya acota el trabajo.
 - **Alerta**: `notification_failed` cuenta también los `expired` (el bot estuvo horas sin poder entregar: un aviso perdido de verdad, y raro; un atasco por límite de ritmo se drena en segundos).
 
-Las alertas de operación (`send_ops_alert`) siguen sin pasar por el limitador: son pocas y con enfriamiento.
+Las alertas de operación (`send_ops_alert`) siguen sin pasar por el limitador: son pocas y solo avisan al abrirse (ADR-031).
 
 ## Alternativas consideradas
 
@@ -63,7 +63,7 @@ Las alertas de operación (`send_ops_alert`) siguen sin pasar por el limitador: 
 ## Consecuencias
 
 - Una caída de horas ya no pierde mensajes en silencio: lo útil sale al recuperarse, lo obsoleto se descarta con una disculpa y todo queda registrado como `expired`.
-- Aparece el estado `expired` en `outbound_message`, y la columna `expires_at` (migración `0029_outbound_expires_at`). `outbound_failed` no salta por un `expired`: la caída se ve en `provider_outage`.
+- Aparece el estado `expired` en `outbound_message`, y la columna `expires_at` (migración `0029_outbound_expires_at`). `outbound_failed` no salta por un `expired`: la caída se ve en `provider_outage`. *Nota (ADR-031):* hoy son `outbound_rejected:<clase>` y `outbound_ambiguous`, y tampoco cuentan los `expired`.
 - Durante una caída cada mensaje pendiente mantiene un trabajo `send_message` vivo que se reintenta como mucho cada 5 minutos (con el cortacircuitos abierto, sin llamar al proveedor), durante 30 minutos las respuestas y hasta 24 h los recordatorios.
 - Un reintento de los errores de base de datos que llegue tras muchos reintentos del proveedor ya no se reintenta (el contador del trabajo es común); la barrida de `ops_check` reencola un `pending` sin trabajo vivo.
 - Reiniciar un worker de salida reinicia su cortacircuitos (cerrado).

@@ -389,10 +389,35 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Incident Cases */
+        /**
+         * Incident Cases
+         * @description The cases of an incident, newest first. `cursor`: the incident's
+         *     `cases_next_cursor` (continues after its preview) or a page's `next_cursor`.
+         */
         get: operations["autobot_panel_routers_incidents_incident_cases"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/incidents/{id}/discard-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard All
+         * @description «Descartar todos»: every undecided ambiguous send of an open `outbound_ambiguous`
+         *     becomes `discarded` (nothing is sent) and the incident closes.
+         */
+        post: operations["autobot_panel_routers_incidents_discard_all"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1588,10 +1613,14 @@ export interface components {
         IncidentOut: {
             /** Advice */
             advice: string;
+            /** Can Discard All */
+            can_discard_all: boolean;
             /** Case Count */
             case_count: number;
             /** Cases */
             cases: components["schemas"]["CaseOut"][];
+            /** Cases Next Cursor */
+            cases_next_cursor: string | null;
             /** Delivery */
             delivery: string;
             /**
@@ -1599,6 +1628,8 @@ export interface components {
              * Format: date-time
              */
             first_seen_at: string;
+            /** Has Cases */
+            has_cases: boolean;
             /**
              * Id
              * Format: uuid
@@ -1794,6 +1825,11 @@ export interface components {
         /** NoticeCase */
         NoticeCase: {
             /**
+             * Case At
+             * Format: date-time
+             */
+            case_at: string;
+            /**
              * Created At
              * Format: date-time
              */
@@ -1959,6 +1995,11 @@ export interface components {
             /** Target Columns */
             target_columns: string[];
         };
+        /** ReviewIn */
+        ReviewIn: {
+            /** Last Case At */
+            last_case_at?: string | null;
+        };
         /** RollbackIn */
         RollbackIn: {
             /** Comment */
@@ -2015,6 +2056,11 @@ export interface components {
             can_mark_sent: boolean;
             /** Can Resend */
             can_resend: boolean;
+            /**
+             * Case At
+             * Format: date-time
+             */
+            case_at: string;
             /** Channel */
             channel: string;
             /**
@@ -2995,7 +3041,7 @@ export interface operations {
             };
         };
     };
-    autobot_panel_routers_incidents_review: {
+    autobot_panel_routers_incidents_discard_all: {
         parameters: {
             query?: never;
             header?: never;
@@ -3005,6 +3051,32 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+        };
+    };
+    autobot_panel_routers_incidents_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReviewIn"] | null;
+            };
+        };
         responses: {
             /** @description OK */
             200: {

@@ -29,7 +29,10 @@ from tests.platform.tenancy.helpers import TG_SECRETS, WA_SECRETS
 
 NOW = datetime(2026, 11, 8, 12, tzinfo=UTC)
 
-pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+pytestmark = [
+    pytest.mark.django_db(transaction=True, databases=["default", "owner"]),
+    pytest.mark.usefixtures("clean_jobs"),
+]
 
 
 @pytest.fixture

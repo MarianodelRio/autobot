@@ -53,7 +53,7 @@ La imagen local instala las dependencias de desarrollo (`INSTALL_DEV=true`); la 
 
 ### Actividad falsa para el panel
 
-`make dev-activity` crea actividad realista (mensajes, respuestas, avisos, alertas abiertas y resueltas, un trabajo fallido y muestras de sistema) para ver el panel con datos. Se niega a ejecutarse fuera de `local`. El objetivo no admite argumentos; para cambiar los días o limpiar lo creado, ejecuta el comando directamente:
+`make dev-activity` crea actividad realista (mensajes, respuestas, avisos, incidencias abiertas, reabiertas y cerradas, envíos `unknown` y rechazados, un trabajo fallido y muestras de sistema) para ver el panel con datos. Se niega a ejecutarse fuera de `local`. El objetivo no admite argumentos; para cambiar los días o limpiar lo creado, ejecuta el comando directamente:
 
 ```bash
 docker compose exec web python manage.py seed_dev_activity --days 7 --reset

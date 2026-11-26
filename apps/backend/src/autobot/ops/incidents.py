@@ -37,6 +37,8 @@ type Closed = Literal["auto", "outage", "review", "info"]
 SEVERITY_RANK: dict[str, int] = {"info": 0, "notice": 1, "warning": 2, "critical": 3}
 # Severities that are pushed to Telegram when an incident opens (or escalates to them).
 PUSHED: frozenset[str] = frozenset({"critical", "warning"})
+# Pushed on every new case, never throttled: each failed deploy matters (ADR-031).
+PUSH_EVERY_CASE: frozenset[str] = frozenset({"deploy_aborted", "deploy_rollback"})
 # `resolved_by` of the platform's own closings; any other value is the reviewer.
 PLATFORM_CLOSINGS: frozenset[str] = frozenset({"auto", "outage", "info"})
 # With no previous review of a key, only the cases of the last 24 h count: a first run
@@ -479,10 +481,12 @@ class ReviewResult:
     message: str
 
 
-def review(alert_id: UUID, *, actor: str) -> ReviewResult:
+def review(alert_id: UUID, *, actor: str, last_case_at: datetime | None = None) -> ReviewResult:
     """Close an open event: its watermark becomes its newest case seen by ops_check (never
     `now`, which would hide a case that arrived while the person read the screen), and a
-    case after it opens a new period. Sends nothing to Telegram. Audited."""
+    case after it opens a new period. `last_case_at`: the newest case the panel showed;
+    the watermark never goes past it (a case counted after the screen loaded was not
+    seen). Never before the previous watermark. Sends nothing to Telegram. Audited."""
     from autobot.ops.audit import record
 
     with transaction.atomic(using="owner"):
@@ -495,6 +499,8 @@ def review(alert_id: UUID, *, actor: str) -> ReviewResult:
             return ReviewResult(False, "Esta incidencia se cierra sola cuando se corrige la causa.")
         now = timezone.now()
         watermark = alert.last_case_at or alert.last_seen_at or now
+        if last_case_at is not None:
+            watermark = min(watermark, last_case_at)
         if alert.review_watermark is not None:
             watermark = max(watermark, alert.review_watermark)
         alert.review_watermark = min(watermark, now)
@@ -511,3 +517,50 @@ def review(alert_id: UUID, *, actor: str) -> ReviewResult:
             details={"kind": alert.kind, "cases": alert.case_count},
         )
     return ReviewResult(True, "Incidencia revisada.")
+
+
+# ── Right after an operator's action ────────────────────────────────────────
+
+
+def _settle(rows: QuerySet[OpsAlert], count: int, last: datetime | None, now: datetime) -> None:
+    if count == 0:
+        rows.update(resolved_at=now, resolved_by="auto")
+    else:
+        rows.update(case_count=count, last_case_at=last)
+
+
+def settle_ambiguous(tenant_id: UUID, *, using: str = "owner") -> None:
+    """Re-evaluate a tenant's `outbound_ambiguous` after a person decided on one of its
+    sends (marked sent, resent, discarded): closed (`auto`, no message) when no undecided
+    case is left, so «Todo en orden» does not wait for the next ops_check."""
+    from autobot.ops import cases
+    from autobot.runtime.models import OutboundMessage
+
+    now = timezone.now()
+    found = cases.tally(
+        cases.ambiguous(OutboundMessage.objects.using(using).filter(tenant_id=tenant_id), now)
+    )
+    rows = OpsAlert.objects.using(using).filter(
+        kind="outbound_ambiguous", tenant_id=tenant_id, resolved_at__isnull=True
+    )
+    _settle(rows, found.count, found.last, now)
+
+
+def settle_failed_job(task: str, *, using: str = "owner") -> None:
+    """Re-evaluate `failed_job:<task>` after a person retried one of its jobs: closed
+    (`auto`, as ops_check would) when no failed case is left after its watermark."""
+    from django.db import connections
+
+    from autobot.ops import cases
+
+    now = timezone.now()
+    rows = OpsAlert.objects.using(using).filter(
+        kind=failed_job_kind(task), tenant_id=None, resolved_at__isnull=True
+    )
+    alert = rows.first()
+    if alert is None:
+        return
+    after = alert.review_watermark or alert.first_seen_at - BOOTSTRAP
+    with connections[using].cursor() as cursor:
+        found = cases.failed_jobs(cursor, after, task).get(task)
+    _settle(rows, found.count if found else 0, found.last if found else None, now)

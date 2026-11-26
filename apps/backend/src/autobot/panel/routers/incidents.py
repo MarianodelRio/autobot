@@ -1,6 +1,7 @@
 """The incidents (ADR-031): the open ones with their cases, their review, the actions
 on their cases and the closed ones."""
 
+from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -44,20 +45,44 @@ def incident_cases(
     request: HttpRequest,
     id: UUID,
     cursor: str = "",
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: Annotated[int, Query(ge=1, le=100)] = incidents.PREVIEW,
 ) -> incidents.CasesPage:
+    """The cases of an incident, newest first. `cursor`: the incident's
+    `cases_next_cursor` (continues after its preview) or a page's `next_cursor`."""
     alert = get_object_or_404(OpsAlert.objects.using("owner"), pk=id)
     return incidents.case_page(alert, cursor=cursor, limit=limit)
 
 
+class ReviewIn(Schema):
+    # The newest case time the panel showed (`last_case_at`): the review never covers a
+    # case the person did not see.
+    last_case_at: datetime | None = None
+
+
 @router.post("/incidents/{id}/review", response=MessageOut)
-def review(request: HttpRequest, id: UUID) -> dict[str, str]:
+def review(request: HttpRequest, id: UUID, payload: ReviewIn | None = None) -> dict[str, str]:
     """«Lo he revisado»: closes an open event; a newer case reopens it."""
     get_object_or_404(OpsAlert.objects.using("owner"), pk=id)
-    done = incident_kinds.review(id, actor=request.user.username)
+    done = incident_kinds.review(
+        id,
+        actor=request.user.username,
+        last_case_at=payload.last_case_at if payload is not None else None,
+    )
     if not done.ok:
         raise ApiError("conflict", done.message, 409)
     return {"message": done.message}
+
+
+@router.post("/incidents/{id}/discard-all", response=MessageOut)
+def discard_all(request: HttpRequest, id: UUID) -> dict[str, str]:
+    """«Descartar todos»: every undecided ambiguous send of an open `outbound_ambiguous`
+    becomes `discarded` (nothing is sent) and the incident closes."""
+    alert = get_object_or_404(OpsAlert.objects.using("owner"), pk=id)
+    if alert.kind != "outbound_ambiguous" or alert.tenant_id is None:
+        raise ApiError("conflict", "Solo para los envíos sin confirmar de un negocio.", 409)
+    if alert.resolved_at is not None:
+        raise ApiError("conflict", "La incidencia ya está cerrada.", 409)
+    return result(actions.discard_all(alert.tenant_id, actor=request.user.username))
 
 
 class Confirmation(Schema):

@@ -27,9 +27,10 @@ esa fila y esa versión, y qué queda como prueba del borrado.
   restic (`deploy/scripts/backup.sh`); ninguno de los dos se toca.
 - **Un webhook tardío de ese canal recibe 404**, igual que cualquier identificador
   desconocido: ya no hay fila `tenant` a la que asociarlo.
-- **Las claves de caché del cliente se borran** (`health:<id>`, `runtime:<id>:<canal>`
-  por cada canal y los enfriamientos de alerta por cada `kind` que tuviera), al
-  confirmarse la transacción.
+- **Las claves de caché del cliente se borran** (`health:<id>` y `runtime:<id>:<canal>`
+  por cada canal), al confirmarse la transacción. *Nota (ADR-031):* desde que las
+  alertas dejaron de repetirse no hay enfriamientos de alerta en caché; solo se borran
+  esas dos claves.
 - **Solo un negocio dado de baja (`offboarded`) se puede borrar**, y nunca un
   demo. Desde el panel, un negocio activo debe pausarse primero; el botón queda
   deshabilitado con esa explicación. Si el canal es Telegram, el panel

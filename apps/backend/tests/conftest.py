@@ -208,18 +208,23 @@ def tenants(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
 
 @pytest.fixture
 def clean_jobs(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """The flush does not reach Procrastinate's tables (unmanaged models)."""
+    """The flush does not reach Procrastinate's tables (unmanaged models): emptied before
+    the test (a test without this fixture may have left jobs behind) and after it."""
     from autobot.runtime.jobs import app
+
+    def clear() -> None:
+        with connections["owner"].cursor() as cursor:
+            # Periodic defers reference their job: they go first.
+            cursor.execute("DELETE FROM procrastinate_periodic_defers")
+            cursor.execute("DELETE FROM procrastinate_jobs")
 
     # Worker tests may cross a five-minute boundary and automatically enqueue this
     # new platform periodic. Its service checks have their own mocked integration
     # tests; unrelated runtime workers must never query external health endpoints.
     monkeypatch.setattr(app.tasks["ops_check"], "func", lambda timestamp: None)
+    clear()
     yield
-    with connections["owner"].cursor() as cursor:
-        # Periodic defers reference their job: they go first.
-        cursor.execute("DELETE FROM procrastinate_periodic_defers")
-        cursor.execute("DELETE FROM procrastinate_jobs")
+    clear()
 
 
 from tests.packs.salon.salon_helpers import salon_setup  # noqa: F401, E402

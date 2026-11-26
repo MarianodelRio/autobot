@@ -43,7 +43,10 @@ avisos por Telegram) eso producía:
     la cierra la persona con **«Lo he revisado»**, que guarda una **marca de revisión**
     (fecha). Solo cuentan los casos posteriores a la marca; uno nuevo **reabre** la
     incidencia con «N nuevos desde tu revisión». Cada periodo abierto es una fila nueva
-    que hereda la marca de la última revisión de la misma clave.
+    que hereda la marca de la última revisión de la misma clave. La hora de un caso es cuándo
+    se convirtió en fallo (`failed_at`, `unknown_at`), no cuándo se creó. Un evento con casos
+    en tabla que se queda sin ninguno vivo se cierra solo como cierre de la plataforma
+    (`auto`, sin tocar la marca).
 - **Claves nuevas o divididas:** `outbound_failed` se divide en `outbound_rejected:<clase>`
   (evento, por negocio y clase de error) y `outbound_ambiguous` (condición, por negocio,
   mientras quede algún `unknown` sin decidir, sin límite de 24 h). `failed_jobs` pasa a
@@ -61,13 +64,18 @@ avisos por Telegram) eso producía:
   **«Descartar»**: nuevo estado final `discarded` (no se reenvía, la conciliación del
   ADR-026 ya no lo toca, no vuelve a salir). Un estado posterior del proveedor que
   confirme la entrega lo pasa a `sent` (es evidencia real). `outbound_resolve` gana
-  `--discard`.
+  `--discard`. **«Descartar todos»** en la incidencia `outbound_ambiguous` descarta de una vez
+  todos los envíos sin decidir del negocio: se permite porque no envía nada (a diferencia del
+  reenvío en bloque retirado); un solo registro de auditoría con el número.
 - **Se retira la recuperación en bloque** (endpoints, acciones, pantalla): la persona
-  operadora no la usa. Los recordatorios caducados durante una caída no se reenvían.
+  operadora no la usa; solo queda «Descartar todos», que no envía nada. Los recordatorios caducados durante una caída no se reenvían.
 - **Avisos por Telegram:** solo 🔴 y 🟠 avisan al abrirse; 🟡 queda en el panel y en el
-  resumen diario. Una reapertura avisa como mucho una vez por hora por incidencia. Nada
-  de repetir cada 30 min. Si la severidad sube dentro de una incidencia abierta
-  (🟠 → 🔴), se actualiza y avisa. «Resuelta» se sigue enviando para las críticas. Las
+  resumen diario. Cada apertura (condición o evento, también una reapertura) avisa como
+  mucho una vez por hora por clave y negocio. Nada de repetir cada 30 min. Si la severidad
+  sube dentro de una incidencia abierta, se actualiza y avisa: a 🔴 siempre (una crítica
+  nunca espera), a 🟠 como mucho una vez por hora. `deploy_aborted` y `deploy_rollback` avisan en cada caso nuevo (cada
+  despliegue fallido importa). «Resuelta» se sigue enviando para las críticas cuya apertura
+  avisó. Las
   **entregas fallidas** se reintentan una vez por hora (sin contar como aviso nuevo),
   para que el latido `/fail` de healthchecks se recupere solo.
 - **Demos igual que clientes** en severidad. Solo se excluyen las comprobaciones que no
@@ -100,9 +108,10 @@ avisos por Telegram) eso producía:
   subir.
 - Migración que solo añade: campos en `ops_alert` (marca de revisión, recuento de
   casos, detalles sin datos personales) y el valor `discarded` (con `status` de 10
-  caracteres) en `outbound_message`; sin cambios de RLS ni de roles.
+  caracteres) en `outbound_message`, y `failed_at` en `outbound_message` y `notification`
+  (migración 0038); sin cambios de RLS ni de roles.
 - Los 🟡 dejan de llegar por Telegram en el momento.
-- La auditoría gana `incident.review` y `outbound.discard`; `alert.resolve` y las de
+- La auditoría gana `incident.review`, `outbound.discard` y `outbound.discard_all`; `alert.resolve` y las de
   reenvío en bloque quedan como históricas.
 
 ## Cuándo revisarla

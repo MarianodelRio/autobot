@@ -145,6 +145,7 @@ Parámetros y cuerpos:
 | GET | `/api/panel/incidents` | Open Incidents | IncidentsOut |
 | GET | `/api/panel/incidents/history` | Closed Incidents | ClosedPage |
 | GET | `/api/panel/incidents/{id}/cases` | Incident Cases | CasesPage |
+| POST | `/api/panel/incidents/{id}/discard-all` | Discard All | MessageOut |
 | POST | `/api/panel/incidents/{id}/review` | Review | MessageOut |
 | POST | `/api/panel/jobs/{id}/retry` | Retry | MessageOut |
 | POST | `/api/panel/outbound/{id}/discard` | Discard | MessageOut |
@@ -160,8 +161,11 @@ Parámetros y cuerpos:
     - Parámetro `id` (path, obligatorio): string (uuid)
     - Parámetro `cursor` (query): string
     - Parámetro `limit` (query): integer
+- `POST /api/panel/incidents/{id}/discard-all`
+    - Parámetro `id` (path, obligatorio): string (uuid)
 - `POST /api/panel/incidents/{id}/review`
     - Parámetro `id` (path, obligatorio): string (uuid)
+    - Cuerpo (opcional): ReviewIn | null
 - `POST /api/panel/jobs/{id}/retry`
     - Parámetro `id` (path, obligatorio): integer
 - `POST /api/panel/outbound/{id}/discard`

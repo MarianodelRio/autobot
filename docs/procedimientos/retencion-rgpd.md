@@ -71,8 +71,9 @@ La purga nocturna aísla a cada negocio: si falla en uno (se registra con `log.e
 solo con su id), sigue con los demás y con las tablas de plataforma, y al final el trabajo
 `retention_cleanup` termina con `RetentionError` (queda `failed` en la cola, con los ids de
 los negocios afectados). Así un negocio con problemas no deja sin purgar a los siguientes,
-y el fallo es visible en Incidencias → Trabajos fallidos; la purga de esa noche se reintenta
-al día siguiente.
+y el fallo es visible en Incidencias como la incidencia `failed_job:retention_cleanup`
+(«Trabajo fallido: Limpieza nocturna»); la purga de esa noche se reintenta al día
+siguiente.
 
 ## Exportar, olvidar y purgar
 

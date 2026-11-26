@@ -325,17 +325,28 @@ def test_a_notice_is_never_pushed(telegram: Any) -> None:
     assert not seen
 
 
-def test_an_escalation_updates_the_severity_and_pushes_once(telegram: Any) -> None:
-    seen = telegram(ok(), ok())
+def test_an_escalation_to_critical_always_pushes_and_to_warning_at_most_hourly(
+    telegram: Any,
+) -> None:
+    seen = telegram(ok(), ok(), ok())
     assert not notifications.send_ops_alert("stuck", None, "🟡 Algo menor")
     assert notifications.send_ops_alert("stuck", None, "🟠 Algo peor")
     assert alert().severity == "warning"
+    # Escalating to 🔴 within the hour still pushes: a critical one never waits.
     assert notifications.send_ops_alert("stuck", None, "🔴 Algo grave")
-    assert not notifications.send_ops_alert("stuck", None, "🔴 Algo grave")
-    assert alert().severity == "critical"
+    assert alert().severity == "critical" and len(seen) == 2
     # Back down: the severity follows, without a push.
+    assert not notifications.send_ops_alert("stuck", None, "🟡 Algo menor")
+    assert alert().severity == "notice" and len(seen) == 2
+    # Up to 🟠 again within the hour: updated, not pushed.
     assert not notifications.send_ops_alert("stuck", None, "🟠 Algo peor")
-    assert alert().severity == "warning" and len(seen) == 2
+    assert alert().severity == "warning" and alert().last_delivery == "throttled"
+    # An hour after the last push, an escalation to 🟠 is pushed again.
+    OpsAlert.objects.using("owner").update(
+        severity="notice", last_sent_at=timezone.now() - timedelta(hours=2)
+    )
+    assert notifications.send_ops_alert("stuck", None, "🟠 Algo peor")
+    assert alert().last_delivery == "sent" and len(seen) == 3
 
 
 def test_ops_alert_informational_is_saved_already_resolved(telegram: Any) -> None:
@@ -360,16 +371,29 @@ def test_ops_alert_informational_is_saved_already_resolved(telegram: Any) -> Non
 def test_an_event_stays_open_and_counts_each_case(telegram: Any) -> None:
     from autobot.ops.incidents import BOOTSTRAP
 
-    seen = telegram(ok())
+    seen = telegram(ok(), ok())
     before = timezone.now()
     assert notifications.send_ops_alert("deploy_aborted", None, "🔴 Despliegue abortado")
-    assert not notifications.send_ops_alert("deploy_aborted", None, "🔴 Despliegue abortado")
+    # Each failed deploy matters: pushed on every new case, never throttled (ADR-031).
+    assert notifications.send_ops_alert("deploy_aborted", None, "🔴 Despliegue abortado")
     row = alert("deploy_aborted")
     assert not row.auto_resolves and row.case_count == 2 and row.last_case_at is not None
     # No previous review: only the last 24 h count.
     assert row.review_watermark is not None
     assert abs((row.review_watermark - (before - BOOTSTRAP)).total_seconds()) < 60
-    assert len(seen) == 1
+    assert len(seen) == 2
+
+
+def test_a_reviewed_deploy_rollback_pushes_again_on_the_next_one(telegram: Any) -> None:
+    from autobot.ops.incidents import review
+
+    seen = telegram(ok(), ok())
+    assert notifications.send_ops_alert("deploy_rollback", None, "🔴 Despliegue revertido")
+    assert review(alert("deploy_rollback").id, actor="ana").ok
+    # Minutes later, another rollback: a new period, pushed (not throttled).
+    assert notifications.send_ops_alert("deploy_rollback", None, "🔴 Despliegue revertido")
+    reopened = OpsAlert.objects.using("owner").get(kind="deploy_rollback", resolved_at=None)
+    assert reopened.last_delivery == "sent" and len(seen) == 2
 
 
 def test_a_reopened_event_pushes_at_most_once_an_hour(telegram: Any) -> None:
@@ -431,12 +455,19 @@ def test_a_notice_is_not_retried(telegram: Any) -> None:
     assert notifications.retry_undelivered() == 0 and not seen
 
 
-def test_a_condition_that_returns_opens_a_new_row_and_pushes(telegram: Any) -> None:
+def test_a_condition_that_returns_opens_a_new_row_pushed_at_most_hourly(telegram: Any) -> None:
     seen = telegram(ok(), ok())
     assert notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
     notifications.resolve_alert(alert(), by="auto")
     row = alert()
     assert row.resolved_at is not None and row.resolved_by == "auto"
+    # A flapping condition: back within the hour, a new row but no push.
+    assert not notifications.send_ops_alert("stuck", None, "🔴 Algo falla otra vez")
+    reopened = OpsAlert.objects.using("owner").get(kind="stuck", resolved_at__isnull=True)
+    assert reopened.last_delivery == "throttled" and len(seen) == 1
+    notifications.resolve_alert(reopened, by="auto")
+    # An hour after the last push, it is pushed again.
+    OpsAlert.objects.using("owner").update(last_sent_at=timezone.now() - timedelta(hours=2))
     assert notifications.send_ops_alert("stuck", None, "🔴 Algo falla otra vez")
     assert len(seen) == 2
     open_rows = OpsAlert.objects.using("owner").filter(kind="stuck", resolved_at__isnull=True)
@@ -504,3 +535,68 @@ def test_stale_held_notices_expire_on_link_and_are_never_sent(tenants: Any, tele
     assert (reload(fresh).status, reload(stale).status) == ("pending", "expired")
     assert not seen
     assert notifications.release_held(stale.tenant_id) == 0  # idempotent
+
+
+def test_an_undelivered_push_is_retried_when_unconfigured_but_never_once_resolved(
+    telegram: Any, settings: Any
+) -> None:
+    seen = telegram(ok())
+    settings.OPS_TELEGRAM_CHAT_ID = ""
+    assert not notifications.send_ops_alert("stuck", None, "🔴 Algo falla")
+    assert not notifications.send_ops_alert("other", None, "🔴 Otra cosa")
+    assert {a.last_delivery for a in OpsAlert.objects.using("owner").all()} == {"unconfigured"}
+    notifications.resolve_alert(alert("other"), by="auto")
+    settings.OPS_TELEGRAM_CHAT_ID = "-200"
+    OpsAlert.objects.using("owner").update(last_sent_at=timezone.now() - timedelta(hours=2))
+    assert notifications.retry_undelivered() == 1  # only the open one
+    assert alert().last_delivery == "sent" and alert("other").last_delivery == "unconfigured"
+    assert len(seen) == 1
+
+
+def test_an_event_reviewed_after_its_cases_were_counted_does_not_reopen(telegram: Any) -> None:
+    """ops_check counted the cases, a person reviewed them, then ops_check syncs: the
+    newest case is not after the watermark, so no new period opens."""
+    from autobot.ops.incidents import review
+
+    telegram(ok())
+    kind = "failed_job:ops_check"
+    last = timezone.now() - timedelta(minutes=1)
+    notifications.send_ops_alert(kind, None, "🟠 Fallos (1).", case_count=1, last_case_at=last)
+    assert review(alert(kind).id, actor="ana").ok
+    assert not notifications.send_ops_alert(
+        kind, None, "🟠 Fallos (1).", case_count=1, last_case_at=last
+    )
+    assert not OpsAlert.objects.using("owner").filter(kind=kind, resolved_at__isnull=True)
+
+
+def test_a_legacy_open_row_turned_event_gets_the_panel_watermark() -> None:
+    from autobot.ops.incidents import BOOTSTRAP
+
+    first_seen = timezone.now() - timedelta(hours=3)
+    OpsAlert.objects.create(
+        kind="notification_failed",
+        severity="warning",
+        text="🟠 old",
+        auto_resolves=True,  # from before ADR-031 made it an event
+        first_seen_at=first_seen,
+        last_delivery="sent",
+    )
+    notifications.send_ops_alert("notification_failed", None, "🟠 new", case_count=1)
+    row = alert("notification_failed")
+    assert not row.auto_resolves and row.review_watermark == first_seen - BOOTSTRAP
+
+
+def test_a_notice_records_when_it_failed_and_clears_it_once_sent(
+    tenants: Any, telegram: Any
+) -> None:
+    tenants(owner())
+    link()
+    telegram(httpx.Response(400, json={"ok": False, "description": "Bad Request"}))
+    row = notice()
+    send(row)
+    failed = reload(row)
+    assert failed.status == "failed" and failed.failed_at is not None
+    telegram(ok())
+    sent = notice(idem="second")
+    send(sent)
+    assert reload(sent).status == "sent" and reload(sent).failed_at is None

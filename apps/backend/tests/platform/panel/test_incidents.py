@@ -57,7 +57,8 @@ def test_discard_endpoint(authed_client: Any, message: OutboundMessage) -> None:
         post(authed_client, "outbound/00000000-0000-0000-0000-000000000001/discard").status_code
         == 404
     )
-    assert post(authed_client, "outbound/resend-bulk").status_code in (404, 405, 422)
+    # The retired bulk resend: no such route (not a validation error of a live one).
+    assert post(authed_client, "outbound/resend-bulk").status_code in (404, 405)
 
 
 def open_incident(kind: str, **fields: Any) -> OpsAlert:
@@ -272,14 +273,207 @@ def test_held_notices_are_cases_of_owner_unlinked(
     )
     open_incident("owner_unlinked", tenant_id=message.tenant_id, severity="notice", case_count=1)
     data = get(authed_client, "incidents").json()
-    assert "held_notices" not in data
+    # «Avisos retenidos» is no list of its own any more: only the incidents.
+    assert set(data) == {"items", "total", "by_severity"}
     (item,) = data["items"]
+    # Exactly these keys: never the notice's text (it may name a customer).
     assert item["cases"] == [
         {
             "type": "notice",
             "id": str(notice.id),
             "status": "held",
             "created_at": item["cases"][0]["created_at"],
+            "case_at": item["cases"][0]["created_at"],
         }
     ]
-    assert "x" not in [case.get("text") for case in item["cases"]]  # no notice text
+    assert item["has_cases"] and item["case_count"] == 1
+
+
+def unknown_sends(message: OutboundMessage, n: int) -> None:
+    from autobot.runtime.models import Contact
+
+    contact = Contact.objects.using("owner").get(tenant_id=message.tenant_id)
+    at = timezone.now() - timedelta(hours=1)
+    for i in range(n):
+        OutboundMessage.objects.using("owner").create(
+            tenant_id=message.tenant_id,
+            contact=contact,
+            channel="main",
+            kind="reply",
+            idem_key=f"many-{i}",
+            status="unknown",
+            unknown_at=at - timedelta(seconds=i),
+        )
+
+
+def test_the_listing_counts_live_and_the_preview_continues_by_cursor(
+    authed_client: Any, message: OutboundMessage
+) -> None:
+    OutboundMessage.objects.using("owner").filter(id=message.id).update(
+        unknown_at=timezone.now() - timedelta(minutes=30)
+    )
+    unknown_sends(message, 21)  # 22 cases with `message`
+    # ops_check's figures of its last pass are stale: the listing counts live.
+    row = open_incident(
+        "outbound_ambiguous", tenant_id=message.tenant_id, case_count=3, text="🟠 3 envíos"
+    )
+    open_incident("disk")
+    by_kind = {i["kind"]: i for i in get(authed_client, "incidents").json()["items"]}
+    item = by_kind["outbound_ambiguous"]
+    assert item["has_cases"] and item["case_count"] == 22 and item["text"] == "🟠 3 envíos"
+    assert item["can_discard_all"] and not by_kind["disk"]["can_discard_all"]
+    assert len(item["cases"]) == 20 and item["cases_next_cursor"]
+    assert not by_kind["disk"]["has_cases"] and by_kind["disk"]["cases_next_cursor"] is None
+    rest = get(authed_client, f"incidents/{row.id}/cases?cursor={item['cases_next_cursor']}").json()
+    ids = [c["id"] for c in item["cases"]] + [c["id"] for c in rest["items"]]
+    assert len(rest["items"]) == 2 and rest["next_cursor"] is None and len(set(ids)) == 22
+    assert len(get(authed_client, f"incidents/{row.id}/cases").json()["items"]) == 20
+
+
+@pytest.mark.usefixtures("clean_jobs")
+@pytest.mark.parametrize("action", ["discard", "mark-sent", "resend"])
+def test_deciding_the_last_ambiguous_send_closes_the_condition_at_once(
+    authed_client: Any, message: OutboundMessage, action: str
+) -> None:
+    row = open_incident("outbound_ambiguous", tenant_id=message.tenant_id, case_count=1)
+    data = {"confirm_duplicate_risk": True}
+    assert post(authed_client, f"outbound/{message.id}/{action}", data).status_code == 200
+    row.refresh_from_db(using="owner")
+    assert row.resolved_at is not None and row.resolved_by == "auto"
+    assert get(authed_client, "incidents").json()["total"] == 0  # «Todo en orden»
+
+
+def test_deciding_one_of_several_keeps_the_condition_open(
+    authed_client: Any, message: OutboundMessage
+) -> None:
+    unknown_sends(message, 2)
+    row = open_incident("outbound_ambiguous", tenant_id=message.tenant_id, case_count=3)
+    assert post(authed_client, f"outbound/{message.id}/discard").status_code == 200
+    row.refresh_from_db(using="owner")
+    assert row.resolved_at is None and row.case_count == 2
+
+
+def test_discard_all_discards_every_undecided_send_and_closes(
+    authed_client: Any, message: OutboundMessage
+) -> None:
+    from autobot.runtime.models import Contact
+
+    OutboundMessage.objects.using("owner").filter(id=message.id).update(
+        unknown_at=timezone.now() - timedelta(minutes=30)
+    )
+    unknown_sends(message, 2)
+    contact = Contact.objects.using("owner").get(tenant_id=message.tenant_id)
+    OutboundMessage.objects.using("owner").create(
+        tenant_id=message.tenant_id,
+        contact=contact,
+        channel="main",
+        kind="reply",
+        idem_key="recent",
+        status="unknown",
+        unknown_at=timezone.now(),  # still waiting for its status: not a case yet
+    )
+    row = open_incident("outbound_ambiguous", tenant_id=message.tenant_id, case_count=3)
+    other = open_incident("outbound_rejected:other", tenant_id=message.tenant_id)
+    assert post(authed_client, f"incidents/{other.id}/discard-all").status_code == 409
+    response = post(authed_client, f"incidents/{row.id}/discard-all")
+    assert response.status_code == 200, response.content
+    statuses = dict(OutboundMessage.objects.using("owner").values_list("idem_key", "status"))
+    assert statuses == {
+        "test:unknown": "discarded",
+        "many-0": "discarded",
+        "many-1": "discarded",
+        "recent": "unknown",
+    }
+    row.refresh_from_db(using="owner")
+    assert row.resolved_by == "auto"
+    (event,) = AuditEvent.objects.using("owner").filter(action="outbound.discard_all")
+    assert event.details == {"count": 3} and event.tenant_id == message.tenant_id
+    assert post(authed_client, f"incidents/{row.id}/discard-all").status_code == 409
+    missing = "00000000-0000-0000-0000-000000000001"
+    assert post(authed_client, f"incidents/{missing}/discard-all").status_code == 404
+
+
+@pytest.mark.usefixtures("clean_jobs")
+def test_retrying_the_last_failed_job_closes_its_event(
+    authed_client: Any, message: OutboundMessage
+) -> None:
+    job_id = queue_app().configure_task("ops_check").defer()
+    with connections["owner"].cursor() as db:
+        db.execute("UPDATE procrastinate_jobs SET status='failed' WHERE id=%s", [job_id])
+        db.execute(
+            "INSERT INTO procrastinate_events(job_id, type, at) VALUES (%s, 'failed', %s)",
+            [job_id, timezone.now() - timedelta(minutes=5)],
+        )
+    row = open_incident("failed_job:ops_check", case_count=1)
+    assert post(authed_client, f"jobs/{job_id}/retry").status_code == 200
+    row.refresh_from_db(using="owner")
+    assert row.resolved_by == "auto" and incidents_closed_how(row) == "auto"
+
+
+def incidents_closed_how(row: OpsAlert) -> str:
+    from autobot.ops.incidents import closed_how
+
+    return closed_how(row)
+
+
+def test_review_never_covers_a_case_the_panel_did_not_show(authed_client: Any) -> None:
+    now = timezone.now()
+    stored = now - timedelta(minutes=1)
+    shown = now - timedelta(minutes=10)
+    event = open_incident("deploy_rollback", last_case_at=stored)
+    body = {"last_case_at": shown.isoformat()}
+    assert post(authed_client, f"incidents/{event.id}/review", body).status_code == 200
+    event.refresh_from_db(using="owner")
+    assert event.review_watermark == shown  # min(shown, stored)
+    # Shown later than stored (never expected): the stored one bounds it.
+    second = open_incident("deploy_aborted", last_case_at=shown)
+    body = {"last_case_at": stored.isoformat()}
+    assert post(authed_client, f"incidents/{second.id}/review", body).status_code == 200
+    second.refresh_from_db(using="owner")
+    assert second.review_watermark == shown
+
+
+def test_review_watermark_edge_cases(authed_client: Any) -> None:
+    now = timezone.now()
+    previous = now - timedelta(minutes=2)
+    # Never before the previous watermark of the key.
+    event = open_incident(
+        "deploy_rollback", last_case_at=now - timedelta(hours=1), review_watermark=previous
+    )
+    assert post(authed_client, f"incidents/{event.id}/review").status_code == 200
+    event.refresh_from_db(using="owner")
+    assert event.review_watermark == previous
+    # No case time: the last time ops_check saw it.
+    seen = now - timedelta(minutes=7)
+    other = open_incident("deploy_aborted", last_case_at=None, last_seen_at=seen)
+    assert post(authed_client, f"incidents/{other.id}/review").status_code == 200
+    other.refresh_from_db(using="owner")
+    assert other.review_watermark == seen
+
+
+def test_every_count_of_open_incidents_agrees(authed_client: Any, tenants: Any) -> None:
+    """GET /incidents, the sidebar (overview), the daily report and the tenant level read
+    the same open incidents (ADR-031)."""
+    from autobot.ops import report
+    from autobot.ops.incidents import open_incidents
+    from autobot.ops.status import tenant_status
+    from autobot.panel.services.overview import build_overview
+    from autobot.tenancy.registry import get_registry
+    from tests.helpers.integration import wa_tenant
+
+    tenants(wa_tenant())
+    tenant = get_registry().by_slug["wa"]
+    now = timezone.now()
+    open_incident("outbound_rejected:outside_window", tenant_id=tenant.id, severity="warning")
+    open_incident("disk", severity="critical")
+    open_incident("billing", tenant_id=tenant.id, severity="notice")
+    open_incident("deploy_rollback", resolved_at=now, resolved_by="ana")  # reviewed
+    listed = get(authed_client, "incidents").json()
+    overview = build_overview(now)
+    status = report.platform_status(now)
+    level = tenant_status(tenant, incidents=open_incidents(using="owner")).level
+    assert listed["total"] == overview.incidents_open == len(status.incidents) == 3
+    assert overview.status.level == status.level == "critical"
+    assert level == "warning"
+    (row,) = [r for r in overview.tenant_rows if r.slug == "wa"]
+    assert row.health == "warning"

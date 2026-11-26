@@ -24,7 +24,7 @@ Meta y Telegram reintentan los webhooks si no reciben 200 a tiempo, y a veces lo
 ## Consecuencias
 
 - Todo sistema externo que escribe debe ser idempotente o consultable.
-- Hay estados `unknown` que revisar en el panel (Incidencias → Envíos sin confirmar) o con `outbound_resolve`.
+- Hay estados `unknown` que revisar en el panel (la incidencia `outbound_ambiguous` en Incidencias) o con `outbound_resolve`.
 
 ## Cuándo revisarla
 

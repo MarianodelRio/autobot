@@ -1598,6 +1598,10 @@
             "title": "Advice",
             "type": "string"
           },
+          "can_discard_all": {
+            "title": "Can Discard All",
+            "type": "boolean"
+          },
           "case_count": {
             "title": "Case Count",
             "type": "integer"
@@ -1609,6 +1613,17 @@
             "title": "Cases",
             "type": "array"
           },
+          "cases_next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cases Next Cursor"
+          },
           "delivery": {
             "title": "Delivery",
             "type": "string"
@@ -1617,6 +1632,10 @@
             "format": "date-time",
             "title": "First Seen At",
             "type": "string"
+          },
+          "has_cases": {
+            "title": "Has Cases",
+            "type": "boolean"
           },
           "id": {
             "format": "uuid",
@@ -1721,12 +1740,15 @@
           "runbook",
           "first_seen_at",
           "last_seen_at",
+          "has_cases",
           "case_count",
           "last_case_at",
           "new_since_review",
           "reviewable",
+          "can_discard_all",
           "delivery",
-          "cases"
+          "cases",
+          "cases_next_cursor"
         ],
         "title": "IncidentOut",
         "type": "object"
@@ -2139,6 +2161,11 @@
       },
       "NoticeCase": {
         "properties": {
+          "case_at": {
+            "format": "date-time",
+            "title": "Case At",
+            "type": "string"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2163,7 +2190,8 @@
         "required": [
           "id",
           "status",
-          "created_at"
+          "created_at",
+          "case_at"
         ],
         "title": "NoticeCase",
         "type": "object"
@@ -2563,6 +2591,24 @@
         "title": "RelationOut",
         "type": "object"
       },
+      "ReviewIn": {
+        "properties": {
+          "last_case_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Case At"
+          }
+        },
+        "title": "ReviewIn",
+        "type": "object"
+      },
       "RollbackIn": {
         "properties": {
           "comment": {
@@ -2719,6 +2765,11 @@
             "title": "Can Resend",
             "type": "boolean"
           },
+          "case_at": {
+            "format": "date-time",
+            "title": "Case At",
+            "type": "string"
+          },
           "channel": {
             "title": "Channel",
             "type": "string"
@@ -2815,6 +2866,7 @@
           "channel",
           "status",
           "created_at",
+          "case_at",
           "error_class",
           "error_title",
           "error_advice",
@@ -4919,6 +4971,7 @@
     },
     "/incidents/{id}/cases": {
       "get": {
+        "description": "The cases of an incident, newest first. `cursor`: the incident's\n`cases_next_cursor` (continues after its preview) or a page's `next_cursor`.",
         "operationId": "autobot_panel_routers_incidents_incident_cases",
         "parameters": [
           {
@@ -4946,7 +4999,7 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 50,
+              "default": 20,
               "maximum": 100,
               "minimum": 1,
               "title": "Limit",
@@ -4977,6 +5030,45 @@
         ]
       }
     },
+    "/incidents/{id}/discard-all": {
+      "post": {
+        "description": "«Descartar todos»: every undecided ambiguous send of an open `outbound_ambiguous`\nbecomes `discarded` (nothing is sent) and the incident closes.",
+        "operationId": "autobot_panel_routers_incidents_discard_all",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "PanelAuth": []
+          }
+        ],
+        "summary": "Discard All",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
     "/incidents/{id}/review": {
       "post": {
         "description": "«Lo he revisado»: closes an open event; a newer case reopens it.",
@@ -4993,6 +5085,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReviewIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "200": {
             "content": {

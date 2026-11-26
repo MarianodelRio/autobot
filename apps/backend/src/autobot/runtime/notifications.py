@@ -90,7 +90,8 @@ def send_notification(tenant_id: UUID, notification_id: UUID, *, attempts: int =
             return
         if timezone.now() >= row.created_at + NOTICE_TTL:
             row.status = Notification.Status.EXPIRED
-            row.save(update_fields=["status"])
+            row.failed_at = timezone.now()
+            row.save(update_fields=["status", "failed_at"])
             log.warning("notification %s expired without being sent", row.id)
             return
         owner = tenant.document.owner
@@ -108,7 +109,8 @@ def send_notification(tenant_id: UUID, notification_id: UUID, *, attempts: int =
             return
         if chat is None or bot_secrets() is None:
             row.status = Notification.Status.FAILED
-            row.save(update_fields=["status"])
+            row.failed_at = timezone.now()
+            row.save(update_fields=["status", "failed_at"])
             log.info("notification %s only logged: recipient or bot unconfigured", notification_id)
             return
     # No transaction while waiting for a slot or while Telegram answers.
@@ -122,16 +124,19 @@ def send_notification(tenant_id: UUID, notification_id: UUID, *, attempts: int =
         # Claim durably before network I/O. A crash or ambiguous result stays failed:
         # notification has no unknown state, and must never be resent blindly.
         row.status = Notification.Status.FAILED
-        row.save(update_fields=["status"])
+        row.failed_at = timezone.now()
+        row.save(update_fields=["status", "failed_at"])
     outcome = deliver(Text(row.text), str(chat), row.id)
     retry = isinstance(outcome, RetryLater)
     with tenant_tx(tenant_id):
         if isinstance(outcome, Sent):
             Notification.objects.filter(id=row.id).update(
-                status=Notification.Status.SENT, sent_at=timezone.now()
+                status=Notification.Status.SENT, sent_at=timezone.now(), failed_at=None
             )
         elif retry:
-            Notification.objects.filter(id=row.id).update(status=Notification.Status.PENDING)
+            Notification.objects.filter(id=row.id).update(
+                status=Notification.Status.PENDING, failed_at=None
+            )
     if isinstance(outcome, RetryLater):
         wait_s = outcome.after_s if outcome.after_s is not None else backoff_s(attempts)
         remaining = (row.created_at + NOTICE_TTL - timezone.now()).total_seconds()
@@ -155,7 +160,8 @@ def release_held(tenant_id: UUID) -> int:
         for row in rows:
             if now >= row.created_at + NOTICE_TTL:
                 row.status = Notification.Status.EXPIRED
-                row.save(update_fields=["status"])
+                row.failed_at = now
+                row.save(update_fields=["status", "failed_at"])
                 continue
             row.status = Notification.Status.PENDING
             row.save(update_fields=["status"])
@@ -182,12 +188,21 @@ def _alert_digest(kind: str, tenant_id: UUID | None) -> bytes:
 
 # `OpsAlert.last_delivery`: `sent`; `failed` and `unconfigured` never reached the
 # operator (ops_check retries them hourly and withholds its heartbeat on a critical one);
-# `panel` is a 🟡 one, never pushed; `throttled`, a reopened event already pushed within
-# the hour; `cooldown` only in rows from before ADR-031.
+# `panel` is a 🟡 one, never pushed; `throttled`, an opening or escalation of a key
+# already pushed within the hour; `cooldown` only in rows from before ADR-031.
 UNDELIVERED = ("failed", "unconfigured")
-# A reopened event is pushed at most once per hour per (kind, tenant), and an undelivered
-# push is retried at most once per hour (ADR-031).
+# An incident (condition or event) that opens again, or escalates, is pushed at most once
+# per hour per (kind, tenant); an undelivered push is retried at most once per hour
+# (ADR-031). The kinds of `PUSH_EVERY_CASE` (each failed deploy) are pushed every time.
 REPUSH_EVERY = timedelta(hours=1)
+
+
+def _pushed_recently(kind: str, tenant_id: UUID | None, now: datetime) -> bool:
+    """Any period of (kind, tenant) pushed (or tried) within REPUSH_EVERY."""
+    last_push = OpsAlert.objects.filter(kind=kind, tenant_id=tenant_id).aggregate(
+        at=Max("last_sent_at")
+    )["at"]
+    return last_push is not None and now - last_push < REPUSH_EVERY
 
 
 def send_ops_alert(
@@ -203,15 +218,22 @@ def send_ops_alert(
     """Open or update the incident of (kind, tenant) and, when it deserves it, push it to
     the ops chat outside the transaction. True when a push went out.
 
-    Pushed (ADR-031): a 🔴 or 🟠 incident when it opens, an escalation of an open one to
-    🔴/🟠, and a reopened event (a new period after a review) at most once per hour. A 🟡
+    Pushed (ADR-031): a 🔴 or 🟠 incident when it opens and an escalation of an open one
+    to 🔴/🟠, each at most once per hour per (kind, tenant) (`throttled` otherwise). A 🟡
     one is never pushed (`panel`): it is in the panel and the daily summary. An incident
-    that stays open is not pushed again. `informational` (e.g. "deployed fine") is saved
-    already resolved and always pushed.
+    that stays open is not pushed again, except the kinds of `PUSH_EVERY_CASE` (a failed
+    deploy), pushed on every call. `informational` (e.g. "deployed fine") is saved already
+    resolved and always pushed.
 
     `case_count`/`last_case_at`/`details`: as ops_check computed them; an event that
     carries no count (a deploy one) counts each call as one more case."""
-    from autobot.ops.incidents import PUSHED, SEVERITY_RANK, kind_info
+    from autobot.ops.incidents import (
+        BOOTSTRAP,
+        PUSH_EVERY_CASE,
+        PUSHED,
+        SEVERITY_RANK,
+        kind_info,
+    )
 
     digest = _alert_digest(kind, tenant_id)
     now = timezone.now()
@@ -244,7 +266,7 @@ def send_ops_alert(
                 .first()
             )
             if existing is None:
-                alert, push = _open(
+                opened = _open(
                     kind,
                     tenant_id,
                     text,
@@ -255,6 +277,9 @@ def send_ops_alert(
                     last_case_at=last_case_at,
                     details=details,
                 )
+                if opened is None:
+                    return False
+                alert, push = opened
             else:
                 alert = existing
                 changes: dict[str, Any] = {
@@ -272,12 +297,28 @@ def send_ops_alert(
                 if last_case_at is not None or (event and case_count is None):
                     changes["last_case_at"] = last_case_at or now
                 if details is not None:
-                    changes["details"] = details
-                OpsAlert.objects.filter(id=existing.id).update(**changes)
-                # Severity goes both ways; only an escalation to 🔴/🟠 is pushed.
-                push = severity in PUSHED and SEVERITY_RANK[severity] > SEVERITY_RANK.get(
+                    # Merged, not replaced: keys ops_check does not write survive (e.g.
+                    # the `seed_dev_activity` mark that `--reset` deletes by).
+                    changes["details"] = {**existing.details, **details}
+                if event and existing.review_watermark is None:
+                    # Converted from a condition: the bound the panel already used for it.
+                    changes["review_watermark"] = existing.first_seen_at - BOOTSTRAP
+                # Severity goes both ways; only an escalation to 🔴/🟠 is pushed: to 🔴
+                # always (a critical one must never wait), to 🟠 at most once per hour.
+                # A failed deploy is pushed on every new case.
+                escalated = severity in PUSHED and SEVERITY_RANK[severity] > SEVERITY_RANK.get(
                     existing.severity, 0
                 )
+                if (kind in PUSH_EVERY_CASE and severity in PUSHED) or (
+                    escalated and severity == "critical"
+                ):
+                    push = True
+                elif escalated and _pushed_recently(kind, tenant_id, now):
+                    push = False
+                    changes["last_delivery"] = "throttled"
+                else:
+                    push = escalated
+                OpsAlert.objects.filter(id=existing.id).update(**changes)
         if not push:
             return False
     return _push(alert.id, text, now)
@@ -294,26 +335,20 @@ def _open(
     case_count: int | None,
     last_case_at: datetime | None,
     details: dict[str, Any] | None,
-) -> tuple[OpsAlert, bool]:
+) -> tuple[OpsAlert, bool] | None:
     """A new open period of (kind, tenant): an event inherits the latest watermark. True
-    when it must be pushed."""
-    from autobot.ops.incidents import PLATFORM_CLOSINGS, PUSHED, inherited_watermark
+    when it must be pushed. None (nothing opened) for an event whose newest case is not
+    after that watermark: a review that landed after ops_check counted the cases."""
+    from autobot.ops.incidents import PUSH_EVERY_CASE, PUSHED, inherited_watermark
 
-    previous = OpsAlert.objects.filter(kind=kind, tenant_id=tenant_id)
-    reopened = (
-        event
-        and previous.filter(resolved_at__isnull=False)
-        .exclude(resolved_by__in=PLATFORM_CLOSINGS)
-        .exclude(resolved_by="")
-        .exists()
-    )
+    watermark = inherited_watermark(kind, tenant_id, now) if event else None
+    if watermark is not None and last_case_at is not None and last_case_at <= watermark:
+        return None
     delivery = ""
     if severity not in PUSHED:
         delivery = "panel"
-    elif reopened:
-        last_push = previous.aggregate(at=Max("last_sent_at"))["at"]
-        if last_push is not None and now - last_push < REPUSH_EVERY:
-            delivery = "throttled"
+    elif kind not in PUSH_EVERY_CASE and _pushed_recently(kind, tenant_id, now):
+        delivery = "throttled"
     alert = OpsAlert.objects.create(
         kind=kind,
         tenant_id=tenant_id,
@@ -322,7 +357,7 @@ def _open(
         first_seen_at=now,
         last_seen_at=now,
         auto_resolves=not event,
-        review_watermark=inherited_watermark(kind, tenant_id, now) if event else None,
+        review_watermark=watermark,
         case_count=case_count if case_count is not None else (1 if event else 0),
         last_case_at=last_case_at or (now if event else None),
         details=details or {},

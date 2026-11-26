@@ -37,7 +37,7 @@ Además, tras una incidencia no hay recuperación en bloque (los `failed`, `unkn
 ## Consecuencias
 
 - Como mucho **un duplicado por mensaje** (acotado y medido por `ambiguous_resends`), a cambio de no perder en silencio respuestas ni recordatorios. Se acepta de forma explícita; es un cambio de la regla de `CLAUDE.md`.
-- Los `unknown` que quedan tras la conciliación son los que de verdad requieren a una persona; la alerta `outbound_failed` espera ahora 20 minutos (plazo más una vuelta de la tarea) en lugar de 10.
+- Los `unknown` que quedan tras la conciliación son los que de verdad requieren a una persona; la alerta `outbound_failed` espera ahora 20 minutos (plazo más una vuelta de la tarea) en lugar de 10. *Nota (ADR-031):* hoy es la incidencia `outbound_ambiguous`, con la misma espera.
 - Una migración (0031) sin cambios de RLS ni de roles: columna `ambiguous_resends` y la opción `held` de `Notification.status`.
 - La vía manual (marcar enviado, reenviar) sigue disponible y tiene prioridad sobre la automática.
 

@@ -11,7 +11,7 @@ from procrastinate import App
 from procrastinate.contrib.django.models import ProcrastinateJob
 
 from autobot.channels.demo.doors import door
-from autobot.ops import audit
+from autobot.ops import audit, cases, incidents
 from autobot.runtime.jobs import OUTBOUND, SEND_MESSAGE, app
 from autobot.runtime.models import DEMO_CHANNELS, Channel, OutboundMessage
 from autobot.runtime.outbound import (
@@ -136,6 +136,7 @@ def mark_sent(outbound_id: UUID, *, actor: str) -> Result:
             target_type="outbound_message",
             target_id=str(message.pk),
         )
+    incidents.settle_ambiguous(message.tenant_id, using=OWNER)
     return Result(True, "Marcado como enviado.")
 
 
@@ -158,7 +159,39 @@ def discard(outbound_id: UUID, *, actor: str) -> Result:
             target_type="outbound_message",
             target_id=str(message.pk),
         )
+    incidents.settle_ambiguous(message.tenant_id, using=OWNER)
     return Result(True, "Envío descartado.")
+
+
+def discard_all(tenant_id: UUID, *, actor: str) -> Result:
+    """«Descartar todos» (ADR-031): every undecided ambiguous send of a tenant (the cases
+    of its `outbound_ambiguous`) becomes `discarded`. Sends nothing, unlike the retired
+    bulk resend. One audit record with the count; the incident closes."""
+    now = timezone.now()
+    with transaction.atomic(using=OWNER):
+        undecided = cases.ambiguous(
+            OutboundMessage.objects.using(OWNER).filter(tenant_id=tenant_id), now
+        )
+        ids = list(undecided.select_for_update().values_list("id", flat=True))
+        count = (
+            OutboundMessage.objects.using(OWNER)
+            .filter(id__in=ids, status="unknown")
+            .update(status="discarded", unknown_at=None)
+        )
+        if count:
+            audit.record(
+                actor=actor,
+                action="outbound.discard_all",
+                summary="Operador descarta todos los envíos ambiguos de un negocio.",
+                tenant_id=tenant_id,
+                target_type="tenant",
+                target_id=str(tenant_id),
+                details={"count": count},
+            )
+    incidents.settle_ambiguous(tenant_id, using=OWNER)
+    if not count:
+        return Result(True, "No quedaba ningún envío sin confirmar.")
+    return Result(True, f"{count} envíos descartados.")
 
 
 def _requeue(message: OutboundMessage) -> None:
@@ -206,6 +239,7 @@ def resend(outbound_id: UUID, *, actor: str) -> Result:
             target_type="outbound_message",
             target_id=str(message.pk),
         )
+    incidents.settle_ambiguous(message.tenant_id, using=OWNER)
     return Result(True, "Reenvío autorizado.")
 
 
@@ -226,4 +260,5 @@ def retry_job(job_id: int, *, actor: str) -> Result:
             target_type="job",
             target_id=str(job.pk),
         )
+    incidents.settle_failed_job(job.task_name, using=OWNER)
     return Result(True, "Trabajo reencolado.")

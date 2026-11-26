@@ -2,14 +2,20 @@
 count them in ops_check (inside a tenant's `tenant_tx`, as fp_app) and list them in the
 panel (`.using("owner")`, filtered by the incident's tenant).
 
-No case is ever copied into `ops_alert`: only how many there are and the newest time."""
+No case is ever copied into `ops_alert`: only how many there are and the newest time.
+
+A case's time is when it became a failure (`failed_at`; `unknown_at` for an ambiguous
+send), never when its row was created: a resend of an old ambiguous send that then fails
+is a new case after the watermark. Rows from before `failed_at` existed fall back to
+`created_at`. Every queryset here is annotated with that time as `case_at`."""
 
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from django.db.models import Count, Max, Q, QuerySet
+from django.db.models import Count, F, Max, Q, QuerySet
+from django.db.models.functions import Coalesce
 
 from autobot.channels.adapters import channel_type
 from autobot.channels.base import ChannelType
@@ -35,15 +41,21 @@ class Tally:
     last: datetime | None
 
 
+def _failed_at() -> Coalesce:
+    return Coalesce(F("failed_at"), F("created_at"))
+
+
 def ambiguous(qs: QuerySet[OutboundMessage], now: datetime) -> QuerySet[OutboundMessage]:
-    return qs.filter(status=OutboundMessage.Status.UNKNOWN, unknown_at__lt=now - AMBIGUOUS_AFTER)
+    return qs.filter(
+        status=OutboundMessage.Status.UNKNOWN, unknown_at__lt=now - AMBIGUOUS_AFTER
+    ).annotate(case_at=Coalesce(F("unknown_at"), F("created_at")))
 
 
 def lost_notices(qs: QuerySet[Notification], after: datetime) -> QuerySet[Notification]:
     """`notification_failed`: a notice claimed `failed` (rejected or ambiguous, never
     resent blindly) or `expired` (undelivered after NOTICE_TTL) after the watermark."""
-    return qs.filter(
-        status__in=(Notification.Status.FAILED, Notification.Status.EXPIRED), created_at__gt=after
+    return qs.annotate(case_at=_failed_at()).filter(
+        status__in=(Notification.Status.FAILED, Notification.Status.EXPIRED), case_at__gt=after
     )
 
 
@@ -51,11 +63,12 @@ def held_notices(qs: QuerySet[Notification], now: datetime) -> QuerySet[Notifica
     return qs.filter(
         status__in=(Notification.Status.HELD, Notification.Status.EXPIRED),
         created_at__gte=now - HELD_WINDOW,
-    )
+    ).annotate(case_at=F("created_at"))
 
 
-def tally(qs: QuerySet[Any], field: str = "created_at") -> Tally:
-    row = qs.aggregate(n=Count("id"), last=Max(field))
+def tally(qs: QuerySet[Any]) -> Tally:
+    """How many cases and the newest case time (`case_at`)."""
+    row = qs.aggregate(n=Count("id"), last=Max("case_at"))
     return Tally(row["n"], row["last"])
 
 
@@ -80,11 +93,13 @@ type Pair = tuple[str, str]  # (channel, last_error)
 def rejected_pairs(
     qs: QuerySet[OutboundMessage], tenant: LoadedTenant | None, after: datetime
 ) -> dict[str, list[Pair]]:
-    """Error class -> the (channel, last_error) pairs of the `failed` sends created after
-    `after`. Grouped in SQL: a tenant has few distinct error texts, however many sends."""
+    """Error class -> the (channel, last_error) pairs of the sends that became `failed`
+    after `after`. Grouped in SQL: a tenant has few distinct error texts, however many
+    sends."""
     out: dict[str, list[Pair]] = defaultdict(list)
     rows = (
-        qs.filter(status=OutboundMessage.Status.FAILED, created_at__gt=after)
+        qs.annotate(case_at=_failed_at())
+        .filter(status=OutboundMessage.Status.FAILED, case_at__gt=after)
         .values_list("channel", "last_error")
         .distinct()
         .order_by()
@@ -99,13 +114,14 @@ def rejected_pairs(
 def rejected(
     qs: QuerySet[OutboundMessage], pairs: list[Pair], after: datetime
 ) -> QuerySet[OutboundMessage]:
-    """The `failed` sends after `after` with one of `pairs` (one error class)."""
+    """The sends that became `failed` after `after` with one of `pairs` (one error class)."""
     match = Q()
     for channel, last_error in pairs:
         match |= Q(channel=channel, last_error=last_error)
+    qs = qs.annotate(case_at=_failed_at())
     if not pairs:
         return qs.none()
-    return qs.filter(match, status=OutboundMessage.Status.FAILED, created_at__gt=after)
+    return qs.filter(match, status=OutboundMessage.Status.FAILED, case_at__gt=after)
 
 
 # ── Failed jobs ─────────────────────────────────────────────────────────────

@@ -251,7 +251,7 @@ def _check_tenant(
         messages.filter(status="unknown", unknown_at__isnull=True).update(unknown_at=now)
         day_ago = now - timedelta(hours=24)
         slug = tenant.slug
-        ambiguous = cases.tally(cases.ambiguous(messages, now), "unknown_at")
+        ambiguous = cases.tally(cases.ambiguous(messages, now))
         if ambiguous.count:
             out.append(
                 Finding(
@@ -266,7 +266,11 @@ def _check_tenant(
         # Rejected sends, one event per error class, counted after its watermark.
         floor = min(
             [now - incidents.BOOTSTRAP]
-            + [at for (kind, tid), at in marks.items() if tid == tenant.id]
+            + [
+                at
+                for (kind, tid), at in marks.items()
+                if tid == tenant.id and kind.startswith("outbound_rejected:")
+            ]
         )
         for cls, pairs in cases.rejected_pairs(messages, tenant, floor).items():
             after = incidents.bound(marks, f"outbound_rejected:{cls}", tenant.id, now)
@@ -674,7 +678,10 @@ def _failed_job_findings(
     cursor: Any, marks: dict[incidents.Key, datetime], now: datetime
 ) -> list[Finding]:
     """One `failed_job:<task>` event per task with jobs failed after its watermark."""
-    floor = min([now - incidents.BOOTSTRAP, *marks.values()])
+    floor = min(
+        [now - incidents.BOOTSTRAP]
+        + [at for (kind, _), at in marks.items() if kind.startswith("failed_job:")]
+    )
     out = []
     for task, found in cases.failed_jobs(cursor, floor).items():
         after = incidents.bound(marks, f"failed_job:{task}", None, now)
@@ -698,7 +705,8 @@ def _restart_findings(services: list[containers.ServiceState], now: datetime) ->
     """`container_restarted:<service>` is an event each time its restart count grows past
     the one stored in the latest incident of that service (`details.restart_count`). With
     no incident yet, a restart within RESTART_WINDOW counts. A recreated container (its
-    count back to 0) only lowers the stored count."""
+    count back to 0) only lowers the stored count; while its incident is open, `since` is
+    rebased too, so the cases already counted stay and the count never goes negative."""
     out = []
     for row in services:
         kind = f"container_restarted:{row.service}"
@@ -706,7 +714,10 @@ def _restart_findings(services: list[containers.ServiceState], now: datetime) ->
         seen = latest.details.get("restart_count") if latest is not None else None
         count = row.restart_count
         if latest is not None and isinstance(seen, int) and count < seen:
-            latest.details = {**latest.details, "restart_count": count}
+            details = {**latest.details, "restart_count": count}
+            if latest.resolved_at is None:
+                details["since"] = count - latest.case_count
+            latest.details = details
             latest.save(update_fields=["details"])
             continue
         if isinstance(seen, int):
@@ -731,7 +742,7 @@ def _restart_findings(services: list[containers.ServiceState], now: datetime) ->
                 None,
                 f"🟠 Contenedor {row.service}: se ha reiniciado"
                 f" ({count} reinicios desde su creación{oom}).",
-                case_count=count - since,
+                case_count=max(0, count - since),
                 last_case_at=now,
                 details={"restart_count": count, "since": since},
             )
@@ -739,9 +750,10 @@ def _restart_findings(services: list[containers.ServiceState], now: datetime) ->
     return out
 
 
-def collect() -> list[Finding]:
+def collect(now: datetime | None = None) -> list[Finding]:
+    """`now`: when this pass started (`sync_alerts` ignores the events reviewed since)."""
     findings: list[Finding] = []
-    now = timezone.now()
+    now = now or timezone.now()
     # Query the platform tables as fp_app: no customer data and no owner bypass.
     lags: list[queues.QueueLag] = []
     with connection.cursor() as cursor:
@@ -932,17 +944,38 @@ def collect() -> list[Finding]:
     return _suppress_outages(findings, registry.tenants, now)
 
 
-def sync_alerts(findings: list[Finding]) -> None:
+def _reviewed_since(at: datetime) -> set[incidents.Key]:
+    """The keys a person reviewed at or after `at`."""
+    return set(
+        OpsAlert.objects.filter(resolved_at__gte=at, auto_resolves=False)
+        .exclude(resolved_by__in=incidents.PLATFORM_CLOSINGS)
+        .exclude(resolved_by="")
+        .values_list("kind", "tenant_id")
+    )
+
+
+def sync_alerts(findings: list[Finding], collected_at: datetime | None = None) -> None:
     """Open or update the incident of each finding; close the conditions no longer found.
-    An event is never closed here (a person reviews it): when its table cases are gone
-    (e.g. its failed jobs were retried), only its count drops to 0."""
+
+    An event is closed by a person («Lo he revisado»), with one exception: an event whose
+    cases come from a table and has none left (its failed jobs were retried, its rejected
+    send turned out sent) closes as a platform closing (`auto`, no message, watermark
+    unchanged, not a review); a later case opens a new period.
+
+    `collected_at`: when `collect` started. An event reviewed since then is not opened
+    again from these findings (counted before the review, they would be a spurious
+    reopening)."""
     now = timezone.now()
     scope = outage_scope(findings, get_registry().tenants, now)
     seen: set[tuple[str, UUID | None]] = set()
     quiet: set[tuple[str, UUID | None]] = set()
+    reviewed = _reviewed_since(collected_at) if collected_at is not None else set()
     for finding in findings:
         if finding.suppressed:
             quiet.add((finding.kind, finding.tenant_id))
+            continue
+        if (finding.kind, finding.tenant_id) in reviewed and incidents.is_event(finding.kind):
+            seen.add((finding.kind, finding.tenant_id))
             continue
         extras: dict[str, Any] = {}
         if finding.case_count is not None:
@@ -962,8 +995,12 @@ def sync_alerts(findings: list[Finding]) -> None:
             continue
         key = (alert.kind, alert.tenant_id)
         if not alert.auto_resolves:
-            if key not in seen and alert.case_count and _table_event(alert.kind):
-                OpsAlert.objects.filter(id=alert.id).update(case_count=0)
+            if key not in seen and _table_event(alert.kind):
+                # No live case left: closed by the platform. Only an open row: one a
+                # person has just reviewed keeps its count and its review.
+                OpsAlert.objects.filter(id=alert.id, resolved_at__isnull=True).update(
+                    case_count=0, resolved_at=now, resolved_by="auto"
+                )
             continue
         # Explained by an outage with its own alert, even if its finding has just gone
         # (the tenants recover together): resolved without a message of its own.
@@ -974,7 +1011,14 @@ def sync_alerts(findings: list[Finding]) -> None:
         ):
             resolve_alert(alert, by="outage", notify=False)
         elif key not in seen:
-            resolve_alert(alert, by="auto", notify=alert.severity == "critical")
+            # «✅ Resuelta» only closes a loop the operator saw open: not for an opening
+            # that was throttled or never pushed.
+            resolve_alert(
+                alert,
+                by="auto",
+                notify=alert.severity == "critical"
+                and alert.last_delivery not in ("throttled", "panel"),
+            )
     retry_undelivered(now)
 
 
@@ -999,7 +1043,8 @@ def take_sample() -> None:
 
 
 def run() -> None:
-    sync_alerts(collect())
+    started = timezone.now()
+    sync_alerts(collect(started), collected_at=started)
     take_sample()
     # No finally: a failed DB/global check must prevent a success heartbeat.
     if settings.HEALTHCHECKS_PING_URL:

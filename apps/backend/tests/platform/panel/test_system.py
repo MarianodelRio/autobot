@@ -296,6 +296,16 @@ def test_flow_ok_idle_and_critical(monkeypatch: pytest.MonkeyPatch) -> None:
         payload={},
         status="failed",
     )
+    # A discarded send is a person's decision (ADR-031), not a failure.
+    OutboundMessage.objects.using("owner").create(
+        tenant=a,
+        contact=contact,
+        channel="main",
+        kind="reply",
+        idem_key="discarded",
+        payload={},
+        status="discarded",
+    )
     failed = system.flow(NOW, queues=[])
     assert failed.state == "critical"
     assert failed.failed_1h == 1

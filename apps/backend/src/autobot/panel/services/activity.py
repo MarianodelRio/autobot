@@ -13,9 +13,12 @@ from django.utils.dateparse import parse_datetime
 from ninja import Schema
 
 from autobot.ops.audit import record
+from autobot.ops.cases import message_class
+from autobot.ops.send_errors import describe
 from autobot.panel.errors import ApiError
 from autobot.runtime.models import InboundEvent, Notification, OutboundMessage
 from autobot.tenancy.models import Tenant
+from autobot.tenancy.registry import tenant_by_id
 
 UNAVAILABLE = "(contenido no disponible)"
 
@@ -225,6 +228,14 @@ def activity_detail(kind: str, id: str, actor: str) -> ActivityDetail:
         text = describe_outbound(obj.payload)
         if obj.last_error:
             facts.append(f"Error: {obj.last_error}")
+        if obj.status == OutboundMessage.Status.FAILED and obj.last_error:
+            # What the error means and what to do, as in Incidencias (ADR-031).
+            error = describe(
+                message_class(tenant_by_id(obj.tenant_id), obj.channel, obj.last_error),
+                obj.last_error,
+            )
+            facts.append(f"Motivo: {error.title}")
+            facts.append(f"Qué hacer: {error.advice}")
         if obj.pricing_category:
             facts.append(f"Categoría: {obj.pricing_category}")
         if obj.billable is not None:
