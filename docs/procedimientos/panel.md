@@ -38,11 +38,13 @@ tiene cinco pestañas: Resumen, Configuración, Actividad, Contactos y Avisos (v
 cabecera de la ficha; el panel pide confirmación.
 
 Resumen muestra los indicadores del mes, la salud del canal con «Comprobar
-ahora» y las alertas abiertas; el resumen del dueño se carga a petición, pues
+ahora» y sus incidencias abiertas (título y gravedad, con un enlace a Incidencias); el resumen del dueño se carga a petición, pues
 puede consultar Calendar.
 
 Actividad usa la misma lista que Logs → Conversaciones, limitada a
-este cliente. Cada consulta de una conversación desde Contactos queda auditada, y
+este cliente. El botón «Envíos con error» la reduce a las respuestas rechazadas, sin
+confirmar o descartadas (cada fila dice «Rechazado», «Sin confirmar» o «Descartado»): ahí
+se ven los envíos que ya se revisaron en Incidencias. Cada consulta de una conversación desde Contactos queda auditada, y
 desde ahí también se puede «Exportar datos» (descarga un JSON) u «Olvidar contacto»
 (borrado irreversible, con confirmación) de ese contacto; «Exportar datos del
 negocio» (`POST`, pues audita), en el menú «⋯» de la ficha, hace lo mismo a nivel de
@@ -71,7 +73,7 @@ errores» (el último guardado falló en algún campo suyo). Abierta: una explic
 con «Más información» (abre en otra pestaña la página de esta documentación que lo
 explica a fondo), sus campos (cada parámetro con una línea de ayuda debajo), «Comprobaciones del alta» (sus pasos, cada uno con su estado, por qué importa,
 qué hacer y valores con copiar) y sus extras. Al cargar se abren solas las secciones con un
-paso bloqueante pendiente (en `onboarding`) y la de `?section=` (p. ej. `?section=canal`).
+paso bloqueante pendiente (en `onboarding`) y la de `?section=` (`?section=canal` o `?section=personas`, la del dueño).
 
 Los pasos marcados «Comprobar» y las acciones hacen una llamada real al proveedor (nunca
 al cargar la pestaña, ni al volver a ella: leer solo consulta la caché de salud, y una
@@ -165,17 +167,45 @@ configurada. Detalle y límites en [demo.md](demo.md).
 
 ## Incidencias
 
-Una bandeja de **incidencias abiertas** ([ADR-031](../arquitectura/adr/ADR-031-incidencias-como-bandeja.md)),
-de la más grave y reciente a la menos. Cada una tiene su título y consejo en español, su
-runbook y sus **casos** (envíos, trabajos o avisos afectados), con las acciones de cada uno:
-«Marcar enviado», «Reenviar» (con confirmación del riesgo de duplicado) y «Descartar» en un
-envío sin confirmar ([envíos sin confirmar](../incidencias/envios-unknown.md)), y
-«Reintentar» en un trabajo fallido idempotente. Una **condición** se cierra sola al
-corregirse la causa; un **evento** se cierra con «Lo he revisado», y un caso posterior lo
-reabre con «N nuevos desde tu revisión». Debajo, el historial de las cerradas y cómo se
-cerró cada una (sola, por una caída, revisada, informativa). Si no hay nada abierto,
-«Todo en orden». El contador de la barra lateral y el nivel del Resumen cuentan las mismas
-incidencias abiertas. Claves y cierres: [alertas](../referencia/alertas.md).
+Es una **bandeja** ([ADR-031](../arquitectura/adr/ADR-031-incidencias-como-bandeja.md)) pensada
+para llegar a cero: arriba, el número de incidencias abiertas por gravedad (crítica, alerta,
+aviso), y debajo una tarjeta por incidencia, de la más grave y reciente a la menos. Se
+refresca sola cada 30 s. Si no hay nada abierto, la tarjeta «Todo en orden». El contador de
+la barra lateral, el nivel del Resumen y la lista «Últimas incidencias» salen de las mismas
+incidencias abiertas.
+
+**Qué muestra una tarjeta:** la gravedad, el ámbito (el cliente, que enlaza a su ficha, o
+«Plataforma»), el título y el consejo en español, desde cuándo y la última vez, cuántos casos
+tiene y si el aviso a Telegram salió («Aviso enviado», «Solo en el panel», «Aviso pendiente de
+reintento»). Los botones «Ver logs» (ese cliente, un margen de tiempo alrededor de la última vez)
+y «Ver runbook» (la página de [incidencias](../incidencias/envios-unknown.md) que explica qué hacer).
+
+**Condición o evento.** Una **condición** («está mal ahora»: un contenedor caído, el disco, una cola
+atrasada, envíos sin decidir) dice «Se cierra sola cuando se arregle» y no tiene botón. Un
+**evento** («pasó algo»: un envío rechazado, un trabajo fallido, un aviso al dueño perdido) se
+cierra con **«Lo he revisado»** (pide una confirmación breve y la tarjeta desaparece). Si después
+ocurre otro caso, la incidencia vuelve a abrirse con «N nuevos desde tu revisión» y solo cuenta
+lo posterior. Claves y cierres: [alertas](../referencia/alertas.md).
+
+**Casos.** Cada tarjeta los trae plegados: «Ver N casos» los despliega y «Ver más» pide los
+siguientes (paginados). Según su tipo:
+
+- **Envío** (canal, fecha, estado en español —«Rechazado», «Sin confirmar»— y el error con su
+  consejo): «Marcar enviado», «Reenviar» (confirma el riesgo de duplicado) y **«Descartar»**
+  (confirma; el envío no se reenvía ni vuelve a salir). Un botón desactivado explica el motivo al
+  pasar el ratón. Detalle en [envíos sin confirmar](../incidencias/envios-unknown.md).
+- **Trabajo** (tarea en español y cuándo falló): «Reintentar» si es seguro repetirlo
+  ([cola y latido](../incidencias/cola-y-latido.md)).
+- **Aviso al dueño** (retenido o caducado): «Invitar al dueño» abre la sección del dueño en la
+  Configuración del cliente.
+
+La mayoría de las veces basta con mirar y pulsar «Lo he revisado» o «Descartar». Todas estas
+acciones quedan auditadas y refrescan la bandeja, la barra lateral y el cliente. Los envíos ya
+revisados se siguen viendo en Actividad del cliente con «Envíos con error».
+
+**Historial** (plegado): las incidencias cerradas, con su gravedad (también «Info»), cuántos casos
+tuvo y cómo se cerró: «Se cerró sola», «Se cerró por una caída», «Revisada por <usuario>» o
+«Informativa». Se pagina con «Cargar más».
 
 ## Logs
 

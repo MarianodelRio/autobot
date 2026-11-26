@@ -31,13 +31,7 @@ const tenantKeys = (slug: string) => [
   qk.activity(slug, "", ""),
   qk.audit(slug, ""),
 ];
-const views = [
-  qk.tenants(),
-  qk.overview(),
-  qk.incidents(),
-  qk.alerts(),
-  qk.system(),
-];
+const views = [qk.tenants(), qk.overview(), qk.incidents(), qk.system()];
 
 test("isTenantKey matches every tenant-scoped key of the slug only", () => {
   for (const key of tenantKeys("a")) {

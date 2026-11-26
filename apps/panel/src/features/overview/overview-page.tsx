@@ -292,19 +292,21 @@ export function OverviewContent({ data }: { data: Overview }) {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Últimas alertas</CardTitle>
+            <CardTitle>Últimas incidencias</CardTitle>
           </CardHeader>
           <CardContent>
             {data.recent_alerts.length === 0 ? (
-              <EmptyState message="No hay alertas." />
+              <EmptyState message="No hay incidencias." />
             ) : (
               <ul className="space-y-3">
                 {data.recent_alerts.map((alert) => (
                   <li key={alert.id}>
-                    <p>{alert.text}</p>
+                    <p className="flex flex-wrap items-center gap-2">
+                      <StatusBadge status={alert.severity} />
+                      {alert.title}
+                    </p>
                     <p className="text-sm text-muted-foreground">
-                      {alert.severity} ·{" "}
-                      {alert.resolved ? "Resuelta" : "Abierta"}
+                      {alert.resolved ? "Cerrada" : "Abierta"}
                       {alert.tenant && ` · ${alert.tenant}`} ·{" "}
                       <TimeAgo date={alert.occurred_at} />
                     </p>

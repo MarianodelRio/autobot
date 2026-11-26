@@ -69,7 +69,32 @@ function setup(status = "active", initialTab?: string) {
         cost_eur: "1.20",
       };
     else if (url.pathname.endsWith("/activity"))
-      value = { items: [], next_cursor: null };
+      value =
+        url.searchParams.get("status") === "errors"
+          ? {
+              items: [
+                {
+                  id: "o9",
+                  at: "2026-11-04T10:00:00Z",
+                  kind: "outbound",
+                  tenant: "demo",
+                  channel: "telegram",
+                  label: "Respuesta",
+                  status: "failed",
+                },
+                {
+                  id: "o8",
+                  at: "2026-11-04T09:00:00Z",
+                  kind: "outbound",
+                  tenant: "demo",
+                  channel: "telegram",
+                  label: "Respuesta",
+                  status: "discarded",
+                },
+              ],
+              next_cursor: null,
+            }
+          : { items: [], next_cursor: null };
     else if (url.pathname.endsWith("/contacts/id1"))
       value = {
         contact: { display_name: "Ana", external_id: "123" },
@@ -251,4 +276,22 @@ test("a failed background refresh keeps the editor and its unsaved input", async
     expect(screen.queryByText(/No se pudo actualizar/)).toBeNull(),
   );
   expect(screen.getByLabelText("Nombre")).toHaveValue(" nuevo");
+});
+
+test("the Actividad tab filters the sends with an error and names their status", async () => {
+  const user = userEvent.setup();
+  const fetcher = setup("active", "actividad");
+  const toggle = await screen.findByRole("button", {
+    name: "Envíos con error",
+  });
+  expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await user.click(toggle);
+
+  expect(await screen.findByText("Rechazado")).toBeInTheDocument();
+  expect(screen.getByText("Descartado")).toBeInTheDocument();
+  expect(toggle).toHaveAttribute("aria-pressed", "true");
+  const asked = fetcher.mock.calls.some((call) =>
+    String((call[0] as Request).url).includes("status=errors"),
+  );
+  expect(asked).toBe(true);
 });

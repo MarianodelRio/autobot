@@ -39,6 +39,12 @@ export const STATUS_LABEL: Record<string, string> = {
   discarded: "Descartado",
 };
 
+/** The status of a send as the operator reads it: a rejected send is «Rechazado». */
+export const SEND_STATUS_LABEL: Record<string, string> = {
+  ...STATUS_LABEL,
+  failed: "Rechazado",
+};
+
 function ActivityDetailBody({ kind, id }: { kind: string; id: string }) {
   const query = useQuery({
     queryKey: qk.activityDetail(kind, id),
@@ -160,7 +166,9 @@ export function Timeline({
                 )}
                 {item.status && (
                   <Badge variant="secondary">
-                    {STATUS_LABEL[item.status] ?? item.status}
+                    {(status === "errors" ? SEND_STATUS_LABEL : STATUS_LABEL)[
+                      item.status
+                    ] ?? item.status}
                   </Badge>
                 )}
                 <span className="text-sm text-muted-foreground">

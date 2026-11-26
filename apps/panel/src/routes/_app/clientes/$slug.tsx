@@ -10,7 +10,7 @@ const TABS = ["resumen", "configuracion", "actividad", "contactos", "avisos"];
 
 interface TenantSearch {
   tab?: string;
-  section?: "canal";
+  section?: "canal" | "personas";
 }
 
 export const Route = createFileRoute("/_app/clientes/$slug")({
@@ -21,7 +21,8 @@ export const Route = createFileRoute("/_app/clientes/$slug")({
     if (search.tab === "alta") out.tab = "configuracion";
     else if (typeof search.tab === "string" && TABS.includes(search.tab))
       out.tab = search.tab;
-    if (search.section === "canal") out.section = "canal";
+    if (search.section === "canal" || search.section === "personas")
+      out.section = search.section;
     return out;
   },
 });

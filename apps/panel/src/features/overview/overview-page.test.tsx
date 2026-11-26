@@ -71,7 +71,7 @@ test("formats KPIs and shows empty states", () => {
   expect(screen.getByText("No hay clientes.")).toBeInTheDocument();
   expect(screen.getByText("Sin mensajes este mes.")).toBeInTheDocument();
   expect(screen.getByText("Sin métricas este mes.")).toBeInTheDocument();
-  expect(screen.getByText("No hay alertas.")).toBeInTheDocument();
+  expect(screen.getByText("No hay incidencias.")).toBeInTheDocument();
 });
 
 afterEach(() => vi.unstubAllGlobals());

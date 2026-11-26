@@ -40,9 +40,11 @@ export const qk = {
     ["dataset-library", pack, dataset] as const,
   slugAvailability: (slug: string) => ["slug-availability", slug] as const,
   calendarServiceAccount: () => ["calendar-service-account"] as const,
+  /** The open incidents; `incidentsHistory` and `incidentCases` share its first
+   * element, so invalidating `incidents()` refreshes all three. */
   incidents: () => ["incidents"] as const,
-  alerts: () => ["alerts"] as const,
-  alertsResolved: () => ["alerts", "resolved"] as const,
+  incidentsHistory: () => ["incidents", "history"] as const,
+  incidentCases: (id: string) => ["incidents", "cases", id] as const,
   activity: (tenant: string, kinds: string, status: string) =>
     ["activity", tenant, kinds, status] as const,
   activityAll: () => ["activity"] as const,
@@ -104,7 +106,6 @@ const TENANT_VIEWS: readonly QueryKey[] = [
   qk.tenants(),
   qk.overview(),
   qk.incidents(),
-  qk.alerts(),
   qk.system(),
 ];
 
@@ -153,7 +154,6 @@ export const tenantRemoved = (): QueryKey[] => [
   qk.tenants(),
   qk.overview(),
   qk.incidents(),
-  qk.alerts(),
   qk.system(),
 ];
 

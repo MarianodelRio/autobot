@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { api, unwrap } from "@/api/client";
 import type { components } from "@/api/schema";
@@ -159,23 +160,55 @@ function Summary({ detail }: { detail: Detail }) {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>Alertas abiertas</CardTitle>
+          <CardTitle>Incidencias abiertas</CardTitle>
         </CardHeader>
         <CardContent>
           {detail.open_alerts.length ? (
             <ul className="space-y-1">
               {detail.open_alerts.map((alert) => (
-                <li key={alert.id}>{alert.text}</li>
+                <li
+                  key={alert.id}
+                  className="flex flex-wrap items-center gap-2"
+                >
+                  <StatusBadge status={alert.severity} />
+                  {alert.title}
+                </li>
               ))}
+              <li>
+                <Link className="text-sm underline" to="/incidencias">
+                  Ver en Incidencias
+                </Link>
+              </li>
             </ul>
           ) : (
-            <EmptyState message="No hay alertas abiertas." />
+            <EmptyState message="No hay incidencias abiertas." />
           )}
         </CardContent>
       </Card>
     </div>
   );
 }
+function ActivityTab({ slug }: { slug: string }) {
+  const [errorsOnly, setErrorsOnly] = useState(false);
+  return (
+    <div className="space-y-4">
+      <Button
+        size="sm"
+        variant={errorsOnly ? "default" : "outline"}
+        aria-pressed={errorsOnly}
+        onClick={() => setErrorsOnly(!errorsOnly)}
+      >
+        Envíos con error
+      </Button>
+      <Timeline
+        tenant={slug}
+        kinds="inbound,outbound"
+        status={errorsOnly ? "errors" : ""}
+      />
+    </div>
+  );
+}
+
 export function TenantDetailPage({
   slug,
   dirty = false,
@@ -188,7 +221,7 @@ export function TenantDetailPage({
   dirty?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   initialTab?: string;
-  initialSection?: "canal";
+  initialSection?: "canal" | "personas";
   /** With it the active tab lives in the URL (the route); without it, in local state. */
   onTabChange?: (tab: string) => void;
 }) {
@@ -272,11 +305,17 @@ export function TenantDetailPage({
           <ConfigEditor
             detail={d}
             onDirtyChange={onDirtyChange}
-            initialSection={initialSection === "canal" ? "channel" : undefined}
+            initialSection={
+              initialSection === "canal"
+                ? "channel"
+                : initialSection === "personas"
+                  ? "people"
+                  : undefined
+            }
           />
         </TabsContent>
         <TabsContent value="actividad">
-          <Timeline tenant={slug} kinds="inbound,outbound" />
+          <ActivityTab slug={slug} />
         </TabsContent>
         <TabsContent value="contactos">
           <ContactsTab slug={slug} />
